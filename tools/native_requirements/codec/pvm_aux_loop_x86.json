@@ -1,0 +1,15 @@
+{
+  "defines": [
+    "pvmX86Jit",
+    "pvmAuxLoop",
+    "pvmAuxLoopWitness",
+    "pvmSharedAsyncWitness"
+  ],
+  "directory": "codec",
+  "includes": [
+    "pvm_jit"
+  ],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

@@ -12,6 +12,8 @@ import ../[machine, program]
 import ./[native_ir, native_platform, native_read_body]
 export native_ir, native_read_body
 
+const NativeAuxLoopEnabled* = defined(pvmAuxLoop) and NativeReadCycleEnabled
+
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   export native_read_cycle
@@ -82,6 +84,10 @@ type
     key: JobKey
     request: NativeRequest
     submitted, completed: uint64
+    when NativeAuxLoopEnabled:
+      auxKey, auxOwner: JobKey ## Independent optional mailbox and exact primary generation.
+      auxBody: NativeReadBody
+      auxBorrowed: bool ## One bounded execution borrow; the runtime keeps the image.
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
       gate, followingGate: NativeCompilerPoint
@@ -217,6 +223,13 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
   runtime.slots[index].location = CompletionLocation.Empty
   runtime.slots[index].key = default(JobKey)
   runtime.slots[index].cancelled = false
+  when NativeAuxLoopEnabled:
+    if runtime.auxKey.generation != 0 and sameKey(runtime.auxKey, key):
+      assert not runtime.auxBorrowed
+      runtime.auxKey = default(JobKey)
+      runtime.auxOwner = default(JobKey)
+      runtime.auxBody = default(NativeReadBody)
+      runtime.slots[index].state = Retiring
   if runtime.slots[index].state == Retiring:
     # A detached registration becomes reusable only after its host/worker image was destroyed.
     runtime.slots[index].state = Free
@@ -270,6 +283,47 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint6
     release(runtime.lock)
     return NoWork
 
+when NativeAuxLoopEnabled:
+  func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
+    ## The caller owns the lock. Exhausted generations cannot back a new registration.
+    result = 0
+    for row in runtime.slots:
+      if row.state == Free and row.generation < high(uint64): inc result
+
+  proc retireAuxLocked(runtime: ptr NativeRuntimeStorage) =
+    ## Caller holds the lock. Idle optional storage can retire even if its owner never reenters.
+    let key = runtime.auxKey
+    if key.generation == 0: return
+    assert matchesRow(runtime, key)
+    let slot = key.slot
+    runtime.slots[slot].cancelled = true
+    case runtime.slots[slot].location
+    of CompletionLocation.Queued:
+      assert not runtime.slots[slot].completion.ready
+      runtime.slots[slot].location = CompletionLocation.Reclaiming
+      finishRetirement(runtime, key)
+    of CompletionLocation.Complete:
+      if not runtime.auxBorrowed:
+        var image = move(runtime.slots[slot].completion)
+        runtime.slots[slot].location = CompletionLocation.Reclaiming
+        release(runtime.lock)
+        image = default(NativeImage)
+        acquire(runtime.lock)
+        finishRetirement(runtime, key)
+    of CompletionLocation.Running, CompletionLocation.Reclaiming:
+      discard # The worker or the detached owner retires the physical mapping.
+    else:
+      abortNativeReceipt()
+    broadcast(runtime.changed)
+
+  proc retireAuxForOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint64) =
+    ## Invalidate optional authority before the matching primary namespace is recycled.
+    acquire(runtime.lock)
+    if runtime.auxKey.generation != 0 and runtime.auxOwner.slot == slot and
+        runtime.auxOwner.generation == generation:
+      retireAuxLocked(runtime)
+    release(runtime.lock)
+
 proc `=copy`(destination: var NativeSessionStorage, source: NativeSessionStorage) {.error.}
 
 proc `=dup`(source: NativeSessionStorage): NativeSessionStorage {.error.}
@@ -289,6 +343,8 @@ proc `=destroy`(session: NativeSessionStorage) =
   let anchor {.cursor.} = session.runtime
   if anchor != nil:
     # Installed storage was released above, before the canonical helper returns its credit.
+    when NativeAuxLoopEnabled:
+      retireAuxForOwner(addr anchor.storage, session.slot, session.generation)
     var detached = default(NativeImage)
     discard retireOwner(addr anchor.storage, session.slot, session.generation, true, detached)
   `=destroy`(session.runtime)
@@ -326,6 +382,42 @@ proc releaseCompilerClaim(runtime: ptr NativeRuntimeStorage, key: JobKey): bool 
   result = not runtime.stopping and not runtime.slots[key.slot].cancelled
   release(runtime.lock)
 
+when NativeAuxLoopEnabled:
+  func auxQueued(runtime: ptr NativeRuntimeStorage): bool =
+    runtime.auxKey.generation != 0 and
+      runtime.slots[runtime.auxKey.slot].location == CompletionLocation.Queued
+
+  proc compileAuxiliary(runtime: ptr NativeRuntimeStorage) =
+    ## Called only by the existing worker. Primary admission can still claim its ordinary mailbox.
+    let key = runtime.auxKey
+    assert matchesRow(runtime, key) and auxQueued(runtime)
+    let body = runtime.auxBody
+    runtime.slots[key.slot].location = CompletionLocation.Running
+    var image = default(NativeImage)
+    when defined(pvmSharedAsyncWitness):
+      compilerGate(runtime, key, NativeCompilerPoint.AfterClaim, false)
+    let active = not runtime.stopping and not runtime.slots[key.slot].cancelled
+    release(runtime.lock)
+    if active: image = lowerNativeReadBody(body)
+    acquire(runtime.lock)
+    when defined(pvmSharedAsyncWitness):
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
+    assert sameKey(runtime.auxKey, key) and matchesRow(runtime, key)
+    if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready:
+      runtime.slots[key.slot].location = CompletionLocation.Reclaiming
+      when defined(pvmSharedAsyncWitness):
+        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ready)
+      release(runtime.lock)
+      image = default(NativeImage)
+      acquire(runtime.lock)
+      finishRetirement(runtime, key)
+    else:
+      runtime.slots[key.slot].completion = move(image)
+      runtime.slots[key.slot].location = CompletionLocation.Complete
+      when defined(pvmSharedAsyncWitness):
+        compilerGate(runtime, key, NativeCompilerPoint.AfterPublish, true)
+    broadcast(runtime.changed)
+
 proc compilerRun(raw: pointer) =
   ## Only the worker lowers copied POD requests; completions park in their own bounded credit rows.
   let runtime = cast[ptr NativeRuntimeStorage](raw)
@@ -335,14 +427,20 @@ proc compilerRun(raw: pointer) =
   broadcast(runtime.changed)
   while true:
     var runnable = runtime.work == WorkPhase.Queued
+    when NativeAuxLoopEnabled: runnable = runnable or auxQueued(runtime)
     when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
     while not runnable and not runtime.stopping:
       wait(runtime.changed, runtime.lock)
       runnable = runtime.work == WorkPhase.Queued
+      when NativeAuxLoopEnabled: runnable = runnable or auxQueued(runtime)
       when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
     if runtime.stopping:
       release(runtime.lock)
       return
+    when NativeAuxLoopEnabled:
+      if runtime.work != WorkPhase.Queued:
+        compileAuxiliary(runtime)
+        continue
     let key = runtime.key
     assert requestMatches(runtime.request, key)
     assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
@@ -655,6 +753,8 @@ proc releaseNativeCredit(data: NativeSessionData) =
   ## Detach the host's credit; cancelled worker-owned images keep their row until physical retirement.
   let anchor {.cursor.} = data.runtime
   if anchor != nil:
+    when NativeAuxLoopEnabled:
+      retireAuxForOwner(addr anchor.storage, data.slot, data.generation)
     discard retireOwner(addr anchor.storage, data.slot, data.generation, true, data.image)
   data.slot = -1
   data.generation = 0
@@ -774,10 +874,16 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   let candidate = if waitingRead: selectRead else: data.span.len >= NativeMinimumOperations
   # Check admission under the mutex already required to release this invocation's lease.
   acquire(runtime.lock)
-  if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
-      data.state == NativeState.Deferred and candidate and
-      completedWork > 0 and data.provenWork >= NativeInvocationFloor and
-      runtime.nextTicket < high(uint64) and registerSession(runtime, data):
+  template primaryCanQueue(): bool =
+    runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
+      data.state == NativeState.Deferred and candidate and completedWork > 0 and
+      data.provenWork >= NativeInvocationFloor and runtime.nextTicket < high(uint64)
+  when NativeAuxLoopEnabled:
+    if primaryCanQueue() and runtime.auxKey.generation != 0 and freeNativeCredits(runtime) <= 1:
+      # Preserve the final primary spare. An admitted primary with another credit free
+      # keeps optional work intact and still takes precedence in the compiler mailbox.
+      retireAuxLocked(runtime)
+  if primaryCanQueue() and registerSession(runtime, data):
     inc runtime.nextTicket
     assert not data.image.ready and not runtime.slots[data.slot].completion.ready
     # selectRead already excludes a certified closed loop. Write only the selected payload.
@@ -824,6 +930,105 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   data.invocation = false
   data.allowed = false
   release(runtime.lock)
+
+when NativeAuxLoopEnabled:
+  func auxObservationEpoch*(session: NativeSession): uint64 =
+    ## Cold source observation requires a live invocation but no primary credit.
+    let data {.cursor.} = session.data
+    if data != nil and data.invocation: data.epoch else: 0'u64
+
+  func auxPrimaryReady*(session: NativeSession): bool =
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    data.invocation and data.allowed and data.state == NativeState.Ready and
+      data.image.kind == NativeKind.ConnectedReadCycle
+
+  proc offerNativeAux*(session: NativeSession, body: NativeReadBody): bool =
+    ## Keep a genuine free credit available for the next primary even while the optional image runs.
+    if not auxPrimaryReady(session) or not body.isAuxReadPrefix: return false
+    let data {.cursor.} = session.data
+    assert data != nil
+    if body.info.epoch != data.epoch or data.slot < 0: return false
+    let anchor {.cursor.} = data.runtime
+    if anchor == nil: return false
+    let runtime = addr anchor.storage
+    acquire(runtime.lock)
+    if runtime.stopping or runtime.work != WorkPhase.Idle or runtime.auxKey.generation != 0 or
+        runtime.nextTicket == high(uint64):
+      release(runtime.lock)
+      return false
+    if freeNativeCredits(runtime) < 2:
+      release(runtime.lock)
+      return false
+    var slot = 0
+    while runtime.slots[slot].state != Free or runtime.slots[slot].generation == high(uint64):
+      inc slot
+    assert runtime.slots[data.slot].location == CompletionLocation.Installed and
+      runtime.slots[data.slot].generation == data.generation
+    assert runtime.slots[slot].location == CompletionLocation.Empty
+    inc runtime.slots[slot].generation
+    inc runtime.nextTicket
+    let key = JobKey(slot: slot, generation: runtime.slots[slot].generation,
+      epoch: data.epoch, ticket: runtime.nextTicket, kind: NativeKind.CheckedReadBody)
+    runtime.auxKey = key
+    runtime.auxOwner = runtime.slots[data.slot].key
+    runtime.auxBody = body
+    runtime.slots[slot].key = key
+    runtime.slots[slot].state = Live
+    runtime.slots[slot].location = CompletionLocation.Queued
+    signal(runtime.changed)
+    release(runtime.lock)
+    true
+
+  proc borrowNativeAux*(session: NativeSession, body: NativeReadBody): nil ptr NativeImage =
+    ## The stable runtime row keeps exclusive mapping ownership. Pressure may cancel but
+    ## cannot detach until the owning frame returns this bounded, callback-free borrow.
+    if not auxPrimaryReady(session): return nil
+    let data {.cursor.} = session.data
+    assert data != nil
+    let anchor {.cursor.} = data.runtime
+    if anchor == nil or data.slot < 0: return nil
+    let runtime = addr anchor.storage
+    if not tryAcquire(runtime.lock): return nil
+    let key = runtime.auxKey
+    if not runtime.stopping and key.generation != 0 and not runtime.auxBorrowed and
+        runtime.slots[key.slot].location == CompletionLocation.Complete and
+        not runtime.slots[key.slot].cancelled and
+        sameKey(runtime.auxOwner, runtime.slots[data.slot].key) and
+        runtime.auxBody.sameReadBody(body):
+      assert matchesRow(runtime, key) and runtime.slots[key.slot].completion.ready
+      runtime.auxBorrowed = true
+      result = addr runtime.slots[key.slot].completion
+    else:
+      result = nil
+    release(runtime.lock)
+
+  proc returnNativeAux*(session: NativeSession) =
+    ## The frame has dropped the only active borrow. A prior revocation now permits unmapping.
+    let data {.cursor.} = session.data
+    assert data != nil and data.invocation
+    let anchor {.cursor.} = data.runtime
+    assert anchor != nil
+    let runtime = addr anchor.storage
+    acquire(runtime.lock)
+    let key = runtime.auxKey
+    assert key.generation != 0 and runtime.auxBorrowed and
+      runtime.slots[key.slot].location == CompletionLocation.Complete
+    runtime.auxBorrowed = false
+    if runtime.slots[key.slot].cancelled: retireAuxLocked(runtime)
+    release(runtime.lock)
+
+  when defined(pvmSharedAsyncWitness):
+    proc waitNativeAuxiliary*(runtime: NativeRuntime) =
+      ## Test-only wait for a terminal optional mailbox state.
+      let anchor {.cursor.} = runtime.data
+      assert anchor != nil
+      let data = addr anchor.storage
+      acquire(data.lock)
+      while data.started and data.auxKey.generation != 0 and
+          data.slots[data.auxKey.slot].location != CompletionLocation.Complete:
+        wait(data.changed, data.lock)
+      release(data.lock)
 
 func nativeSpanReady*(session: NativeSession): bool =
   ## Ready is separate from this invocation's conservative horizon; neither forces a losing short call.

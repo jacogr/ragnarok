@@ -186,6 +186,20 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertIn('--forward:-d:pvmX86ReadCycleCredits', profiled)
             self.assertEqual(profiled[-1], str(native_tests.unit_source(credit)))
 
+    def test_auxiliary_loop_witness_profiles_follow_host_isa(self):
+        # Neither machine-code test belongs in the feature-off codec batch.
+        arm, x86 = 'pvm_aux_loop_arm', 'pvm_aux_loop_x86'
+        for system, machine, expected in (('Darwin', 'arm64', {arm}),
+                                          ('Linux', 'aarch64', {arm}),
+                                          ('Linux', 'x86_64', {x86}),
+                                          ('Darwin', 'x86_64', set())):
+            with self.subTest(system=system, machine=machine), \
+                    patch.object(native_tests.platform, 'system', return_value=system), \
+                    patch.object(native_tests.platform, 'machine', return_value=machine):
+                batches = native_tests.unit_batches()
+                self.assertFalse({arm, x86} & set(batches[0][1]))
+                self.assertEqual({arm, x86} & {name for name, _, _ in batches}, expected)
+
     # Relative scheduling history must stay under build, isolated across relocated compiler installations.
     def test_runner_work_directory(self):
         with temporary_folder() as folder:

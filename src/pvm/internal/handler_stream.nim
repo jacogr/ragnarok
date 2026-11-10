@@ -12,11 +12,20 @@ import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
 import ./native_pipeline
+when NativeAuxLoopEnabled:
+  import ./[native_aux_loop, native_platform]
 import ./[resident_bytes, resident_capture]
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   import ./[arm64_jit, jit_rules]
 when defined(pvmX86Jit):
   import ./x86_jit
+
+when NativeAuxLoopEnabled:
+  type FlatAuxSource = object
+    ## One observed source interval owned by the exact code stream and primary epoch.
+    epoch: uint64
+    pc, headerToken: uint32
+    coldChecks: uint8
 
 when NativeCheckedReadEnabled:
   const
@@ -181,6 +190,8 @@ type
       when defined(pvmArmMacroStateTrace):
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
     rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
+    when NativeAuxLoopEnabled:
+      auxSource: FlatAuxSource
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -209,6 +220,7 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.nativeSession)
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
+  when NativeAuxLoopEnabled: frame.auxSource = default(FlatAuxSource)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Native code owners move; invocation byte descriptors lose all authority in the source.
     `=wasMoved`(frame.armOriginal)
@@ -826,6 +838,10 @@ proc flatBranch[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   flatBranchSelect(f, a, Code, destination)
   destination
 
+when NativeAuxLoopEnabled:
+  proc observeFlatAuxSource(f: var FlatFrame, pc, header, terminal: uint32)
+    ## Cold checked resolution is the only discovery entry.
+
 proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Prepare both valid arms: resolve both valid arms, patch, then retry this synthetic preparation dispatch without a source attempt.
   let a = f.arguments[int(off)]
@@ -836,6 +852,10 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   f.arguments[int(off)].y = no
   let patched: FlatHandler = flatBranch[Code]
   f.handlers[int(off)] = patched
+  when NativeAuxLoopEnabled and Code == 171:
+    # A complete 15-node backedge is the only plausible source. Keep misses on the cold path.
+    if yes < off and off-yes == uint32(AuxVisitSpan):
+      observeFlatAuxSource(f, uint32(a.x shr 32), yes, off)
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # The original cached branch clears paid state before cold source admission.
     let destination = flatBranch[Code](f, off)
@@ -4007,6 +4027,94 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
     f.handlers[int(boundary)] = flatBudget
   body
 
+when NativeAuxLoopEnabled:
+  include ./handler_aux_loop
+  when defined(pvmAuxLoopWitness):
+    include ./handler_aux_loop_witness
+
+proc dispatchFlatChecked(f: var FlatFrame, offset: uint32): uint32 {.alwaysInline.} =
+  ## Dispatch original checked/native workers, respecting temporary source barriers.
+  assert int(offset) < f.handlers.len
+  let selected = f.handlers[int(offset)]
+  if selected == flatCharge:
+    let next = flatReserveHeader(f, offset)
+    if next == flatStop: return flatStop
+    let body = f.handlers[int(next)]
+    return body(f, next)
+  selected(f, offset)
+
+proc settleFlatSegment(f: var FlatFrame) {.inline.} =
+  ## Restore an attempt barrier, settle a checked exit and leave original identities visible.
+  if f.barrier != flatStop:
+    let saved = f.savedHandler
+    assert saved != nil
+    if saved != nil: f.handlers[int(f.barrier)] = saved
+    f.barrier = flatStop
+    f.savedHandler = nil
+  if f.reason == oracle.StepError.None and f.attemptedExit:
+    let sourceFact = f.sites[int(f.stoppedAt)]
+    var reservedEnd = f.reservation
+    if (reservedEnd and flatReservationHeaderFlag) != 0:
+      # Only the final attempted exit needs its exact source end; stream coordinates remain owned and stable.
+      let header = reservedEnd and not flatReservationHeaderFlag
+      reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
+    if reservedEnd > sourceFact+1:
+      f.remaining+=uint64(reservedEnd-sourceFact-1)
+  when NativeReadCycleEnabled:
+    # Boundary classifiers require the original handler identity, including on exit edges.
+    settleProtectedReadSegment(f)
+  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
+    # A restored partial barrier or final cached jump can make a pending graph admissible.
+    flatX86ColdWideAdmission(f, flatStop)
+
+proc runFlatPlain(f: var FlatFrame, start: uint32) {.inline.} =
+  ## No auxiliary proof, header test or observation runs in the ordinary dispatch loop.
+  var offset = start
+  while offset != flatStop:
+    offset = dispatchFlatChecked(f, offset)
+  settleFlatSegment(f)
+  flatPromoteNativeLoop(f)
+
+when NativeAuxLoopEnabled:
+  proc runFlatWithAux(f: var FlatFrame, start: uint32, limit: uint64, auxProof: AuxProof) =
+    ## Only a complete current candidate enters this dispatch path.
+    var offset = start
+    let auxBefore = nativeStatistics(f.nativeSession)[2]
+    let auxHeader = auxProof.read.info.header
+    let auxTerminal = auxHeader+uint32(AuxVisitSpan)
+    var auxBackedges = 0'u32
+    var tryAux = true
+    var auxBorrowed = false
+    while offset != flatStop:
+      if offset == auxHeader:
+        if tryAux:
+          let borrowed = borrowNativeAux(f.nativeSession, auxProof.read)
+          if borrowed == nil:
+            tryAux = false
+          else:
+            var refusal = AuxRefusal.None
+            auxBorrowed = true
+            offset = runFlatAuxChunk(f, auxProof, borrowed[], refusal)
+            returnNativeAux(f.nativeSession)
+            if offset != auxHeader or refusal == AuxRefusal.None:
+              continue
+            # The first uncommitted visit runs the original checked header once.
+      let checkedOffset = offset
+      offset = dispatchFlatChecked(f, offset)
+      # An original worker may tail-dispatch into the terminal. The sealed body's only
+      # return to its own header is that checked terminal taking the self-edge.
+      if offset == auxHeader and checkedOffset > auxHeader and checkedOffset <= auxTerminal and
+          not auxBorrowed and auxBackedges < AuxWarmBackedges:
+        inc auxBackedges
+    settleFlatSegment(f)
+    # Bind admission to checked work alongside a live renderer.
+    # A successful borrow already owns the optional credit, so it needs no new offer.
+    if auxBackedges == AuxWarmBackedges and not auxBorrowed and
+        settledNativeWork(f, limit) >= NativeInvocationFloor and
+        nativeStatistics(f.nativeSession)[2] > auxBefore:
+      discard offerNativeAux(f.nativeSession, auxProof.read)
+    flatPromoteNativeLoop(f)
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   f.hostReady = false
@@ -4060,40 +4168,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if offset == flatStop:
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
-  while offset != flatStop:
-    assert int(offset) < f.handlers.len
-    let selected = f.handlers[int(offset)]
-    if selected == flatCharge:
-      # Preserve temporary barriers: select the first operation only after complete reservation/patching.
-      offset = flatReserveHeader(f, offset)
-      if offset != flatStop:
-        let body = f.handlers[int(offset)]
-        offset = body(f, offset)
-    else:
-      # Specialized charged/native/failure workers retain their existing entry and complete fallback behavior.
-      offset = selected(f, offset)
-  if f.barrier != flatStop:
-    let saved = f.savedHandler
-    assert saved != nil
-    if saved != nil: f.handlers[int(f.barrier)] = saved
-    f.barrier = flatStop
-    f.savedHandler = nil
-  if f.reason == oracle.StepError.None and f.attemptedExit:
-    let sourceFact = f.sites[int(f.stoppedAt)]
-    var reservedEnd = f.reservation
-    if (reservedEnd and flatReservationHeaderFlag) != 0:
-      # Only the final attempted exit needs its exact source end; stream coordinates remain owned and stable.
-      let header = reservedEnd and not flatReservationHeaderFlag
-      reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
-    if reservedEnd > sourceFact+1:
-      f.remaining+=uint64(reservedEnd-sourceFact-1)
-  when NativeReadCycleEnabled:
-    # Boundary classifiers require the original handler identity, including on exit edges.
-    settleProtectedReadSegment(f)
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
-    # A restored partial barrier or final cached jump can make a pending graph admissible.
-    flatX86ColdWideAdmission(f, flatStop)
-  flatPromoteNativeLoop(f)
+  when NativeAuxLoopEnabled:
+    if flatAuxSourceCurrent(f) and auxPrimaryReady(f.nativeSession):
+      let proof = buildFlatAuxProof(f, f.auxSource.pc)
+      if proof.read.complete and proof.read.info.header+1 == f.auxSource.headerToken:
+        runFlatWithAux(f, offset, limit, proof)
+        return
+  runFlatPlain(f, offset)
 
 proc runFlatSingle*(f: var FlatFrame) =
   ## Reuse the ordinary charge and opcode workers with one source fact and scalar successor endpoints.
@@ -4277,6 +4358,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
   replacement.nativeSession = move(f.nativeSession)
+  when NativeAuxLoopEnabled: replacement.auxSource = f.auxSource
   replacement.nativeOriginal = f.nativeOriginal
   replacement.nativeEntry = f.nativeEntry
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
@@ -4477,6 +4559,8 @@ type FlatStream* = object
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
+  when NativeAuxLoopEnabled:
+    auxSource: FlatAuxSource
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
@@ -4499,6 +4583,9 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     failure: f.preparationFailure,
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
     nativeInstalledEpoch: f.nativeInstalledEpoch)
+  when NativeAuxLoopEnabled:
+    result.auxSource = f.auxSource
+    f.auxSource = default(FlatAuxSource)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
     result.armOriginal = move(f.armOriginal)
@@ -4537,6 +4624,9 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.nativeOriginal = stream.nativeOriginal
   f.nativeEntry = stream.nativeEntry
   f.nativeInstalledEpoch = stream.nativeInstalledEpoch
+  when NativeAuxLoopEnabled:
+    f.auxSource = stream.auxSource
+    stream.auxSource = default(FlatAuxSource)
   flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.
   when NativeCheckedReadEnabled:
     # Restored original facts authorize a deferred read retry without discovering another candidate.

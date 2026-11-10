@@ -221,8 +221,22 @@ if requestedPreparation == "1":
 let requestedTiming = getEnv("RAGNAROK_PVM_DOOM_TIMING")
 assert requestedTiming in ["", "0", "1"]
 let timing = requestedTiming == "1"
-let samples = if timing: 13 else: 1
+when defined(pvmAuxLoop):
+  let requestedAuxiliary = getEnv("RAGNAROK_PVM_DOOM_AUX")
+  assert requestedAuxiliary in ["", "1"]
+  let qualifyAuxiliary = requestedAuxiliary == "1"
+  if qualifyAuxiliary:
+    # Verify the exact product image outside the invocation clocks.
+    assert fullInvocation and preparedMode and requestedBackend == "jit" and phase == "tick"
+else:
+  const qualifyAuxiliary = false
+let samples = if timing or qualifyAuxiliary: 13 else: 1
 for sample in 0..<samples:
+  when defined(pvmAuxLoop):
+    if qualifyAuxiliary and sample >= 2:
+      # The primary is installed and the auxiliary owns the only parked completion.
+      let owner = runtimeInfo(invocationRuntime)
+      assert owner.active == 0 and owner.registered == 2 and owner.completions == 1
   # Fresh host output and invocation-local execution state preserve equal sample starts.
   let residentCall = if fullInvocation and sample != 0: beginInvocation() else: default(InvocationClock)
   let cpuStart = if fullInvocation: (if sample ==
@@ -296,6 +310,9 @@ for sample in 0..<samples:
     assert cpuElapsed > 0 and wallElapsed > 0
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
+when defined(pvmAuxLoop):
+  if qualifyAuxiliary:
+    echo "AUX_LOOP_RESIDENT,", samples-2
 
 when declared(step.DefaultPvmBackend):
   if requestedBackend.len > 0:

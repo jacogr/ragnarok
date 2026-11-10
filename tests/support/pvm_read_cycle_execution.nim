@@ -601,3 +601,208 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert final.registered == 0 and final.submitted == 4 and final.completed == 3
     assert nativeState(waiting) == NativeState.Deferred and close(runtime)
     echo "PASS connected read mailbox reuse and retirement"
+
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness) and defined(pvmAuxLoop):
+  proc readyAuxTestRenderer(runtime: NativeRuntime, session: NativeSession) =
+    ## Publish a real ConnectedReadCycle using the normal primary path.
+    beginNativeInvocation(session, NativeInvocationFloor)
+    nominateNativeReadCycle(session, cycleFixture(epoch = nativeEpoch(session)))
+    finishNativeInvocation(session, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(session, NativeInvocationFloor)
+    assert auxPrimaryReady(session)
+    finishNativeInvocation(session, NativeInvocationFloor)
+
+  proc auxTestBody(epoch: uint64): NativeReadBody =
+    ## Two actual memory reads and nine scalar operations use the optional prefix ABI.
+    result = initNativeAuxReadPrefix(64, 92, epoch)
+    for i in 0..<11:
+      let op = if i < 2: operation(58, byte(i), uint32(wordAddress))
+        else: operation(149, 0x22, 1)
+      assert addReadBodyOperation(result, 65+uint32(i), 92+uint32(i), op)
+    assert result.complete
+
+  proc runAuxiliaryMailbox*() =
+    ## Force actual cancellation, pressure, idle/active retirement and close ordering.
+    assert nativePlatformSupported()
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread startup failed"
+    let renderer = newNativeSession(runtime)
+    let other = newNativeSession(runtime)
+    let priority = newNativeSession(runtime)
+    readyAuxTestRenderer(runtime, renderer)
+    readyAuxTestRenderer(runtime, other)
+    let original = auxTestBody(nativeEpoch(renderer))
+
+    # The optional job owns its image at the publication gate. A primary must still queue.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    assert not offerNativeAux(renderer, cycleFixture(epoch = nativeEpoch(renderer)).read)
+    assert offerNativeAux(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let optional = waitNativeCompilerGate(runtime)
+    assert optional.kind == NativeKind.CheckedReadBody and optional.hasImage
+    beginNativeInvocation(priority, NativeInvocationFloor)
+    nominateNativeReadCycle(priority, cycleFixture())
+    finishNativeInvocation(priority, NativeInvocationFloor)
+    assert nativeState(priority) == NativeState.Pending
+    assert runtimeInfo(runtime).registered == 4 and runtimeInfo(runtime).phase == NativePhase.Queued
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let retiring = waitNativeCompilerGate(runtime)
+    assert retiring.ticket == optional.ticket and retiring.hasImage and
+      runtimeInfo(runtime).registered == 4
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    let primary = waitNativeCompilerGate(runtime)
+    assert primary.kind == NativeKind.ConnectedReadCycle and primary.hasImage and
+      primary.ticket > optional.ticket and runtimeInfo(runtime).registered == 3
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(priority, NativeInvocationFloor)
+    assert auxPrimaryReady(priority)
+    finishNativeInvocation(priority, NativeInvocationFloor)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert auxPrimaryReady(renderer) and not offerNativeAux(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    invalidateNativeStream(priority)
+
+    # Cancel a pending optional payload by invalidating its exact primary epoch.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterClaim)
+    assert offerNativeAux(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let pending = waitNativeCompilerGate(runtime)
+    assert pending.kind == NativeKind.CheckedReadBody and not pending.hasImage
+    invalidateNativeStream(renderer)
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let cancelled = waitNativeCompilerGate(runtime)
+    assert cancelled.ticket == pending.ticket and not cancelled.hasImage
+    releaseNativeCompilerGate(runtime)
+    waitNativeAuxiliary(runtime)
+    assert runtimeInfo(runtime).registered == 1
+    readyAuxTestRenderer(runtime, renderer)
+    let next = auxTestBody(nativeEpoch(renderer))
+    assert next.info.epoch != original.info.epoch
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert not offerNativeAux(renderer, original)
+    assert offerNativeAux(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeAuxiliary(runtime)
+    beginNativeInvocation(other, NativeInvocationFloor)
+    assert borrowNativeAux(other, next) == nil
+    finishNativeInvocation(other, NativeInvocationFloor)
+
+    # A borrowed runtime-owned mapping stays charged during pressure. Its next owner
+    # boundary releases it while the already queued primary retains its own credit.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeAux(renderer, original) == nil
+    let image = borrowNativeAux(renderer, next)
+    assert image != nil and image[].ready and image[].codeBytes > 0
+    var bytes = newSeq[byte](8)
+    bytes[0] = 137
+    var registers = default(RegisterFile)
+    var read = [initNativeReadRegion(wordAddress, bytes), default(NativeReadRegion),
+      default(NativeReadRegion)]
+    assert enterNativeReadBody(image[], registers, read)
+    assert uint64(registers[0]) == 137 and uint64(registers[1]) == 137
+    assert not close(runtime)
+    let entrant = newNativeSession(runtime)
+    beginNativeInvocation(entrant, NativeInvocationFloor)
+    nominateNativeReadCycle(entrant, cycleFixture())
+    finishNativeInvocation(entrant, NativeInvocationFloor)
+    assert runtimeInfo(runtime).registered == 4 and nativeState(entrant) == NativeState.Pending
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(entrant, NativeInvocationFloor)
+    assert auxPrimaryReady(entrant)
+    finishNativeInvocation(entrant, NativeInvocationFloor)
+
+    # Let the first primary finish while the revoked borrowed image still holds the fourth credit.
+    let delayed = newNativeSession(runtime)
+    let delayedProof = cycleFixture()
+    let beforeDelay = runtimeInfo(runtime)
+    assert beforeDelay.phase == NativePhase.Done and beforeDelay.registered == 4
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    nominateNativeReadCycle(delayed, delayedProof)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeState(delayed) == NativeState.Deferred
+    assert runtimeInfo(runtime).submitted == beforeDelay.submitted
+    assert runtimeInfo(runtime).registered == 4
+
+    # Retry after the original borrow returns and the owner finishes, without another owner entry.
+    returnNativeAux(renderer)
+    assert runtimeInfo(runtime).registered == 3 and auxPrimaryReady(renderer)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeCycleNominated(delayed) and validateNativeRead(delayed, delayedProof.read)
+    validateNativeCycleNomination(delayed, delayedProof)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeState(delayed) == NativeState.Pending and nativeState(entrant) == NativeState.Ready
+    assert runtimeInfo(runtime).submitted == beforeDelay.submitted+1 and
+      runtimeInfo(runtime).registered == 4
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    assert auxPrimaryReady(delayed)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    invalidateNativeStream(delayed)
+    invalidateNativeStream(entrant)
+
+    # An unrelated primary can reclaim a parked optional mapping while its owner is idle.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert offerNativeAux(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeAuxiliary(runtime)
+    let idlePressure = newNativeSession(runtime)
+    beginNativeInvocation(idlePressure, NativeInvocationFloor)
+    nominateNativeReadCycle(idlePressure, cycleFixture())
+    finishNativeInvocation(idlePressure, NativeInvocationFloor)
+    assert runtimeInfo(runtime).registered == 3 and nativeState(idlePressure) == NativeState.Pending
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(idlePressure, NativeInvocationFloor)
+    assert auxPrimaryReady(idlePressure)
+    finishNativeInvocation(idlePressure, NativeInvocationFloor)
+    invalidateNativeStream(idlePressure)
+
+    # An unrelated primary with a spare credit left over need not revoke a parked optional image.
+    invalidateNativeStream(other)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert offerNativeAux(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeAuxiliary(runtime)
+    readyAuxTestRenderer(runtime, other)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeAux(renderer, next) != nil
+    returnNativeAux(renderer)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+
+    # A parked optional mapping can retire at close without another call from its owner.
+    assert runtimeInfo(runtime).registered == 3 and close(runtime)
+    assert runtimeInfo(runtime).registered == 2
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeAux(renderer, next) == nil
+    finishNativeInvocation(renderer, 0)
+    invalidateNativeStream(renderer)
+    invalidateNativeStream(other)
+    assert runtimeInfo(runtime).registered == 0
+    # Under host serialization close may overlap worker retirement, not another host handle call.
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread restart failed"
+    readyAuxTestRenderer(runtime, renderer)
+    let closing = auxTestBody(nativeEpoch(renderer))
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    assert offerNativeAux(renderer, closing)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let closingImage = waitNativeCompilerGate(runtime)
+    assert closingImage.hasImage
+    invalidateNativeStream(renderer)
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let closingRetirement = waitNativeCompilerGate(runtime)
+    assert closingRetirement.ticket == closingImage.ticket and closingRetirement.hasImage
+    assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 1
+    # Stop bypasses the worker gate. Close joins before it inspects or returns that credit.
+    assert close(runtime)
+    assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0

@@ -23,7 +23,7 @@ from nim_dependencies import transitive_dependencies
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
-from native_requirements import CREDIT_WITNESS_SUITE, NATIVE_REQUIREMENTS, UNIT_LINKS
+from native_requirements import CREDIT_WITNESS_SUITE, HOST_BOUND_CODEC, NATIVE_REQUIREMENTS, UNIT_LINKS
 from native_fixture_contracts import FIXTURE_CONTRACTS
 # Keep the runtime-fixture helper available to existing launcher consumers.
 from native_fixtures import PROVIDERS, unit_runtime_fixtures
@@ -56,14 +56,21 @@ def unit_jobs():
 
 # Assemble a native runner invocation; Python supplies paths/flags, never test assertions or verdict parsing.
 def supports_unit(name):
-    """Keep the actual SysV credit witness out of an unsupported host plan."""
-    return name != CREDIT_WITNESS_SUITE or (
-        platform.system() == 'Linux' and platform.machine().lower() in ('x86_64', 'amd64'))
+    """Keep machine-code witnesses off hosts without their backend ABI."""
+    isa = HOST_BOUND_CODEC.get(name)
+    if isa is None:
+        return True
+    system, machine = platform.system(), platform.machine().lower()
+    if isa == 'pvmX86Jit':
+        return system == 'Linux' and machine in ('x86_64', 'amd64')
+    return system in ('Linux', 'Darwin') and machine in ('aarch64', 'arm64')
 
 
 def unit_command(compiler, name=None, libraries=None):
     if not supports_unit(name):
-        raise ValueError('x86 credit witness requires native Linux x86-64')
+        if name == CREDIT_WITNESS_SUITE:
+            raise ValueError('x86 credit witness requires native Linux x86-64')
+        raise ValueError('Auxiliary loop witness requires its native host ISA: '+str(name))
     compiler = Path(compiler).resolve()
     runner = compiler.parent/'hastur'
     if not runner.is_file():
@@ -229,7 +236,7 @@ def unit_fixture_sources():
 def unit_batches():
     pure = tuple(name for name in UNIT_SUITES if name not in UNIT_LINKS)
     actual = set(UNIT_ROOT.glob('*.nim'))
-    if actual != {unit_source(name) for name in (*pure, CREDIT_WITNESS_SUITE)}:
+    if actual != {unit_source(name) for name in (*pure, *HOST_BOUND_CODEC)}:
         # Extra/missing directory members cannot silently change the group covered by one verdict.
         raise ValueError('Native codec directory changed after suite discovery')
     return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS if supports_unit(name)]

@@ -22,6 +22,9 @@ CREDIT_WITNESS_FLAGS = frozenset({
     'pvmX86ReadCycleBudgetRegisters', 'pvmX86ReadCycleRoleRegisters', 'pvmX86ReadCycleCredits',
 })
 CREDIT_ONLY_FLAGS = CREDIT_WITNESS_FLAGS - {'pvmX86Jit', 'pvmX86ResidentProof'}
+AUX_LOOP_FLAGS = frozenset({'pvmAuxLoop', 'pvmAuxLoopWitness'})
+AUX_LOOP_PROFILES = {'pvm_aux_loop_arm': 'pvmArm64Jit', 'pvm_aux_loop_x86': 'pvmX86Jit'}
+HOST_BOUND_CODEC = {CREDIT_WITNESS_SUITE: 'pvmX86Jit', **AUX_LOOP_PROFILES}
 
 
 def validate_requirements(records):
@@ -37,7 +40,8 @@ def validate_requirements(records):
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
-                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness'} | CREDIT_ONLY_FLAGS,
+                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness'}
+                    | CREDIT_ONLY_FLAGS | AUX_LOOP_FLAGS,
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
@@ -58,6 +62,11 @@ def validate_requirements(records):
             # All credit flags belong to one exact Linux x86 witness profile.
             if name != CREDIT_WITNESS_SUITE or defines != CREDIT_WITNESS_FLAGS:
                 raise ValueError('Incomplete or conflicting x86 credit witness profile: '+name)
+        if name in AUX_LOOP_PROFILES or defines & AUX_LOOP_FLAGS:
+            # These fixtures enter machine code and require one exact matching host profile.
+            isa = AUX_LOOP_PROFILES.get(name)
+            if isa is None or defines != AUX_LOOP_FLAGS | {isa, 'pvmSharedAsyncWitness'}:
+                raise ValueError('Incomplete or conflicting auxiliary loop witness profile: '+name)
         provider = record.get('provider')
         variant = record.get('variant', 'default')
         if record['prepared']:
@@ -130,8 +139,8 @@ def load_requirements(folder):
 NATIVE_REQUIREMENTS = load_requirements(Path(__file__).with_suffix(''))
 
 
-# Non-codec suites and the explicit credit witness retain isolated execution.
+# Non-codec suites and host-bound native witnesses retain isolated execution.
 # The last ordered library remains the primary profile; no second registration is needed.
 UNIT_LINKS = {name: record['libraries'][-1] if record['libraries'] else None
               for name, record in sorted(NATIVE_REQUIREMENTS.items())
-              if record['directory'] != 'codec' or name == CREDIT_WITNESS_SUITE}
+              if record['directory'] != 'codec' or name in HOST_BOUND_CODEC}

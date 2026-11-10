@@ -29,6 +29,8 @@ type
     operations: array[NativeReadFactLimit.int-2, NativeOperation]
     count, reads: int
     continuation: NativeReadContinuation
+    when defined(pvmAuxLoop):
+      straightPrefix: bool
   NativeReadRegion* = object ## One clipped private allocation. Empty records have no usable pointer.
     first, length: uint64
     data: nil pointer
@@ -46,6 +48,17 @@ func initNativeReadBody*(header, terminal, first, last: uint32,
   result.geometry = NativeReadBodyInfo(header: header, terminal: terminal, first: first,
     last: last, epoch: epoch)
 
+when defined(pvmAuxLoop):
+  func initNativeAuxReadPrefix*(header, first: uint32, epoch: uint64): NativeReadBody =
+    ## Bind the eleven original pre-store operations without inventing a folded noop.
+    const prefix = 11'u32
+    result = default(NativeReadBody)
+    if epoch == 0 or header >= NativeEntryLimit-prefix-1 or first > high(uint32)-prefix:
+      return
+    result = NativeReadBody(geometry: NativeReadBodyInfo(header: header,
+      terminal: header+prefix+1, first: first, last: first+prefix, epoch: epoch),
+      straightPrefix: true)
+
 func nativeReadOpcode*(opcode: byte): bool =
   ## Every GP relative scalar load shares the same clipped extent and staged-register ABI.
   opcode in {124'u8..130'u8}
@@ -61,7 +74,11 @@ proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
   if info.epoch == 0 or body.count >= body.operations.len or
       body.count >= int(info.terminal-info.header-1): return false
   let next = 1'u32+uint32(body.count)
-  if node != info.header+next or ordinal != info.first+next: return false
+  let sourceStep = when defined(pvmAuxLoop):
+    if body.straightPrefix: next-1 else: next
+  else:
+    next
+  if node != info.header+next or ordinal != info.first+sourceStep: return false
   if nativeReadOpcode(nativeReadEncodingOpcode(operation.opcode)):
     if body.reads == NativeReadLoadLimit: return false
     inc body.reads
@@ -77,9 +94,16 @@ func complete*(body: NativeReadBody): bool =
   let extra = if body.continuation.terminal == 0: 0 else: NativeReadContinuationSpan.int-1
   body.count == int(info.terminal-info.header-1)+extra
 
+when defined(pvmAuxLoop):
+  func isAuxReadPrefix*(body: NativeReadBody): bool =
+    ## Only a complete straight prefix may occupy the auxiliary mailbox.
+    body.straightPrefix and body.continuation.terminal == 0 and body.complete
+
 proc addNativeReadContinuation*(body: var NativeReadBody, continuation: NativeReadContinuation,
     operations: array[NativeReadContinuationSpan.int-1, NativeOperation]): bool =
   ## Append one complete pure body within the original copied request bounds.
+  when defined(pvmAuxLoop):
+    if body.straightPrefix: return false
   let info = body.geometry
   if not body.complete or body.continuation.terminal != 0 or
       info.last-info.first+1+NativeReadContinuationSpan > NativeReadFactLimit or
@@ -113,6 +137,8 @@ func operation*(body: NativeReadBody, index: int): NativeOperation {.requires:
 
 func sameReadBody*(a, b: NativeReadBody): bool =
   ## Compare the exact geometry and the admitted prefix, with no pointer identity in the request.
+  when defined(pvmAuxLoop):
+    if a.straightPrefix != b.straightPrefix: return false
   if not a.complete or not b.complete or a.geometry != b.geometry or a.count != b.count or
       a.continuation != b.continuation:
     return false
