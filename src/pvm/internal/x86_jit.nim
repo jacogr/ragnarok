@@ -7,6 +7,7 @@
 
 import std/assertions
 import ../[program, machine]
+import ./native_register_ring
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
@@ -536,24 +537,30 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       fragment.bytes[fix.at+part] = byte((displacement shr (part*8)) and 255)
   takeX86Instructions(fragment)
 
-proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
-  ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.
-  assert jit.region.status == 0
+proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool): seq[byte] =
+  ## Emit full guards and canonical guest accesses using SysV caller-saved registers.
+  let count = blocks.len
+  assert count in 1..3
   var code = default(X86Block)
-  # RDI is the borrowed register array, RSI the fresh five-word context; bodies touch only RAX/RCX/RDX/R8.
+  # RDI is the guest array, RSI the fresh context, and bodies only touch RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
-  var labels = default(array[2, int])
+  var labels = default(array[3, int])
   var fixes: seq[X86RegionFixup] = @[]
+  if rotating:
+    # Entry zero falls through after the wrapper validates the complete rotation index.
+    for index in 1..2:
+      put(code, [0x48'u8, 0x83, 0x7e, 40, byte(index)]) # CMP QWORD [RSI+40],index.
+      regionEdge(code, fixes, blocks[index].header, 0x84, false) # JE guarded header.
   for index in 0..<count:
     let item = blocks[index]
     if item.header >= 262144 or item.span < 2 or item.span > 65 or
-        item.operations != item.span or item.body.bytes.len < 16: return false
+        item.operations != item.span or item.body.bytes.len < 16: return @[]
     let terminal = item.body.bytes.len
     # Only the existing emitter's MOV/MOV/CMOV scalar-selection tail can be replaced by native edges.
     if item.body.bytes[terminal-13] != 0xb8 or item.body.bytes[terminal-8] != 0xba or
-        item.body.bytes[terminal-3] != 0x0f or item.body.bytes[terminal-1] != 0xc2: return false
+        item.body.bytes[terminal-3] != 0x0f or item.body.bytes[terminal-1] != 0xc2: return @[]
     let condition = item.body.bytes[terminal-2]
-    if condition notin {0x42'u8..0x47, 0x4c..0x4f}: return false
+    if condition notin {0x42'u8..0x47, 0x4c..0x4f}: return @[]
     labels[index] = code.bytes.len
     put(code, [0x49'u8, 0x81, 0xfa]) # CMP R10,wholeSourceSpan; partial blocks return before debit.
     regionWord(code, item.span)
@@ -563,9 +570,11 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     regionEdge(code, fixes, item.header, 0x82, true)
     put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea])
     regionWord(code, item.span)
-    # Invocation-local visits and last completed header preserve counters and exact reservation endpoint on every exit.
-    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8), 0x48, 0xc7, 0x46, 32])
-    regionWord(code, item.header)
+    # Count each complete visit. The legacy ABI also publishes its last completed header.
+    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8)])
+    if not rotating:
+      put(code, [0x48'u8, 0xc7, 0x46, 32])
+      regionWord(code, item.header)
     for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
     regionEdge(code, fixes, item.yes, condition+0x40'u8, false)
     regionEdge(code, fixes, item.no, 0, false)
@@ -591,11 +600,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     regionWord(code, 0)
   let epilogue = code.bytes.len
   put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
-  if code.bytes.len >= 4096: return false
-  if not x86PublicationAvailable(jit, region = true):
-    # Exhausted owner-wide publication capacity is permanent, unlike this candidate's shape or size.
-    jit.region.status = 1
-    return false
+  if code.bytes.len >= 4096: return @[]
   for at in returns:
     let relative = uint32(epilogue-at-4)
     for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
@@ -611,10 +616,36 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
     let origin = fix.at+4
     let relative = if target >= origin: uint32(target-origin) else: 0'u32-uint32(origin-target)
     for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
+  takeX86Instructions(code)
+
+proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
+  ## Reuse the canonical region builder with three distinct visit lanes.
+  var blocks = default(array[3, X86RegionBlock])
+  for index in 0..2:
+    let item = ring.blocks[index]
+    var body = default(X86Block)
+    for operation in 0..<int(item.span)-1:
+      let op = item.body[operation]
+      emitX86Operation(body, op.opcode, op.slots, op.immediate)
+    let branch = item.branch
+    emitX86Branch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
+    blocks[index] = X86RegionBlock(header: item.header, span: item.span,
+      operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
+  x86RegionBytes(blocks, true)
+
+proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
+  ## Preserve the legacy publisher and its two-block receipt.
+  assert jit.region.status == 0
+  var code = x86RegionBytes(blocks.toOpenArray(0, int(count)-1), false)
+  if code.len == 0: return false
+  if not x86PublicationAvailable(jit, region = true):
+    # Exhausted owner-wide publication capacity is permanent.
+    jit.region.status = 1
+    return false
   # Only proven owner-wide capacity/storage failure is sticky; local negatives exhaust existing per-header probes.
   jit.region.status = 1
   if jit.arena.handle == nil: return false
-  let published = publishNative(jit.arena.handle, addr code.bytes[0], uint32(code.bytes.len))
+  let published = publishNative(jit.arena.handle, addr code[0], uint32(code.len))
   if published < 0: return false
   jit.region.code = uint32(published)
   for index in 0..<count:
@@ -623,7 +654,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   jit.region.count = uint32(count)
   jit.region.status = 2
   inc jit.fragments
-  jit.codeBytes = uint64(published)+uint64(code.bytes.len)
+  jit.codeBytes = uint64(published)+uint64(code.len)
   true
 
 proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
