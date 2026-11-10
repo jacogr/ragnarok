@@ -29,15 +29,15 @@ const
   MaxInput = MaxHeader + MaxMcpBody
 
 type
-  Connection = object ## One bounded request/response and an absolute five-second deadline.
+  Connection = object                   ## One bounded request/response and an absolute five-second deadline.
     opened: bool
     fd: cint
     input, output: string
-    headScanner: http_parse.HeadScanner
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
     deadline: int64
   McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
-    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened: bool
     fd: cint
     port: uint16
@@ -79,7 +79,7 @@ proc close*(server: var McpServer) =
   ## Idempotent explicit shutdown retires consumers before the listener.
   for slot in mitems(server.connections): slot.close()
   if server.opened: discard posix.close(server.fd)
-  server.httpTags = nil
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.port = 0
 
@@ -134,6 +134,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, contex
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
+  # The request message retires on return. The listener keeps the vocabulary for later requests.
   var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return

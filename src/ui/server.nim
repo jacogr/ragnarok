@@ -28,15 +28,15 @@ const
   ChunkBytes = 16384
 
 type
-  Connection = object ## Each slot owns its socket, optional file and bounded write buffer.
+  Connection = object                   ## Each slot owns its socket, optional file and bounded write buffer.
     opened, fileOpened, embedded: bool
     fd, file: cint
     input, output: string
-    headScanner: http_parse.HeadScanner
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset, assetIndex, position: int
     remaining, deadline: int64
   UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
-    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, rootOpened: bool
     fd, root: cint
     connections: array[MaxConnections, Connection]
@@ -92,7 +92,7 @@ proc close*(server: var UiServer) =
   for slot in mitems(server.connections): slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
-  server.httpTags = nil
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.rootOpened = false
 
@@ -255,6 +255,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
     slot.close()
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request", "text/plain", 0)
+  # The request message retires on return. The listener keeps the vocabulary for later requests.
   var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return

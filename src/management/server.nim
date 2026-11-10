@@ -33,15 +33,15 @@ type
     else:
       sun_family: cushort
     sun_path: array[104, char]
-  Connection = object ## Each slot owns bounded bytes and one nonblocking descriptor.
+  Connection = object                   ## Each slot owns bounded bytes and one nonblocking descriptor.
     opened: bool
     fd: cint
     input, output: string
-    headScanner: http_parse.HeadScanner
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
     deadline: int64
   ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
-    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, bound: bool
     fd: cint
     path: string
@@ -109,7 +109,7 @@ proc close*(server: var ManagementServer) =
   for slot in mitems(server.connections): slot.close() # Consumers retire before the listener.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
-  server.httpTags = nil
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.bound = false
   server.path = ""
@@ -171,6 +171,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
+  # The request message retires on return. The listener keeps the vocabulary for later requests.
   var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return

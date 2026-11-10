@@ -34,14 +34,14 @@ type
     opened, upgraded, closing, fragmented: bool
     fd: cint
     input, output, message: string
-    headScanner: http_parse.HeadScanner
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
-    session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
+    session: RpcSession                 # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
   RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
     marker: uint8
   Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
-    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, proofs: bool
     proofCursor: int                # Fair bounded scan advances after each successfully claimed connection.
     lease: nil RpcChainLease
@@ -176,7 +176,7 @@ proc close*(server: var Server) {.requires: server.lease == nil.} =
     slot.close()
   if server.opened:
     discard posix.close(server.fd)
-  server.httpTags = nil
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.light = default(RpcLightHead)
   server.lightDisk = false
