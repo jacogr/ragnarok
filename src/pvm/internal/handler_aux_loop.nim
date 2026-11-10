@@ -3,7 +3,7 @@
 
 ## Seal a checked byte-store loop and run bounded visits against frame-owned memory.
 
-when declared(FlatFrame) and NativeAuxLoopEnabled:
+when declared(FlatFrame):
   const
     AuxNoPage = high(uint32) ## Guest pages occupy only the low 20 bits.
     AuxWarmBackedges = uint32((NativeInvocationFloor+AuxVisitSpan-1) div AuxVisitSpan)
