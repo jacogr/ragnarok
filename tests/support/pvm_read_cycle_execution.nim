@@ -144,7 +144,8 @@ when NativeReadCycleEnabled:
       const initialWord = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
       var word = initialWord
       let tail = [0xfe'u8, 0xff, 0xff, 0xff]
-      let wordBase = if mode in {WindowCase.PriorStore, WindowCase.ChangedBase}: first+24 else: wordAddress
+      let wordBase = if mode in {WindowCase.PriorStore,
+          WindowCase.ChangedBase}: first+24 else: wordAddress
       let address = if mode == WindowCase.Wrapped: 0xffffffe0'u64 else: first
       let later = mode in {WindowCase.LaterMiss, WindowCase.PriorStore, WindowCase.ChangedBase}
       let gas = if later: 1000'u64 else: 0'u64
@@ -242,7 +243,8 @@ when NativeReadCycleEnabled:
       assert destination == expectedHeader and context.remaining == 0, "window resume and attempts"
       assert context.gas == (if later: 881'u64 else: 0'u64), "window gas"
       assert context.visits == visits and context.lastCompleted == last, "window completed roles"
-      assert context.paidRead == uint64(ord(mode in {WindowCase.Wrapped, WindowCase.LaterMiss, WindowCase.ChangedBase})),
+      assert context.paidRead == uint64(ord(mode in {WindowCase.Wrapped, WindowCase.LaterMiss,
+          WindowCase.ChangedBase})),
         "window paid Read status"
       assert validNativeCycleReceipt(layout, destination, gas, remaining, context), "window receipt"
       if registers != expected:
@@ -270,7 +272,6 @@ when NativeReadCycleEnabled:
       var changing = lowerNativeReadCycle(windowFixture(outerWritesBase = true))
       assert changing.ready and changing.kind == NativeKind.ConnectedReadCycle
       checkWindowEntry(changing, WindowCase.ChangedBase)
-
 
   type ReadExit {.pure.} = enum ## Which checkpoint the literal path reaches.
     UnpaidTail, LaterMiss, FirstMiss, Overlap, UnpaidStore, Outside
