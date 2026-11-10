@@ -320,8 +320,9 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
 proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
   ## Decode for JAM execution with scoped GP-PVM-004/005/006/007/009 PolkaVM compatibility rules.
-  ## Reject missing final successors/widths above four; width-zero tables are semantically empty.
-  ## Code is at most32 MiB and declared jumps at most16 Mi entries before width-zero normalization.
+  ## Reject a final opcode that requires fallthrough. A final trap is valid.
+  ## Table entry width is at most four bytes. Width-zero tables are semantically empty.
+  ## Code is at most 32 MiB and declared jumps at most 16 Mi entries before normalization.
   ## Original bytes remain owned verbatim; caller limits apply before semantic normalization.
   decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Jam)
 

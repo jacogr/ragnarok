@@ -88,8 +88,9 @@ proc decodePlannedProofs*(input: openArray[byte], plan: StateProofPlan,
     expectedRoot: StateRoot, limits: ProofViewLimits, perProof: StateProofLimits,
     aggregate: StateProofBatchLimits, wireBytes: ByteLimit): PlannedProofResult[ProofView] =
   ## Authenticate exactly the planned keys under the independently selected root.
-  ## The shared decoder checks count and every sorted key before copying witnesses
-  ## or hashing. Intersect batch and retained-view ceilings before authentication.
+  ## The shared decoder checks the count before reading witnesses and each key
+  ## before copying its witness. It verifies the complete scope before hashing.
+  ## Batch and retained-view ceilings intersect before authentication.
   ## A failure never publishes a verified prefix.
   let effective = StateProofBatchLimits(
     items: ElementLimit(min(uint64(aggregate.items), uint64(limits.items))),
