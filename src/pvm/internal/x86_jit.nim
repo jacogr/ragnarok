@@ -760,13 +760,20 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
         labels: untyped, body: NativeReadBody, access: untyped,
-        count: int, refusal: byte, nextLabel: var byte) =
+        count: int, refusal: byte, nextLabel: var byte,
+        window: NativeReadWindow = default(NativeReadWindow)) =
       ## Preserve one guard and load emitter for standalone and transactional cycle reads.
       for index in 0..<count:
         let op = body.operation(index)
         let encoding = nativeReadEncodingOpcode(op.opcode)
         if not nativeReadOpcode(encoding):
           emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
+        elif (window.operations and (1'u32 shl index)) != 0:
+          # RSI holds this entry's first-descriptor window. Load bytes at the original position.
+          let offset = uint32(op.immediate and 0xffffffff'u64)-window.first
+          assert op.opcode == 130 and offset <= 32
+          put(code, [0x48'u8, 0x8b, 0x46, byte(offset)]) # MOV RAX,[RSI+offset].
+          writeAccess(code, access, op.slots.aIndex)
         else:
           let opcode = int(encoding)
           assert opcode >= 124 and opcode <= 130 # Prove the local width-table conversion.
@@ -973,7 +980,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditGasShift = 7'u8
         readCycleCreditSpanShift = 5'u8
 
-      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+8, int]
+      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+20, int]
 
       proc readCycleContextOp(code: var X86Block, encoding: openArray[byte], offset: int) =
         ## Context operations use disp32 because the accounting fields follow the extent table.
@@ -1220,6 +1227,41 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         labels[int(saved)] = code.bytes.len
         put(code, [0x4c'u8, 0x89, 0x44, 0x24, slot]) # MOV [RSP+slot],R8.
 
+      func entryReadWindow(cycle: NativeReadCycle): NativeReadWindow =
+        ## Admit an entry-local address only if no emitted role writes its base lane.
+        result = default(NativeReadWindow)
+        let window = nativeReadWindow(cycle.read)
+        if window.operations == 0: return
+        let base = window.baseLane
+        let word = cycle.word
+        if (readBodyDirty(cycle.read, cycle.read.len) and (1'u32 shl int(base))) != 0 or
+            base in [word.baseLane, word.shiftLane, word.byteLane, cycle.tailLoad.slots.aIndex,
+                     cycle.tailStep.slots.destinationIndex, cycle.outer[0].slots.destinationIndex,
+                     cycle.outer[1].slots.destinationIndex]: return
+        result = window
+
+      proc emitEntryReadWindow(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, window: NativeReadWindow, bank: X86ResidentAccess,
+          slot: byte, nextLabel: var byte) =
+        ## Cache the first descriptor's pointer only. A miss selects the full ordered search.
+        let accepted = nextLabel
+        let save = nextLabel+1
+        nextLabel += 2
+        put(code, [0x31'u8, 0xf6]) # XOR ESI,ESI records a miss.
+        readBodyBase(code, bank, window.baseLane)
+        put(code, [0x81'u8, 0xc2]) # ADD EDX,first wraps the window start modulo 2^32.
+        cycleWord(code, window.first)
+        put(code, [0x81'u8, 0xfa]) # CMP EDX,max32-39 prevents wrap inside the window.
+        cycleWord(code, high(uint32)-39'u32)
+        cycleEdge(code, fixes, 0x87, save)
+        emitCheckedExtent(code, fixes, 0, 40, save, accepted)
+        labels[int(accepted)] = code.bytes.len
+        put(code, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX.
+        cycleEdge(code, fixes, 0x84, save)
+        put(code, [0x48'u8, 0x8d, 0x34, 0x01]) # LEA RSI,[RCX+RAX].
+        labels[int(save)] = code.bytes.len
+        put(code, [0x48'u8, 0x89, 0x74, 0x24, slot]) # MOV [RSP+slot],RSI.
+
       proc emitResidentCycleRead(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: var X86ReadCycleLabels, body: NativeReadBody, bank: X86ResidentAccess,
           dirty: uint32, nextLabel: var byte) =
@@ -1243,7 +1285,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           fixes.add(X86CycleFixup(at: bodyStart+fix.at, target: fix.target))
         commitCheckedReadRegisters(code, bank)
 
-      proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits: bool): seq[byte] =
+      proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow: bool): seq[byte] =
         ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
         ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
@@ -1293,6 +1335,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         var fixes: seq[X86CycleFixup] = @[]
         var labels = default(X86ReadCycleLabels)
         var nextLabel = readCycleLocal
+        let window = if allowWindow and roleRegisters: entryReadWindow(cycle)
+          else: default(NativeReadWindow)
+        let slowRead = nextLabel
+        let readComplete = nextLabel+1
+        if window.operations != 0: nextLabel += 2
         if resident:
           for slot in 0..12:
             let encoded = bank.registers[slot]
@@ -1308,6 +1355,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         # Extent checks use RCX/RDX before either live budget ledger is loaded.
         emitReadCycleTailPointer(code, fixes, labels,
           uint32(cycle.tailLoad.immediate and 0xffffffff'u64), tailSlot, nextLabel)
+        if window.operations != 0:
+          # The second pointer fits beside the Tail pointer in the existing resident frame.
+          emitEntryReadWindow(code, fixes, labels, window, bank, tailSlot+8, nextLabel)
         if credits:
           # R9 funds paid roles. The first Read bypasses it because the checked header paid.
           readCycleLoadBudgets(code)
@@ -1347,8 +1397,14 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
               commitCheckedReadRegisters(code, bank, dirty)
             labels[int(readCyclePrepaid)] = code.bytes.len # The checked entry already reserved the first Read.
             if roleRegisters:
+              if window.operations != 0:
+                # Select one whole Read body, leaving the original search off the hit path.
+                put(code, [0x48'u8, 0x8b, 0x74, 0x24, tailSlot+8]) # MOV RSI,[RSP+slot].
+                put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI.
+                cycleEdge(code, fixes, 0x84, slowRead)
               emitCheckedReadOperations(code, fixes, labels, cycle.read, roleAccess,
-                readCycleBodyOps, readCyclePaidMiss, nextLabel)
+                readCycleBodyOps, readCyclePaidMiss, nextLabel, window)
+              if window.operations != 0: labels[int(readComplete)] = code.bytes.len
             elif resident:
               emitResidentCycleRead(code, fixes, labels, cycle.read, bank, dirty, nextLabel)
             else:
@@ -1437,6 +1493,12 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         if resident: restoreCheckedReadRegisters(code, bank)
         put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
         if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout)
+        if window.operations != 0:
+          # Run the same original operations after the original checkpoint and debit.
+          labels[int(slowRead)] = code.bytes.len
+          emitCheckedReadOperations(code, fixes, labels, cycle.read, roleAccess,
+            readCycleBodyOps, readCyclePaidMiss, nextLabel)
+          cycleEdge(code, fixes, 0, readComplete)
         if code.bytes.len > NativeImageByteLimit: return @[]
         for fix in fixes:
           # The complete image ceiling proves signed rel32 for both forward and backward edges.
@@ -1450,10 +1512,14 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         ## The Read and role masks must fit the bank, and every role must fit one credit.
         ## Both x86 and ARM publish the same checked receipt for all seven roles.
         when readCycleUsesCredits:
-          result = emitX86ReadCycle(cycle, true)
+          result = emitX86ReadCycle(cycle, true, true)
+          if result.len == 0:
+            # Preserve the original credited image if only the extra Read body exceeds the cap.
+            result = emitX86ReadCycle(cycle, true, false)
           if result.len != 0: return
-        # Retry the exact emitter if the credit image could not fit the native image limit.
-        result = emitX86ReadCycle(cycle, false)
+        # Preserve the original exact image under the same ceiling.
+        result = emitX86ReadCycle(cycle, false, true)
+        if result.len == 0: result = emitX86ReadCycle(cycle, false, false)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =
