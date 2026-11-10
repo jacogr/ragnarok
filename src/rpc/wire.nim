@@ -41,6 +41,7 @@ proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags())
   # Each handshake owns its parsed message until return. The listener reuses the vocabulary.
   var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(header, 0, header.len - 1), head) != header.len: return
+  if head.versionOf != http_msg.tag(http_msg.tV11): return # This endpoint uses the HTTP/1.1 Upgrade handshake.
   for field in ["host", "origin", "connection", "upgrade", "sec-websocket-key",
       "sec-websocket-version"]:
     if head.countHeaderByName(field) > 1: return # Handshake selectors cannot have conflicting values.

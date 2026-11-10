@@ -553,7 +553,8 @@ proc tick*(server: var Server, peers: uint32) =
           slot.close()
           continue
       else:
-        if count > MaxMessage + 14 - slot.input.len:
+        # Before upgrade, the stock scanner bounds the head and preserves bytes after it.
+        if slot.upgraded and count > MaxMessage + 14 - slot.input.len:
           slot.reject(1009, now) # Reject before appending beyond the fixed receive allowance.
         else:
           if slot.input.len == 0 and not slot.fragmented and slot.upgraded:

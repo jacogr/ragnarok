@@ -353,6 +353,9 @@ block reused_header_scanner:
   reused.close()
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
 assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
+for version in ["HTTP/1.0", "HTTP/2"]:
+  # The stock head parser recognizes these versions, but the RPC upgrade requires HTTP/1.1.
+  assert upgrade(upgradeHeader.replace("HTTP/1.1", version)).len == 0, version & " refuses WebSocket upgrade"
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin : http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: local\x00host")).len == 0
 assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
@@ -1912,9 +1915,52 @@ proc publicationReply(fd: cint): string =
   result = ""
   var bytes = default(array[4096, char])
   let count = receive(fd, addr bytes[0], csize_t(bytes.len), 0)
-  assert count > 0
+  assert count > 0, "expected bytes on the connected RPC socket"
   for index in 0..<count:
     result.add(bytes[index]) # Copy only the initialized native receive prefix.
+
+proc upgradeReceiveBounds(owner: var Server) =
+  ## Exercise both sides of the HTTP boundary through actual dispatcher reads.
+  let first = "X-Padding-A: " & repeat('a', 8100) & "\r\n"
+  let second = "X-Padding-B: "
+  let padding = first & second &
+    repeat('b', http_parse.MaxHeadLen - upgradeHeader.len - first.len - second.len - 2) & "\r\n"
+  let head = upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & padding)
+  assert head.len == http_parse.MaxHeadLen
+  for oversized in [true, false]:
+    # Drive one fresh client per case. The final write crosses the former combined receive cap.
+    var pair = default(array[2, cint])
+    assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+    defer: discard posix.close(pair[1])
+    assert nonblocking(pair[0]) and nonblocking(pair[1])
+    owner.connections[0].opened = true
+    owner.connections[0].fd = pair[0]
+    owner.connections[0].deadline = getMonoTime().ticks div 1_000_000 + 5000
+    let prefix = head.substr(0, head.len - 5)
+    for turn in 0..<4:
+      # Feed one dispatcher read at a time so the socket's send buffer cannot truncate the fixture.
+      let start = turn * 4096
+      var chunk = prefix.substr(start, min(start + 4096, prefix.len) - 1)
+      assert sendBytes(pair[1], chunk.toCString(), csize_t(chunk.len), 0) == chunk.len
+      owner.tick(0)
+    assert owner.connections[0].input == prefix and not owner.connections[0].upgraded,
+      "incomplete head stays buffered: " & $owner.connections[0].input.len
+    let ping = repeat('p', 32)
+    var suffix = if oversized: repeat('x', 64) else: head.substr(head.len - 4) & masked(ping, 9)
+    assert sendBytes(pair[1], suffix.toCString(), csize_t(suffix.len), 0) == suffix.len, "send the final read"
+    owner.tick(0)
+    if oversized:
+      # HTTP refusal closes without sending a WebSocket close frame.
+      var octet = '\0'
+      assert receive(pair[1], addr octet, 1, 0) == 0, "oversized upgrade closes without a binary frame"
+      assert not owner.connections[0].opened
+    else:
+      # The complete head upgrades before consuming the buffered Ping.
+      assert publicationReply(pair[1]).startsWith("HTTP/1.1 101 "), "head at the stock limit upgrades"
+      owner.tick(0)
+      assert publicationReply(pair[1]) == frame(ping, 10), "buffered Ping survives the upgrade"
+      owner.connections[0].close()
 
 ## Own an ephemeral listener and connected WS transport while publishing between dispatcher turns.
 ## Synthetic snapshots establish handoff behavior only, not execution/signature validity.
@@ -1936,6 +1982,7 @@ proc publicationLifecycle() =
   assert nonblocking(owner.fd)
   assert bindSocket(owner.fd, addr address, SockLen(sizeof(address))) == 0
   assert listenSocket(owner.fd, 1) == 0
+  owner.upgradeReceiveBounds()
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   owner.chain = historySeed
   owner.parameters = genesisParameters
