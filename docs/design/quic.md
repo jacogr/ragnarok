@@ -1,51 +1,22 @@
 # JAMNP-S over QUIC
 
-[Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
-update their feature contract rather than appending progress here.
+[Design overview](../design.md) · [JAMNP-S source map](../../src/jamnp-s/README.md) ·
+[QUIC source map](../../src/quic/README.md)
 
-`src/jamnp-s/` owns JAM identities, framing checks, stream policy and peer lifetimes.
-`src/quic/` owns UDP readiness, primitive DER observations and the QUIC/TLS adapter. A bounded POSIX
-nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
-an OS thread. Raw-block preparation uses one reusable Services worker and one outstanding input
-lease after native callbacks retire; endpoint polling continues while canonical/RPC access is gated.
-A finite download run retains authenticated peer connections across children. Host rearming
-requires a consumed canonical adoption, native close and retired input/job leases; final shutdown
-joins before borrowed owners retire. See the
-[progress contract](../../spec/application-download-progress.md) and the
-[download worker contract](../../spec/application-download-worker.md). Optional RingVRF verification uses two workers and four total owned job slots.
-The application entry point is `src/ragnarok.nim`. `session.nim` receives validated application
-configuration and privately owns peer/stream state, callbacks and retained mesh coordination.
-Both peer shapes use `app/services.nim` for optional service ownership/startup; transport
-callbacks retire before those shared services. Only lifecycle entry points are exported.
+[JAMNP-S](../../src/jamnp-s/README.md) owns peer identity, framing and stream policy.
+[QUIC](../../src/quic/transport.nim) owns primitive certificate observations and
+the native transport bridge. The dispatcher drives transport and timers, while
+[Services](../../src/app/services.nim) owns independent worker and listener lifetimes.
 
 ## Peer announcements
 
-Optional UP0 discovery shares the authenticated outgoing catalog with CE128 through a distinct
-persistent stream route. Callbacks retain bounded detached bytes; host polling decodes complete
-messages and hashes announced headers. Available snapshots contain copied peer claims and source
-incarnation/sequence, never validated full/light state or trusted finality. Stream or TLS retirement
-revokes availability. See [continuous sync](../../spec/node-sync.md) for the trust and readiness contract.
+[UP0 routes](../../src/jamnp-s/announcement_stream.nim) keep bounded peer claims
+with their stream incarnation. [Sync targets](../../src/jamnp-s/sync_targets.nim)
+compare live claims against independently admitted canonical evidence.
 
 ## Canonical development block serving
 
-`jamnp-s/devnet.nim` owns a stable noncopyable incoming endpoint, one serial outgoing endpoint and
-six pinned identities. Sixteen fixed incoming stream slots copy bounded CE128 requests and serve
-one canonical child from the host-published finite catalog. An absent child returns an empty
-response sequence. The outgoing path requires exact framing and response FIN before returning
-copied bytes to its host; it grants no execution/adoption authority. A catalog entry is published
-only after ordinary candidate validation, durable journal publication and canonical installation.
-Explicit teardown emits connection close while UDP is still live, retires both engines and only
-then releases callback storage. No consensus execution occurs inside native callbacks.
-
-The continuous current-sync owner composes that catalog with the ordinary one-child dispatcher.
-Discovery-only turns preserve live transports without granting reception/preparation authority;
-spent retry plans are explicitly renewed after delay. Only consumed canonical installation and
-live target evidence establish the copied full readiness observation. Rolling ancestor retention
-is bounded independently of the lifetime import count. See [node sync](../../spec/node-sync.md)
-for the command, trust and participation boundaries.
-
-`sync_targets.nim` is the shared scalar source/canonical-evidence boundary for normal import and
-Tiny authoring. It retains no canonical graph or producer-supplied success bit. Tiny settles
-pending input and evaluates fresh evidence at the actual signing call. Its server shares the
-bounded UP0 route with CE128 kind dispatch and publishes detached bytes only after durable
-admission; native callbacks perform no header hashing or full-state execution.
+[Devnet transport](../../src/jamnp-s/devnet.nim) serves detached bytes from the
+host-selected catalog. [Download rearming](../../src/jamnp-s/block/download/loop.nim)
+follows stream and lease retirement. [Node sync](../../spec/node-sync.md) records
+the trust and participation scope.

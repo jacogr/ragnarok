@@ -1,14 +1,20 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 program deblob and operand decoding; see spec/pvm-program.md. Input is borrowed
-## during validation, then copied into private acyclic ARC storage.
+## Decode the Gray Paper program blob into one immutable owner.
 ##
-## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
-## structural-header/instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding,
-## and block-boundary and containing-block queries. Genuine instruction results expose success-guarded
-## instructionHasFallthrough/TargetStartsBlock and instructionRegisters/instructionMemoryOperands
-## without publishing mutable validation metadata.
+## Wire order is jump count, entry width, code length, fixed-width table, code and
+## packed opcode mask. The code length also fixes the mask extent. Framing and
+## caller ceilings are checked before retaining the exact bytes.
+##
+## Validation walks all opcode starts from zero, independent of the requested entry.
+## Instruction skip uses the bounded opcode-mask window. Operands can read through
+## the next opcode and see zero padding beyond code. Copied register and displacement
+## facts retain their nominal domains. The executor resolves branch destinations
+## against the same owner and its validated block starts.
+##
+## Paper and JAM profiles share the framing. JAM's scoped validation and table
+## normalization are documented on decodeJamProgram and qualified in spec/pvm-program.md.
 
 import ../codec/natural
 
@@ -314,8 +320,9 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
 proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
   ## Decode for JAM execution with scoped GP-PVM-004/005/006/007/009 PolkaVM compatibility rules.
-  ## Reject missing final successors/widths above four; width-zero tables are semantically empty.
-  ## Code is at most32 MiB and declared jumps at most16 Mi entries before width-zero normalization.
+  ## Reject a final opcode that requires fallthrough. A final trap is valid.
+  ## Table entry width is at most four bytes. Width-zero tables are semantically empty.
+  ## Code is at most 32 MiB and declared jumps at most 16 Mi entries before normalization.
   ## Original bytes remain owned verbatim; caller limits apply before semantic normalization.
   decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Jam)
 
@@ -612,6 +619,7 @@ proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byt
 proc containingBlockStart*(program: Program, address: CodeAddress): ProgramResult[CodeAddress] =
   ## Find GP startofbasicblock for a valid instruction, including entry in the middle of a block.
   ## The backward byte scan is bounded by the validated program size and retains no storage.
+  ## Only marked terminators count. The gas-cycle ceiling applies to pricing, independently of this scan.
   let current = instructionOpcode(program, address)
   # Reject default owners and invalid addresses before narrowing or scanning bytes.
   if current.error != ProgramError.None:

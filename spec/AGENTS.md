@@ -38,9 +38,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   above while retaining its protocol rules; see [qualification](graypaper-credential-encoding.md).
 
 
-Feature contracts record applicable scope, pinned references, completion tests, interpretation,
-observed evidence, limitations and next bounded work. Passing local tests is not proof of complete
-JAM parity. Keep routine progress out of the shared design pages.
+Feature records keep pinned authority, protocol interpretation, approved deviations, focused
+completion checks and concise observed evidence. The owning Nim module explains the live
+implementation and its routine contracts. Link to that owner, and date historical behavior
+that matters to interpreting evidence. Passing local tests is not proof of complete JAM parity.
 
 - On 2026-11-03 the maintainer authorized source revision
   `fad0ded4a433052397bf7234352a57fe491883f7`, superseding the earlier source targets.

@@ -11,6 +11,12 @@
 ## retire before listener destruction. After starting preparation, explicitly close
 ## to join before borrowed input or shared aliases retire. Detached reader snapshots
 ## retain their immutable state independently.
+##
+## Canonical state, optional listeners and worker admission have separate lifetimes.
+## The startup anchor is captured before disk history can replace the selected head.
+## It is detached trust metadata, not a newer best-head claim. Disk publication installs
+## the confirmed durable successor after collection. Management continues to observe
+## copied startup and OS data while canonical graph access is excluded.
 
 import ../state/accumulation/residency
 import ../codec/composite
@@ -1474,6 +1480,8 @@ proc startServices(services: var Services, options: Options, role: string,
     services.close()
     return false # Partial startup retires every already opened endpoint.
   services.chainRpc = withState and options.rpcPort() != 0
+  # Enable autonomous full-state proof jobs only where the dispatcher retains no
+  # external parent aliases across turns. Download orchestration keeps its own lease.
   if services.chainRpc and options.argument(1) in ["server", "client", "mesh"]:
     discard services.rpc.enableStateProofs() # These dispatcher shapes retain no external canonical aliases across turns.
   let database = if options.diskStorage: options.stateDatabase else: ""
@@ -2323,7 +2331,10 @@ proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkRea
 
 proc beginStateProof*(services: var Services, selected: BlockHash, plan: StateProofPlan,
     limits: ProofQueryLimits): StateProofAdmission {.raises.} =
-  ## Global/mixed plans use the established exclusive lease and exact native ticket retirement.
+  ## Dispatch a bounded proof plan against the exact selected block.
+  ## Full mode stages the retained complete source before borrowing it to the
+  ## reusable worker. Light mode delegates to the independent partial proof actor.
+  ## Retirement of the exact ticket governs when the source is available again.
   if services.light.active:
     let admitted = services.light.beginQuery(selected, plan, limits)
     case admitted.error
@@ -4291,7 +4302,10 @@ proc beginPreparation*(services: var Services, input: var BlockInput,
 proc beginPreparation*(services: var Services, input: var CurrentBlockInput,
     id: CurrentBlockInputId): PreparationAdmission {.raises,
         requires: services.preparationAvailable.} =
-  ## Pause RPC before current submission; all external input/canonical/context aliases and info queries remain frozen until exact collect or join.
+  ## Pause chain RPC before handing stable input and canonical storage to the worker.
+  ## Plain ARC requires all existing graph and context aliases to stay untouched.
+  ## A refusal restores RPC immediately. Cancellation and Done still hold the gate:
+  ## exact collection or joined close retires the borrow before resuming access.
   discard services.worker.start() # The existing fixed-address thread handles both payload alternatives.
   services.rpcLease = services.rpc.pauseChain()
   let admitted = services.worker.submit(input, id, services.canonical,
@@ -4336,7 +4350,9 @@ proc cancelPreparation*(services: var Services, ticket: PreparationTicket): bool
   services.worker.cancel(ticket)
 
 proc collectPreparation*(services: var Services, ticket: PreparationTicket): PreparationCompletion =
-  ## Move/drop completion only after execution temporaries retire, then restore canonical and RPC access together.
+  ## Restore canonical and RPC access only after the exact completion retires.
+  ## The returned certificate still needs explicit host adoption. A foreign, stale
+  ## or unfinished ticket leaves exclusion in force.
   result = services.worker.collect(ticket)
   if result.kind != PreparationCompletionKind.Uninitialized:
     services.auditPreparationChain = default(ApplicationChain)
@@ -4585,7 +4601,9 @@ proc retirementDue(services: Services): bool =
   not services.retirementDelayed or (getMonoTime()-services.retirementAttempt).inMilliseconds >= 1000
 
 proc rpcProofLimits(): ProofQueryLimits =
-  ## Explicit local resource ceilings bound complete-map generation, proof verification and detached wire copies.
+  ## Bound complete-map generation, proof verification and detached wire copies.
+  ## These are independent local admission ceilings. The hash estimate limits
+  ## admitted work and carries no wall-clock promise.
   ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(65536), nodes: TrieNodeLimit(131071),
       perValue: ByteLimit(1048576), totalValueBytes: ByteLimit(8388608)),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(MaxRpcProofBytes)),
@@ -4596,7 +4614,11 @@ proc rpcProofLimits(): ProofQueryLimits =
     wireBytes: ByteLimit(MaxRpcProofBytes), hashes: ProofHashLimit(4000000))
 
 proc beginRpcProof(services: var Services) =
-  ## Run only after RPC/UI tick activations retire; no selected-state alias can escape onto this stack.
+  ## Claim detached RPC proof intent after RPC/UI request views retire.
+  ## The admission stages the exact block and starts the bounded worker only
+  ## after temporary graph aliases retire. Keep the routing ticket separate
+  ## from that worker lease. Refusals become terminal errors, and disconnect
+  ## can discard delivery while the worker still requires collection.
   let dispatch = services.rpc.takeStateProofRequest()
   if not dispatch.valid: return
   services.rpcProof = dispatch

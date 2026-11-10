@@ -20,17 +20,10 @@ identity, explicit IO uncertainty and external trust for checkpoint imports rema
 
 ## Explicit managed state owner
 
-Managed DiskStateStore create/open/recover entry points keep all legacy entry points and ordinary
-StateStore APIs intact. Creation builds a complete admitted generation-one seed before creating
-the directory. Trusted open still compares independently supplied exact root/generation; normal
-local open requires contextual schema and resumes its admitted local head. Application history
-binding remains a separate check. Empty context cannot publish a full-state revision.
-
-`compactDiskStateStore` requires the exact public snapshot and explicit roots. It changes the
-private physical owner without changing public snapshot identity, root, generation or context;
-ordinary commit still fetches the newly selected physical parent internally. Selected usage is
-available through the same owner. None of these operations chooses block/finality authority or
-runs synchronously inside dispatcher callbacks.
+The [disk state owner](../src/state/disk_store.nim) owns managed initialization,
+exact-root recovery and physical compaction. The [managed repository](../src/storage/managed/repository.nim)
+owns manifest selection and journal durability. The application verifies selected
+chain context separately.
 
 `managed_disk_state_store` checks public identity, retained values, compaction, context, exact trust,
 narrow restore policy, inherited explicit zero-write policy and 1,000 composite-owner ARC cycles.

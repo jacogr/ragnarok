@@ -4,22 +4,9 @@ Scope: connect the existing bounded preparation worker to a stable Services owne
 explicit host-side exclusion boundary. Protocol rules, specification/dependency/compiler pins,
 plain ARC and exact-parent adoption authority remain unchanged.
 
-A successful submission pauses RPC chain work before the worker can run, and blocks Services
-canonical getters, reception, preparation and publication APIs by checked preconditions. Scalar
-progress, cancellation, UI ticks and unrelated QUIC work remain available. RPC ticks perform no
-request/context work while paused; publication refuses and close/destruction require release.
-A private retained RPC token prevents foreign/default/stale tokens from resuming another lease.
-RPC sockets/queues remain intact and resume afterward; existing wall-clock deadlines still apply.
-This increment pauses RPC service rather than claiming concurrent snapshot access is safe.
-
-One host thread serializes all controls. Existing external aliases of the captured canonical/input
-graph must remain untouched and alive until successful collection or joined close. Services and
-input addresses remain stable. Cancellation and Done retain the gate until explicit collection.
-Collection returns the genuine pipeline result; host enqueue/adoption remains explicit and deferred.
-Close joins the worker before RPC or canonical owners retire. Once a worker has been started,
-Services requires explicit close before destruction, including after collection. Failed submission
-restores RPC availability and grants no input lease. Admission requires started complete canonical
-state, idle adoption and no existing RPC suspension; default/legacy Services cannot prepare.
+[Services preparation](../src/app/services.nim) owns host exclusion and the RPC pause.
+The [worker](../src/app/preparation_worker.nim) owns the stable input borrow and exact
+retirement. The [RPC listener](../src/rpc/server.nim) owns its pause token and socket queues.
 
 Completion checks: real signed child preparation through Services with RPC off/on, guarded canonical
 access and RPC lifecycle/publication during a lease, UI/scalar ticks, exact-parent host adoption,

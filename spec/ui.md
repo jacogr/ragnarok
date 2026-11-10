@@ -89,3 +89,5 @@ and whitespace checks. No Nim source changed, so native source formatting was un
 For this prototype, app.js gzip shrank from 27,775 to 12,731 bytes; style.css gzip shrank from
 1,488 to 1,285 bytes. Evidence is under `build/ci/ui-minify-*.log` and
 `build/ci/ui-minify-sizes.json`; canonical Linux CI remains separate verification.
+
+Request-head syntax and header limits follow the [stock HTTP parser](http-parser-adoption.md).

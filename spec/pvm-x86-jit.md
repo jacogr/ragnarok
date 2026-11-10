@@ -382,3 +382,16 @@ Fresh default-route timing remains pending. The 1,024-to-8,192 publication
 limit is a constant in the x86 owner and its executable arena is acquired lazily;
 the ARM initialization regression is a reason to measure x86 initialization
 separately, not evidence that its cost is absent.
+
+## Entry-local connected Read window
+
+The x86 role-register cycle can borrow the first readable descriptor for five qword loads
+that span 40 bytes. The copied operation facts must prove the five displacements and one
+base lane. The lowerer rejects this specialization if any connected role writes that lane.
+The native entry checks the original 32-bit address range and complete descriptor coverage
+before saving a pointer in its private stack frame.
+
+A single branch selects the window or the original ordered search at each Read. The qwords
+still read current memory in guest operation order, including changes from earlier Stores.
+Both bodies use the same paid checkpoint, refusal and receipt accounting. If the enlarged
+image exceeds the native limit, the original credited or exact image remains available.

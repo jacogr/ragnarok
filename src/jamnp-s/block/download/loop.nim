@@ -151,7 +151,10 @@ proc configure*(dispatcher: var BlockDownloadLoop, owner: var Services,
 
 proc nextChild*(dispatcher: var BlockDownloadLoop, ancestors: openArray[OwnedHeader],
     now: DownloadLoopTick): DownloadLoopError =
-  ## Rearm only after an actual consumed adoption and retired stream/worker lease; retain stable authenticated endpoints.
+  ## Rearm the existing authenticated endpoints for the next child.
+  ## A consumed adoption, native stream close and retired worker/publication
+  ## leases make it safe to replace input and ancestry. Validate the complete
+  ## replacement under the retained policy before dropping the old diagnostic.
   if dispatcher.status != DownloadLoopStage.Adopted or not dispatcher.hasCompletion or
       dispatcher.completion.error != ApplicationChainError.None or dispatcher.current != nil:
     return DownloadLoopError.Busy # Waiting, failed or fabricated producer status cannot create another import turn.
@@ -227,7 +230,11 @@ proc retry(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
   dispatcher.finish(DownloadAttemptOutcome.Retry, now)
 
 proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLoopError =
-  ## One turn polls bounded endpoints, submits/collects at most one job and adopts only an earlier queued candidate.
+  ## Poll bounded endpoints and advance at most one job or an earlier queued adoption.
+  ## Preparing starts after complete reception and native stream retirement.
+  ## An expired attempt marks its certificate unwanted even if the worker is Done.
+  ## Retain the input until actual collection, so cancellation cannot create a retry
+  ## using live input storage. Only a later consumed adoption reports progress.
   if dispatcher.status == DownloadLoopStage.Uninitialized: return DownloadLoopError.Uninitialized
   if dispatcher.status == DownloadLoopStage.Closed: return DownloadLoopError.Closed
   if uint64(now) < dispatcher.lastTick: return DownloadLoopError.ClockRegression

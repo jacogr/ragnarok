@@ -1,70 +1,24 @@
 # Polkadot virtual machine
 
-[Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
-update their feature contract rather than appending progress here.
+[Design overview](../design.md) · [PVM source map](../../src/pvm/README.md)
 
-`src/pvm/program.nim` now validates GP 0.8.0 program blobs and decodes all operand
-formats into copied values backed by an immutable program owner. See
-[the program decoding contract](../../spec/pvm-program.md). This is the first PVM
-increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
-with atomic scalar stores; see [the machine/memory contract](../../spec/pvm-machine.md),
-including the approved PolkaVM memory exception ordering. `src/pvm/registers.nim`
-evaluates all 85 register-only instruction mutations against a copied register file;
-see [the register semantics contract](../../spec/pvm-registers.md). The internal
-`src/pvm/internal/register_ops.nim` module shares typed arithmetic between that
-guarded public evaluator and private charged dispatch, with copied scalar outputs
-and no retained execution state. `src/pvm/gas/gas.nim`
-calculates whole-block pipeline costs with bounded storage and a local cycle limit;
-[the gas contract](../../spec/pvm-gas.md) records independent witnesses and approved
-PolkaVM wrapped branch-target pricing. `src/pvm/step.nim` now charges whole blocks and
-executes register, control-flow and scalar memory steps into immutable machine snapshots, preserving
-the full state on out-of-gas and the specified single-step terminal PCs; see
-[the stepping contract](../../spec/pvm-step.md). Memory faults retain the paid block charge
-and permit repair/retry without double charging. Complete single-step capability now
-includes host suspension, and bounded iterative execution applies recursive exit rules;
-see [the execution contract](../../spec/pvm-execution.md). Standard initialization and
-host dispatch now have separate [initialization](../../spec/pvm-initialization.md)
-and [host execution](../../spec/pvm-host-execution.md) contracts. The
-[readiness map](../../spec/pvm-interpreter-readiness.md) records current interpreter
-comparisons and remaining JAM/specification gates.
-
-Immutable memory snapshots retain a two-level directory of sorted page references.
-Sparse checkpoint and host updates copy the small root and affected reference blocks,
-while unchanged page/chunk owners stay shared. The [snapshot directory record](../../spec/pvm-snapshot-directory.md)
-describes atomic preflight, ARC retirement, measured benefits and remaining entry costs.
+[Program capture](../../src/pvm/program.nim) owns immutable code and structural facts.
+[Machine snapshots](../../src/pvm/machine.nim) own CPU metadata and sparse memory.
+[Execution](../../src/pvm/step.nim) combines those owners with invocation-local
+staging, budgets and host callbacks. Reusable facts and exclusive native cache
+ownership cross through prepared program and engine boundaries.
+[Interpreter qualification](../../spec/pvm-interpreter-readiness.md)
 
 ## Reusable execution policy
 
-An optional immutable `GasPlan` retains one captured program and a complete bounded table of
-existing block prices. Preparation has explicit payload, block-count and per-block cycle limits;
-execution keeps CPU, memory staging, attempt budgets and callbacks local to each invocation.
-A bounded [lazy memo](../../spec/pvm-gas-memos.md) instead learns successful prices on demand
-under one fixed source/policy, with exclusive worker use and private monotone facts. The dynamic-pricing API remains available. See [the ownership, refusal and measurement contract](../../spec/pvm-gas-plans.md).
-
-One [checked handler-stream engine](../../spec/pvm-handler-stream.md) now implements all opcode
-execution. Immutable prepared source facts and exclusive scalar executable caches can be retained
-across calls; mutable CPU, memory regions, budgets and callbacks remain invocation-owned. Public
-stepping and host APIs adapt this same engine. Stable-offset node/work admission replaces the old
-LRU execution cache, and no legacy opcode evaluator remains.
-
-Prepared identities can also retain one bounded idle byte lease. A fresh frame restores all
-changed source and prior dirty pages before execution; CPU, budgets and callbacks stay local.
-The [retained-memory policy](../../spec/pvm-retained-memory.md) describes the explicit per-owner
-limit, disabling reuse, host-terminal behavior, ARC lifetime and measured tradeoff.
+[Gas planning](../../src/pvm/gas/plan.nim), [checked dispatch](../../src/pvm/internal/handler_stream.nim)
+and [native admission](../../src/pvm/internal/native_pipeline.nim) own their respective
+pricing, invocation and reuse contracts. The [engine record](../../spec/pvm-engines.md)
+keeps the scope and qualification of the available engine identities.
 
 ## Accumulation successor boundary
 
-Execution owns stopped continuation/reentry selection and the immutable
-`PreparedFinalAccumulation` successor, including selected effects, output/gas
-history, complete state and authenticated original block provenance. State's
-`prepareAccumulationComposition` consumes that owner and state-only policies;
-state owns history/statistics/authorization/consensus composition and exact-parent
-final publication. Neither side accepts a detached map as a replacement execution
-certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
-
-The frame-owned ARM read context and its raw/clipped native-call boundary are specified in
-[ARM clipped native reads](../../spec/pvm-arm-clipped-read.md).
-
-Optional public PolkaVM engines enter through the same prepared-owner and immutable host/result
-boundaries. Engine identity and exclusive cache ownership are fixed before invocation; no raw
-foreign storage escapes. See the [engine API contract](../../spec/pvm-engines.md).
+Execution owns stopped continuation and the immutable finalized successor. State
+consumes that exact owner and performs history, statistics, authorization and consensus
+composition before exact-parent publication. A detached map does not confer execution
+authority. [Shared boundary](../../spec/pvm-state-successor.md)

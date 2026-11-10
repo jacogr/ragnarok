@@ -3,6 +3,11 @@
 
 ## A stable directory lease selects one complete snapshot and its exact append journal.
 ## Opening validates every selected byte and graph; no directory scan or older-epoch fallback grants authority.
+##
+## The manifest selects physical files. Journal publication exposes the prepared
+## revision after synchronization. Normal open requires a complete selected journal.
+## Explicit recovery alone can truncate an incomplete tail against an independently
+## supplied exact generation and root. Neither selection establishes chain finality.
 
 import std/assertions
 import ../file/errors as file_errors
@@ -305,7 +310,9 @@ proc recoverManagedRepository*(repository: var ManagedRepository, path: string,
     chain: StorageChainId, limits: ManagedLimits, expectedGeneration: RepositoryGeneration,
         expectedRoot: StateRoot,
     schema = StorageSchema.FullNodesV1): FileError =
-  ## Authorize only an exact independently retained complete prefix before truncating an incomplete append.
+  ## Recover only an independently authorized generation and root.
+  ## Validate the complete selected prefix before truncating an incomplete append.
+  ## A bad frame or mismatched authority must never select an older epoch.
   acquire(repository, path, chain, limits, schema, true, expectedGeneration, expectedRoot)
 
 proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch: TrieExport,
