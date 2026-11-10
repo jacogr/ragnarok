@@ -154,7 +154,7 @@ proc main() {.raises.} =
   assert (getMonoTime().ticks - started) div 1_000_000 < 1000
   assert native_io.receive(client.fd, addr octet, 1, 0) == 0
   client.close()
-  shutdownRpcStreams()
+  ioring.shutdown()
 
 try:
   main()

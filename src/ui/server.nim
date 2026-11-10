@@ -13,9 +13,9 @@
 ## development descriptors until close. Development reads are synchronous regular-file
 ## reads, so storage latency can still delay the dispatcher.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/socket_io
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 
@@ -30,12 +30,14 @@ const
 type
   Connection = object                   ## Each slot owns its socket, optional file and bounded write buffer.
     opened, fileOpened, embedded: bool
-    fd, file: cint
+    file: cint
+    stream: HttpStream
     input, output: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
-    offset, assetIndex, position: int
-    remaining, deadline: int64
+    assetIndex, position: int
+    remaining: int64
   UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, rootOpened: bool
     fd, root: cint
@@ -65,9 +67,8 @@ proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
   `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
-    # Every accepted descriptor belongs to the destination, including streaming files.
+    # Clear moved-from slot flags without retiring resources transferred to the destination.
     slot.opened = false
-    slot.fd = -1
     slot.fileOpened = false
     slot.file = -1
 
@@ -76,27 +77,28 @@ proc `=destroy`*(server: UiServer) =
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
   for slot in server.connections: # File and socket lifetimes belong exclusively to this owner.
-    if slot.opened: discard posix.close(slot.fd)
     if slot.fileOpened: discard posix.close(slot.file)
   `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
   ## Slot reuse clears all file/socket ownership and response state.
-  if slot.opened: discard posix.close(slot.fd)
   if slot.fileOpened: discard posix.close(slot.file)
   slot = default(Connection)
 
 proc close*(server: var UiServer) =
   ## Explicit shutdown is idempotent; default instances never close stdin.
-  for slot in mitems(server.connections): slot.close() # Retire requests before the directory root.
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "UI")
+    slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.rootOpened = false
 
-proc start*(server: var UiServer, port: uint16, directory = ""): bool =
+proc start*(server: var UiServer, port: uint16, directory = "", logger = default(LogWriter)): bool =
   ## Port zero disables IO. Empty directory serves embedded assets; a development root pins disk files.
   if server.opened or server.rootOpened: return false
   if port == 0: return true
@@ -110,6 +112,7 @@ proc start*(server: var UiServer, port: uint16, directory = ""): bool =
   if server.fd < 0:
     server.close() # Root ownership must also retire on socket creation failure.
     return false
+  server.logger = logger
   server.opened = true
   var reuse = 1.cint
   if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
@@ -310,7 +313,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
   slot.input = ""
 
 proc tick*(server: var UiServer) =
-  ## One admission, bounded header read, one file chunk and one socket write per slot per turn.
+  ## Accept once and pass at most one bounded asset chunk per ready stream and turn.
   if not server.opened: return
   let existingTags = server.httpTags
   let tags: http_msg.HttpTags =
@@ -320,7 +323,7 @@ proc tick*(server: var UiServer) =
       let vocabulary = http_msg.newHttpTags()
       server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
       vocabulary
-  let now = getMonoTime().ticks div 1_000_000
+  pollHttpStreams()
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure rejects only the newly accepted socket.
     var free = -1
@@ -328,32 +331,61 @@ proc tick*(server: var UiServer) =
       if not server.connections[i].opened:
         free = i
         break
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "UI connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI connection setup failed: " & $int32(error))
     else:
-      server.connections[free] = Connection(opened: true, fd: accepted, deadline: now + 5000)
-  for slot in mitems(server.connections): # Fixed capacity and buffers bound each dispatcher's work.
-    if slot.opened and now >= slot.deadline: slot.close()
-    if slot.opened and slot.output.len == 0 and not slot.fileOpened and not slot.embedded:
-      var bytes = default(array[MaxHeader + 1, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len - slot.input.len), 0)
-      if count > 0:
-        for i in 0..<count: slot.input.add(bytes[i]) # Copy only initialized bytes.
-        slot.process(tags, server.root)
-      elif count == 0: slot.close()
-      elif not retryableSocketError(osLastError()): slot.close()
+      server.connections[free].opened = true
+      server.connections[free].stream.start(accepted, MaxHeader + 1)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "UI connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI accept failed: " & $int32(error))
+  for slot in mitems(server.connections):
+    # Retire finished workers before inspecting application state or reusing the slot.
+    if not slot.opened: continue
+    if slot.stream.finished:
+      slot.stream.close(server.logger, "UI")
+      slot.close()
+      continue
+    if slot.stream.expired:
+      slot.stream.stop() # The I/O task retires its halves before slot reuse.
+      continue
+    if not slot.stream.canSend: continue
+    if slot.output.len == 0 and not slot.fileOpened and not slot.embedded and
+        slot.stream.receiveChunk(slot.input):
+      slot.process(tags, server.root)
+      if not slot.opened: continue
+      if slot.output.len == 0:
+        let available = MaxHeader + 1 - slot.input.len
+        if available > 0: slot.stream.requestChunk(available)
+        else: slot.close()
+        continue
+      logHttpResponse(server.logger, "UI", slot.output)
+    if slot.stream.expired:
+      slot.stream.stop()
+      continue
     if slot.opened and slot.output.len == 0 and slot.embedded:
-      slot.readEmbedded() # Static data uses the same bounded write buffer and partial-send handling.
+      slot.readEmbedded() # One fixed-size asset chunk is handed to the writer.
     if slot.opened and slot.output.len == 0 and slot.fileOpened:
       var bytes = default(array[ChunkBytes, char])
       let count = posix.read(slot.file, addr bytes[0], int(min(slot.remaining, int64(ChunkBytes))))
       if count > 0:
         for i in 0..<count: slot.output.add(bytes[i]) # Buffer at most one fixed-size chunk.
         slot.remaining -= count
-      elif count == 0 or osLastError() != OSErrorCode(EINTR): slot.close()
+      elif count == 0:
+        log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI asset ended before its advertised length")
+        slot.close()
+      else:
+        let error = osLastError()
+        if error != OSErrorCode(EINTR):
+          log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI asset read failed: " & $int32(error))
+          slot.close()
     if slot.opened and slot.output.len > 0:
-      let written = writePending(slot.fd, slot.output, slot.offset)
-      if written == WriteComplete:
-        slot.output = ""; slot.offset = 0
-        if (not slot.fileOpened and not slot.embedded) or slot.remaining == 0: slot.close() # Last response byte retires both owners.
-      elif written == WriteFailed:
-        slot.close() # Permanent errors retire only this service's connection.
+      slot.stream.sendChunk(slot.output, (not slot.fileOpened and not slot.embedded) or
+          slot.remaining == 0)

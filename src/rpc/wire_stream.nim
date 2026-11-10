@@ -126,7 +126,3 @@ proc send*(stream: var RpcWireStream, output: var string) =
   s.output = move(output)
   s.outputDeadline = afterMs(5000)
   atomicStore(s.outputReady, true, moRelease)
-
-proc shutdownRpcStreams*() =
-  ## The executable invokes this once, after all listeners and stream tasks retire.
-  ioring.shutdown()

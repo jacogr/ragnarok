@@ -16,9 +16,9 @@
 ## Only serialized bytes survive a turn, so slow clients cannot extend a query borrow.
 ## See spec/mcp.md for protocol references and verification.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/socket_io
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./protocol
@@ -31,12 +31,11 @@ const
 type
   Connection = object                   ## One bounded request/response and an absolute five-second deadline.
     opened: bool
-    fd: cint
+    stream: HttpStream
     input, output: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
-    offset: int
-    deadline: int64
   McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened: bool
     fd: cint
@@ -58,42 +57,42 @@ proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
   `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
-    # Every accepted descriptor belongs to the destination, including streaming files.
+    # Clear moved-from slot flags without retiring resources transferred to the destination.
     slot.opened = false
-    slot.fd = -1
 
 proc `=destroy`*(server: McpServer) =
   ## Retire partial startup and accepted sockets before releasing serialized storage.
-  for slot in server.connections:
-    if slot.opened: discard posix.close(slot.fd)
   if server.opened: discard posix.close(server.fd)
   `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
   ## A reused slot never inherits request bytes or an output offset.
-  if slot.opened: discard posix.close(slot.fd)
   slot = default(Connection)
 
 proc close*(server: var McpServer) =
   ## Idempotent explicit shutdown retires consumers before the listener.
-  for slot in mitems(server.connections): slot.close()
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "MCP")
+    slot.close()
   if server.opened: discard posix.close(server.fd)
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.port = 0
 
 func enabled*(server: McpServer): bool =
   ## Scalar observation is safe even while canonical graph workers run.
   server.opened
 
-proc start*(server: var McpServer, port: uint16): bool =
+proc start*(server: var McpServer, port: uint16, logger = default(LogWriter)): bool =
   ## Port zero opens nothing; every enabled listener binds only IPv4 loopback.
   if server.opened: return false
   if port == 0: return true
   server.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   if server.fd < 0:
     return false
+  server.logger = logger
   server.opened = true
   var reuse = 1.cint
   if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
@@ -180,7 +179,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, contex
   slot.input = "" # No request token/context alias survives the synchronous dispatch.
 
 proc tick*(server: var McpServer, context: QueryContext) =
-  ## One accept/read/write per slot and a five-second absolute deadline bound each turn.
+  ## Accept once, then dispatch bounded byte handoffs under each connection’s fixed deadline.
   if not server.opened: return
   let existingTags = server.httpTags
   let tags: http_msg.HttpTags =
@@ -190,7 +189,7 @@ proc tick*(server: var McpServer, context: QueryContext) =
       let vocabulary = http_msg.newHttpTags()
       server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
       vocabulary
-  let now = getMonoTime().ticks div 1_000_000
+  pollHttpStreams()
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
     var free = -1
@@ -198,21 +197,40 @@ proc tick*(server: var McpServer, context: QueryContext) =
       if not server.connections[index].opened:
         free = index
         break # Capacity is fixed independently of public WS/UI connections.
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
-    else: server.connections[free] = Connection(opened: true, fd: accepted, deadline: now + 5000)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "MCP connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP connection setup failed: " & $int32(error))
+    else:
+      server.connections[free].opened = true
+      server.connections[free].stream.start(accepted, MaxInput)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "MCP connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP accept failed: " & $int32(error))
   for slot in mitems(server.connections):
-    if slot.opened and now >= slot.deadline: slot.close() # A partial header/body cannot extend its deadline.
-    if slot.opened and slot.output.len == 0:
-      var bytes = default(array[MaxInput, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(MaxInput - slot.input.len), 0)
-      if count > 0:
-        for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
-        slot.process(tags, server.port, context)
-      elif count == 0: slot.close()
-      elif not retryableSocketError(osLastError()): slot.close()
+    # Retire finished workers before inspecting application state or reusing the slot.
+    if not slot.opened: continue
+    if slot.stream.finished:
+      slot.stream.close(server.logger, "MCP")
+      slot.close()
+      continue
+    if slot.stream.expired:
+      slot.stream.stop() # The I/O task retires its halves before slot reuse.
+      continue
+    if not slot.stream.canSend: continue
+    if slot.output.len == 0 and slot.stream.receiveChunk(slot.input):
+      slot.process(tags, server.port, context)
+      if not slot.opened: continue
+      if slot.output.len == 0:
+        let available = MaxInput - slot.input.len
+        if available > 0: slot.stream.requestChunk(available)
+        else: slot.close()
+        continue
+      logHttpResponse(server.logger, "MCP", slot.output)
     if slot.opened and slot.output.len > 0:
-      let written = writePending(slot.fd, slot.output, slot.offset)
-      if written == WriteComplete:
-        slot.close() # One complete reply retires the connection.
-      elif written == WriteFailed:
-        slot.close() # Permanent errors retire only this service's connection.
+      slot.stream.sendChunk(slot.output, true)

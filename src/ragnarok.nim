@@ -25,7 +25,7 @@ import ./app/[devnet_command, pvm_command, startup, node_logging]
 import ./pvm/step
 import ./version
 import ./lib/logging
-from ./rpc/wire_stream import shutdownRpcStreams
+from ./lib/http_stream import shutdownHttpStreams
 from ./lib/stop_signal import ignorePipeSignal
 import ./lib/json/writer as json_writer
 import ./storage/history/index as history_index
@@ -250,5 +250,5 @@ when isMainModule:
     else:
       stderr.writeLine("Cannot configure SIGPIPE handling for service streams")
       2
-  shutdownRpcStreams()
+  shutdownHttpStreams()
   quit(status)

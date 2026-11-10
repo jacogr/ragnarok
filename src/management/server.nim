@@ -11,9 +11,9 @@
 ## dispatcher work. Reject ambiguous framing before entering the private registry.
 ## Only copied startup and resource observations cross into management dispatch.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/socket_io
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./[protocol, file_status, resources]
@@ -35,12 +35,11 @@ type
     sun_path: array[104, char]
   Connection = object                   ## Each slot owns bounded bytes and one nonblocking descriptor.
     opened: bool
-    fd: cint
+    stream: HttpStream
     input, output: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
-    offset: int
-    deadline: int64
   ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, bound: bool
     fd: cint
@@ -83,14 +82,11 @@ proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
   `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
-    # Every accepted descriptor belongs to the destination, including streaming files.
+    # Clear moved-from slot flags without retiring resources transferred to the destination.
     slot.opened = false
-    slot.fd = -1
 
 proc `=destroy`*(server: ManagementServer) =
   ## Partial startup and normal ARC retirement close every native and dynamic owner.
-  for slot in server.connections:
-    if slot.opened: discard posix.close(slot.fd) # A default slot never closes stdin.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
   `=destroy`(server.httpTags)
@@ -101,22 +97,25 @@ proc `=destroy`*(server: ManagementServer) =
 
 proc close(slot: var Connection) =
   ## Slot reuse retires both the native handle and every retained request byte.
-  if slot.opened: discard posix.close(slot.fd)
   slot = default(Connection)
 
 proc close*(server: var ManagementServer) =
   ## Repeated shutdown is harmless; only an owned pathname may be removed.
-  for slot in mitems(server.connections): slot.close() # Consumers retire before the listener.
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "Management RPC")
+    slot.close() # Consumers retire before the listener.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.bound = false
   server.path = ""
   server.resources.close()
   server.info = default(ManagementInfo)
 
-proc start*(server: var ManagementServer, path: string, info: ManagementInfo): bool =
+proc start*(server: var ManagementServer, path: string, info: ManagementInfo, logger = default(
+    LogWriter)): bool =
   ## Empty disables management. Otherwise require an absolute path in a private existing directory.
   if server.opened or server.bound: return false
   if path.len == 0: return true
@@ -138,6 +137,7 @@ proc start*(server: var ManagementServer, path: string, info: ManagementInfo): b
   let fd = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   if fd < 0: return false
   server.fd = fd
+  server.logger = logger
   server.opened = true
   if not nonblocking(fd) or bindSocket(fd, addr address, SockLen(sizeof(address))) != 0:
     server.close()
@@ -202,7 +202,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo
   slot.input = "" # No parser token or input borrow survives this synchronous call.
 
 proc tick*(server: var ManagementServer) =
-  ## One accept/read/write per slot and a five-second absolute deadline bound each turn.
+  ## Accept once, then dispatch bounded byte handoffs under each connection’s fixed deadline.
   if not server.opened: return
   server.resources.tick() # Scalar/path observations remain independent of every canonical lease.
   server.info.resources = server.resources.snapshot()
@@ -214,7 +214,7 @@ proc tick*(server: var ManagementServer) =
       let vocabulary = http_msg.newHttpTags()
       server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
       vocabulary
-  let now = getMonoTime().ticks div 1_000_000
+  pollHttpStreams()
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
     var free = -1
@@ -222,21 +222,41 @@ proc tick*(server: var ManagementServer) =
       if not server.connections[index].opened:
         free = index
         break # Capacity is fixed independently of public WS/UI connections.
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
-    else: server.connections[free] = Connection(opened: true, fd: accepted, deadline: now + 5000)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "Management RPC connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC connection setup failed: " &
+          $int32(error))
+    else:
+      server.connections[free].opened = true
+      server.connections[free].stream.start(accepted, MaxInput)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "Management RPC connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC accept failed: " & $int32(error))
   for slot in mitems(server.connections):
-    if slot.opened and now >= slot.deadline: slot.close() # A partial header/body cannot extend its deadline.
-    if slot.opened and slot.output.len == 0:
-      var bytes = default(array[MaxInput, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(MaxInput - slot.input.len), 0)
-      if count > 0:
-        for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
-        slot.process(tags, server.info)
-      elif count == 0: slot.close()
-      elif not retryableSocketError(osLastError()): slot.close()
+    # Retire finished workers before inspecting application state or reusing the slot.
+    if not slot.opened: continue
+    if slot.stream.finished:
+      slot.stream.close(server.logger, "Management RPC")
+      slot.close()
+      continue
+    if slot.stream.expired:
+      slot.stream.stop() # The I/O task retires its halves before slot reuse.
+      continue
+    if not slot.stream.canSend: continue
+    if slot.output.len == 0 and slot.stream.receiveChunk(slot.input):
+      slot.process(tags, server.info)
+      if not slot.opened: continue
+      if slot.output.len == 0:
+        let available = MaxInput - slot.input.len
+        if available > 0: slot.stream.requestChunk(available)
+        else: slot.close()
+        continue
+      logHttpResponse(server.logger, "Management RPC", slot.output)
     if slot.opened and slot.output.len > 0:
-      let written = writePending(slot.fd, slot.output, slot.offset)
-      if written == WriteComplete:
-        slot.close() # One complete reply retires the connection.
-      elif written == WriteFailed:
-        slot.close() # Permanent errors retire only this service's connection.
+      slot.stream.sendChunk(slot.output, true)

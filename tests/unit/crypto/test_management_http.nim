@@ -5,6 +5,7 @@
 
 import std/[assertions, syncio]
 import ../../../src/rpc/protocol as public_protocol
+from ../../../src/lib/stop_signal import ignorePipeSignal
 include ../../../src/management/server
 
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
@@ -121,6 +122,12 @@ block lifecycle:
   assert "HTTP/1.1 200 OK" in output and "Cache-Control: no-store" in output
   assert "\"pid\":" & $processId() in output and "\"result\"" in output
   discard posix.close(peer)
+  # The client can see EOF before the dispatcher observes the worker's completion.
+  for attempt in 0..<1000:
+    listener.tick()
+    if not listener.connections[0].opened: break
+    discard pauseMicros(1000)
+  assert not listener.connections[0].opened, "response worker retires before filling idle slots"
   # Capacity and absolute timeout retirement use real idle consumers, independently of JSON parsing.
   var idle = default(array[5, cint])
   for index in 0..<idle.len:
@@ -132,10 +139,15 @@ block lifecycle:
   for slot in mitems(listener.connections):
     if slot.opened:
       inc active
-      slot.deadline = 0 # Force the same absolute-deadline branch without a wall-clock sleep.
-  assert active == 4
-  listener.tick()
-  for slot in listener.connections: assert not slot.opened # Expired requests release every bounded slot.
+  assert active == 4, "four idle management clients occupy the slots"
+  for attempt in 0..<6000:
+    listener.tick()
+    var remaining = false
+    for slot in listener.connections:
+      if slot.opened: remaining = true
+    if not remaining: break
+    discard pauseMicros(1000)
+  for slot in listener.connections: assert not slot.opened, "idle management stream expires"
   for peer in idle: discard posix.close(peer)
   assert unlink(path.toCString()) == 0
   let replacement = posix.open(path.toCString(), O_CREAT or O_EXCL or O_WRONLY, Mode(0o600))
@@ -161,16 +173,14 @@ assert rmdir(directory.toCString()) == 0
 
 echo "Management HTTP tests passed"
 
-# Moving the listener also transfers every accepted connection cleanup obligation.
+# Moving the listener transfers descriptor cleanup to its destination.
 block moved_owner:
   var destination = default(ManagementServer)
   block:
     var source = default(ManagementServer)
     source.fd = posix.open("/dev/null", O_RDONLY)
-    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0 and source.connections[0].fd >= 0
+    assert source.fd >= 0
     source.opened = true
-    source.connections[0].opened = true
     source.connections[0].input = "owned request bytes"
     destination = move(source)
     assert not source.opened and not source.connections[0].opened
@@ -183,6 +193,78 @@ block moved_owner:
     source.close()
   # Source destruction has run; both transferred descriptor identities still belong to destination.
   assert fcntl(destination.fd, F_GETFL) >= 0
-  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
   assert destination.connections[0].input == "owned request bytes"
   destination.close()
+
+proc disconnectedPair(domain, kind, protocol: cint, fds: pointer): cint {.
+    importc: "socketpair", header: "<sys/socket.h>".}
+  ## Give the stock writer a local peer whose lifetime the test controls.
+
+proc collectStreamLog(context: nil pointer, batch: string) {.raises: [].} =
+  ## The logger is the only writer until close joins its sink thread.
+  cast[ptr string](context)[].add(batch)
+
+block disconnectedWriter:
+  assert ignorePipeSignal() # Match the executable’s Linux writer policy.
+  # Close the peer after the reader has handed off its request, before the writer runs.
+  var pair = default(array[2, cint])
+  assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var stream = default(HttpStream)
+  stream.start(pair[0], 64)
+  var request = "request"
+  assert sendBytes(pair[1], request.toCString(), csize_t(request.len), 0) == request.len
+  var input = ""
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.receiveChunk(input): break
+    discard pauseMicros(1000)
+  assert input == "request"
+  assert posix.close(pair[1]) == 0
+  var reply = "response"
+  stream.sendChunk(reply, true)
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.finished: break
+    discard pauseMicros(1000)
+  assert stream.finished, "disconnected stock writer retires without terminating the process"
+  var messages = ""
+  var logger = default(Logger)
+  assert logger.start(initLogPolicy(LogLevel.Info), collectStreamLog, addr messages)
+  stream.close(logger.writer, "Management RPC")
+  logger.close()
+  assert "Management RPC stream write ended:" in messages
+  assert "connection retired" notin messages # Trace output follows the configured filter.
+
+block expiredRequest:
+  # Park a complete request in a real management slot until its deadline passes.
+  var pair = default(array[2, cint])
+  assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var wire = packet(request)
+  assert sendBytes(pair[1], wire.toCString(), csize_t(wire.len), 0) == wire.len
+  var listener = default(ManagementServer)
+  # A pipe-like fixture keeps accept separate from the already admitted socket.
+  listener.fd = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  assert listener.fd >= 0 and nonblocking(listener.fd)
+  listener.opened = true
+  listener.info = admin
+  listener.connections[0].opened = true
+  listener.connections[0].stream.start(pair[0], MaxInput, timeoutMs = 200)
+  for attempt in 0..<150:
+    pollHttpStreams()
+    if listener.connections[0].stream.canSend: break
+    discard pauseMicros(1000)
+  assert listener.connections[0].stream.canSend, "request reaches the dispatcher mailbox"
+  for attempt in 0..<1000:
+    if listener.connections[0].stream.expired: break
+    discard pauseMicros(1000)
+  assert listener.connections[0].stream.expired
+  listener.tick()
+  assert listener.connections[0].input.len == 0 and listener.connections[0].output.len == 0
+  listener.close()
+  var octet = '\0'
+  assert receive(pair[1], addr octet, 1, 0) == 0, "expired request closes without a response"
+  discard posix.close(pair[1])
