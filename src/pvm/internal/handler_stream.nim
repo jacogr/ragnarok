@@ -26,6 +26,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 when defined(pvmX86Jit):
   import ./x86_jit
 
+const
+  ArmRegionWitness = defined(pvmArm64Jit) and not defined(pvmX86Jit) and
+    defined(pvmArmMacroReceipt)
+  X86WideParentWitness = defined(pvmX86Jit) and defined(pvmX86WideParentRefusalWitness)
+
 when NativeCheckedReadEnabled:
   const
     ReadProbeSlots = 4 ## Fixed ordinary call-local candidate capacity.
@@ -151,33 +156,35 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]       # Absolute physical-page bits, bounded by the highest mapped page.
+    dirtyPages: seq[uint64]               # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
-    pricingPlan: GasPlan          # Optional source-bound immutable prices, selected only during cold emission.
-    pricingMemo: GasMemo          # Optional caller-owned bounded price memo, never CPU or paid gas.
+    pricingPlan: GasPlan # Optional source-bound immutable prices, selected only during cold emission.
+    pricingMemo: GasMemo                  # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-      armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
+      when ArmRegionWitness:
+        armOriginal: seq[nil FlatHandler] # Retain original checked entries for the witness owner.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
     when defined(pvmX86Jit):
       x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
-      x86Jit: nil X86Jit          # Exclusive code-only owner; never contains an invocation address.
-      x86WideAdmission: FlatX86WideAdmission # Source PCs and retry counts persist with the exact code owner.
+      x86Jit: nil X86Jit                  # Exclusive code-only owner; never contains an invocation address.
+      when X86WideParentWitness:
+        x86WideAdmission: FlatX86WideAdmission
       when defined(pvmX86CheckedStoreReceipt):
         x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
       readContext: NativeReadContext
       readContextReady: bool
       readProbe: ReadProbeState
-    nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
+    nativeSession*: NativeSession         # Prepared identity only; never passed to the compiler thread.
     nativeOriginal: nil FlatHandler
     nativeEntry: uint32
     nativeInstalledEpoch: uint64
-    pricingKind: byte             # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
+    pricingKind: byte # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
-      armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
-    rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
+      armMacroLastState: ArmMacroState    # Private receipt compares every ABI word with linked fallback.
+    rwStorage: RWStorage # Append cold ownership after existing fields; the hot RW view remains two words.
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -207,13 +214,15 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    `=wasMoved`(frame.armOriginal)
+    when ArmRegionWitness:
+      `=wasMoved`(frame.armOriginal)
     `=wasMoved`(frame.armJit)
   when defined(pvmX86Jit):
     # The admission object's managed bitmap moves with its code-only children.
     `=wasMoved`(frame.x86Original)
     `=wasMoved`(frame.x86Jit)
-    `=wasMoved`(frame.x86WideAdmission)
+    when X86WideParentWitness:
+      `=wasMoved`(frame.x86WideAdmission)
   when NativeCheckedReadEnabled:
     # A moved frame cannot retain a ready context into storage now owned elsewhere.
     frame.readContext = default(NativeReadContext)
@@ -295,11 +304,11 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   if (x and 0x80000000'u32) != 0: uint64(x) or 0xffffffff00000000'u64
   else: uint64(x)
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+when ArmRegionWitness:
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
 
-when defined(pvmX86Jit):
+when X86WideParentWitness:
   proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32)
     ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
 
@@ -829,7 +838,7 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   f.arguments[int(off)].y = no
   let patched: FlatHandler = flatBranch[Code]
   f.handlers[int(off)] = patched
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
+  when X86WideParentWitness and not defined(pvmX86WideManualProof):
     # The original cached branch clears paid state before cold source admission.
     let destination = flatBranch[Code](f, off)
     when Code == 173: flatX86ColdWideAdmission(f, off)
@@ -936,8 +945,8 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Keep the original first closed round; connected code may run only after all three real branch capabilities exist.
+  when ArmRegionWitness:
+    # The legacy owner is installed only by the region witness.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
   while true:
     # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
@@ -3079,68 +3088,69 @@ when defined(pvmX86Jit):
         ## Private witness can keep its narrow child active with a dormant parent.
         flatX86InstallWideCycle(f, prefixPc, childInstalled, activateParent, true)
 
-    proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32) =
-      ## Resolve a tail's copied backedge once; try pending source PCs only at an invocation boundary.
-      ## Sixteen pending sources and thirty-two boundary attempts each bound work without an owner-wide
-      ## negative shape latch. A refused source leaves every original checked worker available.
-      let jit = f.x86Jit
-      if f.plan == nil or jit == nil or not f.plan.allowNative or f.plan.singleStep or
-          f.preparationFailure != FlatError.None or f.pricingKind != 0 or
-          not x86WideCanPublish(jit): return
-      if tail != flatStop:
-        if int(tail) >= f.arguments.len or int(tail) >= f.handlers.len or
-            f.handlers[int(tail)] != flatBranch[173]: return
-        var prefix = default(X86MemoryCycleHeader)
-        let target = uint32(f.arguments[int(tail)].x shr 32)
-        if not flatX86CompleteTarget(f, target, prefix) or prefix.opcode != 1 or
-            prefix.span < 4 or prefix.kind != X86MemoryCycleHandlerKind.Ordinary: return
-        var opcodes = default(array[4, byte])
-        var operations = 0
-        for ordinal in prefix.ordinal..<prefix.ordinal+prefix.span:
-          let opcode = f.plan.facts[int(ordinal)].opcode
-          if opcode != 2:
-            if operations >= opcodes.len: return
-            opcodes[operations] = opcode
-            inc operations
-        if operations != 4 or opcodes != [51'u8, 200, 149, 1]: return
-        if int(prefix.pc) >= f.plan.factAt.len: return
-        if f.x86WideAdmission.seen.len == 0:
-          f.x86WideAdmission.seen = newSeq[byte]((f.plan.factAt.len+7) div 8)
-        let byteIndex = int(prefix.pc) div 8
-        let mask = 1'u8 shl (int(prefix.pc) mod 8)
-        if (f.x86WideAdmission.seen[byteIndex] and mask) != 0: return
-        for index in 0..<int(f.x86WideAdmission.count):
-          if f.x86WideAdmission.probes[index].pc == prefix.pc: return
-        var index = int(f.x86WideAdmission.count)
-        if index == f.x86WideAdmission.probes.len:
-          # A late source may displace the most-attempted pending source; neither is a guest refusal.
-          index = 0
-          for candidate in 1..<f.x86WideAdmission.probes.len:
-            if f.x86WideAdmission.probes[candidate].attempts >
-                f.x86WideAdmission.probes[index].attempts: index = candidate
-        else:
-          inc f.x86WideAdmission.count
-        f.x86WideAdmission.probes[index] = FlatX86WideProbe(pc: prefix.pc, attempts: 0)
-        f.x86WideAdmission.seen[byteIndex] = f.x86WideAdmission.seen[byteIndex] or mask
-        return
-      if f.reason != oracle.StepError.None or f.barrier != flatStop: return
-      var index = 0
-      while index < int(f.x86WideAdmission.count):
-        let pc = f.x86WideAdmission.probes[index].pc
-        var childInstalled = false
-        let before = x86Clock()
-        let installed = flatX86InstallWideCycle(f, pc, childInstalled)
-        jit.compilationNs += x86Clock()-before
-        if installed:
-          f.x86WideAdmission.count = 0
+    when X86WideParentWitness:
+      proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32) =
+        ## Resolve a tail's copied backedge once; try pending source PCs only at an invocation boundary.
+        ## Sixteen pending sources and thirty-two boundary attempts each bound work without an owner-wide
+        ## negative shape latch. A refused source leaves every original checked worker available.
+        let jit = f.x86Jit
+        if f.plan == nil or jit == nil or not f.plan.allowNative or f.plan.singleStep or
+            f.preparationFailure != FlatError.None or f.pricingKind != 0 or
+            not x86WideCanPublish(jit): return
+        if tail != flatStop:
+          if int(tail) >= f.arguments.len or int(tail) >= f.handlers.len or
+              f.handlers[int(tail)] != flatBranch[173]: return
+          var prefix = default(X86MemoryCycleHeader)
+          let target = uint32(f.arguments[int(tail)].x shr 32)
+          if not flatX86CompleteTarget(f, target, prefix) or prefix.opcode != 1 or
+              prefix.span < 4 or prefix.kind != X86MemoryCycleHandlerKind.Ordinary: return
+          var opcodes = default(array[4, byte])
+          var operations = 0
+          for ordinal in prefix.ordinal..<prefix.ordinal+prefix.span:
+            let opcode = f.plan.facts[int(ordinal)].opcode
+            if opcode != 2:
+              if operations >= opcodes.len: return
+              opcodes[operations] = opcode
+              inc operations
+          if operations != 4 or opcodes != [51'u8, 200, 149, 1]: return
+          if int(prefix.pc) >= f.plan.factAt.len: return
+          if f.x86WideAdmission.seen.len == 0:
+            f.x86WideAdmission.seen = newSeq[byte]((f.plan.factAt.len+7) div 8)
+          let byteIndex = int(prefix.pc) div 8
+          let mask = 1'u8 shl (int(prefix.pc) mod 8)
+          if (f.x86WideAdmission.seen[byteIndex] and mask) != 0: return
+          for index in 0..<int(f.x86WideAdmission.count):
+            if f.x86WideAdmission.probes[index].pc == prefix.pc: return
+          var index = int(f.x86WideAdmission.count)
+          if index == f.x86WideAdmission.probes.len:
+            # A late source may displace the most-attempted pending source; neither is a guest refusal.
+            index = 0
+            for candidate in 1..<f.x86WideAdmission.probes.len:
+              if f.x86WideAdmission.probes[candidate].attempts >
+                  f.x86WideAdmission.probes[index].attempts: index = candidate
+          else:
+            inc f.x86WideAdmission.count
+          f.x86WideAdmission.probes[index] = FlatX86WideProbe(pc: prefix.pc, attempts: 0)
+          f.x86WideAdmission.seen[byteIndex] = f.x86WideAdmission.seen[byteIndex] or mask
           return
-        inc f.x86WideAdmission.probes[index].attempts
-        if childInstalled or f.x86WideAdmission.probes[index].attempts >= 32:
-          let last = int(f.x86WideAdmission.count)-1
-          f.x86WideAdmission.probes[index] = f.x86WideAdmission.probes[last]
-          dec f.x86WideAdmission.count
-        else:
-          inc index
+        if f.reason != oracle.StepError.None or f.barrier != flatStop: return
+        var index = 0
+        while index < int(f.x86WideAdmission.count):
+          let pc = f.x86WideAdmission.probes[index].pc
+          var childInstalled = false
+          let before = x86Clock()
+          let installed = flatX86InstallWideCycle(f, pc, childInstalled)
+          jit.compilationNs += x86Clock()-before
+          if installed:
+            f.x86WideAdmission.count = 0
+            return
+          inc f.x86WideAdmission.probes[index].attempts
+          if childInstalled or f.x86WideAdmission.probes[index].attempts >= 32:
+            let last = int(f.x86WideAdmission.count)-1
+            f.x86WideAdmission.probes[index] = f.x86WideAdmission.probes[last]
+            dec f.x86WideAdmission.count
+          else:
+            inc index
 
     func flatX86MemoryCycleProofStatistics*(f: FlatFrame): array[2, uint64] =
       ## Only validated native calls and completed four-block groups appear in the private receipt.
@@ -3199,7 +3209,7 @@ when defined(pvmX86Jit):
       if not flatX86CycleReceiptValid(candidate, startGas, startAttempts, state, next):
         flatX86CycleAbort()
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+when ArmRegionWitness:
   func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original handler identity certifies both arms already passed genuine source and preparation checks.
     let code = f.plan.facts[int(f.sites[int(offset)])].opcode
@@ -3335,6 +3345,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     destination = flatArmRegion(f, first)
     true
 
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmRegionStatistics*(f: FlatFrame): array[2, uint64] =
     ## A focused witness proves actual connected execution separately from ordinary arithmetic leaves.
     let jit = f.armJit
@@ -3466,7 +3477,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if f.preparationFailure != FlatError.None:
     f.reason = oracle.StepError.InvalidPreparedProgram
     return
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
+  when X86WideParentWitness and not defined(pvmX86WideManualProof):
     # A reset or same-plan stream lease supplies an uncharged cold boundary after warmup.
     flatX86ColdWideAdmission(f, flatStop)
   let cache {.cursor.} = f.dynamicOffsets
@@ -3523,7 +3534,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
+  when X86WideParentWitness and not defined(pvmX86WideManualProof):
     # A restored partial barrier or final cached jump can make a pending graph admissible.
     flatX86ColdWideAdmission(f, flatStop)
   flatPromoteNativeLoop(f)
@@ -3715,12 +3726,14 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
-    replacement.armOriginal = move(f.armOriginal)
+    when ArmRegionWitness:
+      replacement.armOriginal = move(f.armOriginal)
     replacement.armJit = move(f.armJit)
   when defined(pvmX86Jit):
     replacement.x86Original = move(f.x86Original)
     replacement.x86Jit = move(f.x86Jit)
-    replacement.x86WideAdmission = move(f.x86WideAdmission)
+    when X86WideParentWitness:
+      replacement.x86WideAdmission = move(f.x86WideAdmission)
   f = move(replacement)
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -3911,12 +3924,14 @@ type FlatStream* = object
   failure: FlatError
   preparation: uint64
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    armOriginal: seq[nil FlatHandler]
+    when ArmRegionWitness:
+      armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
   when defined(pvmX86Jit):
     x86Original: seq[nil FlatHandler]
     x86Jit: nil X86Jit
-    x86WideAdmission: FlatX86WideAdmission
+    when X86WideParentWitness:
+      x86WideAdmission: FlatX86WideAdmission
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
@@ -3934,12 +3949,14 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     nativeInstalledEpoch: f.nativeInstalledEpoch)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
-    result.armOriginal = move(f.armOriginal)
+    when ArmRegionWitness:
+      result.armOriginal = move(f.armOriginal)
     result.armJit = move(f.armJit)
   when defined(pvmX86Jit):
     result.x86Original = move(f.x86Original)
     result.x86Jit = move(f.x86Jit)
-    result.x86WideAdmission = move(f.x86WideAdmission)
+    when X86WideParentWitness:
+      result.x86WideAdmission = move(f.x86WideAdmission)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Restore an executable stream only for the exact immutable plan.
@@ -3957,12 +3974,14 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     stream = default(FlatStream)
     return
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    f.armOriginal = move(stream.armOriginal)
+    when ArmRegionWitness:
+      f.armOriginal = move(stream.armOriginal)
     f.armJit = move(stream.armJit)
   when defined(pvmX86Jit):
     f.x86Original = move(stream.x86Original)
     f.x86Jit = move(stream.x86Jit)
-    f.x86WideAdmission = move(stream.x86WideAdmission)
+    when X86WideParentWitness:
+      f.x86WideAdmission = move(stream.x86WideAdmission)
   stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
