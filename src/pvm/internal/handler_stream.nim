@@ -79,13 +79,6 @@ type
   FlatSourceInterval = object ## Bounded source coordinates and a captured charge, without complete-header authority.
     first, last, span: uint32
     price: uint64
-  FlatMixedOp = object ## Cold source event; each destination write is retained independently.
-    memory, store, writes: bool
-    base, destination: uint32
-    displacement, width: uint32
-  FlatMixedGroup = object ## One stable base and one pointer lane absent from the entire guest body.
-    writable: bool
-    first, minDisp, maxEnd, lane: uint32
   FlatTarget = object ## Only genuine jump-table and block-membership validation supplies positive target facts.
     pc: uint32
     valid: bool
