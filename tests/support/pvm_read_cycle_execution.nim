@@ -93,6 +93,186 @@ when NativeReadCycleEnabled:
       outer: [operation(131, 0x88, 1), outerUpdate, outerBranch],
       gate: operation(88, 0x4a))
 
+  when defined(pvmX86Jit):
+    type WindowCase {.pure.} = enum ## Literal extent and continuation choices for the same Read.
+      Full, Short, Earlier, Wrapped, LaterMiss, PriorStore, ChangedBase
+
+    func windowWord(bytes: array[40, byte], first, width: int): uint64 =
+      ## Build the expected little-endian witness independently of the emitter.
+      result = 0
+      for i in 0..<width:
+        result = result or (uint64(bytes[first+i]) shl (8*i))
+
+    proc windowFixture(writeBase = false, outerWritesBase = false): NativeReadCycle =
+      ## Reuse the same opcode shape with five ordered qwords based on r10.
+      result = cycleFixture()
+      let original = result.read
+      var read = initNativeReadBody(readHeader, 33, 1, 24, 1)
+      for index in 0..<22:
+        # Deliberately choose a lane and displacements different from the DOOM certificate.
+        let op = case index
+          of 1:
+            if writeBase: operation(151, 0xba)
+            else: original.operation(index)
+          of 2: operation(130, 0xa7, 32)
+          of 4: operation(129, 0x36)
+          of 8: operation(130, 0xa7, 48)
+          of 12: operation(130, 0xa7, 64)
+          of 17: operation(130, 0xa7, 40)
+          of 19: operation(130, 0xa7, 56)
+          of 20: operation(197, 0xbb, 9)
+          of 21: operation(212, 0xbb, 9)
+          else: original.operation(index)
+        let offset = uint32(index)+1
+        assert addReadBodyOperation(read, readHeader+offset, 1+offset, op)
+      assert addNativeReadContinuation(read, original.continuationInfo,
+        [original.operation(22), original.operation(23), original.operation(24)])
+      result.read = read
+      if outerWritesBase:
+        # Change the qword base only after the first Read and Store commit.
+        result.outer[1] = operation(149, 0xaa, 4096)
+
+    proc checkWindowEntry(image: NativeImage, mode: WindowCase) =
+      ## Compare complete register, writable memory and receipt checkpoints after actual native code.
+      const first = 0x14000'u64
+      var stack = default(array[40, byte])
+      var other = default(array[40, byte])
+      for i in 0..<stack.len:
+        # Both descriptors hold distinguishable bytes for identical logical addresses.
+        stack[i] = byte(0x11+i)
+        other[i] = byte(0xa0+i)
+      const initialWord = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
+      var word = initialWord
+      let tail = [0xfe'u8, 0xff, 0xff, 0xff]
+      let wordBase = if mode in {WindowCase.PriorStore,
+          WindowCase.ChangedBase}: first+24 else: wordAddress
+      let address = if mode == WindowCase.Wrapped: 0xffffffe0'u64 else: first
+      let later = mode in {WindowCase.LaterMiss, WindowCase.PriorStore, WindowCase.ChangedBase}
+      let gas = if later: 1000'u64 else: 0'u64
+      let remaining = if later: 57'u64 else: 0'u64
+      var dirty = 1'u64 shl (wordBase shr 12)
+
+      var registers = default(RegisterFile)
+      for i in 0..<registers.len:
+        # Keep nonzero upper words in untouched lanes to detect accidental clobbers.
+        registers[i] = RegisterValue(0x1234567800000000'u64+uint64(i))
+      registers[0] = RegisterValue(0x1122334487665544'u64)
+      registers[1] = RegisterValue(0)
+      registers[3] = RegisterValue(wordBase)
+      registers[4] = RegisterValue(wordBase+4)
+      registers[8] = RegisterValue(0x7fffffff)
+      registers[10] = RegisterValue(address-32)
+      registers[11] = RegisterValue(0)
+      registers[12] = RegisterValue(0xfffffffffffffffe'u64)
+
+      let firstExtent = case mode
+        of WindowCase.Short: initNativeReadRegion(address, stack.toOpenArray(0, 30))
+        of WindowCase.Earlier: initNativeReadRegion(address+24, stack.toOpenArray(24, 31))
+        else: initNativeReadRegion(address, stack)
+      let otherExtent =
+        if later: initNativeReadRegion(tailAddress, tail)
+        else: initNativeReadRegion(address, other)
+      let stackWritable =
+        if mode in {WindowCase.PriorStore, WindowCase.ChangedBase}:
+          NativeCycleWritable(first: first, length: uint64(stack.len),
+            data: cast[pointer](addr stack[0]))
+        else:
+          NativeCycleWritable(first: 0x13000)
+      var context = NativeCycleContext(
+        read: [firstExtent, initNativeReadRegion(wordAddress, word.toOpenArray(0, 6)), otherExtent],
+        writable: [stackWritable, NativeCycleWritable(first: wordAddress,
+          length: uint64(word.len), data: cast[pointer](addr word[0]))],
+        dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: remaining)
+
+      var expected = registers
+      var expectedWord = word
+      var expectedStack = stack
+      var visits = default(NativeCycleVisits)
+      var last = NativeCycleNoCompleted
+      var expectedHeader = readHeader
+      if mode != WindowCase.Wrapped:
+        # The final qword deliberately overlaps different descriptor winners in the short cases.
+        expected[6] = RegisterValue(0x4c3b2a19'u64)
+        expected[7] = RegisterValue(if mode == WindowCase.Short: windowWord(other, 24, 8)
+                                   else: windowWord(stack, 24, 8))
+        expected[9] = RegisterValue(0)
+        visits[NativeCycleRole.Read] = 1
+        last = uint64(ord(NativeCycleRole.Read))
+        expectedHeader = setupHeader
+      if later:
+        # Tail and Outer complete before the next attempted Read.
+        expected[1] = RegisterValue(32)
+        expected[2] = RegisterValue(0x87)
+        expected[3] = RegisterValue(wordBase+4)
+        expected[5] = RegisterValue(high(uint64))
+        expected[8] = RegisterValue(0xffffffff80000002'u64)
+        expected[9] = RegisterValue(0x7c)
+        visits = [1'u64, 1, 1, 1, 1, 1, 1]
+        last = uint64(ord(NativeCycleRole.Gate))
+        expectedHeader = readHeader
+        if mode in {WindowCase.PriorStore, WindowCase.ChangedBase}:
+          # The later proved window must load the same stack bytes the prior Store changed.
+          expectedStack[24] = 0x44
+          expectedStack[25] = 0x55
+          expectedStack[26] = 0x66
+          expectedStack[27] = 0x87
+          if mode == WindowCase.ChangedBase:
+            # The second Read must use the new base and discard its staged writes on a miss.
+            expected[6] = RegisterValue(windowWord(stack, 24, 4))
+            expected[8] = RegisterValue(0xffffffff80000000'u64)
+            expected[10] = RegisterValue(first-32+4096)
+          else:
+            expected[6] = RegisterValue(windowWord(expectedStack, 28, 4))
+            expected[7] = RegisterValue(windowWord(expectedStack, 24, 8))
+            expected[9] = RegisterValue(0)
+            visits[NativeCycleRole.Read] = 2
+            last = uint64(ord(NativeCycleRole.Read))
+            expectedHeader = setupHeader
+        else:
+          # The late S32 miss discards speculative U8 and qword writes after a committed Store.
+          expectedWord[0] = 0x44
+          expectedWord[1] = 0x55
+          expectedWord[2] = 0x66
+          expectedWord[3] = 0x87
+
+      let destination =
+        when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+          enterNativeReadCycleAbiProof(image, registers, context)
+        else:
+          enterNativeReadCycle(image, registers, context)
+      assert destination == expectedHeader and context.remaining == 0, "window resume and attempts"
+      assert context.gas == (if later: 881'u64 else: 0'u64), "window gas"
+      assert context.visits == visits and context.lastCompleted == last, "window completed roles"
+      assert context.paidRead == uint64(ord(mode in {WindowCase.Wrapped, WindowCase.LaterMiss,
+          WindowCase.ChangedBase})),
+        "window paid Read status"
+      assert validNativeCycleReceipt(layout, destination, gas, remaining, context), "window receipt"
+      if registers != expected:
+        # Report the differing lane and mode before failing the qualification.
+        for lane in 0..<registers.len:
+          if registers[lane] != expected[lane]:
+            echo "WINDOW_CHECKPOINT,", ord(mode), ",", lane, ",", uint64(registers[lane]),
+              ",", uint64(expected[lane])
+        assert false, "window register checkpoint and descriptor priority"
+      assert word == expectedWord and stack == expectedStack, "window committed Store bytes"
+      assert dirty == 1'u64 shl (wordBase shr 12), "window dirty bitmap"
+
+    proc checkReadWindow() =
+      ## Exercise the same literal native checks with the window define on or off.
+      let cycle = windowFixture()
+      let proof = nativeReadWindow(cycle.read)
+      assert proof.operations == 0x000a1104'u32 and proof.first == 32 and proof.baseLane == 10
+      assert nativeReadWindow(windowFixture(writeBase = true).read).operations == 0
+      var image = lowerNativeReadCycle(cycle)
+      assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+      for mode in WindowCase:
+        # Every descriptor class gets a fresh invocation and independent expected state.
+        if mode != WindowCase.ChangedBase:
+          checkWindowEntry(image, mode)
+      var changing = lowerNativeReadCycle(windowFixture(outerWritesBase = true))
+      assert changing.ready and changing.kind == NativeKind.ConnectedReadCycle
+      checkWindowEntry(changing, WindowCase.ChangedBase)
+
   type ReadExit {.pure.} = enum ## Which checkpoint the literal path reaches.
     UnpaidTail, LaterMiss, FirstMiss, Overlap, UnpaidStore, Outside
 
@@ -503,6 +683,9 @@ proc runReadCycleExecution*() =
     when defined(pvmX86Jit):
       checkTailPointerReuse()
       checkStoreDirtyBoundary()
+    when defined(pvmX86Jit):
+      assert nativePlatformSupported()
+      checkReadWindow()
   echo "PASS shared native read cycle execution"
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
