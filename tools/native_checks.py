@@ -59,6 +59,8 @@ class NativeChecks:
     def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None, lto=None, profile_directory=None, *, timeout=180):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
+        if platform.system() == 'Linux':
+            flags += ['-d:nimIoringNoUring']  # Match the HTTP stream readiness backend.
         effective_lto = self.lto if lto is None else lto
         if type(effective_lto) is not bool:
             raise ValueError("Native LTO profile must be boolean")

@@ -25,6 +25,20 @@ proc install(number: cint, handler: nil Handler): nil Handler {.importc: "signal
     header: "<signal.h>".}
   ## Use libc's actual signal function signature and preserve the previous callback.
 
+when defined(linux):
+  let
+    pipeSignal {.importc: "SIGPIPE", header: "<signal.h>".}: cint
+    ignoreHandler {.importc: "SIG_IGN", header: "<signal.h>".}: nil Handler
+    errorHandler {.importc: "SIG_ERR", header: "<signal.h>".}: nil Handler
+
+proc ignorePipeSignal*(): bool =
+  ## Linux stream writes must report EPIPE to the caller. Set this once at
+  ## executable startup before any service can submit I/O on a worker lane.
+  when defined(linux):
+    cast[pointer](install(pipeSignal, ignoreHandler)) != cast[pointer](errorHandler)
+  else:
+    true # Darwin sockets receive SO_NOSIGPIPE at admission.
+
 proc requested(number: cint) {.cdecl.} =
   ## Only this lock-free scalar store occurs asynchronously.
   atomicStore(stopFlag, 1)

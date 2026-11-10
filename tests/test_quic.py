@@ -8,6 +8,7 @@ Exposes application_binaries, peer_name, fixtures, thread_count, wait_server_rea
 for the verification harness.
 """
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -21,8 +22,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from build_quic import ROOT, PINS
 BUILD = ROOT/'build/tests/quic'
 
-# The shipped application owns one dispatcher and one bounded logging writer by default.
-THREAD_BASELINES = {'nim': 2}
+def io_pool_threads():
+    """Match the pinned Nimony pool's fixed CPU-based startup size."""
+    if sys.platform.startswith('linux'):
+        try:
+            return max(1, len(os.sched_getaffinity(0)) - 1)
+        except OSError:
+            pass  # Nimony falls back to the online CPU count when affinity is unavailable.
+    return max(1, (os.cpu_count() or 1) - 1)
+
+
+IO_POOL_THREADS = io_pool_threads()
+# The dispatcher and logging writer run alongside the fixed I/O pool. Readiness
+# and idle checks compare against this exact count so extra workers fail the test.
+THREAD_BASELINES = {'nim': 2 + IO_POOL_THREADS}
 # The original bounded authentication and framing matrix is shared by the Nimony migration runner.
 SCENARIOS = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',
              'wrong-server-key', 'wrong-alpn', 'bad-kind', 'oversize', 'unknown', 'truncated', 'trailing', 'no-fin')

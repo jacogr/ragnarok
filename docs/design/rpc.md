@@ -14,7 +14,8 @@ request lifetimes, publication and the chain pause token.
 
 [MCP](../../src/mcp/README.md) shares synchronous read validation. [UI](../../src/ui/README.md)
 depends on WebSocket RPC for browser queries. [Management](../../src/management/server.nim)
-serves a separate private Unix registry over detached local observations.
+serves a separate private Unix registry over detached local observations. The HTTP services share
+the [stream transport](../../src/lib/http_stream.nim).
 
 Proof requests cross the boundary as detached selectors and exact routing authority.
 Full and light Services bind those requests to distinct state sources. The listener

@@ -1453,7 +1453,7 @@ proc startServices(services: var Services, options: Options, role: string,
       services.close()
       return false
     services.canonical = selected.value # Complete current state and header-only validation inputs are unchanged.
-  if not services.ui.start(options.uiPort(), options.devUiDirectory()):
+  if not services.ui.start(options.uiPort(), options.devUiDirectory(), options.logWriter):
     stderr.writeLine("Invalid UI listener or --ui-dev-dir")
     services.close() # Failed startup cannot retain a directory, seed or partially opened listener.
     return false
@@ -1475,7 +1475,7 @@ proc startServices(services: var Services, options: Options, role: string,
   if options.rpcPort() != 0:
     log(options.logWriter, LogTarget.Rpc, LogLevel.Info, "RPC listener started port=" &
         $options.rpcPort())
-  if not services.mcp.start(options.mcpPort):
+  if not services.mcp.start(options.mcpPort, options.logWriter):
     stderr.writeLine("Invalid MCP listener; check --mcp-port")
     services.close()
     return false # Partial startup retires every already opened endpoint.
@@ -1487,7 +1487,7 @@ proc startServices(services: var Services, options: Options, role: string,
   let database = if options.diskStorage: options.stateDatabase else: ""
   let managementInfo = ManagementInfo(role: role, chainPath: options.chainPath,
     databasePath: database, stateEnabled: withState)
-  if not services.management.start(options.managementSocket, managementInfo):
+  if not services.management.start(options.managementSocket, managementInfo, options.logWriter):
     stderr.writeLine("Invalid management socket; select an absent path in an owned private directory")
     services.close() # A refused management listener rolls back every previously started service.
     return false
@@ -1560,7 +1560,7 @@ proc startLightServices(services: var Services, options: Options, role: string):
   var ready = false
   defer:
     if not ready: services.close() # Join every partial acquisition before rollback or exception propagation.
-  if not services.ui.start(options.uiPort, options.devUiDirectory): return false
+  if not services.ui.start(options.uiPort, options.devUiDirectory, options.logWriter): return false
   let path = if options.diskStorage: options.stateDatabase else: ""
   if not services.light.start(services.rpc, role, options.rpcPort, options.uiPort,
       options.diskStorage, path, startup.trust, startup.policy, startup.parameters,
@@ -1569,11 +1569,11 @@ proc startLightServices(services: var Services, options: Options, role: string):
     services.mcpInfo = ClientInfo(role: role, parameters: startup.parameters,
       identity: startup.identity,
       lightDisk: options.diskStorage) # Fixed metadata retains no complete configured genesis map.
-  if not services.mcp.start(options.mcpPort): return false
+  if not services.mcp.start(options.mcpPort, options.logWriter): return false
   let info = ManagementInfo(role: role, chainPath: options.chainPath, databasePath: path,
       stateEnabled: true)
   if not services.management.start(options.managementSocket,
-      info): return false # Static management remains separate from complete-map execution controls.
+      info, options.logWriter): return false # Static management remains separate from complete-map execution controls.
   if not options.telemetryEnabled: services.chainText = "" # No raw configured genesis is retained during ordinary light runtime.
   services.chainRpc = options.rpcPort != 0
   services.historyLog = options.logWriter

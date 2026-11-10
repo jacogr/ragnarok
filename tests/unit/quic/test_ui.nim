@@ -5,7 +5,13 @@
 ## Provides a Hastur executable with explicit output; temporary files live in its build workdir.
 
 import std/[assertions, syncio]
+import std/socket as tcp
+import std/ioring as io
+import std/strutils
 include ../../../src/ui/server
+
+proc pauseUiMicros(us: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+  ## Yield to stream workers between fixture dispatcher turns.
 
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
 
@@ -151,6 +157,47 @@ var post = Connection(input: "POST / HTTP/1.1\r\nHost: localhost\r\nAccept-Encod
 post.process(requestTags, root)
 assert "405 Method Not Allowed" in post.output and "Allow: GET, HEAD" in post.output
 assert posix.close(root) == 0
+block streamedResponse:
+  # Exercise multiple Writer handoffs over the actual UI listener.
+  let contents = repeat("asset", ChunkBytes div 2)
+  try:
+    writeFile("ui-static-test/large.js.gz", contents)
+  except ErrorCode:
+    assert false, "write the multi-chunk UI fixture"
+  var server = default(UiServer)
+  assert server.start(0, directory)
+  # Adopt an ephemeral listening socket while retaining the normal development root owner.
+  server.fd = io.listenTcp(0, MaxConnections)
+  assert nonblocking(server.fd)
+  server.opened = true
+  server.root = posix.open(directory.toCString(), O_RDONLY or Directory or OpenCloseExec)
+  assert server.root >= 0
+  server.rootOpened = true
+  var peer = default(tcp.Socket)
+  try:
+    peer = tcp.connect("127.0.0.1", io.boundPort(server.fd), io.afterMs(5000))
+    peer.write("GET /large.js HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
+  except ErrorCode:
+    assert false, "send the UI wire request"
+  var answer = ""
+  var ended = false
+  for attempt in 0..<1000:
+    server.tick()
+    var bytes = default(array[4096, char])
+    let count = receive(peer.fd, addr bytes[0], csize_t(bytes.len), 0)
+    if count > 0:
+      for index in 0..<count: answer.add(bytes[index])
+    elif count == 0:
+      ended = true
+      break
+    discard pauseUiMicros(1000)
+  assert ended and answer.startsWith("HTTP/1.1 200 OK\r\n")
+  let ending = answer.find("\r\n\r\n")
+  assert ending >= 0 and answer.substr(ending + 4) == contents
+  peer.close()
+  server.close()
+  assert posix.unlink("ui-static-test/large.js.gz") == 0
+
 # Remove owned fixtures after descriptors retire, preserving repeatable native runs.
 assert posix.unlink("ui-static-test/escape.gz") == 0
 assert posix.unlink("ui-static-test/linked") == 0
@@ -161,16 +208,14 @@ assert posix.rmdir("ui-static-test/assets") == 0
 assert posix.rmdir("ui-static-test") == 0
 echo "UI tests passed"
 
-# Moving the listener also transfers every accepted connection cleanup obligation.
+# Moving the listener transfers descriptor cleanup to its destination.
 block moved_owner:
   var destination = default(UiServer)
   block:
     var source = default(UiServer)
     source.fd = posix.open("/dev/null", O_RDONLY)
-    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0 and source.connections[0].fd >= 0
+    assert source.fd >= 0
     source.opened = true
-    source.connections[0].opened = true
     source.connections[0].input = "owned request bytes"
     destination = move(source)
     assert not source.opened and not source.connections[0].opened
@@ -183,7 +228,6 @@ block moved_owner:
     source.close()
   # Source destruction has run; both transferred descriptor identities still belong to destination.
   assert fcntl(destination.fd, F_GETFL) >= 0
-  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
   assert destination.connections[0].input == "owned request bytes"
   destination.close()
 
