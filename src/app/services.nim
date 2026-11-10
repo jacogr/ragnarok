@@ -17,6 +17,40 @@
 ## It is detached trust metadata, not a newer best-head claim. Disk publication installs
 ## the confirmed durable successor after collection. Management continues to observe
 ## copied startup and OS data while canonical graph access is excluded.
+##
+## Full-state Jit startup owns one shared compiler runtime. The accumulation residency
+## context retains four service/version/backend workers. Managed work completion lends
+## the same runtime to one package worker through StateProofWorker and runInputRefinement;
+## that worker retains one source/policy cache across sequential package items and retires
+## before Done. Proof and preparation turns exclude each other through collection or join,
+## including host-side ARC access to runtime anchors. stopPreparation preserves residency.
+## Full close joins both consumers, drops accumulation workers, then closes the runtime.
+##
+## Authorization still uses a fresh one-shot prepared owner without a runtime. Nested
+## refinement modules inherit the backend but construct their own prepared owners without
+## a runtime. The JAMNP-S audit and work-sharing refinement adapters also use the default
+## runtime argument. Those routes can request Jit and complete through checked execution.
+##
+## The runtime's four image credits cover both bound consumers. Four installed accumulation
+## images can leave a package worker without a credit even with zero active invocations.
+## This is permitted checked fallback; the credit count grants no consumer a fair share.
+## Each prepared owner separately permits up to 64 MiB of idle baseline/private payload.
+## Four resident accumulation owners and a package worker therefore have up to 320 MiB of
+## such logical allowance, before prepared facts, source storage and live invocation memory.
+## This is a policy sum, not an RSS bound or a promise that all slots become populated.
+##
+## Extending runtime availability requires a reviewed environment contract first. One
+## stable owner must close the compiler only after all admitted consumers join. Separate
+## leases must cover outer and nested prepared owners while an outer callback is suspended.
+## The environment must assign aggregate prepared/source/scratch limits and an explicit
+## competition policy across accumulation and package owners. Optional retention or native
+## admission refusal must preserve checked results, gas, attempts and host-call order.
+## Reserve each retained owner's share before cache admission and return it after storage
+## retirement. An exhausted optional share can select one-shot preparation under the same
+## mandatory resource limits or disable idle scratch retention. Nested owners need their
+## own share while the outer prepared lease remains active. The current API has no such
+## environment reservation or aggregate accounting; these are requirements for future wiring.
+## Increasing image credits alone supplies neither aggregate byte accounting nor fairness.
 
 import ../state/accumulation/residency
 import ../codec/composite
