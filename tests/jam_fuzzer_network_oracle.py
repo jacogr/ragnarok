@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Issue215 expected signatures and complete maps calculated before target startup; only KZG seed roots are attributed."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from functools import cache
@@ -197,5 +198,5 @@ def expected_observations(check_frozen=True):
                     chains=17,transitions=67,expiry_traces=json.loads(json.dumps(traces)),sibling_imports=3,successor_roots=roots,successor_checkpoint_sha256=hashes,
                     ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

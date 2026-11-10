@@ -1,0 +1,649 @@
+{
+  "current-stf-allowance-eligibility.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-allowance-eligibility.json"
+  },
+  "current-stf-allowance-revocation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-allowance-revocation.json"
+  },
+  "current-stf-authorization-assign.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-authorization-assign.json"
+  },
+  "current-stf-bless-allowances.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-bless-allowances.json",
+    "historical_fixture_sha256": "historical/bless-duplicate-keys/current-stf-bless-allowances.json"
+  },
+  "current-stf-budget-retention.json": {
+    "base_fixture_sha256": "current-stf-dependency-waves.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-budget-retention.json"
+  },
+  "current-stf-checkpoint-replay.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-checkpoint-replay.json"
+  },
+  "current-stf-child-readiness.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-child-readiness.json"
+  },
+  "current-stf-child-recreation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-child-recreation.json"
+  },
+  "current-stf-child-retirement.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-child-retirement.json"
+  },
+  "current-stf-dependency-waves.json": {
+    "base_fixture_sha256": "current-stf-report-guests.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-dependency-waves.json"
+  },
+  "current-stf-effects.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-effects.json"
+  },
+  "current-stf-epoch-composition.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-composition.json"
+  },
+  "current-stf-epoch-drain.json": {
+    "base_fixture_sha256": "current-stf-dependency-waves.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-drain.json"
+  },
+  "current-stf-epoch-lifecycle.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-lifecycle.json"
+  },
+  "current-stf-epoch-reporting.json": {
+    "epoch_fixture_sha256": "current-stf-epoch.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-reporting.json"
+  },
+  "current-stf-epoch.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch.json"
+  },
+  "current-stf-eviction.json": {
+    "epoch_fixture_sha256": "current-stf-epoch.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-eviction.json"
+  },
+  "current-stf-foreign-creation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-foreign-creation.json"
+  },
+  "current-stf-foreign-transfers.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-foreign-transfers.json"
+  },
+  "current-stf-forwarded-transfers.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-forwarded-transfers.json"
+  },
+  "current-stf-gas-exits.json": {
+    "base_fixture_sha256": "current-stf-report-guests.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-gas-exits.json"
+  },
+  "current-stf-generated.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-generated.json",
+    "sources_sha256.current-stf-effects.json": "current-stf-effects.json",
+    "sources_sha256.current-stf-population-guests.json": "current-stf-population-guests.json",
+    "sources_sha256.current-stf-population-reporting.json": "current-stf-population-reporting.json"
+  },
+  "current-stf-incarnation-authority.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-incarnation-authority.json"
+  },
+  "current-stf-interchange.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-interchange.json"
+  },
+  "current-stf-late-allowances.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-allowances.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-transfers.json": "current-stf-transfers.json"
+  },
+  "current-stf-late-code.json": {
+    "base_fixture_sha256": "current-stf-report-guests.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-code.json"
+  },
+  "current-stf-late-command.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-command.json",
+    "sources_sha256.current-stf-late-allowances.json": "current-stf-late-allowances.json",
+    "sources_sha256.current-stf-late-cycles.json": "current-stf-late-cycles.json",
+    "sources_sha256.current-stf-late-dependencies.json": "current-stf-late-dependencies.json",
+    "sources_sha256.current-stf-late-gas.json": "current-stf-late-gas.json",
+    "sources_sha256.current-stf-late-histories.json": "current-stf-late-histories.json",
+    "sources_sha256.current-stf-late-incarnations.json": "current-stf-late-incarnations.json",
+    "sources_sha256.current-stf-late-offenders.json": "current-stf-late-offenders.json",
+    "sources_sha256.current-stf-late-reactivation.json": "current-stf-late-reactivation.json",
+    "sources_sha256.current-stf-late-relevance.json": "current-stf-late-relevance.json",
+    "sources_sha256.current-stf-late-retention.json": "current-stf-late-retention.json",
+    "sources_sha256.current-stf-late-trace.json": "current-stf-late-trace.json",
+    "sources_sha256.current-stf-late-upgrades.json": "current-stf-late-upgrades.json",
+    "sources_sha256.current-stf-trace-command.json": "current-stf-trace-command.json"
+  },
+  "current-stf-late-cycles.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-cycles.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json"
+  },
+  "current-stf-late-dependencies.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-dependencies.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json"
+  },
+  "current-stf-late-gas.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-gas.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-population-gas.json": "current-stf-population-gas.json"
+  },
+  "current-stf-late-histories.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-histories.json",
+    "sources_sha256.current-stf-late-allowances.json": "current-stf-late-allowances.json",
+    "sources_sha256.current-stf-late-offenders.json": "current-stf-late-offenders.json",
+    "sources_sha256.current-stf-rotation-histories.json": "current-stf-rotation-histories.json"
+  },
+  "current-stf-late-incarnations.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-incarnations.json",
+    "sources_sha256.current-stf-incarnation-authority.json": "current-stf-incarnation-authority.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json"
+  },
+  "current-stf-late-offenders.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-offenders.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-offender-reporting.json": "current-stf-offender-reporting.json"
+  },
+  "current-stf-late-reactivation.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-reactivation.json",
+    "sources_sha256.current-stf-late-relevance.json": "current-stf-late-relevance.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json"
+  },
+  "current-stf-late-relevance.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-relevance.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-supervised-requests.json": "current-stf-supervised-requests.json"
+  },
+  "current-stf-late-restart.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-restart.json",
+    "sources_sha256.current-stf-late-allowances.json": "current-stf-late-allowances.json",
+    "sources_sha256.current-stf-late-cycles.json": "current-stf-late-cycles.json",
+    "sources_sha256.current-stf-late-dependencies.json": "current-stf-late-dependencies.json",
+    "sources_sha256.current-stf-late-gas.json": "current-stf-late-gas.json",
+    "sources_sha256.current-stf-late-histories.json": "current-stf-late-histories.json",
+    "sources_sha256.current-stf-late-incarnations.json": "current-stf-late-incarnations.json",
+    "sources_sha256.current-stf-late-offenders.json": "current-stf-late-offenders.json",
+    "sources_sha256.current-stf-late-reactivation.json": "current-stf-late-reactivation.json",
+    "sources_sha256.current-stf-late-relevance.json": "current-stf-late-relevance.json",
+    "sources_sha256.current-stf-late-retention.json": "current-stf-late-retention.json",
+    "sources_sha256.current-stf-late-upgrades.json": "current-stf-late-upgrades.json"
+  },
+  "current-stf-late-retention.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-retention.json",
+    "sources_sha256.current-stf-budget-retention.json": "current-stf-budget-retention.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-population-gas.json": "current-stf-population-gas.json"
+  },
+  "current-stf-late-rotation.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-rotation.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-late-code.json": "current-stf-late-code.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-late-trace.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-trace.json",
+    "sources_sha256.current-stf-late-allowances.json": "current-stf-late-allowances.json",
+    "sources_sha256.current-stf-late-cycles.json": "current-stf-late-cycles.json",
+    "sources_sha256.current-stf-late-dependencies.json": "current-stf-late-dependencies.json",
+    "sources_sha256.current-stf-late-gas.json": "current-stf-late-gas.json",
+    "sources_sha256.current-stf-late-histories.json": "current-stf-late-histories.json",
+    "sources_sha256.current-stf-late-incarnations.json": "current-stf-late-incarnations.json",
+    "sources_sha256.current-stf-late-offenders.json": "current-stf-late-offenders.json",
+    "sources_sha256.current-stf-late-reactivation.json": "current-stf-late-reactivation.json",
+    "sources_sha256.current-stf-late-relevance.json": "current-stf-late-relevance.json",
+    "sources_sha256.current-stf-late-restart.json": "current-stf-late-restart.json",
+    "sources_sha256.current-stf-late-retention.json": "current-stf-late-retention.json",
+    "sources_sha256.current-stf-late-upgrades.json": "current-stf-late-upgrades.json"
+  },
+  "current-stf-late-upgrades.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-upgrades.json",
+    "sources_sha256.current-stf-budget-retention.json": "current-stf-budget-retention.json",
+    "sources_sha256.current-stf-late-rotation.json": "current-stf-late-rotation.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json",
+    "sources_sha256.current-stf-service-upgrades.json": "current-stf-service-upgrades.json"
+  },
+  "current-stf-manager-handoff.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-manager-handoff.json"
+  },
+  "current-stf-offender-reporting.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-offender-reporting.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-population-anchors.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-anchors.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population-reporting.json": "current-stf-population-reporting.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-population-command.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-command.json",
+    "sources_sha256.current-stf-offender-reporting.json": "current-stf-offender-reporting.json",
+    "sources_sha256.current-stf-population-anchors.json": "current-stf-population-anchors.json",
+    "sources_sha256.current-stf-population-gas.json": "current-stf-population-gas.json",
+    "sources_sha256.current-stf-population-guests.json": "current-stf-population-guests.json",
+    "sources_sha256.current-stf-population-trace.json": "current-stf-population-trace.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json",
+    "sources_sha256.current-stf-ticket-reporting.json": "current-stf-ticket-reporting.json",
+    "sources_sha256.current-stf-trace-command.json": "current-stf-trace-command.json"
+  },
+  "current-stf-population-gas.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-gas.json",
+    "sources_sha256.current-stf-budget-retention.json": "current-stf-budget-retention.json",
+    "sources_sha256.current-stf-dependency-waves.json": "current-stf-dependency-waves.json",
+    "sources_sha256.current-stf-effects.json": "current-stf-effects.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-gas-exits.json": "current-stf-gas-exits.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-population-guests.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-guests.json",
+    "sources_sha256.current-stf-effects.json": "current-stf-effects.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-population-reporting.json": {
+    "epoch_fixture_sha256": "current-stf-epoch.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-reporting.json",
+    "population_fixture_sha256": "current-stf-population.json"
+  },
+  "current-stf-population-restart.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-restart.json",
+    "sources_sha256.current-stf-offender-reporting.json": "current-stf-offender-reporting.json",
+    "sources_sha256.current-stf-population-anchors.json": "current-stf-population-anchors.json",
+    "sources_sha256.current-stf-population-gas.json": "current-stf-population-gas.json",
+    "sources_sha256.current-stf-population-guests.json": "current-stf-population-guests.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json",
+    "sources_sha256.current-stf-ticket-reporting.json": "current-stf-ticket-reporting.json"
+  },
+  "current-stf-population-trace.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-trace.json",
+    "sources_sha256.current-stf-offender-reporting.json": "current-stf-offender-reporting.json",
+    "sources_sha256.current-stf-population-anchors.json": "current-stf-population-anchors.json",
+    "sources_sha256.current-stf-population-gas.json": "current-stf-population-gas.json",
+    "sources_sha256.current-stf-population-guests.json": "current-stf-population-guests.json",
+    "sources_sha256.current-stf-population-restart.json": "current-stf-population-restart.json",
+    "sources_sha256.current-stf-population-waves.json": "current-stf-population-waves.json",
+    "sources_sha256.current-stf-ticket-reporting.json": "current-stf-ticket-reporting.json"
+  },
+  "current-stf-population-waves.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population-waves.json",
+    "sources_sha256.current-stf-dependency-waves.json": "current-stf-dependency-waves.json",
+    "sources_sha256.current-stf-effects.json": "current-stf-effects.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-population.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-population.json"
+  },
+  "current-stf-preimage-aging.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-preimage-aging.json"
+  },
+  "current-stf-preimage-provision.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-preimage-provision.json"
+  },
+  "current-stf-profile-replay.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-profile-replay.json"
+  },
+  "current-stf-queued-incarnation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-queued-incarnation.json"
+  },
+  "current-stf-ready-expiry.json": {
+    "base_fixture_sha256": "current-stf-epoch-drain.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-ready-expiry.json"
+  },
+  "current-stf-report-guests.json": {
+    "base_fixture_sha256": "current-stf-effects.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-report-guests.json"
+  },
+  "current-stf-reporting.json": {
+    "base_fixture_sha256": "current-stf.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-reporting.json"
+  },
+  "current-stf-request-lifecycle.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-request-lifecycle.json"
+  },
+  "current-stf-reserved-creation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-reserved-creation.json"
+  },
+  "current-stf-role-precedence.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-role-precedence.json"
+  },
+  "current-stf-rotation-authority.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-authority.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-supervised-handoff.json": "current-stf-supervised-handoff.json",
+    "sources_sha256.current-stf-supervised-upgrades.json": "current-stf-supervised-upgrades.json",
+    "sources_sha256.current-stf-supervisor-lifecycle.json": "current-stf-supervisor-lifecycle.json"
+  },
+  "current-stf-rotation-code.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-code.json",
+    "sources_sha256.current-stf-child-readiness.json": "current-stf-child-readiness.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-service-upgrades.json": "current-stf-service-upgrades.json"
+  },
+  "current-stf-rotation-command.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-command.json",
+    "historical_fixture_sha256": "historical/bless-duplicate-keys/current-stf-rotation-command.json",
+    "sources_sha256.current-stf-rotation-code.json": "current-stf-rotation-code.json",
+    "sources_sha256.current-stf-rotation-creation.json": "current-stf-rotation-creation.json",
+    "sources_sha256.current-stf-rotation-histories.json": "current-stf-rotation-histories.json",
+    "sources_sha256.current-stf-rotation-incarnations.json": "current-stf-rotation-incarnations.json",
+    "sources_sha256.current-stf-rotation-preimages.json": "current-stf-rotation-preimages.json",
+    "sources_sha256.current-stf-rotation-privileges.json": "current-stf-rotation-privileges.json",
+    "sources_sha256.current-stf-rotation-trace.json": "current-stf-rotation-trace.json",
+    "sources_sha256.current-stf-rotation-transfer-waves.json": "current-stf-rotation-transfer-waves.json",
+    "sources_sha256.current-stf-trace-command.json": "current-stf-trace-command.json"
+  },
+  "current-stf-rotation-creation.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-creation.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-reserved-creation.json": "current-stf-reserved-creation.json",
+    "sources_sha256.current-stf-service-creation.json": "current-stf-service-creation.json",
+    "sources_sha256.current-stf-service-ejection.json": "current-stf-service-ejection.json"
+  },
+  "current-stf-rotation-designation.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-designation.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-validator-designation.json": "current-stf-validator-designation.json"
+  },
+  "current-stf-rotation-funding.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-funding.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-foreign-creation.json": "current-stf-foreign-creation.json",
+    "sources_sha256.current-stf-foreign-transfers.json": "current-stf-foreign-transfers.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-rotation-histories.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-histories.json",
+    "sources_sha256.current-stf-offender-reporting.json": "current-stf-offender-reporting.json"
+  },
+  "current-stf-rotation-incarnations.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-incarnations.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-incarnation-authority.json": "current-stf-incarnation-authority.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-queued-incarnation.json": "current-stf-queued-incarnation.json"
+  },
+  "current-stf-rotation-preimages.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-preimages.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-preimage-aging.json": "current-stf-preimage-aging.json",
+    "sources_sha256.current-stf-preimage-provision.json": "current-stf-preimage-provision.json",
+    "sources_sha256.current-stf-request-lifecycle.json": "current-stf-request-lifecycle.json"
+  },
+  "current-stf-rotation-privileges.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-privileges.json",
+    "historical_fixture_sha256": "historical/bless-duplicate-keys/current-stf-rotation-privileges.json",
+    "sources_sha256.current-stf-authorization-assign.json": "current-stf-authorization-assign.json",
+    "sources_sha256.current-stf-bless-allowances.json": "current-stf-bless-allowances.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-manager-handoff.json": "current-stf-manager-handoff.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-role-precedence.json": "current-stf-role-precedence.json"
+  },
+  "current-stf-rotation-restart.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-restart.json",
+    "historical_fixture_sha256": "historical/bless-duplicate-keys/current-stf-rotation-restart.json",
+    "sources_sha256.current-stf-rotation-code.json": "current-stf-rotation-code.json",
+    "sources_sha256.current-stf-rotation-creation.json": "current-stf-rotation-creation.json",
+    "sources_sha256.current-stf-rotation-histories.json": "current-stf-rotation-histories.json",
+    "sources_sha256.current-stf-rotation-incarnations.json": "current-stf-rotation-incarnations.json",
+    "sources_sha256.current-stf-rotation-preimages.json": "current-stf-rotation-preimages.json",
+    "sources_sha256.current-stf-rotation-privileges.json": "current-stf-rotation-privileges.json",
+    "sources_sha256.current-stf-rotation-transfer-waves.json": "current-stf-rotation-transfer-waves.json"
+  },
+  "current-stf-rotation-retirement.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-retirement.json",
+    "sources_sha256.current-stf-child-recreation.json": "current-stf-child-recreation.json",
+    "sources_sha256.current-stf-child-retirement.json": "current-stf-child-retirement.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-rotation-supervision.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-supervision.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-supervised-conflicts.json": "current-stf-supervised-conflicts.json",
+    "sources_sha256.current-stf-supervised-requests.json": "current-stf-supervised-requests.json",
+    "sources_sha256.current-stf-supervised-storage.json": "current-stf-supervised-storage.json"
+  },
+  "current-stf-rotation-trace.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-trace.json",
+    "historical_fixture_sha256": "historical/bless-duplicate-keys/current-stf-rotation-trace.json",
+    "sources_sha256.current-stf-rotation-code.json": "current-stf-rotation-code.json",
+    "sources_sha256.current-stf-rotation-creation.json": "current-stf-rotation-creation.json",
+    "sources_sha256.current-stf-rotation-histories.json": "current-stf-rotation-histories.json",
+    "sources_sha256.current-stf-rotation-incarnations.json": "current-stf-rotation-incarnations.json",
+    "sources_sha256.current-stf-rotation-preimages.json": "current-stf-rotation-preimages.json",
+    "sources_sha256.current-stf-rotation-privileges.json": "current-stf-rotation-privileges.json",
+    "sources_sha256.current-stf-rotation-transfer-waves.json": "current-stf-rotation-transfer-waves.json"
+  },
+  "current-stf-rotation-transfer-waves.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-transfer-waves.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-forwarded-transfers.json": "current-stf-forwarded-transfers.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-supervised-transfers.json": "current-stf-supervised-transfers.json"
+  },
+  "current-stf-rotation-transfers.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-rotation-transfers.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json",
+    "sources_sha256.current-stf-transfer-admission.json": "current-stf-transfer-admission.json",
+    "sources_sha256.current-stf-transfer-memos.json": "current-stf-transfer-memos.json",
+    "sources_sha256.current-stf-transfer-pools.json": "current-stf-transfer-pools.json",
+    "sources_sha256.current-stf-transfers.json": "current-stf-transfers.json"
+  },
+  "current-stf-service-creation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-service-creation.json"
+  },
+  "current-stf-service-ejection.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-service-ejection.json"
+  },
+  "current-stf-service-upgrades.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-service-upgrades.json"
+  },
+  "current-stf-supervised-conflicts.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-conflicts.json"
+  },
+  "current-stf-supervised-handoff.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-handoff.json"
+  },
+  "current-stf-supervised-requests.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-requests.json"
+  },
+  "current-stf-supervised-storage.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-storage.json"
+  },
+  "current-stf-supervised-transfers.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-transfers.json"
+  },
+  "current-stf-supervised-upgrades.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervised-upgrades.json"
+  },
+  "current-stf-supervisor-lifecycle.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-supervisor-lifecycle.json"
+  },
+  "current-stf-ticket-reporting.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-ticket-reporting.json",
+    "sources_sha256.current-stf-epoch.json": "current-stf-epoch.json",
+    "sources_sha256.current-stf-population.json": "current-stf-population.json"
+  },
+  "current-stf-trace-command.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-command.json"
+  },
+  "current-stf-trace-files.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-files.json"
+  },
+  "current-stf-trace-genesis.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-genesis.json"
+  },
+  "current-stf-trace-import.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-import.json"
+  },
+  "current-stf-trace-observations.json": {
+    "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-observations.json"
+  },
+  "current-stf-transfer-admission.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-transfer-admission.json"
+  },
+  "current-stf-transfer-memos.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-transfer-memos.json"
+  },
+  "current-stf-transfer-pools.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-transfer-pools.json"
+  },
+  "current-stf-transfers.json": {
+    "base_fixture_sha256": "current-stf-report-guests.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-transfers.json"
+  },
+  "current-stf-validator-designation.json": {
+    "base_fixture_sha256": "current-stf-transfers.json",
+    "epoch_input_sha256": "current-stf-epoch.json",
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-validator-designation.json"
+  },
+  "current-stf-verdicts.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-verdicts.json",
+    "population_fixture_sha256": "current-stf-population.json"
+  },
+  "current-stf.json": {
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf.json"
+  },
+  "jam-fuzzer-ancestry-retention.json": {
+    "base_sha256": "current-stf-reporting.json"
+  },
+  "jam-fuzzer-ancestry.json": {
+    "base_sha256": "current-stf-reporting.json"
+  },
+  "jam-fuzzer-checkpoint-guests.json": {
+    "base_sha256": "current-stf-report-guests.json"
+  },
+  "jam-fuzzer-epoch-forks.json": {
+    "base_sha256": "current-stf-epoch.json"
+  },
+  "jam-fuzzer-fork-capacity.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json"
+  },
+  "jam-fuzzer-forks.json": {
+    "base_sha256": "current-stf.json"
+  },
+  "jam-fuzzer-full-ancestry.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json"
+  },
+  "jam-fuzzer-full-contest.json": {
+    "ticket_input_sha256": "jam-full-ticket-input.json"
+  },
+  "jam-fuzzer-full-epoch-capacity.json": {
+    "epoch_guests_sha256": "jam-fuzzer-full-epoch-guests.json"
+  },
+  "jam-fuzzer-full-epoch-checkpoints.json": {
+    "epoch_guests_sha256": "jam-fuzzer-full-epoch-guests.json"
+  },
+  "jam-fuzzer-full-epoch-forks.json": {
+    "epoch_guests_sha256": "jam-fuzzer-full-epoch-guests.json"
+  },
+  "jam-fuzzer-full-epoch-guests.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json",
+    "population_sha256": "jam-fuzzer-full-population.json"
+  },
+  "jam-fuzzer-full-epochs.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json",
+    "ring_input_sha256": "jam-full-epoch-ring-input.json"
+  },
+  "jam-fuzzer-full-guests.json": {
+    "full_profile_sha256": "jam-fuzzer-full-profile.json",
+    "guest_reference_sha256": "current-stf-report-guests.json",
+    "ring_input_sha256": "jam-full-guest-ring-input.json"
+  },
+  "jam-fuzzer-full-offender-guests.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json",
+    "pending_fixture_sha256": "jam-fuzzer-full-pending-disputes.json"
+  },
+  "jam-fuzzer-full-offenders.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json"
+  },
+  "jam-fuzzer-full-pending-disputes.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json",
+    "verdict_fixture_sha256": "jam-fuzzer-full-verdicts.json"
+  },
+  "jam-fuzzer-full-population.json": {
+    "offender_fixture_sha256": "jam-fuzzer-full-offenders.json",
+    "ring_input_sha256": "jam-full-population-ring-input.json"
+  },
+  "jam-fuzzer-full-profile.json": {
+    "base_sha256": "current-stf-transfers.json",
+    "ring_input_sha256": "jam-full-ring-input.json"
+  },
+  "jam-fuzzer-full-sealing.json": {
+    "contest_fixture_sha256": "jam-fuzzer-full-contest.json"
+  },
+  "jam-fuzzer-full-tickets.json": {
+    "ticket_input_sha256": "jam-full-ticket-input.json"
+  },
+  "jam-fuzzer-full-verdict-availability.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json",
+    "pending_fixture_sha256": "jam-fuzzer-full-pending-disputes.json"
+  },
+  "jam-fuzzer-full-verdict-populations.json": {
+    "population_fixture_sha256": "jam-fuzzer-full-population.json",
+    "verdict_fixture_sha256": "jam-fuzzer-full-verdicts.json"
+  },
+  "jam-fuzzer-full-verdicts.json": {
+    "full_guests_sha256": "jam-fuzzer-full-guests.json"
+  },
+  "jam-fuzzer-guest-forks.json": {
+    "base_sha256": "current-stf-report-guests.json"
+  },
+  "jam-fuzzer-network.json": {
+    "ring_input_sha256": "jam-network-ring-input.json"
+  },
+  "jam-fuzzer-parameter-aging.json": {
+    "base_sha256": "current-stf-preimage-aging.json"
+  },
+  "jam-fuzzer-report-forks.json": {
+    "base_sha256": "jam-fuzzer-ancestry.json"
+  },
+  "jam-fuzzer-seed-guests.json": {
+    "base_sha256": "current-stf-effects.json"
+  }
+}

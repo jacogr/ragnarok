@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent GP0.8 full-profile empty-body STF maps; the attributed KZG seed is an input, never an observed successor."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -164,5 +165,5 @@ def expected_observations(check_frozen=True):
                     successor_checkpoint_sha256=hashes, blocks_sha256=blocks,
                     base_sha256=hashlib.sha256(BASE.read_bytes()).hexdigest(), ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [], lines, evidence

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full-profile real-report dispute cancellation, exact report-hash identity and retained good/unrelated assignments."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_profile_oracle as full
 import jam_fuzzer_full_guests_oracle as guests
@@ -131,5 +131,5 @@ def expected_observations(check_frozen=True):
                     verdict_fixture_sha256=hashlib.sha256(verdicts.FIXTURE.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

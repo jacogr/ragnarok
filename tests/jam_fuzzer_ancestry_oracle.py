@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent reporting STF streams distinguish actual child roots from hash/slot-only seed facts."""
+from native_fixture_contracts import matches_frozen_results
 import copy
 import hashlib
-import json
 from pathlib import Path
 from current_stf_reporting_oracle import (expected_observations as reporting, inputs, body, report_wire,
                                          signed, digest, original)
@@ -91,5 +91,5 @@ def expected_observations(check_frozen=True):
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest(),
                     requests_sha256=hashlib.sha256(('\n'.join(requests)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return requests, lines, evidence

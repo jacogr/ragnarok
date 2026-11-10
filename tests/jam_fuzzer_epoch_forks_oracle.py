@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent epoch/ticket fork STF maps replay attributed known Ring inputs without generating campaigns."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -39,5 +40,5 @@ def expected_observations(check_frozen=True):
                     ticket_siblings=variants, successful_imports=accepted+variants, chains=3,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return requests, lines, evidence

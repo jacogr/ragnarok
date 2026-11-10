@@ -3,6 +3,7 @@
 
 """Independent guest checkpoint restarts preserve population rotations and distinguish absent local ancestry evidence."""
 from functools import cache
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -59,7 +60,7 @@ def calculate():
 def expected_observations(check_frozen=True):
     """Expose complete independent restart streams; native replies never supply expected state."""
     lines,evidence,_ = calculate()
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],list(lines),dict(evidence)
 
 

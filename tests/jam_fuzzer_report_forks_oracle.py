@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Nonempty report siblings calculate independent complete states from one immutable original parent."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 from jam_fuzzer_ancestry_oracle import expected_observations as ancestry
 from current_stf_reporting_oracle import inputs, guarantee, advance, body
@@ -50,5 +50,5 @@ def expected_observations(check_frozen=True):
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest(),
                     requests_sha256=hashlib.sha256(('\n'.join(requests)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return requests, lines, evidence

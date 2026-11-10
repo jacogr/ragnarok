@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent depth-one sibling STF maps preserve parent state and author-specific statistics."""
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -50,5 +51,5 @@ def expected_observations(check_frozen=True):
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     if check_frozen:
         # Changing either the reference or inputs cannot silently replace the accepted whole-map stream.
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return lines, evidence

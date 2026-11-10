@@ -60,7 +60,7 @@ class NativeFixtureContractsHarness(unittest.TestCase):
             manifest.write_text('current manifest')
             witness = root/'tests/fixtures/jam-sample-input.json'
             witness.parent.mkdir(parents=True)
-            (witness.parent/'jam-evidence-links.json').write_text('{}')
+            (witness.parent/'fixture-evidence-links.json').write_text('{}')
             witness.write_text(json.dumps({'bandersnatch_pins_sha256': '0'*64}))
             digest = hashlib.sha256(witness.read_bytes()).hexdigest()
             contracts = {'sample': ('RAGNAROK_SAMPLE', witness, ((witness, digest),))}

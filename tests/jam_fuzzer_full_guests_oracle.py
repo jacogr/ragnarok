@@ -3,6 +3,7 @@
 
 """Independent full-profile guarantees, strict683/684 quorums and nonempty storage/yield/rollback guest siblings."""
 from functools import cache
+from native_fixture_contracts import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -213,5 +214,5 @@ def expected_observations(check_frozen=True):
                     ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),successor_roots=roots,original_checkpoint_sha256=hashes,
                     guest_gas={mode:guest_gas(mode) for mode in MODES},expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     # Never substitute a native observation for the precommitted independent stream digest.
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

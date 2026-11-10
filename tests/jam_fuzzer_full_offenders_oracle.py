@@ -3,9 +3,9 @@
 
 """Independent full-population offender evidence, exact header markers and complete-map atomic refusals."""
 from functools import cache
+from native_fixture_contracts import matches_frozen_results
 import copy
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_guests_oracle as guests
 import jam_fuzzer_full_tickets_oracle as tickets
@@ -129,5 +129,5 @@ def expected_observations(check_frozen=True):
                     full_guests_sha256=hashlib.sha256(guests.FIXTURE.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

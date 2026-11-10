@@ -7,6 +7,7 @@ Exposes the static fixture registry and full-run provenance gate. Suite requirem
 own the links used by focused consumers.
 Paths and hashes are explicit expectations, never inferred from the fixture bytes being checked.
 """
+from functools import lru_cache
 import hashlib
 import json
 import re
@@ -96,17 +97,38 @@ def validate_fixture_contracts(identities, extra=()):
     return expected
 
 
+@lru_cache(maxsize=1)
+def evidence_links(descriptor):
+    """Read the source links once for the current test invocation."""
+    return json.loads(descriptor.read_text(), object_pairs_hook=unique_object)
+
+
+def matches_frozen_results(fixture, evidence):
+    """Compare independently calculated results, excluding preflight-owned input links."""
+    frozen = json.loads(fixture.read_text(), object_pairs_hook=unique_object)
+    folder = ROOT/'tests/fixtures'
+    name = fixture.relative_to(folder).as_posix()
+    fields = evidence_links(folder/'fixture-evidence-links.json').get(name, {})
+    return ({key: value for key, value in frozen.items() if key not in fields}
+            == {key: value for key, value in evidence.items() if key not in fields})
+
+
 def verify_fixture_links(folder, descriptor, digests):
     """Check frozen input links against the files already verified by the preflight."""
-    links = json.loads(descriptor.read_text(), object_pairs_hook=unique_object)
+    links = evidence_links(descriptor)
     for name, fields in links.items():
         evidence = fixture_path(folder, descriptor, name)
         record = json.loads(evidence.read_text(), object_pairs_hook=unique_object)
         for field, target in fields.items():
             source = fixture_path(folder, descriptor, target)
-            if evidence not in digests or source not in digests:
-                raise ValueError(f'Unpinned fixture link: {name} {field} -> {target}')
-            if record.get(field) != digests[source]:
+            if source not in digests:
+                # A linked historical source may lack a standalone descriptor.
+                digests[source] = hashlib.sha256(source.read_bytes()).hexdigest()
+            container, _, key = field.partition('.')
+            observed = record.get(container)
+            if key:
+                observed = observed.get(key) if isinstance(observed, dict) else None
+            if observed != digests[source]:
                 raise ValueError(f'Fixture link checksum mismatch: {name} {field} -> {target}')
 
 
@@ -118,7 +140,7 @@ def verify():
              if path.relative_to(ROOT).parts[0] != 'vendor']
     digests = validate_fixture_contracts(FIXTURE_CONTRACTS, extra)
     folder = ROOT/'tests/fixtures'
-    verify_fixture_links(folder, folder/'jam-evidence-links.json', digests)
+    verify_fixture_links(folder, folder/'fixture-evidence-links.json', digests)
     manifest = hashlib.sha256((ROOT/'spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     for path in sorted((ROOT/'tests/fixtures').glob('jam-*-input.json')):
         # Only witnesses declaring the shared pin digest participate in this contract.
@@ -135,7 +157,7 @@ def main():
     except (ValueError, OSError, KeyError) as error:
         print(f'FAIL fixture provenance: {error}', file=sys.stderr)
         return 1
-    print(f'PASS fixture provenance: {count} unique files and shared manifest links')
+    print(f'PASS fixture provenance: {count} unique files and fixture links')
     return 0
 
 
