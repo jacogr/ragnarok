@@ -1229,6 +1229,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
       func entryReadWindow(cycle: NativeReadCycle): NativeReadWindow =
         ## Admit an entry-local address only if no emitted role writes its base lane.
+        ## ARM64 still checks each connected qword against the ordered descriptors at the load.
         result = default(NativeReadWindow)
         let window = nativeReadWindow(cycle.read)
         if window.operations == 0: return
