@@ -4,21 +4,9 @@ Scope: connect the existing managed Services lease to CE 128 raw download recept
 production download command. Protocol/specification pins, plain ARC, compiler, dependencies,
 wire bytes and exact-parent certificate authority remain unchanged.
 
-Preparing starts only after complete exact reception and actual native stream retirement. One
-Services worker borrows the stable nested raw input and canonical graph. Dispatcher turns poll
-native endpoints and independent UI work without copying, clearing or examining captured graph
-owners; RPC and canonical access remain gated. All pre-existing external aliases must remain
-untouched and alive until collection or joined close. Services, dispatcher and input addresses
-remain stable. Successful collection queues the genuine finalized certificate; only a subsequent
-host adoption tick and consumed Services result report Adopted.
-
-The total attempt deadline includes preparation. An expired job enters Cancelling, marks its
-completion unwanted and retains its attempt/input/ARC graph until actual worker retirement;
-even an already completed, uncollected certificate cannot be adopted after that observed deadline. No retry
-reuses a live input slot. A candidate queued within that deadline follows the existing separate
-handoff/adoption turn. Explicit close joins before releasing nested input, captured history or
-Services ownership, and never adopts uncollected work. Worker startup/admission and handoff
-refusals preserve selected typed reasons. Native callbacks never execute preparation.
+The [dispatcher](../src/jamnp-s/block/download/loop.nim) owns reception, deadline
+and deferred adoption. The [worker](../src/app/preparation_worker.nim) and
+[Services](../src/app/services.nim) own execution borrows and joined retirement.
 
 Completion checks: signed child through Preparing/Queued/Adopted, live endpoint polling during
 preparation, exact timeout/cancellation and close in Preparing, guarded receiver retirement,

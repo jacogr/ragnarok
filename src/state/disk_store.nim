@@ -791,7 +791,10 @@ proc recoverManagedDiskStateStore*(store: var DiskStateStore, path: string, chai
 
 proc compactDiskStateStore*(store: var DiskStateStore, expected: StateStoreSnapshot,
     roots: openArray[StateRoot]): DiskStoreResult[ManagedCompaction] =
-  ## Physical maintenance keeps the exact public state identity and requires explicit retained roots.
+  ## Compact the managed layout under the exact public snapshot and retained roots.
+  ## Compaction can change physical selection while preserving state identity,
+  ## root, generation and context. The next commit resolves that new physical parent
+  ## internally. Chain and finality selection remain with the caller.
   if store.pagedMode: return DiskStoreResult[ManagedCompaction](status: DiskStoreError.FileFailure,
       fileReason: FileError.UnsupportedLayout) # Paged maintenance uses its own authenticated copy/replay contract.
   let before = store.snapshot

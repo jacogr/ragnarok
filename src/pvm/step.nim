@@ -1,8 +1,19 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
-## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
+## Immutable stepping, bounded execution and trusted host resumption.
+##
+## The machine supplies the exact program and paid-block flag. Prepared owners
+## bind reusable pricing and execution facts to that program. Invocation registers,
+## mutable memory staging and attempt budgets stay local to the call.
+##
+## Guest exits are completed outcomes, including OutOfGas. Local refusal exposes
+## no machine or tentative debit. A memory fault retains the already-paid block
+## for repair and retry. Fault and Host alone carry their guarded page or host ID.
+## Raw terminal PCs and recursive host resumption are distinct boundaries.
+##
+## The checked handler stream implements opcode execution. Native engines and
+## host adapters cross the same prepared-owner and immutable outcome contracts.
 
 import std/assertions
 import ./[program, machine, registers]
@@ -601,7 +612,10 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
 proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram,
     plan: GasPlan = default(GasPlan), memo: GasMemo = default(GasMemo),
         single: bool = false): StepResult =
-  ## Same-owner synchronous reentry is rejected; every exit releases the cache lease.
+  ## Lease the prepared execution owner for one invocation.
+  ## Same-owner reentry fails before touching the active cache. Independent owners
+  ## may nest. Finish the native invocation and release the lease for both completed
+  ## results and local refusals.
   let data = prepared.data
   if data == nil: return StepResult(status: StepError.InvalidPreparedProgram)
   if data.busy: return StepResult(status: StepError.PreparedProgramBusy)

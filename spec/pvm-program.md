@@ -11,57 +11,11 @@ little-endian fixed integers and least-significant-bit-first packed bitstrings.
 
 ## Implemented contract
 
-`src/pvm/program.nim` validates a complete blob and an entry instruction address,
-then retains one private immutable ARC-owned copy. It exposes copied instruction
-operands, code length, basic-block membership and jump-table entries. Input must
-remain stable during the call; it may be mutated or released afterwards. Handles
-can be copied without exporting mutable storage. Ownership is acyclic.
-
-Wire order is natural jump count, one-byte entry width, natural code length,
-fixed-width jump entries, code bytes, then the packed opcode mask. Code length
-also determines logical mask length; there are no additional code/mask prefixes.
-Trailing bytes, noncanonical naturals and nonzero unused mask bits are rejected.
-
-The decoder checks the entire instruction walk from zero, including valid opcode
-membership and final block termination, even when entry points inside the program.
-`unlikely` (2) is valid but is not a terminator. `ecalli` is not a terminator.
-Skip is capped at 24 and sees an infinite set-bit suffix. An excessive unmarked
-run fails when the walk lands on an unmarked byte. Operands instead see the entire
-code followed by infinite zeroes: reading across a marked instruction is allowed.
-Operand reads are not truncated at the next opcode. Registers saturate at 12.
-
-Instruction operands preserve the GP A/B/D register names and X/Y immediate bit
-patterns. Static offsets are exposed as signed displacements, not pre-wrapped
-addresses: execution must resolve them against the instruction address and verify
-basic-block membership. Non-applicable copied fields are zero; `shape` identifies
-which operands are meaningful. Decoding does not validate branch destinations.
-
-The current deblob equation bounds the one-byte table width to0–4, code to32 MiB,
-and declared jump count to16 Mi entries. These apply to both decoder profiles and
-are distinct from caller byte/count policies. Width zero encodes zero-valued entries
-without table payload bytes. Jump entries may name invalid destinations; dynamic
-execution rejects those destinations. The third register byte is masked to its low
-nibble before saturation at12, matching current paper and pinned PolkaVM.
-
-`decodeJamProgram` retains the still-scoped PolkaVM compatibility behavior for final
-successor validation and zero-width tables (GP-PVM-004/006). These owners expose
-zero-width tables as semantically empty. Both profiles share the framing and
-ownership implementation with exactly one wire representation; no alternate-format
-fallback is attempted. Original bytes and code offsets remain unchanged. Local jump
-policy applies to the declared count before semantic normalization. Raw and JAM
-owners remain independent immutable snapshots.
-
-Caller policy uses separate nominal blob-byte and jump-count limits. A zero-width
-table is never expanded, even with a large permitted logical count. All lengths,
-products and conversions are checked before indexing or allocation. Validation
-work is bounded by supplied bytes; instruction access examines at most 24 skip
-bits and eight bytes per operand. Resource failures are distinct from malformed
-programs; these limits are local policy, not newly introduced protocol constants.
-
-Results have private discriminators/payloads and guarded value access. Default
-results are unsuccessful. Default handles return `InvalidOwner`. Failures contain
-no partial program, cursor or operands. Instruction and jump indices are distinct
-nominal types, as are policy limits and register/immediate domains.
+The [program module](../src/pvm/program.nim) owns framing, immutable capture and the
+Paper/JAM API contracts. The pinned deblob equation bounds width to 0–4, code to 32 MiB,
+and declared jumps to 16 Mi entries. Caller ceilings are independent. The scoped PolkaVM
+rules for final successors and zero-width tables are tracked as GP-PVM-004/006 in
+[the discrepancy register](graypaper-discrepancies.md).
 
 ## Verification and remaining scope
 

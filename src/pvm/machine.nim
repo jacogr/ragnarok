@@ -1,13 +1,20 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 machine snapshots and sparse memory; see spec/pvm-machine.md. Published owners are
-## immutable, acyclic ARC graphs. Updates return independent snapshots.
+## Immutable PVM CPU and sparse memory snapshots.
 ##
-## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
-## load/store, bounded host readBytes/writeBytes, allocation-free readableRange/writableRange,
-## programOf/memoryOf child access, copied state
-## updates, writable-page range counting/mapping, atomic zero/remap/free ranges and terminal-state capture.
+## Machines copy register, PC and gas metadata and retain their exact immutable program
+## and memory. Environment capture accepts an executable PC. Terminal capture can keep
+## the trap PC beyond code because the outcome, not a resumable instruction, owns it.
+##
+## The two-level page directory shares unchanged reference blocks of up to 64 entries.
+## A page retains permissions and eight logical 512-byte spans. A span can use a
+## shared backing range or an explicit chunk owner. Absent slots are inaccessible,
+## while a retained inaccessible page can keep bytes for remapping. Writers copy
+## the affected spans and directory paths only after complete preflight.
+##
+## Scalar access uses the scoped PolkaVM overflow and presence precedence recorded
+## in spec/pvm-machine.md. Host range inspection has its own typed bounds and errors.
 
 import std/assertions
 import ./program
@@ -248,7 +255,9 @@ proc copiedChunk(input: openArray[byte], first: int): PageChunk {.requires:
 
 proc fullPage(index: PageIndex, access: PageAccess, input: openArray[byte]): PageData
     {.requires: input.len == 4096.} =
-  ## Copy a complete unknown prefix into final immutable owners before publishing its header.
+  ## Copy a complete unknown page into a seven-span backing and a final chunk.
+  ## Optional overrides keep later writes at 512-byte copy granularity. A backing
+  ## remains alive until every covered span has its own complete override.
   let backing = PageBacking(bytes: default(array[3584, byte]))
   copyMem(addr backing.bytes[0], unsafeAddr input[0], 3584)
   let tail = copiedChunk(input, 3584)
@@ -741,7 +750,10 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
     completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
 
 proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): MachineResult[Memory] =
-  ## Atomically replace sorted existing pages, sharing untouched directory blocks and snapshot chunks.
+  ## Atomically replace sorted existing pages, preserving physical-index and ordering refusal.
+  ## Validate all membership and access before copying. Sparse replacement searches the
+  ## affected slots, while dense replacement walks a monotone cursor. Copy the block
+  ## reference root and each touched block once so unrelated page and chunk owners stay shared.
   let data = memory.data
   if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   for index in 0..<replacements.len:
@@ -981,7 +993,11 @@ proc scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
 proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAddress,
     width: AccessWidth, recent: array[2, int] = [-1, -1],
     hints: nil ptr array[64, uint32] = nil): MachineResult[ScalarSpan] =
-  ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
+  ## Check widths 1, 2, 4 and 8 against the low 32 bits of the address.
+  ## Exclusive-end overflow is settled first: a present final page panics and an
+  ## absent one faults at its aligned address. A nonwrapping access into the low
+  ## 64 KiB panics before page lookup. For a crossing store, missing second-page
+  ## presence precedes first-page write permission so retry observes the correct fault.
   if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
     # Only the four supported widths may enter arithmetic or payload loops.
@@ -1056,7 +1072,9 @@ proc writableScalar*(memory: Memory, address: MemoryAddress, width: AccessWidth)
 
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
-  ## Complete scalar preflight precedes private page/chunk cloning and sparse root publication.
+  ## Store the low little-endian bytes after validating every touched page.
+  ## Cloning starts after preflight so a cross-page fault cannot publish even its
+  ## first part. The completed snapshot shares all untouched pages with its source.
   let checked = scalarSpan[false, true](memory, address, width)
   if checked.error != MachineError.None: return failure[Memory, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
@@ -1416,7 +1434,10 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   MachineResult[Memory](status: MachineError.None, completed: frozen)
 
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
-  ## Capture a validated entry location and copied CPU values; this is not standard JAM initialization.
+  ## Capture trusted CPU values at a validated instruction boundary.
+  ## The supplied paid-block flag is retained as an environment input. Standard JAM
+  ## initialization derives that state separately.
+
   # Empty/default memory must be distinguished from a valid all-inaccessible memory snapshot.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
   if uint64(info.gasDeficit) != 0:

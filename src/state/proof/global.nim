@@ -81,7 +81,9 @@ proc chapterBytes(view: ProofView, chapter: StateChapterId,
 
 proc readProofChapter*(view: ProofView, chapter: StateChapterId, profile: StateProfile,
     policy: StateChapterPolicy): GlobalProofResult[StateChapterSnapshot] =
-  ## Capture one exact typed chapter through the established codec; partial evidence stays partial.
+  ## Read one exact typed chapter without promoting the partial view.
+  ## Bound the cached verified length before copying. Preserve the distinction
+  ## between missing evidence, proven absence and a present value the codec refuses.
   let bytes = chapterBytes(view, chapter, policy.maxBytes)
   if bytes.error != GlobalProofError.None:
     return GlobalProofResult[StateChapterSnapshot](status: bytes.error)

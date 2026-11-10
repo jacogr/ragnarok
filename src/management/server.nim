@@ -165,6 +165,8 @@ proc response(status, body = ""): string =
 
 proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo) =
   ## Parse stock HTTP POST / with one explicit length; no upgrade, chunking or pipelining.
+  ## The stock parser validates head syntax. This routine owns endpoint, unique
+  ## application selectors, body limits and dispatch into the private registry.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
   if headBytes < 0:

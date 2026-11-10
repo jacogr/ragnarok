@@ -34,37 +34,11 @@ other single terminal instructions retain the causing PC, and single host suspen
 while recursive host suspension retains its causing PC. Invalid imported terminal PCs still
 produce recursive uncharged deblob panic; single stepping rejects them locally.
 
-A prepared owner retains immutable source/facts plus an exclusive executable cache. The cache
-contains handler pointers, sealed scalar operands, source sites, stable offset maps and preparation
-counters. It contains no CPU, guest memory, paid gas, callback or invocation continuation. A call
-moves that cache into a newly admitted private frame and moves only cache facts back after success
-or local failure. Same-owner synchronous reentry returns `PreparedProgramBusy`; independent owners
-can nest. The lease is released on all returned failure/success paths. There is no owner back-edge.
-
-Sealed header prices and refusal handlers belong to the policy that emitted them. Every stream
-is bound to its exact immutable `FlatPlan`, including default-cycle pricing in a plain build.
-Internal `FlatFrame` callers select a complete plan or lazy memo before restoring a stream or
-emitting nodes; selecting one after emission refuses locally. A stream restored from or into a
-nondefault pricing policy drops its executable cache and reemits under the receiving frame's
-policy. The ordinary default-to-default prepared path retains its existing cache. This conservative boundary
-also covers a fresh memo with a lower simulation cycle limit, transitions back to dynamic prices,
-and complete-plan transitions. The `pvm_stream_pricing_owner` suite compares those transitions
-against fresh frames, including CPU and gas on refusal. Public prepared overloads use default
-pricing, while public memo/complete-plan overloads create a fresh prepared owner per call; they
-do not expose cross-policy stream restoration.
-
-Memory construction accepts a genuine immutable `Memory`, checks its page count before materializing
-private bytes, and retains that original root rather than recapturing it. Mutable contiguous regions
-and fragmented slow-path regions remain private to the invocation. Host suspension publishes an
-immutable observation; checked resident deltas resume the same frame. Mapping/permission changes
-use complete transactional re-admission directly from the posterior immutable owner. Successful
-delta results transfer their page images without duplicating the result payload. Full replacement
-builds fresh private regions and native views before moving the existing code-only cache and pricing
-policy; refusal preserves the stopped frame and observation for retry. Equal-byte replacements keep
-their fresh page identities, retained inaccessible bytes and the posterior owner's local page limit.
-Host terminal replies retain the causing PC, and fallible
-callbacks preserve the original selected enum reason. Attempt and callback budgets span the whole
-outer invocation. Local refusal never exposes a successful partial machine.
+The [step adapter](../src/pvm/step.nim) owns same-owner exclusion and immutable outcomes.
+The [handler stream](../src/pvm/internal/handler_stream.nim) owns code-only moves,
+price policy validation and private memory re-admission. The
+`pvm_stream_pricing_owner` suite compares policy transitions with fresh frames,
+including CPU and gas on refusal.
 
 ## Explicit resource migration
 

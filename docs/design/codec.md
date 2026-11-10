@@ -1,8 +1,8 @@
 # Codecs and ownership
 
-[Design overview](../design.md). Detailed feature contracts live in `spec/`; routine increments
-update their feature contract rather than appending progress here.
+[Design overview](../design.md) · [Codec source map](../../src/codec/README.md)
 
-Codecs and consensus-facing types live in `src/codec/`. Protocol logic remains native Nim. Private,
-acyclic ARC owners retain immutable wire snapshots; borrowed paths use explicit lifetime contracts
-and caller-owned storage. Default/failed tagged results carry no values or progress metadata.
+Codecs own canonical wire layout and typed, bounded capture. Consumers supply the
+schema, policy and chain context. Borrowed codecs serve a synchronous activation.
+[Owned snapshots](../../src/codec/owned.nim) bind later extraction to the exact
+immutable bytes. [Pinned authority](../../spec/codec.md) records the baseline.

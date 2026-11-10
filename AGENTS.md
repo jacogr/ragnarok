@@ -28,14 +28,21 @@ Read only guidance relevant to the task:
 | Tests or harness/registries | `tests/AGENTS.md` / `tools/AGENTS.md` as applicable |
 | PRs, branches or stacks | `docs/agent-workflow.md`; installed `gh-stack` skill for stacks |
 
-Nested instructions apply to their descendants. Do not preload unrelated references. Record
-scope, pinned specification and completion tests before changing protocol behavior. Routine
-feature status, evidence and next work belong in `spec/<feature>.md`; keep shared design pages
-stable unless architectural boundaries change.
+Nested instructions apply to their descendants. Load guidance relevant to the change. Record
+scope, pinned authority and completion checks before changing protocol behavior.
 
-Keep durable module contracts and implementation rationale in the owning source. Use `spec/`
-for pinned references, interpretations, and verification evidence, with links to source contracts
-where relevant.
+The owning source is the primary explanation of the implemented design. A maintainer should
+be able to understand a module's responsibilities, invariants, ownership and important
+tradeoffs from its opening `##` docs. Put the detailed contract at the routine that enforces
+it, including non-obvious ordering, resource bounds, refusal behavior and caller obligations.
+Explain why a choice exists when the reason cannot be inferred from the code.
+
+Update these docs in the same change as the behavior. When moving rationale from Markdown,
+verify it against current code, move the durable explanation and replace the old text with
+a short link to the owner. Preserve exact pins, protocol interpretations and approved
+deviations in `spec/`. Keep verification evidence and historical milestones brief, with
+references to the tests or recorded results. Use `docs/design/` for cross-module boundaries
+and navigation. Keep operator instructions in the applicable usage guide.
 
 ## Safety and implementation
 
