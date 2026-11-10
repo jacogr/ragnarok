@@ -218,14 +218,33 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
         from collections import Counter
-        from native_tests import parse_unit_shard, unit_partition
+        from native_tests import parse_unit_shard, supports_unit, unit_partition
         from failure_plans import parse_failure_shard, failure_partition, FAILURE_PLANS
         from verification_inventory import UNIT_SUITES
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         families = selected_families(text, 'unit', event_context())
         shards = [parse_unit_shard(row['shard']) for row in families if row['group'] == 'suites']
-        names = [name for shard in shards for _, members, _ in unit_partition(shard, 'audit', 'suites')[0] for name in members]
-        self.assertEqual(Counter(names), Counter(UNIT_SUITES))
+        for system, machine in (('Linux', 'x86_64'), ('Linux', 'aarch64'), ('Darwin', 'arm64')):
+            # Verify exactly-once scheduling under each supported host's ABI restrictions.
+            with (self.subTest(system=system, machine=machine),
+                  patch('native_tests.platform.system', return_value=system),
+                  patch('native_tests.platform.machine', return_value=machine)):
+                names = [name for shard in shards
+                         for _, members, _ in unit_partition(shard, 'audit', 'suites')[0]
+                         for name in members]
+                self.assertEqual(Counter(names), Counter(name for name in UNIT_SUITES if supports_unit(name)))
+                self.assertEqual('pvm_aux_loop_x86' in names, machine == 'x86_64')
+                self.assertEqual('pvm_aux_loop_arm' in names, machine != 'x86_64')
+        # Ordinary Linux shards cover x86-64. The excluded ARM suite owns a matching unit runner.
+        stock = job_section(text, 'unit')
+        self.assertTrue(all(runner.startswith('ubuntu-') and not runner.endswith('-arm')
+                            for runner in stock['strategy']['matrix']['os']))
+        arm = job_section(text, 'unit-pvm-arm64')
+        self.assertTrue(arm['runs-on'].startswith('ubuntu-') and arm['runs-on'].endswith('-arm'))
+        self.assertIn('make unit SUITE=pvm_aux_loop_arm', commands(arm))
+        for event in (event_context(), event_context('workflow_dispatch', suite='unit'),
+                      event_context('pull_request', 'labeled', 'ci:unit')):
+            self.assertTrue(expression(arm['if'], event))
         # Corpus plan tasks include their dependency owners; compare whole scheduled task identities.
         from corpus_catalog import parse_corpus_shard, corpus_partition
         corpus = [parse_corpus_shard(row['corpus_shard']) for row in families if row['group'] == 'corpus']

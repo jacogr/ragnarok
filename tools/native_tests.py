@@ -373,7 +373,10 @@ def main():
     parser.add_argument('--suite', choices=UNIT_SUITES, help='Run one discovered native suite only')
     arguments = parser.parse_args()
     if not supports_unit(arguments.suite):
-        parser.error('x86 credit witness requires native Linux x86-64')
+        # Report the restricted profile before provisioning an incompatible native runner.
+        if arguments.suite == CREDIT_WITNESS_SUITE:
+            parser.error('x86 credit witness requires native Linux x86-64')
+        parser.error('Auxiliary loop witness requires its native host ISA: '+str(arguments.suite))
     from setup_nimony import installed
     compiler, _ = installed()
     if arguments.suite is not None:

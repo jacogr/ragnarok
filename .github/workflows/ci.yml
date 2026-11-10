@@ -414,6 +414,30 @@ jobs:
             build/ci/native/bandersnatch/cargo-features.log
             build/ci/native/quic/build.log
 
+  # The standard unit shards run on x86-64. Exercise the ARM-only witness on its actual ABI.
+  unit-pvm-arm64:
+    needs: fixture-provenance
+    if: *requested
+    name: Unit / PVM auxiliary loop (ARM64)
+    runs-on: *ubuntu-arm-version
+    timeout-minutes: *ci-job-timeout
+    steps:
+      - *checkout
+      - *python
+      - *tool-download-cache
+      - name: Execute the ARM64 auxiliary loop witness
+        run: make unit SUITE=pvm_aux_loop_arm
+      - name: Retain ARM64 witness evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-auxiliary-arm64-unit-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/native/selected/*.log
+
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   # Contract group: named workloads report their own results.
   failures:
