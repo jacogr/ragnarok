@@ -147,6 +147,13 @@ private witness supplies an old ARM64 owner. The raw ARM64 branch, region and di
 emitters and their native witnesses remain. General connected control and mixed-store coverage
 still require equivalent shared ARM64 and x86-64 qualification.
 
+## Remaining legacy admission witnesses
+
+The old ARM64 three-block probe and x86-64 cold wide admission are built only with their
+existing witness owners. Ordinary checked dispatch has no synchronous admission call and
+keeps no pending candidates or original-handler table for those paths. The native witnesses
+still exercise legacy publication, refusal and checked continuation under their explicit flags.
+
 ## Initial disposition
 
 This contract records the migration architecture and required evidence. It does not qualify a new
