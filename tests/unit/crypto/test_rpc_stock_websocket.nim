@@ -122,6 +122,8 @@ proc main() {.raises.} =
   rejectUpgrade(listener, port, "/", "Origin: http://untrusted\r\n")
   rejectUpgrade(listener, port, "/", "Origin:\r\n")
   rejectUpgrade(listener, port, "/", "Host: duplicate\r\n")
+  rejectUpgrade(listener, port, "/", "Connection: close\r\n")
+  rejectUpgrade(listener, port, "/", "Upgrade: h2c\r\n")
   rejectUpgrade(listener, port, "/", "Content-Length: 0\r\n")
   var peer = tcp.connect("127.0.0.1", port, afterMs(5000))
   peer.write("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n")

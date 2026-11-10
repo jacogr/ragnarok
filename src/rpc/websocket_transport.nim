@@ -59,7 +59,7 @@ proc listenRpcWebSocket*(port: uint16): http.HttpServer =
 proc upgradeRpcWebSocket*(connection: var http.HttpConnection, uiPort: uint16 = 0): WebSocket {.
     passive, raises.} =
   ## Existing RPC route/origin/body policy precedes the stock RFC handshake and message framing.
-  for field in ["Host", "Origin"]:
+  for field in ["Host", "Origin", "Connection", "Upgrade"]:
     if connection.countRequestHeader(field) > 1:
       connection.close()
       raise ProtocolError
