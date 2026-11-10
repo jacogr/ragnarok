@@ -219,6 +219,9 @@ proc tick*(server: var McpServer, context: QueryContext) =
       slot.stream.close(server.logger, "MCP")
       slot.close()
       continue
+    if slot.stream.expired:
+      slot.stream.stop() # The I/O task retires its halves before slot reuse.
+      continue
     if not slot.stream.canSend: continue
     if slot.output.len == 0 and slot.stream.receiveChunk(slot.input):
       slot.process(tags, server.port, context)

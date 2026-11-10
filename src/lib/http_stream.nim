@@ -17,6 +17,7 @@ type
     final: bool
     failure, cleanupFailure: ErrorCode
     operation: Phase
+    deadline: Deadline
   HttpStream* = object
     exchange: nil ptr Exchange
 
@@ -98,6 +99,8 @@ proc release(s: ptr Exchange, logger: LogWriter, service: string) =
     let level = if s.failure in {EndOfStreamError, TimeoutError}: LogLevel.Debug else: LogLevel.Warn
     let operation = if s.operation == Read: "read" else: "write"
     log(logger, LogTarget.Rpc, level, service & " stream " & operation & " ended: " & $s.failure)
+  elif ioring.expired(s.deadline):
+    log(logger, LogTarget.Rpc, LogLevel.Debug, service & " connection deadline expired")
   if s.cleanupFailure != default(ErrorCode):
     log(logger, LogTarget.Rpc, LogLevel.Warn, service & " reader close failed: " &
         $s.cleanupFailure)
@@ -133,13 +136,13 @@ proc `=wasMoved`*(stream: var HttpStream) {.nodestroy.} =
   ## Transfer the pointer without moving the storage used by the task.
   stream.exchange = nil
 
-proc start*(stream: var HttpStream, fd: cint, limit: int) =
+proc start*(stream: var HttpStream, fd: cint, limit: int, timeoutMs = 5000) =
   ## Take ownership of a configured accepted descriptor and begin one request.
-  assert stream.exchange == nil and fd >= 0 and limit > 0
+  assert stream.exchange == nil and fd >= 0 and limit > 0 and timeoutMs > 0
   let s = cast[ptr Exchange](alloc0(sizeof(Exchange)))
-  s[] = Exchange(phase: ord(Read), limit: limit)
+  let deadline = afterMs(timeoutMs)
+  s[] = Exchange(phase: ord(Read), limit: limit, deadline: deadline)
   stream.exchange = s
-  let deadline = afterMs(5000)
   submit(delay(run(fd, deadline, s)), -1)
 
 proc finished*(stream: HttpStream): bool =
@@ -147,10 +150,20 @@ proc finished*(stream: HttpStream): bool =
   let s = stream.exchange
   s != nil and s.observedPhase == Done
 
+proc expired*(stream: HttpStream): bool =
+  ## Apply the same immutable deadline before dispatching a request or reading a file.
+  let s = stream.exchange
+  s != nil and ioring.expired(s.deadline)
+
+proc stop*(stream: var HttpStream) =
+  ## Retire an expired mailbox without waiting on a dispatcher turn.
+  let s = stream.exchange
+  if s != nil: atomicStore(s.stopping, true, moRelease)
+
 proc receiveChunk*(stream: var HttpStream, input: var string): bool =
   ## Transfer a received chunk to the dispatcher exactly once per request.
   let s = stream.exchange
-  if s == nil or s.observedPhase != Input: return false
+  if s == nil or s.observedPhase != Input or ioring.expired(s.deadline): return false
   input.add(s.data)
   s.data = ""
   true

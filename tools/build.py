@@ -21,6 +21,7 @@ def build_command(compiler, output, crypto, bandersnatch, quic, polkavm=None):
              '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload']
     flags += ['-d:'+name for name in native_defines()]
     if platform.system() == 'Linux':
+        flags += ['-d:nimIoringNoUring']  # Retain partial HTTP writes across retryable readiness events.
         # Linux uses the same LTO linker as the canonical verification path.
         flags.append('--passL:-fuse-ld=lld')
     for name in ('crypto', 'bandersnatch', 'quic', 'pvm_jit'):

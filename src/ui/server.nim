@@ -353,6 +353,9 @@ proc tick*(server: var UiServer) =
       slot.stream.close(server.logger, "UI")
       slot.close()
       continue
+    if slot.stream.expired:
+      slot.stream.stop() # The I/O task retires its halves before slot reuse.
+      continue
     if not slot.stream.canSend: continue
     if slot.output.len == 0 and not slot.fileOpened and not slot.embedded and
         slot.stream.receiveChunk(slot.input):
@@ -364,6 +367,9 @@ proc tick*(server: var UiServer) =
         else: slot.close()
         continue
       logHttpResponse(server.logger, "UI", slot.output)
+    if slot.stream.expired:
+      slot.stream.stop()
+      continue
     if slot.opened and slot.output.len == 0 and slot.embedded:
       slot.readEmbedded() # One fixed-size asset chunk is handed to the writer.
     if slot.opened and slot.output.len == 0 and slot.fileOpened:

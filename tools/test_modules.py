@@ -27,6 +27,8 @@ def check_module(compiler, source, folder, main=False, fast=False, cache=None):
     relative = source.relative_to(ROOT)
     name = '-'.join(relative.with_suffix('').parts)
     flags = ['--mm:arc', '--cc:clang', '--boundchecks:on']
+    if platform.system() == 'Linux':
+        flags += ['-d:nimIoringNoUring']  # Match the HTTP stream readiness backend.
     if fast:
         # The PR gate checks debug code without optimizer or link-time optimization work.
         flags += ['--opt:none']

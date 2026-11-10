@@ -236,3 +236,35 @@ block disconnectedWriter:
   logger.close()
   assert "Management RPC stream write ended:" in messages
   assert "connection retired" notin messages # Trace output follows the configured filter.
+
+block expiredRequest:
+  # Park a complete request in a real management slot until its deadline passes.
+  var pair = default(array[2, cint])
+  assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var wire = packet(request)
+  assert sendBytes(pair[1], wire.toCString(), csize_t(wire.len), 0) == wire.len
+  var listener = default(ManagementServer)
+  # A pipe-like fixture keeps accept separate from the already admitted socket.
+  listener.fd = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  assert listener.fd >= 0 and nonblocking(listener.fd)
+  listener.opened = true
+  listener.info = admin
+  listener.connections[0].opened = true
+  listener.connections[0].stream.start(pair[0], MaxInput, timeoutMs = 200)
+  for attempt in 0..<150:
+    pollHttpStreams()
+    if listener.connections[0].stream.canSend: break
+    discard pauseMicros(1000)
+  assert listener.connections[0].stream.canSend, "request reaches the dispatcher mailbox"
+  for attempt in 0..<1000:
+    if listener.connections[0].stream.expired: break
+    discard pauseMicros(1000)
+  assert listener.connections[0].stream.expired
+  listener.tick()
+  assert listener.connections[0].input.len == 0 and listener.connections[0].output.len == 0
+  listener.close()
+  var octet = '\0'
+  assert receive(pair[1], addr octet, 1, 0) == 0, "expired request closes without a response"
+  discard posix.close(pair[1])
