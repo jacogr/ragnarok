@@ -2112,6 +2112,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         assert jit != nil
         jit.wideCycle.refuseParentOnce = true
 
+      func x86WideParentRefusalPending*(jit: X86Jit): bool =
+        ## The direct witness distinguishes a consumed refusal from an earlier return.
+        jit != nil and jit.wideCycle.refuseParentOnce
+
     func x86WideCandidate*(jit: X86Jit): X86WideCycleCandidate =
       ## Copy the source proof without exposing the owner's callable code offset.
       assert x86WideActive(jit)

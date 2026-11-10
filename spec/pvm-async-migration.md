@@ -128,8 +128,8 @@ old fixture now passes through checked fallback.
 Prepared programs start with a checked plan and empty stream. A runtime-bound owner reaches
 native code through the shared session. The former x86-64 pure-region frame probe had no
 installer, and its whole-block and connected handlers were reachable only from that probe.
-The private wide-parent refusal hook still creates a legacy code owner for its witness. It uses
-the exact checked charge and dirty-loop handlers to seal its source.
+The direct x86-64 wide publisher witness seals the exact checked charge and dirty-loop source
+and creates its own raw code owner, without patching the frame.
 
 The direct x86-64 region lowerer, publication and bridge still support the native shape, capacity,
 retained-leaf and refusal witnesses. The raw probe exhaustion control and real owner counters
@@ -176,10 +176,25 @@ legacy direct region suites also passed. [Direct native CI](https://github.com/j
 
 ## Remaining legacy admission witnesses
 
-The old ARM64 three-block probe and x86-64 cold wide admission are built only with their
-existing witness owners. Ordinary checked dispatch has no synchronous admission call and
-keeps no pending candidates or original-handler table for those paths. The native witnesses
-still exercise legacy publication, refusal and checked continuation under their explicit flags.
+The old ARM64 three-block probe is built only with its existing witness owner. Ordinary checked
+dispatch has no synchronous admission call for that path.
+
+The x86-64 cold wide probe, pending queue, boundary admission and both frame installers are retired.
+The checked frame and stream no longer retain a legacy x86 JIT owner. The seven checked source blocks
+and outside exit in frozen DOOM init and tick match the source of the shared Read
+image. Its installed x86-64 image enters at Read and covers Read, StoreSetup, Store, Tail, Jump,
+Outer and Gate. The outside target remains checked. Each ready tick has 651 checked Gate
+dispatches preceding the 651 native Read entries. The Read charges provide the original paid
+reservation at entry. They do not represent additional checked Read execution. The x86 receipts
+show 251 unpaid returns to Store and 502 checked four-byte Store groups per ready tick. In a
+separate ARM64 trace all 251 unpaid Store returns came from a clean first dirty bit. Independent
+native entry at Gate or at a checked Store continuation remains a separate capability question.
+[Installed x86-64 image and receipts](https://github.com/jacogr/ragnarok/actions/runs/42853746772)
+
+The direct x86 test preserves the source-seal negatives and checked histories. It exercises a
+parent refusal after a real dormant child append, then a separate positive linked parent and child
+with exact gas, attempts, complete memory and checked continuation. Raw image, ABI and capacity
+controls retain their own profiles.
 
 ## Initial disposition
 
