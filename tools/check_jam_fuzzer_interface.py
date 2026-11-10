@@ -272,7 +272,7 @@ def main():
         print(f'JAM fuzz shard {shard[0]}/3; shuffle seed: {seed}', flush=True)
     try:
         compiler, _ = installed()
-        checks = NativeChecks(folder, reuse_builds=True)
+        checks = NativeChecks(folder, reuse_builds=True, stream_io=True)
         report['compiler'] = checks.command([compiler, '--version'], 'compiler')
         report['revision'] = checks.command(['git', 'rev-parse', 'HEAD'], 'revision')['output'].strip()
         report['sources'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()

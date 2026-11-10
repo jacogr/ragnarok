@@ -53,6 +53,24 @@ class StorageResourceTests(unittest.TestCase):
         self.assertNotIn('speedup', resources.summarize(report))
 
 
+    def test_linux_native_build_preserves_storage_profile(self):
+        """Validate an actual NativeChecks command plan and retain epoll for stream workloads."""
+        report = fixture()
+        build = report['checks'][0]
+        binary = Path(build['command'][-2].removeprefix('--out:'))
+        with patch('native_checks.platform.system', return_value='Linux'), patch(
+                'native_checks.cache_directory', return_value=Path('/fixture/cache')), patch.object(
+                resources.NativeChecks, 'command', side_effect=lambda argv, *_args, **_kwargs:
+                {'command': [str(arg) for arg in argv]}) as capture:
+            storage = resources.NativeChecks(binary.parent)
+            receipt, _ = storage.build('/fixture/nimony', resources.SOURCE, binary.name)
+            build['command'] = receipt['command']
+            resources.validate(report)
+            streams = resources.NativeChecks(binary.parent, stream_io=True)
+            receipt, _ = streams.build('/fixture/nimony', resources.SOURCE, binary.name)
+            self.assertIn('-d:nimIoringNoUring', receipt['command'])
+            self.assertEqual(capture.call_count, 2)
+
     def test_tampered_counters_commands_and_provenance_refuse(self):
         """Malformed units, boolean values, missing cases, unchecked builds and changed physical work refuse."""
         mutations = [lambda r: r['observations'].pop(),
