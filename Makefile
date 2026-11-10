@@ -175,7 +175,11 @@ clean-tools:
 	$(PYTHON) tools/managed_tools.py clean
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
-check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
+.PHONY: check-fixture-provenance
+check-fixture-provenance:
+	$(PYTHON) tools/native_fixture_contracts.py
+
+check: check-fixture-provenance check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
@@ -531,6 +535,7 @@ help:
 	  'make unit SUITE=natural  Run one native suite; full output stays under build/tests/native/selected/' \
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
+	  'make check-fixture-provenance  Verify checked-in fixture digests before full testing' \
 	  'make fuzz-pvm-program  Run bounded sanitized program fuzzing (FUZZ_RUNS=16..1000000)' \
 	  'make check-jam-fuzzer-interface  Verify current JAM socket/STF interface; live engine validation pending' \
 	  'make check-jam-network  Verify issue215 Fuzz preset and packaged socket target; live engine pending' \

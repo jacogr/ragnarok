@@ -55,7 +55,6 @@ def successor(parent,slot,*,unfiltered_marker=False,disputes=bytes(3),marks=(),p
         assert witness['null_records'] == sum(row == NULL_VALIDATOR for row in pending) == 4
         assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in pending)).hexdigest()
         assert witness['records_sha256'] == hashlib.sha256(b''.join(pending)).hexdigest()
-        assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
         root = bytes.fromhex(witness['commitment']);seed = entropy[32:64]
         schedule = [active[int.from_bytes(digest(seed+index.to_bytes(4,'little'))[:4],'little') % len(active)][:32]
                     for index in range(600)]

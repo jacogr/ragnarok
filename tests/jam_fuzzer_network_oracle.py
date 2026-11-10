@@ -53,7 +53,6 @@ def commitment(rows):
     """Use only a pinned crypto input witness, never a native STF observation or expected state."""
     witness = json.loads(RING.read_text())
     assert witness['capacity'] == VALIDATORS
-    assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     key = hashlib.sha256(b''.join(row[:32] for row in rows)).hexdigest()
     return bytes.fromhex(witness['commitments'][key])
 

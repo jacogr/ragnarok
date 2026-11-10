@@ -38,7 +38,6 @@ def original(dense=False):
     parent = tiny_original('halt')
     witness = json.loads(RING.read_text())
     assert witness['capacity'] == VALIDATORS
-    assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     public = bytes.fromhex(witness['public_key'])
     assert witness['ordered_public_keys_sha256'] == hashlib.sha256(public*VALIDATORS).hexdigest()
     source = Reader(parent[chapter_key(8)])

@@ -3,13 +3,14 @@
 
 """Discover checked-in native fixture contracts beside their independently authored data.
 
-Exposes FIXTURE_CONTRACTS, load_fixture_contracts and validate_fixture_contracts;
-suite requirements own all consumer links.
+Exposes the static fixture registry and full-run provenance gate. Suite requirements
+own the links used by focused consumers.
 Paths and hashes are explicit expectations, never inferred from the fixture bytes being checked.
 """
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from verification_inventory import unique_object
 
@@ -69,14 +70,58 @@ def load_fixture_contracts(folder):
     return contracts
 
 
-# Runtime provenance discovers both these descriptors and their data under tests/fixtures/.
-FIXTURE_CONTRACTS = load_fixture_contracts(Path(__file__).resolve().parents[1]/'tests/fixtures')
+# Runtime provenance discovers these descriptors and their data under tests/fixtures/.
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_CONTRACTS = load_fixture_contracts(ROOT/'tests/fixtures')
 
 
-def validate_fixture_contracts(identities):
-    """Check every selected pinned member afresh before deriving expectations or executing native code."""
+def require_fixture_contracts(identities):
+    """Require the selected inputs to exist before running a focused consumer."""
     for identity in identities:
-        # Keep each caller's explicit fixture order and reject missing identities or unreadable members.
+        for path, _ in FIXTURE_CONTRACTS[identity][2]:
+            if not path.is_file():
+                raise FileNotFoundError(f'Missing native fixture: {identity} {path}')
+
+
+def validate_fixture_contracts(identities, extra=()):
+    """Verify each declared file once and reject conflicting expectations."""
+    expected = dict(extra)
+    for identity in identities:
         for path, digest in FIXTURE_CONTRACTS[identity][2]:
-            # Do not cache successful hashes: later edits must fail even within the same invocation.
-            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, (identity, str(path))
+            if expected.setdefault(path, digest) != digest:
+                raise ValueError(f'Conflicting fixture checksums: {path}')
+    for path, digest in expected.items():
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError(f'Fixture checksum mismatch: {path}')
+    return len(expected)
+
+
+def verify():
+    """Verify checked-in fixture bytes and their shared manifest links before full testing."""
+    from runtime_provenance import pinned_fixture_digests
+    # Vendor bytes are verified by their source consumers after provisioning.
+    extra = [(path, digest) for path, digest in pinned_fixture_digests(ROOT).items()
+             if path.relative_to(ROOT).parts[0] != 'vendor']
+    count = validate_fixture_contracts(FIXTURE_CONTRACTS, extra)
+    manifest = hashlib.sha256((ROOT/'spec/bandersnatch-pins.json').read_bytes()).hexdigest()
+    for path in sorted((ROOT/'tests/fixtures').glob('jam-*-input.json')):
+        # Only witnesses declaring the shared pin digest participate in this contract.
+        record = json.loads(path.read_text(), object_pairs_hook=unique_object)
+        if 'bandersnatch_pins_sha256' in record and record['bandersnatch_pins_sha256'] != manifest:
+            raise ValueError(f'Bandersnatch manifest checksum mismatch: {path.relative_to(ROOT)}')
+    return count
+
+
+def main():
+    """Report one actionable failure before the full chain starts its workloads."""
+    try:
+        count = verify()
+    except (ValueError, OSError, KeyError) as error:
+        print(f'FAIL fixture provenance: {error}', file=sys.stderr)
+        return 1
+    print(f'PASS fixture provenance: {count} unique files and shared manifest links')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

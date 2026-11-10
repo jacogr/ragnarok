@@ -67,7 +67,6 @@ def original(mode):
     assert witness['capacity'] == full.VALIDATORS
     assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in records)).hexdigest()
     assert witness['records_sha256'] == hashlib.sha256(b''.join(records)).hexdigest()
-    assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     # Initial staging, active and previous rosters share identical distinct ordinal records.
     for chapter in (7,8,9): parent[chapter_key(chapter)] = roster
     schedule = b''.join(records[int.from_bytes(digest(bytes(32)+slot.to_bytes(4,'little'))[:4],'little') % full.VALIDATORS][:32] for slot in range(full.EPOCH))

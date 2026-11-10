@@ -52,7 +52,6 @@ def successor(parent,slot):
         witness = json.loads(RING.read_text())
         assert witness['capacity'] == 1023 and witness['population'] == len(pending)
         assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in pending)).hexdigest()
-        assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
         root = bytes.fromhex(witness['commitment'])
         seed = entropy[32:64]
         schedule = [active[int.from_bytes(digest(seed+i.to_bytes(4,'little'))[:4],'little') % len(active)][:32] for i in range(600)]

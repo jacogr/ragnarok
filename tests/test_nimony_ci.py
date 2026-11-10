@@ -191,6 +191,23 @@ class NimonyCISafeguards(unittest.TestCase):
                         self.assertTrue(host.startswith('ubuntu-'), host)
                         self.assertEqual(host.endswith('-arm'), family['platform'] == 'linux-arm64', host)
 
+    def test_full_fixture_gate_stops_fanout(self):
+        """A stale fixture produces one failed job and leaves focused requests runnable."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        full = event_context()
+        gate = 'fixture-provenance'
+        self.assertTrue(expression(job_condition(text, gate), full))
+        failed = dict(full, needs={gate: {'result': 'failure'}})
+        for name, job in workflow(text)['jobs'].items():
+            if name != gate and expression(job.get('if', True), full):
+                self.assertEqual(job.get('needs'), gate)
+                self.assertFalse(expression(job.get('if', True), failed), name)
+        smoke = event_context('pull_request', 'opened')
+        smoke['needs'][gate]['result'] = 'skipped'
+        self.assertFalse(expression(job_condition(text, gate), smoke))
+        self.assertTrue(expression(job_condition(text, 'build'), smoke))
+        self.assertFalse(expression(job_condition(text, 'unit'), smoke))
+
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
         from collections import Counter
@@ -335,6 +352,10 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('cargo', python_plan)
         self.assertNotIn('tools/test_e2e.py', runtime)
         complete = make_plan('check')
+        preflight = 'tools/native_fixture_contracts.py'
+        self.assertEqual(complete.count(preflight), 1)
+        self.assertLess(complete.index(preflight), complete.index('tools/test_models.py'))
+        self.assertNotIn(preflight, runtime+module_plan+python_plan)
         for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)

@@ -36,7 +36,6 @@ def bank():
     """Validate attributed membership inputs against independent Thin output/context and the existing ring witness."""
     value = json.loads(INPUT.read_text()); records = guests.roster_records()
     assert value['graypaper_commit'] == full.GP and value['capacity'] == 1023
-    assert value['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     assert value['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in records)).hexdigest()
     assert value['commitment'] == json.loads(guests.RING.read_text())['commitment']
     rows = value['tickets']
