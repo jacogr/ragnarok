@@ -154,7 +154,7 @@ class CorpusHarness(unittest.TestCase):
                     command.assert_not_called()
 
     def test_guest_scenario_independent_order_and_failures(self):
-        """Pins and independent answers precede native work; bad builds, process exits and partial rows fail."""
+        """Required files and independent answers precede builds; bad builds, exits and partial rows fail."""
         from native_fixture_contracts import FIXTURE_CONTRACTS
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
@@ -189,11 +189,12 @@ class CorpusHarness(unittest.TestCase):
                     else:
                         self.assertEqual(checks.command.call_args.args[0],
                             [folder/'binary', contracts['state_report'][1], folder/'sample-requests.txt'])
-            pinned.write_bytes(b'tampered')
+            # Focused corpora require the input to exist. The shared preflight checks its digest.
+            pinned.unlink()
             oracle = Mock()
             checks = SimpleNamespace(build=Mock(), command=Mock())
             with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts):
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(FileNotFoundError, 'Missing native fixture: sample'):
                     guest_scenario('compiler', checks, {}, oracle, ('sample',),
                         name='sample', reference='independent', message='sample')
             oracle.assert_not_called()
