@@ -2715,27 +2715,7 @@ when defined(pvmX86Jit):
       let selected = f.handlers[int(next)]
       selected(f, next)
 
-    when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
-      proc flatX86WideMemory(f: var FlatFrame,
-          candidate: X86WideCycleCandidate): X86WideMemory =
-        ## Borrow only complete immutable extents for one call; extra/fragmented reads replay.
-        result = default(X86WideMemory)
-        result.cycle = flatX86CycleMemory(f, candidate.cycle)
-        if f.stackBase <= f.rwBase or f.rwBase <= f.roBase: return
-        let ceiling = uint64(high(uint32))+1'u64
-        if f.stackBase > ceiling or uint64(f.stack.len) > ceiling-f.stackBase or
-            f.rwBase > ceiling or uint64(f.rw.len) > ceiling-f.rwBase or
-            f.roBase > ceiling or uint64(f.ro.len) > ceiling-f.roBase: return
-        result.regions[0].first = f.stackBase
-        result.regions[0].ending = f.stackBase+uint64(f.stack.len)
-        if f.stack.len > 0: result.regions[0].data = addr f.stack[0]
-        result.regions[1].first = f.rwBase
-        result.regions[1].ending = f.rwBase+uint64(f.rw.len)
-        if f.rw.len > 0: result.regions[1].data = addr f.rw[0]
-        result.regions[2].first = f.roBase
-        result.regions[2].ending = f.roBase+uint64(f.ro.len)
-        if f.ro.len > 0: result.regions[2].data = addr f.ro[0]
-
+    when defined(pvmX86WideParentRefusalWitness):
       func flatX86WideReceiptValid(candidate: X86WideCycleCandidate, startGas,
           startAttempts: uint64, state: X86WideState, next: uint32): bool =
         ## Exact charged/completed equations include a speculative read charged before replay.
@@ -2829,101 +2809,6 @@ when defined(pvmX86Jit):
           return openBranches == 1 and readVisits-outsideVisits == 1
         false
 
-      func flatX86WideMatches(f: FlatFrame,
-          candidate: X86WideCycleCandidate): bool =
-        ## Immutable plan identity plus current charges/positive arms retire any stale stream view.
-        let cycle = candidate.cycle
-        let headers = [cycle.prefix, cycle.dirty, cycle.tail, cycle.outside,
-          candidate.loopGuard, candidate.loopBranch, candidate.readBlock]
-        for header in headers:
-          if int(header.header) >= f.arguments.len or
-              int(header.terminal) >= f.arguments.len or
-              f.arguments[int(header.header)].x != header.price or
-              f.arguments[int(header.header)].y != header.span: return false
-        if not flatX86CyclePrefixMatches(f, cycle) or
-            f.handlers[int(cycle.dirty.header)] != flatX86CycleWorker or
-            f.handlers[int(cycle.tail.header)] != flatCharge or
-            f.handlers[int(cycle.outside.header)] != flatCharge or
-            f.handlers[int(candidate.readBlock.header)] != flatCharge or
-            f.handlers[int(candidate.loopBranch.header)] != flatX86WideWorker or
-            f.handlers[int(cycle.outside.terminal)] != flatCachedJump[40] or
-            f.handlers[int(candidate.loopGuard.terminal)] != flatBranch[81] or
-            f.handlers[int(candidate.loopBranch.terminal)] != flatBranch[88] or
-            f.handlers[int(candidate.readBlock.terminal)] != flatCachedJump[1]:
-          return false
-        if candidate.loopGuard.kind != X86MemoryCycleHandlerKind.Ordinary or
-            f.handlers[int(candidate.loopGuard.header)] != flatCharge: return false
-        let outside = f.arguments[int(cycle.outside.terminal)]
-        let guardArms = f.arguments[int(candidate.loopGuard.terminal)]
-        let branchArms = f.arguments[int(candidate.loopBranch.terminal)]
-        let readTarget = f.arguments[int(candidate.readBlock.terminal)]
-        outside.y == candidate.loopGuard.header and
-          uint32(guardArms.x shr 32) == candidate.loopGuard.yes and
-          guardArms.y == candidate.loopGuard.no and
-          uint32(branchArms.x shr 32) == candidate.loopBranch.yes and
-          branchArms.y == candidate.loopBranch.no and
-          readTarget.y == cycle.prefix.header
-
-      proc flatX86WideWorker(f: var FlatFrame, offset: uint32): uint32 =
-        ## One linked image returns only complete receipts or an already-charged read replay.
-        let saved = if int(offset) < f.x86Original.len: f.x86Original[int(offset)] else: nil
-        if saved == nil: flatX86CycleAbort(); return flatStop
-        let jit = f.x86Jit
-        if jit == nil or not x86WideActive(jit): return saved(f, offset)
-        if f.plan == nil or not x86WideBound(jit, cast[pointer](f.plan)):
-          flatX86CycleAbort()
-          return flatStop
-        let candidate = x86WideCandidate(jit)
-        let child = x86CycleSlot(jit, candidate.cycle.dirty.header)
-        if child < 0 or not x86CycleBound(jit, child, cast[pointer](f.plan)) or
-            f.preparationFailure != FlatError.None or not f.plan.allowNative or
-            f.plan.singleStep or f.pricingKind != 0 or f.info.blockCharged or
-            f.barrier != flatStop or offset != candidate.loopBranch.header or
-            not flatX86WideMatches(f, candidate):
-          retireX86Wide(jit)
-          if f.handlers[int(offset)] == flatX86WideWorker:
-            f.handlers[int(offset)] = saved
-          return saved(f, offset)
-        var memory = flatX86WideMemory(f, candidate)
-        if memory.cycle.writePtr == nil: return saved(f, offset)
-        var state = X86WideState(cycle: X86CycleState(gas: uint64(f.info.gas),
-          attempts: f.remaining, visits: [0'u64, 0'u64, 0'u64], wordGroups: 0,
-          lastCompleted: high(uint32), exitKind: 0, reserved: 0),
-          outerVisits: [0'u64, 0'u64, 0'u64, 0'u64], childCalls: 0)
-        let startGas = state.cycle.gas
-        let startAttempts = state.cycle.attempts
-        let receipt = callX86WideCycle(jit, f.info.registers, memory, f.dirtyPages, state)
-        if receipt == 0: return saved(f, offset)
-        if receipt shr 32 != 1: flatX86CycleAbort(); return flatStop
-        let next = uint32(receipt and 0xffffffff'u64)
-        if not flatX86WideReceiptValid(candidate, startGas, startAttempts, state, next) or
-            not recordX86WideCycle(jit, candidate, state):
-          flatX86CycleAbort()
-          return flatStop
-        f.info.gas = MachineGas(state.cycle.gas)
-        f.remaining = state.cycle.attempts
-        f.info.blockCharged = state.cycle.exitKind == 3
-        if state.cycle.lastCompleted != high(uint32):
-          let completed = state.cycle.lastCompleted
-          let headers = [candidate.cycle.prefix, candidate.cycle.dirty,
-            candidate.cycle.tail, candidate.cycle.outside, candidate.loopGuard,
-            candidate.loopBranch, candidate.readBlock]
-          for header in headers:
-            if completed == header.header:
-              f.stoppedAt = header.terminal
-              f.reservation = header.header or flatReservationHeaderFlag
-              break
-          f.attemptedExit = false
-          f.barrier = flatStop
-        if state.cycle.exitKind == 3:
-          f.reservation = candidate.readBlock.header or flatReservationHeaderFlag
-          if int(next) >= f.handlers.len: flatX86CycleAbort(); return flatStop
-          let selected = f.handlers[int(next)]
-          return selected(f, next)
-        if state.cycle.exitKind == 2: return next
-        if next == offset: return saved(f, offset)
-        next
-
     proc flatX86MemoryCycleImageProof*(f: FlatFrame, prefixPc: uint32,
         image: var seq[byte]): bool =
       ## A private witness can inspect exact generated bytes without publishing or executing x86.
@@ -2964,18 +2849,6 @@ when defined(pvmX86Jit):
             not flatX86WideEmission(f, candidate, emission): return false
         buildX86WideCycleImage(candidate, emission, 16'u32, 0'u32, image)
 
-      proc flatX86WidePublishedImageProof*(f: FlatFrame,
-          image: var seq[byte]): bool =
-        ## Retained publication identity for the cold B/C timing control.
-        image = @[]
-        let jit = f.x86Jit
-        if jit == nil or not x86WideBound(jit, cast[pointer](f.plan)):
-          return false
-        var emission = default(X86WideEmission)
-        if not flatX86WideEmission(f, x86WideCandidate(jit), emission):
-          return false
-        x86WidePublishedSourceImage(jit, emission, image)
-
     func flatX86WideStatistics*(f: FlatFrame): array[2, uint64] =
       ## Validated wider entries and canonical replay refusals only.
       let jit = f.x86Jit
@@ -2998,49 +2871,6 @@ when defined(pvmX86Jit):
           state: X86WideState, next: uint32): bool =
         ## Validate a typed native completion without installing a frame handler.
         flatX86WideReceiptValid(candidate, gas, attempts, state, next)
-
-    when defined(pvmX86WideCycleProof):
-      func flatX86WideStatisticsProof*(f: FlatFrame): array[2, uint64] =
-        ## Preserve the private witness name over the production counter.
-        flatX86WideStatistics(f)
-
-    when defined(pvmX86WideCycleProof):
-      proc flatX86InstallWideCycleProof*(f: var FlatFrame, prefixPc: uint32,
-          childInstalled: var bool, activateParent = true): bool =
-        ## Keep the private proof's independently callable child and optional parent.
-        childInstalled = false
-        var candidate = default(X86WideCycleCandidate)
-        var emission = default(X86WideEmission)
-        if not flatX86SealWideCycle(f, prefixPc, candidate): return false
-        let jit = f.x86Jit
-        if jit == nil or f.plan == nil or x86WideActive(jit) or
-            not f.plan.allowNative or f.plan.singleStep or f.pricingKind != 0:
-          return false
-        let dirty = int(candidate.cycle.dirty.header)
-        let branch = int(candidate.loopBranch.header)
-        if dirty >= f.handlers.len or branch >= f.handlers.len or
-            f.handlers[dirty] != flatChargedWordLoop or f.handlers[branch] != flatCharge or
-            (dirty < f.x86Original.len and f.x86Original[dirty] != nil) or
-            (branch < f.x86Original.len and f.x86Original[branch] != nil) or
-            x86CycleSlot(jit, candidate.cycle.dirty.header) >= 0:
-          return false
-        if not flatX86WideEmission(f, candidate, emission): return false
-        if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-        if not flatX86InstallMemoryCycle(f, prefixPc): return false
-        let child = x86CycleSlot(jit, candidate.cycle.dirty.header)
-        if child < 0: return false
-        childInstalled = true
-        if not x86CycleBound(jit, child, cast[pointer](f.plan)) or
-            x86CycleCandidate(jit, child) != candidate.cycle or
-            f.handlers[branch] != flatCharge or f.x86Original[dirty] != flatChargedWordLoop or
-            f.handlers[dirty] != flatX86CycleWorker:
-          return false
-        if not publishX86WideCycle(jit, candidate, emission, child, cast[pointer](f.plan)):
-          return false
-        if activateParent:
-          f.x86Original[branch] = f.handlers[branch]
-          f.handlers[branch] = flatX86WideWorker
-        true
 
     func flatX86MemoryCycleProofStatistics*(f: FlatFrame): array[2, uint64] =
       ## Only validated native calls and completed four-block groups appear in the private receipt.
