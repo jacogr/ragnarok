@@ -60,12 +60,12 @@ env:
   # Exercise the shipped minified JS/CSS in every native/browser verification job.
   UI_MINIFY: "1"
 
-# Independent groups fan out on separate VMs after the full-run fixture gate.
+# Smoke and full verification share the fixture gate before starting build jobs.
 jobs:
-  # Full verification stops here if a shared fixture pin is stale.
+  # A stale fixture pin stops Smoke or full verification before compilation.
   fixture-provenance:
     name: Fixture provenance
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm' || github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     runs-on: &ubuntu-x86-version ubuntu-26.04
     timeout-minutes: 5
     steps:
