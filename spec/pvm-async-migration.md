@@ -152,8 +152,9 @@ still require equivalent shared ARM64 and x86-64 qualification.
 The old ARM64 three-block probe is built only with its existing witness owner. Ordinary checked
 dispatch has no synchronous admission call for that path.
 
-The x86-64 cold wide probe, pending queue, boundary admission and frame installer are retired. The seven checked
-source blocks and outside exit in frozen DOOM init and tick match the source of the shared Read
+The x86-64 cold wide probe, pending queue, boundary admission and both frame installers are retired.
+The checked frame and stream no longer retain a legacy x86 JIT owner. The seven checked source blocks
+and outside exit in frozen DOOM init and tick match the source of the shared Read
 image. Its installed x86-64 image enters at Read and covers Read, StoreSetup, Store, Tail, Jump,
 Outer and Gate. The outside target remains checked. Each ready tick has 651 checked Gate
 dispatches preceding the 651 native Read entries. The Read charges provide the original paid

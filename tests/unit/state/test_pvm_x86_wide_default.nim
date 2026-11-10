@@ -113,8 +113,6 @@ proc equalOutcome(actual, checked: FlatFrame) =
 proc checkUnbound(frame: FlatFrame) =
   ## Ordinary frames have no shared session or old JIT; semantic comparisons prove the guest result.
   assert flatX86Statistics(frame) == default(array[5, uint64]), "unbound frame has no native image or entry"
-  assert flatX86WideStatistics(frame) == default(array[2, uint64]), "unbound frame has no wide entry"
-  assert flatX86MemoryCycleStatistics(frame) == default(array[2, uint64]), "no dormant child execution"
 
 let sourceProgram = source()
 let nativePlan = prepared(sourceProgram, true)

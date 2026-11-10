@@ -158,11 +158,8 @@ type
       when ArmRegionWitness:
         armOriginal: seq[nil FlatHandler] # Retain original checked entries for the witness owner.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
-    when defined(pvmX86Jit):
-      x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
-      x86Jit: nil X86Jit                  # Exclusive code-only owner; never contains an invocation address.
-      when defined(pvmX86CheckedStoreReceipt):
-        x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
+    when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+      x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
       readContext: NativeReadContext
       readContextReady: bool
@@ -207,10 +204,6 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
     when ArmRegionWitness:
       `=wasMoved`(frame.armOriginal)
     `=wasMoved`(frame.armJit)
-  when defined(pvmX86Jit):
-    # The admission object's managed bitmap moves with its code-only children.
-    `=wasMoved`(frame.x86Original)
-    `=wasMoved`(frame.x86Jit)
   when NativeCheckedReadEnabled:
     # A moved frame cannot retain a ready context into storage now owned elsewhere.
     frame.readContext = default(NativeReadContext)
@@ -2215,11 +2208,9 @@ when defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
-  proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
-    ## Copy real region counters when a witness frame owns the legacy code cache.
-    let jit = f.x86Jit
-    if jit == nil: default(array[2, uint64])
-    else: x86RegionStatistics(jit)
+  func flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
+    ## The checked stream has no private x86 region owner. Raw regions report through their own JIT.
+    default(array[2, uint64])
 
   when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
@@ -2528,12 +2519,6 @@ when defined(pvmX86Jit):
     proc flatX86CycleAbort() {.cdecl, importc: "abort", header: "stdlib.h".}
       ## An impossible post-native receipt cannot be rolled back or replayed through checked code.
 
-    func flatX86CyclePrefixMatches(f: FlatFrame, candidate: X86MemoryCycleCandidate): bool =
-      ## Reuse the seal only while its prefix still has the exact checked charge handler.
-      let prefix = candidate.prefix
-      prefix.kind == X86MemoryCycleHandlerKind.Ordinary and
-        int(prefix.header) < f.handlers.len and f.handlers[int(prefix.header)] == flatCharge
-
     proc flatX86CycleReadRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         width: uint8, memory: var X86CycleMemory) =
       ## A current private region supplies one clipped address interval, or no native read capability.
@@ -2658,63 +2643,6 @@ when defined(pvmX86Jit):
         tailStep: f.arguments[int(candidate.tail.header+2)].slots,
         tailBranch: f.arguments[int(candidate.tail.terminal)].slots)
 
-    proc flatX86CycleWorker(f: var FlatFrame, offset: uint32): uint32 =
-      ## Only the explicit proof installer can make this checked dirty-header wrapper reachable.
-      let saved = if int(offset) < f.x86Original.len: f.x86Original[int(offset)] else: nil
-      if saved == nil: flatX86CycleAbort(); return flatStop
-      let jit = f.x86Jit
-      if jit == nil: return saved(f, offset)
-      let slot = x86CycleSlot(jit, offset)
-      if slot < 0: return saved(f, offset)
-      let candidate = x86CycleCandidate(jit, slot)
-      if f.plan == nil or not x86CycleBound(jit, slot, cast[pointer](f.plan)):
-        flatX86CycleAbort()
-        return flatStop
-      if f.preparationFailure != FlatError.None or not f.plan.allowNative or
-          f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop:
-        return saved(f, offset)
-      if int(candidate.tail.header) >= f.handlers.len or
-          int(candidate.outside.header) >= f.handlers.len or
-          f.handlers[int(offset)] != flatX86CycleWorker or
-          not flatX86CyclePrefixMatches(f, candidate) or
-          f.handlers[int(candidate.tail.header)] != flatCharge or
-          f.handlers[int(candidate.outside.header)] != flatCharge:
-        # A persistent handler promotion only retires this optimization, preserving its pure region.
-        retireX86Cycle(jit, slot)
-        if f.handlers[int(offset)] == flatX86CycleWorker: f.handlers[int(offset)] = saved
-        return saved(f, offset)
-      var memory = flatX86CycleMemory(f, candidate)
-      if memory.writePtr == nil: return saved(f, offset)
-      var state = X86CycleState(gas: uint64(f.info.gas), attempts: f.remaining,
-        visits: [0'u64, 0'u64, 0'u64], wordGroups: 0, lastCompleted: high(uint32),
-        exitKind: 0, reserved: 0)
-      let startGas = state.gas
-      let startAttempts = state.attempts
-      let receipt = callX86MemoryCycle(jit, slot, f.info.registers, memory, f.dirtyPages, state)
-      if receipt == 0: return saved(f, offset) # C refused before invoking any native byte.
-      if receipt shr 32 != 1: flatX86CycleAbort(); return flatStop
-      let next = uint32(receipt and 0xffffffff'u64)
-      if not flatX86CycleReceiptValid(candidate, startGas, startAttempts, state, next):
-        flatX86CycleAbort()
-        return flatStop
-      if not recordX86MemoryCycle(jit, state.visits[0], state.visits[1],
-          state.visits[2], state.wordGroups): flatX86CycleAbort(); return flatStop
-      f.info.gas = MachineGas(state.gas)
-      f.remaining = state.attempts
-      if state.lastCompleted != high(uint32):
-        let completed = if state.lastCompleted == candidate.prefix.header: candidate.prefix
-          elif state.lastCompleted == candidate.dirty.header: candidate.dirty
-          else: candidate.tail
-        f.stoppedAt = completed.terminal
-        f.reservation = completed.header or flatReservationHeaderFlag
-        f.attemptedExit = false
-        f.info.blockCharged = false
-        f.barrier = flatStop
-      if state.exitKind == 2: return next
-      if next == offset: return saved(f, offset)
-      let selected = f.handlers[int(next)]
-      selected(f, next)
-
     when defined(pvmX86WideParentRefusalWitness):
       func flatX86WideReceiptValid(candidate: X86WideCycleCandidate, startGas,
           startAttempts: uint64, state: X86WideState, next: uint32): bool =
@@ -2817,27 +2745,6 @@ when defined(pvmX86Jit):
       if not flatX86SealMemoryCycle(f, prefixPc, candidate): return false
       buildX86MemoryCycleImage(candidate, flatX86CycleEmission(f, candidate), image)
 
-    proc flatX86InstallMemoryCycle(f: var FlatFrame, prefixPc: uint32): bool =
-      ## Publish one sealed child; refusal leaves the original checked dirty header installed.
-      var candidate = default(X86MemoryCycleCandidate)
-      if not flatX86SealMemoryCycle(f, prefixPc, candidate): return false
-      let jit = f.x86Jit
-      if jit == nil or x86CycleSlot(jit, candidate.dirty.header) >= 0: return false
-      if int(candidate.dirty.header) >= f.handlers.len or
-          f.handlers[int(candidate.dirty.header)] != flatChargedWordLoop: return false
-      let published = publishX86MemoryCycle(jit, candidate,
-        flatX86CycleEmission(f, candidate), cast[pointer](f.plan))
-      if published < 0: return false
-      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-      f.x86Original[int(candidate.dirty.header)] = f.handlers[int(candidate.dirty.header)]
-      f.handlers[int(candidate.dirty.header)] = flatX86CycleWorker
-      true
-
-    when defined(pvmX86MemoryCycleNativeProof):
-      proc flatX86InstallMemoryCycleProof*(f: var FlatFrame, prefixPc: uint32): bool =
-        ## Private witness uses the same source-bound child publisher as default admission.
-        flatX86InstallMemoryCycle(f, prefixPc)
-
     when defined(pvmX86WideCycleProof):
       proc flatX86WideImageProof*(f: FlatFrame, prefixPc: uint32,
           image: var seq[byte]): bool =
@@ -2849,18 +2756,6 @@ when defined(pvmX86Jit):
             not flatX86WideEmission(f, candidate, emission): return false
         buildX86WideCycleImage(candidate, emission, 16'u32, 0'u32, image)
 
-    func flatX86WideStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Validated wider entries and canonical replay refusals only.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86WideStatistics(jit)
-
-    func flatX86MemoryCycleStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Validated narrow child calls and groups exclude dormant published code.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86MemoryCycleStatistics(jit)
-
     when defined(pvmX86WideParentRefusalWitness):
       proc flatX86WideSourceProof*(f: FlatFrame, prefixPc: uint32,
           candidate: var X86WideCycleCandidate, emission: var X86WideEmission): bool =
@@ -2871,18 +2766,6 @@ when defined(pvmX86Jit):
           state: X86WideState, next: uint32): bool =
         ## Validate a typed native completion without installing a frame handler.
         flatX86WideReceiptValid(candidate, gas, attempts, state, next)
-
-    func flatX86MemoryCycleProofStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Only validated native calls and completed four-block groups appear in the private receipt.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86MemoryCycleStatistics(jit)
-
-    func flatX86CycleTailVisitsProof*(f: FlatFrame): uint64 =
-      ## Counts only validated native tail completions, not checked fallback reads.
-      let jit = f.x86Jit
-      if jit == nil: 0'u64
-      else: x86MemoryCycleTailVisits(jit)
 
     func flatX86CycleBoundaryProof*(f: FlatFrame): array[7, uint64] =
       ## Private literals can inspect the exact unstarted/paid/refund bookkeeping after fallback.
@@ -2898,25 +2781,6 @@ when defined(pvmX86Jit):
       [uint64(if memory.readPtr == nil: 0 else: 1), memory.readFirst,
         memory.readEnd, uint64(if memory.writePtr == nil: 0 else: 1),
         memory.writeFirst, memory.writeEnd, uint64(memory.dirtyWords)]
-
-    func flatX86CycleRegionStatusProof*(f: FlatFrame): uint8 =
-      ## Inspect the separate pure-region owner without exposing its code offset or invocation pointer.
-      let jit = f.x86Jit
-      if jit == nil: 0'u8 else: x86RegionStatus(jit)
-
-    proc flatX86PublishIndependentRegionProof*(f: var FlatFrame): bool =
-      ## Publish one inert pure-region image solely to prove the cycle retains the same region owner.
-      let jit = f.x86Jit
-      if jit == nil: return false
-      if x86RegionStatus(jit) == 2: return true
-      if x86RegionStatus(jit) != 0: return false
-      var body = default(X86Block)
-      emitX86Operation(body, 149'u8, default(RegisterSlots), 1)
-      emitX86Branch(body, 171'u8, default(RegisterSlots), 0, 500, 501)
-      var blocks = default(array[2, X86RegionBlock])
-      blocks[0] = X86RegionBlock(header: 500, span: 2, operations: 2,
-        yes: 500, no: 501, price: 3, body: move(body))
-      publishX86Region(jit, blocks, 1)
 
     func flatX86CycleReceiptProof*(candidate: X86MemoryCycleCandidate, startGas,
         startAttempts: uint64, state: X86CycleState, next: uint32): bool =
@@ -3443,9 +3307,6 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
     when ArmRegionWitness:
       replacement.armOriginal = move(f.armOriginal)
     replacement.armJit = move(f.armJit)
-  when defined(pvmX86Jit):
-    replacement.x86Original = move(f.x86Original)
-    replacement.x86Jit = move(f.x86Jit)
   f = move(replacement)
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -3639,9 +3500,6 @@ type FlatStream* = object
     when ArmRegionWitness:
       armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
-  when defined(pvmX86Jit):
-    x86Original: seq[nil FlatHandler]
-    x86Jit: nil X86Jit
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
@@ -3662,9 +3520,6 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     when ArmRegionWitness:
       result.armOriginal = move(f.armOriginal)
     result.armJit = move(f.armJit)
-  when defined(pvmX86Jit):
-    result.x86Original = move(f.x86Original)
-    result.x86Jit = move(f.x86Jit)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Restore an executable stream only for the exact immutable plan.
@@ -3685,9 +3540,6 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     when ArmRegionWitness:
       f.armOriginal = move(stream.armOriginal)
     f.armJit = move(stream.armJit)
-  when defined(pvmX86Jit):
-    f.x86Original = move(stream.x86Original)
-    f.x86Jit = move(stream.x86Jit)
   stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
@@ -3714,23 +3566,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 
 when defined(pvmX86Jit):
   func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
-    ## Copy diagnostics only; the code mapping and all mutable owner state remain private.
-    let jit = stream.x86Jit
-    if jit == nil: return default(array[7, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs, jit.branchCalls,
-        jit.headerCalls]
+    ## Private frame counters are empty. Prepared execution reports through the shared native owner.
+    default(array[7, uint64])
 
   func flatX86Statistics*(frame: FlatFrame): array[5, uint64] =
-    ## Focused internal witnesses distinguish native execution from complete checked fallback.
-    let jit = frame.x86Jit
-    if jit == nil: return default(array[5, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs]
+    ## Unbound witness frames retain checked execution without a private executable cache.
+    default(array[5, uint64])
 
   func flatX86ControlStatistics*(frame: FlatFrame): array[2, uint64] =
-    ## Copied native branch/header counts prove control executed without exposing the exclusive cache.
-    let jit = frame.x86Jit
-    if jit == nil: return default(array[2, uint64])
-    [jit.branchCalls, jit.headerCalls]
+    ## Unbound frame probes have no native branch or header entries.
+    default(array[2, uint64])
 
 when defined(pvmArm64JitOwnerReceipt):
   func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
