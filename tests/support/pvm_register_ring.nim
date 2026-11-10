@@ -8,7 +8,7 @@ import ../../src/pvm/[machine, program, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[native_ir, native_platform, native_register_ring]
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
-  import ../../src/pvm/internal/native_pipeline
+  import ../../src/pvm/internal/[handler_stream, native_pipeline]
 
 const
   # The original ring uses false, false and true respectively to continue.
@@ -111,6 +111,22 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
     called = true
     default(HostResponse)
 
+  proc runRingFrame(plan: FlatPlan, source: Machine, session: NativeSession,
+      stream: var FlatStream, budget: uint64): MachineInfo =
+    ## Exercise the normal exclusive stream restore and worker boundary without a host callback.
+    beginNativeInvocation(session, budget)
+    var created = prepareFlatMemoryFrame(plan, source.memoryOf.value, source.machineInfo.value)
+    assert created.error == FlatError.None
+    var frame = takeValue(created)
+    frame.nativeSession = session
+    restoreFlatStream(frame, stream)
+    runFlat(frame, budget)
+    assert frame.reason == StepError.None and frame.exit == StepExit.Halt
+    let work = settledNativeWork(frame, budget)
+    stream = takeFlatStream(frame)
+    finishNativeInvocation(session, work)
+    frame.info
+
   proc checkRuntimeRing() =
     ## Prove worker selection over the earlier pure prefix and public entry at every rotation.
     let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
@@ -125,11 +141,14 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
       assert false, "register ring worker failed to start"
     let limits = defaultPreparedLimits(Cycles)
     var prepared = default(PreparedProgram)
+    var blocker = default(PreparedProgram)
     block:
-      # Drop the constructor result before exercising exclusive image retirement.
+      # Drop both constructor results before testing exact image retirement.
       let created = newPreparedProgram(program, limits, PvmBackend.Jit, runtime)
-      assert created.error == PreparationError.None
+      let occupying = newPreparedProgram(program, limits, PvmBackend.Jit, runtime)
+      assert created.error == PreparationError.None and occupying.error == PreparationError.None
       prepared = created.value
+      blocker = occupying.value
     let checked = newPreparedProgram(program, limits, PvmBackend.Interpreted).value
     let quota = ExecutionStepLimit(20000)
     var called = false
@@ -139,14 +158,28 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
     info.registers[4] = RegisterValue(0x7ffff800)
     info.registers[7] = RegisterValue(1)
     let first = captureMachine(program, memory.value, info).value
-    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+    pauseNativeCompiler(runtime, true)
+    let occupying = executeWithHost(first, called, noHost, quota, HostCallLimit(0), blocker)
+    assert occupying.error == StepError.None and occupying.value.exit == StepExit.Halt
+    assert runtimeInfo(runtime).phase == NativePhase.Queued and runtimeInfo(runtime).submitted == 1
     let trained = executeWithHost(first, called, noHost, quota, HostCallLimit(0), prepared)
-    assert not called and trained.error == StepError.None, "training error " & $trained.error
-    assert trained.value.exit == StepExit.Halt, "training exit " & $trained.value.exit
-    assert trained.value.backend == PvmBackend.Interpreted and runtimeInfo(runtime).submitted == 1,
-      "training submission " & $runtimeInfo(runtime).submitted
+    assert not called and trained.error == StepError.None and trained.value.exit == StepExit.Halt
+    assert trained.value.backend == PvmBackend.Interpreted and runtimeInfo(runtime).submitted == 1
+    assert preparedNativeState(prepared).value == NativeState.Deferred
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    blocker = default(PreparedProgram)
+    assert runtimeInfo(runtime).registered == 0
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+    # The retry exits from the first block. This short call cannot observe a new closed round.
+    var shortInfo = info
+    shortInfo.registers[8] = RegisterValue(1)
+    let short = captureMachine(program, memory.value, shortInfo).value
+    let retried = executeWithHost(short, called, noHost, ExecutionStepLimit(64), HostCallLimit(0), prepared)
+    assert retried.error == StepError.None and retried.value.exit == StepExit.Halt
+    assert retried.value.backend == PvmBackend.Interpreted and runtimeInfo(runtime).submitted == 2
     let publication = waitNativeCompilerGate(runtime)
-    assert publication.hasImage and publication.kind == NativeKind.RegisterRing, "ring selection"
+    assert publication.hasImage and publication.kind == NativeKind.RegisterRing, "retained ring retry"
     releaseNativeCompilerGate(runtime)
     waitNativeCompiler(runtime)
     const operations = [16381'u64, 16378'u64, 16384'u64]
@@ -195,7 +228,53 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
           assert machineInfo(ready.value.machine).value == machineInfo(
               baseline.value.machine).value,
             "boundary machine parity at " & $quotaLeft & " / " & $gas
+    # A ready paid entry must leave the first debit with its original checked worker.
+    info.pc = CodeAddress(0)
+    info.gas = MachineGas(gasStart)
+    info.blockCharged = true
+    let paid = captureMachine(program, memory.value, info).value
+    let paidExpected = executeWithHost(paid, called, noHost, quota, HostCallLimit(0), checked)
+    let beforePaid = preparedInfo(prepared).value
+    let paidActual = executeWithHost(paid, called, noHost, quota, HostCallLimit(0), prepared)
+    assert paidExpected.error == StepError.None and paidActual.error == StepError.None
+    assert paidExpected.value.exit == paidActual.value.exit and not called
+    assert machineInfo(paidActual.value.machine).value == machineInfo(
+        paidExpected.value.machine).value
+    assert preparedInfo(prepared).value.nativeCalls == beforePaid.nativeCalls, "paid entry stays checked"
     prepared = default(PreparedProgram)
+    assert runtimeInfo(runtime).registered == 0
+
+    # Cancel an actual old-epoch nomination after the handoff and discard its checked stream.
+    var admitted = prepareFlatPlan(program, Cycles, defaultFlatLimits(), allowNative = false)
+    assert admitted.error == FlatError.None
+    let plan = takeValue(admitted)
+    var session = newNativeSession(runtime)
+    var stream = default(FlatStream)
+    let oldEpoch = nativeEpoch(session)
+    let beforeReset = runtimeInfo(runtime)
+    pauseNativeCompiler(runtime, true)
+    let original = runRingFrame(plan, first, session, stream, uint64(quota))
+    assert nativeState(session) == NativeState.Pending
+    assert runtimeInfo(runtime).submitted == beforeReset.submitted+1
+    invalidateNativeStream(session)
+    stream = default(FlatStream)
+    assert nativeEpoch(session) == oldEpoch+1 and nativeState(session) == NativeState.Deferred
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completed ==
+        beforeReset.completed
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+    let rebuilt = runRingFrame(plan, first, session, stream, uint64(quota))
+    assert original == rebuilt and runtimeInfo(runtime).submitted == beforeReset.submitted+2
+    let replacement = waitNativeCompilerGate(runtime)
+    assert replacement.kind == NativeKind.RegisterRing and replacement.hasImage
+    assert replacement.epoch == oldEpoch+1 and replacement.ticket > publication.ticket
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    let ready = runRingFrame(plan, first, session, stream, uint64(quota))
+    let stats = nativeStatistics(session)
+    assert ready == original and stats[0] == 1 and stats[1] == 1 and stats[2] == operations[0]
+    session = default(NativeSession)
     assert close(runtime), "close register ring worker"
     assert runtimeInfo(runtime).registered == 0, "retire register ring image"
 
