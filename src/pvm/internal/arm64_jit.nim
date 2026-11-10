@@ -964,8 +964,9 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
 
 when NativeCheckedReadEnabled:
   proc emitArmCheckedReadAt(span: var ArmReadSpan, destination: uint32,
-      opcode: range[124..130]) =
-    ## Read the true width from the invocation's clipped descriptors using the address in X3.
+      opcode: range[124..130], pointerOnly: bool = false) =
+    ## Resolve the full access at X3 in descriptor order. Load the word or
+    ## retain its invocation-local address for the caller.
     let width = indirectMemoryAccess(opcode).width
     var accepted = default(array[3, int])
     for region in 0..<3:
@@ -979,8 +980,11 @@ when NativeCheckedReadEnabled:
       span.body.words.add(0xeb02003f'u32) # CMP X1,X2.
       span.body.words.add(0x54000088'u32) # B.HI next_descriptor (offset exceeds the last load).
       span.body.words.add(0xf9400222'u32 or ((descriptor+2) shl 10)) # LDR X2,[X17,#data].
-      span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
-        destination) # Unsigned loads clear upper bits; signed loads extend into the full Xd.
+      if pointerOnly:
+        span.body.words.add(0x8b010040'u32 or destination) # ADD Xd,X2,X1, without a guest read.
+      else:
+        span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
+          destination) # Unsigned loads clear upper bits; signed loads extend into the full Xd.
       accepted[region] = span.body.words.len
       span.body.words.add(0x14000000'u32) # B next_operation (patched below).
     armReadRefusal(span, 0x14000000'u32, false) # B refuse (skip the commit epilogue).
@@ -2764,7 +2768,9 @@ when NativeReadCycleEnabled:
   proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
-    ## the common exit publishes the changed lanes.
+    ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
+    ## readable extent once. Tail checks for a missing extent after gas and quota, and loads
+    ## the current signed word after preceding Stores.
     const
       readCount = 22
       readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,
@@ -2816,7 +2822,7 @@ when NativeReadCycleEnabled:
         emitArmOperation(setupBank, op.opcode, op.slots, op.immediate)
     var tail = default(ArmReadSpan)
     armCompactImmediate(tail.body.words, 3, cycle.tailLoad.immediate and 0xffffffff'u64)
-    emitArmCheckedReadAt(tail, 0, 129) # Absolute LDRSW stages in X0 before the tail debit.
+    emitArmCheckedReadAt(tail, 26, 129, pointerOnly = true)
     let tailSlot = uint32(cycle.tailLoad.slots.aIndex)
     var tailStep = newArmRegionBody()
     emitArmOperation(tailStep, cycle.tailStep.opcode, cycle.tailStep.slots,
@@ -2845,6 +2851,13 @@ when NativeReadCycleEnabled:
           ((first+1) shl 10) or (31'u32 shl 5) or first)
     cycleMove(words, 19, 0)
     cycleMove(words, 20, 1)
+    # Resolve only entry-local extent metadata. A miss stays zero until Tail.
+    words.add(0xaa1f03fa'u32) # MOV X26,XZR. X26 is already saved in the frame.
+    cycleMove(words, 17, 20)
+    let tailProbeStart = words.len
+    for instruction in tail.body.words:
+      words.add(instruction)
+    armReadPatchGuards(words, tail, tailProbeStart-1, words.len)
     cycleLoad(words, 21, 20, uint32(NativeCycleGasOffset))
     cycleLoad(words, 22, 20, uint32(NativeCycleRemainingOffset))
     cycleImmediate(words, 23, NativeCycleNoCompleted)
@@ -2885,7 +2898,10 @@ when NativeReadCycleEnabled:
         cycleAddImmediate(words, base, base, 4)
         cycleAddImmediate(words, shift, shift, 32)
       of NativeCycleRole.Tail:
-        appendArmCycleRead(words, fixes, tail, unpaid)
+        # A missing extent leaves this already-checked role unpaid.
+        cycleCompareImmediate(words, 26, 0)
+        cycleEdge(words, fixes, unpaid, 0)
+        words.add(0xb9800340'u32) # LDRSW X0,[X26] reads bytes after all prior Stores.
         armCycleDebit(words, span, price)
         cycleMove(words, tailSlot+4, 0)
         for instruction in tailStep.words: words.add(instruction)
