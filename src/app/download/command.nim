@@ -3,6 +3,11 @@
 
 ## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
 ## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
+##
+## One finite run keeps authenticated connections and the Services owner across
+## children. The shared deadline starts after startup and survives successful
+## adoptions. Per-child retry and stage budgets start again only after rearming.
+## Confirmed progress is scalar and may survive a terminal refusal.
 
 import ../../lib/logging
 

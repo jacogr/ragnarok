@@ -19,6 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import native_tests
+from native_fixture_contracts import validate_fixture_contracts
 from native_tests import unit_plan
 
 
@@ -636,7 +637,7 @@ class NativeUnitHarness(unittest.TestCase):
                     native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
                 path.write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
+                    validate_fixture_contracts(tuple(native_tests.FIXTURE_CONTRACTS))
                 path.write_bytes(b'fixture')
                 environment = native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees',
                     {'RAGNAROK_GUARANTEE_FIXTURE': '/stale/fixture'})
@@ -693,7 +694,7 @@ class NativeUnitHarness(unittest.TestCase):
                     native_tests.unit_environment(Path('/fixture/nimony'), 'block')
                 last.write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/fixture/nimony'), 'block')
+                    validate_fixture_contracts(tuple(native_tests.FIXTURE_CONTRACTS))
                 last.write_bytes(b'last')
                 environment = native_tests.unit_environment(Path('/fixture/nimony'), 'block',
                     {'RAGNAROK_BLOCK_FIXTURES': '/stale/directory'})

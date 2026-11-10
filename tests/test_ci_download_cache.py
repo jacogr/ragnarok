@@ -22,8 +22,8 @@ class DownloadCacheTests(unittest.TestCase):
             for family in families:
                 steps = selected_steps(job, family, event_context())
                 caches = [step for step in steps if step.get('uses', '').startswith('actions/cache@')]
-                if family.get('group') == 'docker':
-                    self.assertEqual(caches, [], 'Host downloads must not enter Docker setup')
+                if family.get('group') == 'docker' or job_id == 'fixture-provenance':
+                    self.assertEqual(caches, [], 'Docker and the source-only gate do not need host download caches')
                     continue
                 self.assertTrue(caches, (job_id, family))
                 commands = [step for step in steps if step.get('run', '').startswith('make ')]

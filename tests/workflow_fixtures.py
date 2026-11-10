@@ -14,7 +14,7 @@ import re
 def event_context(event='push', action='', label='', suite='', state='open', merged=False):
     return dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label),
                                                           pull_request=dict(state=state, merged=merged))),
-                inputs=dict(suite=suite))
+                inputs=dict(suite=suite), needs={'fixture-provenance': {'result': 'success'}})
 
 
 # Interpret only the operators used by the workflow; never execute arbitrary Python from YAML.
@@ -34,6 +34,8 @@ def expression(source, context):
             return context[node.id]
         if isinstance(node, ast.Attribute):
             return value(node.value).get(node.attr, '')
+        if isinstance(node, ast.Subscript):
+            return value(node.value)[value(node.slice)]
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
             return not value(node.operand)
         if isinstance(node, ast.BoolOp):

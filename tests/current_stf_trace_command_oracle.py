@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent operator bundles retain published Genesis/TraceStep bytes, full configured Parameters and whole-map answers."""
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 import json
@@ -70,5 +71,5 @@ def expected_observations(check_frozen=True):
     result=dict(transitions=evidence['transitions'],chains=evidence['chains'],roots=evidence['roots'],
         checkpoint_sha256=evidence['checkpoint_sha256'],traces=traces,cases=len(jobs),rejected_jobs=6)
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return jobs,expected,result

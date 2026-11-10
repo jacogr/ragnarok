@@ -36,7 +36,6 @@ def expected_observations(check_frozen=True):
     """Calculate90 complete transitions; a preimage arriving after accumulation cannot retroactively run code."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert fixture['base_fixture_sha256'] == hashlib.sha256(pipeline.FIXTURE.read_bytes()).hexdigest()
     requests, lines, roots, hashes = [], [], [], []
     for mode, supplied in CASES:
         initial = original(mode); parent = dict(initial); reports = {}

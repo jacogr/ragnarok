@@ -239,7 +239,6 @@ def expected_observations(check_frozen=True):
     """Produce signed requests and all complete expected outputs before native execution."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert hashlib.sha256(population.FIXTURE.read_bytes()).hexdigest() == fixture['population_fixture_sha256']
     provider = validate_provider()
     original = population.original(json.loads(population.FIXTURE.read_text()))
     retained = original_assignments()

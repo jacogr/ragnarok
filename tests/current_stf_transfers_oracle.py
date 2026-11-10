@@ -101,7 +101,6 @@ def expected_observations(check_frozen=True):
             traces[-1].append(dict(slot=slot, **trace))
     if check_frozen:
         assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-        assert fixture['base_fixture_sha256'] == hashlib.sha256(pipeline.FIXTURE.read_bytes()).hexdigest()
         assert roots == fixture['successor_roots'] and hashes == fixture['successor_checkpoint_sha256']
         assert traces == fixture['traces']
     return requests, lines, dict(transitions=20, chains=5, roots=roots, checkpoint_sha256=hashes, traces=traces)

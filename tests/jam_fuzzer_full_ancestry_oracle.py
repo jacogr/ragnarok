@@ -3,8 +3,8 @@
 
 """Independent guest checkpoint ancestry, long full-profile sessions and honest missing child-root evidence."""
 from functools import cache
+from frozen_fixture_results import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_profile_oracle as full
 import jam_fuzzer_full_guests_oracle as guests
@@ -62,7 +62,7 @@ def calculate():
 def expected_observations(check_frozen=True):
     """Return independently frozen seed/header/descendant bytes; native replies never enter the reference."""
     lines,evidence,_ = calculate()
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence # Every full-map byte is frozen before native replay.
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence) # Every full-map byte is frozen before native replay.
     return [],list(lines),dict(evidence)
 
 

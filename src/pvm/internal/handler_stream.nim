@@ -2,7 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
-## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
+## Public immutable snapshot and host adapters live in pvm/step.
+##
+## A plan owns exact immutable source facts. The executable stream owns handlers,
+## sealed operands, sites and stable offsets. A private frame owns mutable CPU,
+## guest memory, budgets and callbacks. Restore and take move code-only state
+## across calls. The executable cache retains no invocation pointers. Idle byte
+## scratch has a separate lease and is restored before another invocation uses it.
+##
+## Host suspension publishes an immutable observation. Resident deltas can resume
+## the existing frame. Mapping or permission changes build a complete private
+## replacement before swapping ownership, so refusal preserves the stopped frame.
 
 import std/[algorithm, assertions]
 when defined(pvmArmMixedGroupReceipt):
@@ -4596,7 +4606,10 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     result.x86WideAdmission = move(f.x86WideAdmission)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
-  ## Lease only exact-source code; CPU, memory, budgets and callbacks remain freshly captured by the frame.
+  ## Restore an executable stream only for the exact immutable plan.
+  ## Sealed prices and errors belong to their emitting policy. If either side uses
+  ## complete-plan or memo pricing, discard the stream and reemit under the new
+  ## frame's policy. This also preserves stricter cycle limits on a fresh memo.
   if stream.sourcePlan != nil and stream.sourcePlan != f.plan:
     # Refuse before consuming another owner's price, executable capability or scalar coordinates.
     f.preparationFailure = FlatError.InvalidProgram

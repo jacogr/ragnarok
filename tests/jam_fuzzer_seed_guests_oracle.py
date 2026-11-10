@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent guest STF maps from exact fuzz seeds with different header and state clocks."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -38,5 +39,5 @@ def expected_observations(check_frozen=True):
                     transitions=10, chains=5, guest_executions=20, header_slot=0, state_slot=1,
                     roots=roots, expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return [], lines, evidence

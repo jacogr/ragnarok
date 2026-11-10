@@ -3,7 +3,7 @@
 
 """Source-owned independent reporting scenario qualification through the actual candidate/import pipeline."""
 import hashlib
-from native_fixture_contracts import validate_fixture_contracts
+from native_fixture_contracts import require_fixture_contracts
 from pathlib import Path
 from corpus_checks import CorpusGroup
 from reporting_comparison import compare_chains
@@ -16,7 +16,7 @@ CORPORA = CorpusGroup(order=25)
 def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inventory_controls=False):
     """Freeze expected answers before building one shared native driver; retain exact request and output hashes."""
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(fixtures)
+    require_fixture_contracts(fixtures)
     requests, expected, evidence = oracle.expected_observations()
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
@@ -61,7 +61,7 @@ def current_stf_late_command_corpus(compiler, report, checks, libraries):
     from native_fixture_contracts import FIXTURE_CONTRACTS
     from reporting_operator import materialize,compare_jobs
     from corpus_checks import compare_corpus
-    validate_fixture_contracts(('current_stf_late_command','current_stf_late_trace','current_stf_trace_command'))
+    require_fixture_contracts(('current_stf_late_command','current_stf_late_trace','current_stf_trace_command'))
     jobs,expected,evidence=oracle.expected_observations()
     folder=checks.folder/'late operator bundles'
     commands,manifest,paths=materialize(folder,jobs,expected)
@@ -416,7 +416,7 @@ def current_stf_rotation_command_corpus(compiler, report, checks, libraries):
     from native_fixture_contracts import FIXTURE_CONTRACTS
     from reporting_operator import materialize,compare_jobs
     from corpus_checks import compare_corpus
-    validate_fixture_contracts(('current_stf_rotation_command','current_stf_rotation_trace','current_stf_trace_command'))
+    require_fixture_contracts(('current_stf_rotation_command','current_stf_rotation_trace','current_stf_trace_command'))
     jobs,expected,evidence=oracle.expected_observations()
     folder=checks.folder/'rotation operator bundles'
     commands,manifest,paths=materialize(folder,jobs,expected)
@@ -444,7 +444,7 @@ def current_stf_population_command_corpus(compiler, report, checks, libraries):
     from native_fixture_contracts import FIXTURE_CONTRACTS
     from reporting_operator import materialize,compare_jobs
     from corpus_checks import compare_corpus
-    validate_fixture_contracts(('current_stf_population_command','current_stf_population_trace','current_stf_trace_command'))
+    require_fixture_contracts(('current_stf_population_command','current_stf_population_trace','current_stf_trace_command'))
     jobs,expected,evidence=oracle.expected_observations()
     folder=checks.folder/'population operator bundles'
     commands,manifest,paths=materialize(folder,jobs,expected)

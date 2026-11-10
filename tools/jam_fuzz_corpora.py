@@ -5,7 +5,7 @@
 from pathlib import Path
 import hashlib
 import json
-from native_fixture_contracts import validate_fixture_contracts
+from native_fixture_contracts import require_fixture_contracts
 from corpus_checks import run_corpus, compare_corpus, CorpusGroup
 from native_checks import announce
 
@@ -19,7 +19,7 @@ def jam_fuzzer_forks_corpus(compiler, report, checks, libraries):
     """Compare independently calculated sibling whole maps through actual fuzzer imports and state queries."""
     from jam_fuzzer_forks_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('jam_fuzzer_forks', 'state_report'))
+    require_fixture_contracts(('jam_fuzzer_forks', 'state_report'))
     expected, evidence = expected_observations()
     compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_forks_driver.nim',
         'jam-fuzzer-forks', crypto_library=libraries['crypto'],
@@ -37,7 +37,7 @@ def jam_fuzzer_ancestry_corpus(compiler, report, checks, libraries):
     """Compare real reporting imports with exact independent maps and actual child-root evidence refusals."""
     from jam_fuzzer_ancestry_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry', 'state_report'))
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-ancestry-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
@@ -57,7 +57,7 @@ def jam_fuzzer_ancestry_retention_corpus(compiler, report, checks, libraries):
     """Compare real reporting imports with exact independent maps and actual child-root evidence refusals."""
     from jam_fuzzer_ancestry_retention_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry_retention', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry_retention', 'state_report'))
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-ancestry-retention-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
@@ -77,7 +77,7 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
     """Compare real reporting imports with exact independent maps and actual child-root evidence refusals."""
     from jam_fuzzer_report_forks_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry', 'jam_fuzzer_report_forks', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry', 'jam_fuzzer_report_forks', 'state_report'))
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-report-forks-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
@@ -97,7 +97,7 @@ def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, i
     """Share exact-input replay builds while each source-owned corpus retains its own frozen reference and verdict."""
     from jam_fuzzer_guest_reference import replay
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts((*identities, 'state_report'))
+    require_fixture_contracts((*identities, 'state_report'))
     requests, expected, evidence = replay(reference, input_requests=input_requests, profiles=profiles, forks=forks, anchor_checks=anchor_checks, headers=headers)
     label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
     source = checks.folder/(label+'.txt')
@@ -833,7 +833,7 @@ def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     # Freeze complete independent pre/block/post expectations before the backend is built or run.
     expected = expected_observations()
     evidence = verify_observations(expected)
-    validate_fixture_contracts(('current_stf', 'state_report'))
+    require_fixture_contracts(('current_stf', 'state_report'))
     compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_stf_driver.nim',
         'jam-fuzzer-stf', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
@@ -851,7 +851,7 @@ def jam_fuzzer_epoch_forks_corpus(compiler, report, checks, libraries):
     """Execute epoch rotation, cutoff markers and real RingVRF admission against independent complete maps."""
     from jam_fuzzer_epoch_forks_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_epoch', 'jam_fuzzer_epoch_forks', 'state_report'))
+    require_fixture_contracts(('current_stf_epoch', 'jam_fuzzer_epoch_forks', 'state_report'))
     # Frozen Ring/KZG witnesses are input data; every score, Thin credential and successor map is independently calculated.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-epoch-forks-proofs.txt'
@@ -874,7 +874,7 @@ def jam_fuzzer_wire_corpus(compiler, report, checks, libraries):
     from jam_fuzzer_wire_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
     # Freeze the exact expected observations before native execution.
-    validate_fixture_contracts(('jam_fuzzer_wire',))
+    require_fixture_contracts(('jam_fuzzer_wire',))
     requests, expected, evidence = expected_observations()
     source = checks.folder/'jam-fuzzer-wire-requests.txt'
     return run_corpus(checks.build,checks.command,compiler,

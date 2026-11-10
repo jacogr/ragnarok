@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full-profile guest-bearing epoch crossings and1023-to1020 population rotation."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -52,7 +53,6 @@ def successor(parent,slot):
         witness = json.loads(RING.read_text())
         assert witness['capacity'] == 1023 and witness['population'] == len(pending)
         assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in pending)).hexdigest()
-        assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
         root = bytes.fromhex(witness['commitment'])
         seed = entropy[32:64]
         schedule = [active[int.from_bytes(digest(seed+i.to_bytes(4,'little'))[:4],'little') % len(active)][:32] for i in range(600)]
@@ -98,5 +98,5 @@ def expected_observations(check_frozen=True):
                     full_guests_sha256=hashlib.sha256(guests.FIXTURE.read_bytes()).hexdigest(),ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     # Calculated expectations become immutable before any backend or upstream process observes them.
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

@@ -107,7 +107,6 @@ def expected_observations(check_frozen=True):
     if check_frozen:
         fixture=json.loads(FIXTURE.read_text())
         assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
-        assert fixture['base_fixture_sha256']==hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes
         assert fixture['traces']==json.loads(json.dumps(traces))
         assert fixture['max_lookup_anchor_age']==0

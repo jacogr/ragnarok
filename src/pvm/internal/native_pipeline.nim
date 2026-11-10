@@ -6,6 +6,10 @@
 ## through the locked mailbox, with no borrow of the session, program, frame or callbacks.
 ## Parked completions belong to individual registrations, so publishing one frees the work
 ## slot before the host collects it. Credits bound image owners through retirement.
+##
+## An auxiliary reservation needs two free credits. Primary work takes priority
+## and can revoke the optional mapping. A bounded running borrow delays physical
+## unmapping until return. The credit remains occupied until that unmapping.
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]

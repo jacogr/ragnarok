@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Exact metadata/header budgets bound real lookup evidence without changing independently calculated STF maps."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 from current_stf_reporting_oracle import original, guarantee, advance, body
 from state_layout_oracle import chapter_key
@@ -48,5 +48,5 @@ def expected_observations(check_frozen=True):
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest(),
                     requests_sha256=hashlib.sha256(('\n'.join(requests)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence
+        assert matches_frozen_results(FIXTURE, evidence)
     return requests, lines, evidence

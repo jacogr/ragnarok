@@ -16,7 +16,7 @@ from harness_fixtures import temporary_folder
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from native_fixture_contracts import load_fixture_contracts, validate_fixture_contracts
+from native_fixture_contracts import load_fixture_contracts, validate_fixture_contracts, verify, verify_fixture_links
 import native_requirements
 import native_tests
 
@@ -44,13 +44,68 @@ class NativeFixtureContractsHarness(unittest.TestCase):
             with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts):
                 validate_fixture_contracts(('sample',))
                 second.write_bytes(b'changed')
-                with self.assertRaisesRegex(AssertionError, 'sample'):
+                with self.assertRaisesRegex(ValueError, 'checksum.*second'):
                     validate_fixture_contracts(('sample',))
                 second.unlink()
                 with self.assertRaises(FileNotFoundError):
                     validate_fixture_contracts(('sample',))
                 with self.assertRaises(KeyError):
                     validate_fixture_contracts(('unknown',))
+
+    def test_preflight_checks_shared_manifest_link(self):
+        """A fresh file digest cannot hide a stale manifest link inside a witness."""
+        with temporary_folder() as root:
+            manifest = root/'spec/bandersnatch-pins.json'
+            manifest.parent.mkdir()
+            manifest.write_text('current manifest')
+            witness = root/'tests/fixtures/jam-sample-input.json'
+            witness.parent.mkdir(parents=True)
+            (witness.parent/'fixture-evidence-links.json').write_text('{}')
+            witness.write_text(json.dumps({'bandersnatch_pins_sha256': '0'*64}))
+            digest = hashlib.sha256(witness.read_bytes()).hexdigest()
+            contracts = {'sample': ('RAGNAROK_SAMPLE', witness, ((witness, digest),))}
+            with patch('native_fixture_contracts.ROOT', root), patch(
+                    'native_fixture_contracts.FIXTURE_CONTRACTS', contracts), patch(
+                    'runtime_provenance.pinned_fixture_digests', return_value={witness: digest}):
+                with self.assertRaisesRegex(ValueError, 'manifest checksum mismatch.*jam-sample-input'):
+                    verify()
+
+    def test_frozen_evidence_link_rejects_stale_digest(self):
+        """A frozen record can match its own pin while citing an older input."""
+        with temporary_folder() as folder:
+            evidence, witness = folder/'evidence.json', folder/'input.json'
+            witness.write_text('current input')
+            evidence.write_text(json.dumps({'ring_input_sha256': '0'*64}))
+            descriptor = folder/'links.json'
+            descriptor.write_text(json.dumps({evidence.name: {'ring_input_sha256': witness.name}}))
+            digests = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (evidence, witness)}
+            with self.assertRaisesRegex(ValueError, 'evidence.json ring_input_sha256 -> input.json'):
+                verify_fixture_links(folder, descriptor, digests)
+
+    def test_nested_evidence_link_and_behavior(self):
+        """The preflight catches stale nested links while result checks retain transition counts."""
+        from frozen_fixture_results import result_fields
+        with temporary_folder() as folder:
+            evidence, source = folder/'evidence.json', folder/'input.json'
+            source.write_text('current input')
+            stale = {
+                'traces': {'families': [{'fixture_sha256': '0'*64, 'transitions': 7}]},
+                'bases': {'reserved_creation': '0'*64},
+            }
+            evidence.write_text(json.dumps(stale))
+            fields = ('traces.families.0.fixture_sha256', 'bases.reserved_creation')
+            digests = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (evidence, source)}
+            # Each stale link fails independently even when both raw file pins match.
+            for field in fields:
+                with self.subTest(field=field):
+                    descriptor = folder/(field+'.json')
+                    descriptor.write_text(json.dumps({evidence.name: {field: source.name}}))
+                    with self.assertRaisesRegex(ValueError, field):
+                        verify_fixture_links(folder, descriptor, digests)
+            self.assertEqual(result_fields(stale, fields), {
+                'traces': {'families': [{'transitions': 7}]}, 'bases': {},
+            })
+            self.assertEqual(stale, json.loads(evidence.read_text()))
 
     # A new descriptor is discovered without adding its identity to a Python registry.
     def test_new_descriptor(self):
@@ -174,7 +229,6 @@ class NativeFixtureContractsHarness(unittest.TestCase):
             (folder/'input.bin').write_bytes(b'changed')
             contracts = load_fixture_contracts(folder)
             profile = {'fixtures': ['sample'], 'prepared': True}
-            generated = ('RAGNAROK_GENERATED', folder/'input.bin', ())
             with patch.dict(native_tests.FIXTURE_CONTRACTS, contracts, clear=True), patch.dict(
                     native_tests.NATIVE_REQUIREMENTS, example=profile), patch.object(
                     native_tests, 'UNIT_SUITES', ('example',)), patch.object(
@@ -182,7 +236,7 @@ class NativeFixtureContractsHarness(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'prepared native unit fixtures'):
                     native_tests.unit_environment(Path('/compiler'), 'example', {})
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/compiler'), 'example', {}, {'example': generated})
+                    validate_fixture_contracts(('sample',))
 
     # A suite cannot ambiguously assign two pinned targets to one environment variable.
     def test_conflicting_environments(self):
@@ -215,7 +269,7 @@ class NativeFixtureContractsHarness(unittest.TestCase):
                 self.assertEqual(environment['RAGNAROK_SECOND'], str(folder/'second.bin'))
                 (folder/'second.bin').write_bytes(b'changed')
                 with self.assertRaisesRegex(ValueError, 'checksum'):
-                    native_tests.unit_environment(Path('/compiler'), 'example', {})
+                    validate_fixture_contracts(('first', 'second'))
 
 
 # Importing this module exposes tests without running fixture discovery against temporary inputs.

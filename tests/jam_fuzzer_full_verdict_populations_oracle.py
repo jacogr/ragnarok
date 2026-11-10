@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent parent-selected683/681 verdict quorums, NULL positions, previous-only evidence and membership expiry."""
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_population_oracle as population
 import jam_fuzzer_full_verdicts_oracle as verdicts
@@ -89,5 +89,5 @@ def expected_observations(check_frozen=True):
                     verdict_fixture_sha256=hashlib.sha256(verdicts.FIXTURE.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

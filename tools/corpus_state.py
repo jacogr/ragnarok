@@ -9,7 +9,7 @@ from functools import partial
 from pathlib import Path
 import hashlib
 import json
-from native_fixture_contracts import validate_fixture_contracts
+from native_fixture_contracts import require_fixture_contracts
 from corpus_checks import run_corpus, compare_corpus, CorpusGroup
 from native_checks import announce
 
@@ -23,7 +23,7 @@ CORPORA = CorpusGroup(order=20)
 def guest_scenario(compiler, checks, libraries, oracle, fixtures, *, name, reference, message):
     """Execute shared guest-driver plumbing; each case owns its pinned inputs and independent equations."""
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(fixtures)
+    require_fixture_contracts(fixtures)
     # Expected complete maps must exist before any native compilation or observation.
     requests, expected, evidence = oracle()
     corpus = run_corpus(checks.build, checks.command, compiler,
@@ -306,7 +306,7 @@ def current_stf_corpus(compiler, report, checks, libraries):
     # Freeze all expected inputs/outputs before any native compilation or transition execution.
     expected = expected_observations()
     evidence = verify_observations(expected)
-    validate_fixture_contracts(('current_stf', 'state_report'))
+    require_fixture_contracts(('current_stf', 'state_report'))
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_driver.nim',
         'current-stf', crypto_library=libraries['crypto'],
         native_libraries=(libraries['bandersnatch'],))
@@ -323,7 +323,7 @@ def current_stf_effects_corpus(compiler, report, checks, libraries):
     """Compare complete preimage/storage/yield/checkpoint successor maps with independent equations."""
     from current_stf_effects_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_effects', 'state_report'))
+    require_fixture_contracts(('current_stf_effects', 'state_report'))
     # Independent code assembly, gas simulation, credentials and all successor bytes precede native execution.
     expected, evidence = expected_observations()
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_effects_driver.nim',
@@ -342,7 +342,7 @@ def current_stf_epoch_corpus(compiler, report, checks, libraries):
     """Execute epoch rotation, cutoff markers and real RingVRF admission against independent complete maps."""
     from current_stf_epoch_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_epoch', 'state_report'))
+    require_fixture_contracts(('current_stf_epoch', 'state_report'))
     # Frozen Ring/KZG witnesses are input data; every score, Thin credential and successor map is independently calculated.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-epoch-proofs.txt'
@@ -363,7 +363,7 @@ def current_stf_population_corpus(compiler, report, checks, libraries):
     """Compare real culprit evidence, independently sized validator rosters and every complete successor byte."""
     from current_stf_population_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_epoch', 'current_stf_population', 'state_report'))
+    require_fixture_contracts(('current_stf_epoch', 'current_stf_population', 'state_report'))
     # Original-map reconstruction, OpenSSL credentials and independent posterior maps precede native execution.
     expected, evidence = expected_observations()
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_population_driver.nim',
@@ -382,7 +382,7 @@ def current_stf_eviction_corpus(compiler, report, checks, libraries):
     """Verify whole-map contest replacement and typed non-retention with fixed Ring inputs."""
     from current_stf_eviction_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_epoch', 'current_stf_eviction', 'state_report'))
+    require_fixture_contracts(('current_stf_epoch', 'current_stf_eviction', 'state_report'))
     # The reference decides the single eviction, every winner and all output bytes before the driver runs.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-eviction-proofs.txt'
@@ -402,7 +402,7 @@ def current_stf_verdict_corpus(compiler, report, checks, libraries):
     """Compare signed verdict/fault judgments, assignment cancellation and every complete successor byte."""
     from current_stf_verdict_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_epoch', 'current_stf_population', 'current_stf_verdicts', 'state_report'))
+    require_fixture_contracts(('current_stf_epoch', 'current_stf_population', 'current_stf_verdicts', 'state_report'))
     # Independent signatures, parent-selected quorums and all expected maps exist before the native build/run.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-verdict-requests.txt'
@@ -423,7 +423,7 @@ def current_stf_reporting_corpus(compiler, report, checks, libraries):
     """Compare real guarantee/assurance publication with independent complete maps and contextual refusals."""
     from current_stf_reporting_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_reporting', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_reporting', 'state_report'))
     # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-reporting-requests.txt'
@@ -444,7 +444,7 @@ def current_stf_epoch_reporting_corpus(compiler, report, checks, libraries):
     """Compare epoch-boundary guarantee/assurance publication with independent complete maps and contextual refusals."""
     from current_stf_epoch_reporting_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_epoch', 'current_stf_epoch_reporting', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_epoch', 'current_stf_epoch_reporting', 'state_report'))
     # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-epoch-reporting-requests.txt'
@@ -465,7 +465,7 @@ def current_stf_population_reporting_corpus(compiler, report, checks, libraries)
     """Compare population-changing guarantee/assurance publication with independent complete maps and contextual refusals."""
     from current_stf_population_reporting_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_population_reporting', 'state_report'))
+    require_fixture_contracts(('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_population_reporting', 'state_report'))
     # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-population-reporting-requests.txt'
@@ -486,7 +486,7 @@ def current_stf_report_guests_corpus(compiler, report, checks, libraries):
     """Compare report-driven real guest execution against independently calculated complete maps."""
     from current_stf_report_guests_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
-    validate_fixture_contracts(('current_stf_effects', 'current_stf_report_guests', 'state_report'))
+    require_fixture_contracts(('current_stf_effects', 'current_stf_report_guests', 'state_report'))
     # All mathematical guest effects, gas charges, signed children and roots precede native execution.
     requests, expected, evidence = expected_observations()
     source = checks.folder/'current-stf-report-guests-requests.txt'
@@ -992,7 +992,7 @@ def state_trace_wire_corpus(compiler, report, checks, libraries):
     """Compare published RawState wire prefixes, complete current STF maps and typed malformed-input refusals."""
     from state_trace_wire_oracle import expected_observations
     # Freeze independently calculated source and full-map evidence before execution.
-    validate_fixture_contracts(('state_trace_wire',))
+    require_fixture_contracts(('state_trace_wire',))
     requests, expected, evidence = expected_observations()
     return run_corpus(checks.build, checks.command, compiler,
         ROOT/'tests/native/state_trace_wire_driver.nim', 'state-trace-wire',
@@ -1005,7 +1005,7 @@ def state_trace_step_corpus(compiler, report, checks, libraries):
     """Compare complete published TraceStep wires, exact typed failures and independent full pre/post maps."""
     from state_trace_step_oracle import expected_observations
     # Independent fixture identities precede all native execution.
-    validate_fixture_contracts(('state_trace_step', 'state_trace_step_answers'))
+    require_fixture_contracts(('state_trace_step', 'state_trace_step_answers'))
     requests, expected, evidence = expected_observations()
     return run_corpus(checks.build, checks.command, compiler,
         ROOT/'tests/native/state_trace_step_driver.nim', 'state-trace-step',
@@ -1030,7 +1030,7 @@ def current_stf_trace_files_corpus(compiler, report, checks, libraries):
     from current_stf_trace_files_oracle import expected_observations
     from native_fixture_contracts import FIXTURE_CONTRACTS
     # Frozen independent evidence precedes materialization and native execution.
-    validate_fixture_contracts(('current_stf_trace_files', 'current_stf_transfers', 'state_report'))
+    require_fixture_contracts(('current_stf_trace_files', 'current_stf_transfers', 'state_report'))
     requests, expected, evidence = expected_observations()
     files = checks.folder/'current-stf-trace-inputs'
     files.mkdir(exist_ok=True)
@@ -1074,7 +1074,7 @@ def current_stf_trace_command_corpus(compiler, report, checks, libraries):
     """Compare the public offline command against independent full-profile Genesis/trace files and typed refusals."""
     from current_stf_trace_command_oracle import expected_observations
     # Freeze exact independent input/configuration/output evidence before native policy-input generation.
-    validate_fixture_contracts(('current_stf_trace_command',))
+    require_fixture_contracts(('current_stf_trace_command',))
     jobs, expected, evidence = expected_observations()
     invoke = []
     manifest = []
@@ -1112,7 +1112,7 @@ def current_stf_trace_observations_corpus(compiler, report, checks, libraries):
     """Compare independently authored observed complete maps with golden authenticated execution, including refusals."""
     from current_stf_trace_observations_oracle import expected_observations
     # Freeze mathematical observations before native execution.
-    validate_fixture_contracts(('current_stf_trace_observations',))
+    require_fixture_contracts(('current_stf_trace_observations',))
     jobs, expected, evidence = expected_observations()
     requests, manifest = [], []
     for ordinal, job in enumerate(jobs):

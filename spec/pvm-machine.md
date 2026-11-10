@@ -8,66 +8,9 @@ Transition). No specification or vector pins change.
 
 ## Scope and ownership
 
-`src/pvm/machine.nim` captures thirteen 64-bit registers, a validated program/entry
-address through `captureMachine`, unsigned 64-bit gas credit, the block-charged flag, and immutable memory.
-Terminal host snapshots also retain a canonical gas deficit as described below. This is
-an explicit machine-state constructor, not the standard JAM program initializer.
-CPU metadata and page images returned to callers are copies. The program owner
-comes from the first increment; memory/program handles retained by a machine stay
-valid after their original handles and input buffers leave scope.
-
-`captureTerminalMachine` separately captures a trusted terminal state with valid
-program/memory owners and any register-width PC. This preserves the single-step
-trap increment beyond code without relaxing executable-entry validation. It does
-not authenticate an exit reason; callers follow `StepOutcome.exit` when deciding
-whether to execute again. See [single-step terminal semantics](pvm-step.md).
-
-Memory is a sorted sparse sequence of immutable page headers. Each header owns
-eight immutable 512-byte chunks and inaccessible/read-only/read-write permission;
-the public page image remains 4096 bytes. A missing page has
-zero underlying bytes and inaccessible permissions. Inaccessible stored pages
-retain their bytes, so changing their permissions need not erase their contents.
-`captureMemory` requires sorted unique page ordinals below 2^20 and applies a
-caller-supplied materialized-page limit before allocating. Empty captured memory
-is valid; a default owner is not.
-
-`withPage` is an environment/setup operation: it copies a supplied complete page,
-can change permissions or contents, preserves other pages, and enforces the
-original owner's page ceiling for insertions. Replacement at the ceiling is
-allowed. This is not a guest store or a host-function implementation.
-
-Published owners form acyclic ARC graphs. Updates copy the page-reference vector and touched headers/chunks, sharing all
-other immutable page storage. No backing
-reference or borrowed pointer is public. Failure returns only a typed reason;
-a guest page-fault address is part of that reason, never partial operation progress.
-
-## Scalar access contract
-
-Loads and stores support widths 1, 2, 4 and 8. Other widths return a local
-`InvalidWidth`, not an invented PVM exit. Values are little-endian; loads return
-unsigned register values and stores use the requested low bytes. Instruction-
-specific sign extension remains the executor's responsibility.
-
-Effective starting addresses use their low32 bits. PolkaVM exclusive-end overflow
-is checked before inspecting byte permissions, including a one-byte access atMAX32.
-An absent final page faults at0xfffff000; a present ReadOnly/ReadWrite final page
-panics. Retained inaccessible images represent absent runtime pages. Nonoverflow
-byte checks never rely on an overflowing host sum. The low 64 KiB is always protected, including when supplied
-page images mark it accessible, following the explicit prose requirement.
-Read-write implies readable. Missing/inaccessible pages fault on either access;
-read-only pages fault on writes. A fault reports the aligned physical byte address
-of the first inaccessible page in the original increasing access sequence.
-
-All touched page permissions are checked before reading a value or allocating changed pages.
-Failed cross-page stores therefore cannot alter their first page. Successful stores
-publish a new owner; old aliases remain unchanged. Machine stores replace only
-memory and preserve every register, PC, gas and charged flag. `withRegister` and
-`withMemory` are explicit state-building operations, not instruction stepping.
-
-Permission lookup is logarithmic in stored pages; a scalar resolves at most two
-page slots and reuses those validated slots for its at most eight payload bytes. Snapshot updates currently copy O(stored pages) references. This correctness
-baseline has no performance or gas-proportional execution claim. Allocation is
-bounded by the page limit; allocation failure itself is not mapped to a VM exit.
+The [machine module](../src/pvm/machine.nim) owns CPU capture, sparse memory, scalar access
+precedence and atomic updates. The [initializer](../src/pvm/initialize.nim) owns standard
+JAM invocation setup. Keep the approved policy and its independent witnesses below.
 
 ## Scoped memory exception and resolved wrapping-access gate
 

@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Seal a checked byte-store loop and run bounded visits against frame-owned memory.
+##
+## The cold branch resolver retains the first structural match and limits full
+## probes per epoch. The primary must progress beside checked self-edges in one
+## settled segment before the optional image can be requested. Ordinary dispatch
+## does not consult an auxiliary proof.
 
 when declared(FlatFrame):
   const

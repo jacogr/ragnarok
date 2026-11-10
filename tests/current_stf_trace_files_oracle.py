@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full-map STF files retain exact signed inputs through bounded regular-file ingress."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -19,5 +20,5 @@ def expected_observations(check_frozen=True):
     traces=dict(source_sha256=hashlib.sha256(source.FIXTURE.read_bytes()).hexdigest(),file_sha256=hashes,refusals=evidence['refusals'])
     result=dict(transitions=evidence['transitions'],chains=evidence['chains'],roots=evidence['roots'],checkpoint_sha256=evidence['checkpoint_sha256'],traces=traces,files=len(hashes),refusals=evidence['refusals'])
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return requests,lines,result

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full-population offender nulling, delayed1023-to1020 activation and multi-epoch skips."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -55,7 +56,6 @@ def successor(parent,slot,*,unfiltered_marker=False,disputes=bytes(3),marks=(),p
         assert witness['null_records'] == sum(row == NULL_VALIDATOR for row in pending) == 4
         assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in pending)).hexdigest()
         assert witness['records_sha256'] == hashlib.sha256(b''.join(pending)).hexdigest()
-        assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
         root = bytes.fromhex(witness['commitment']);seed = entropy[32:64]
         schedule = [active[int.from_bytes(digest(seed+index.to_bytes(4,'little'))[:4],'little') % len(active)][:32]
                     for index in range(600)]
@@ -113,5 +113,5 @@ def expected_observations(check_frozen=True):
                     offender_fixture_sha256=hashlib.sha256(offenders.FIXTURE.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

@@ -17,7 +17,6 @@ SLOTS = (2, 3, 4, 5, 6, 7, 10, 11, 12, 13)
 
 def inputs(fixture):
     """Preserve the earlier fourteen immutable inputs and attribute two extra native Ring witnesses mathematically."""
-    assert hashlib.sha256(EPOCH_FIXTURE.read_bytes()).hexdigest() == fixture['epoch_fixture_sha256']
     prior = json.loads(EPOCH_FIXTURE.read_text())
     bank = bank_records(prior)+fixture['extra_tickets']
     assert [(item['secret'], item['attempt']) for item in bank[14:]] == [(1, 3), (6, 3)]

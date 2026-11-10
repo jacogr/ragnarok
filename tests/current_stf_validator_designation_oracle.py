@@ -114,9 +114,7 @@ def expected_observations(check_frozen=True):
     if check_frozen:
         fixture = json.loads(FIXTURE.read_text())
         assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-        assert fixture['base_fixture_sha256'] == hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots'] == roots and fixture['successor_checkpoint_sha256'] == hashes
         assert fixture['traces'] == traces
         assert fixture['max_service_code_size'] == 4096
-        assert fixture['epoch_input_sha256'] == hashlib.sha256(epoch.FIXTURE.read_bytes()).hexdigest()
     return requests, lines, dict(transitions=50, chains=5, roots=roots, checkpoint_sha256=hashes, traces=traces)

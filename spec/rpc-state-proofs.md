@@ -8,12 +8,7 @@ carry evidence only: consumers independently select the expected root and exact 
 
 ## Request ownership foundation
 
-Each connection owns at most one queued or dispatched selector containing 1–16 exact
-31-byte state keys and a 32-byte block hash. Capture copies and sorts selectors and
-rejects duplicates. A connection-local nonzero uint32 request ID never wraps. Private
-namespace ownership also binds completion to the original session, so reused public IDs
-on replacement connections cannot accept stale work. Cancellation discards logical intent;
-native worker capacity and canonical exclusion remain owned until collection/join.
+[Proof selectors](../src/rpc/proof_requests.nim) own capture, cancellation and namespace checks.
 
 Completion checks: `make unit SUITE=rpc_proof_requests` covers detached keys, duplicate/count
 limits, busy/unknown/default cases, claim-once, cancellation, exact/foreign/stale/reset
@@ -61,13 +56,8 @@ canonical host explicitly enables proof production; stateless/default listeners 
 
 ## Listener dispatch boundary
 
-The host explicitly enables proof capability only after binding a live canonical Services
-owner. After an RPC tick returns, the listener fairly claims at most one detached selector
-from its eight connections. The routing ticket retains the original request's namespace,
-not an fd or canonical snapshot. Connection slot/fd reuse cannot deliver an old result to
-a new session. Scheduling and completion refuse while the canonical lease is paused;
-the host must collect or join the worker and resume before delivery. Closing/restarting
-the listener clears capability until an explicit host binding is installed again.
+The [listener](../src/rpc/server.nim) owns proof capability, fair claim and exact
+completion routing. [Services](../src/app/services.nim) owns the worker lease.
 
 Native listener tests exercise two consumers, fair claim-once scheduling, cancellation,
 replacement sessions, pause/resume delivery and count-limit disconnection isolation.
@@ -76,32 +66,10 @@ The Services integration suite checks real socket framing and native worker/rece
 
 ## Canonical Services production
 
-Canonical `server`, `client` and `mesh` startup enables proof production. Legacy/genesis-only
-RPC has no canonical worker source and does not advertise the methods. The `download` command
-also leaves production disabled: its ancestry orchestration retains external parent aliases
-and requires separate scheduler integration before allowing an autonomous proof lease.
-
-After each RPC/UI tick returns, Services fairly claims one connection request, then admits it
-through `beginStateProof` outside callbacks. No temporary canonical alias survives into native
-submission. One existing reusable worker slot provides the bound; this adds no per-connection
-thread. Every request resolves one explicit retained block, including a separated finalized
-anchor when available. Unknown/evicted selection, native failure, busy canonical ownership and
-resource refusal yield a terminal error notification. Failure cannot return an empty proof or
-claim key absence. Request acknowledgements are sent before terminal notifications.
-
-Policies: 65,536 complete-map entries, 131,071 trie nodes, 1 MiB per map value and 8 MiB total
-map values; 249 nodes per proof and 3,984 aggregate proof nodes; 16 selectors; 32 KiB individual,
-aggregate, retained-view and encoded proof bytes; 4,000,000 conservative hash calls. These local
-ceilings are independent of protocol validity and never widen on refusal. The existing request,
-reply and notification ceilings apply in addition. The hash estimate is not a wall-clock deadline.
-
-RPC chain processing stays paused through native Queued/Running/Done and resumes only after
-exact collection or joined stop. Cancellation/disconnect does not preempt cryptographic work.
-The existing socket wall-clock deadlines remain in force, so an expired/closed consumer can lose
-delivery while its bounded work still retires safely. Joined close runs before canonical owners,
-request selectors, RPC leases or sockets are released. Direct host proof calls preserve their
-existing explicit-collection behavior; automatic collection is limited to RPC-owned tickets.
-
+[Services](../src/app/services.nim) owns capability selection, exact source staging,
+resource policy and worker retirement. This section's verification covers the original
+canonical full-state binding. The [light runtime](../src/app/light/runtime.nim) owns
+independent partial-source execution.
 
 ## Verification and remaining scope
 

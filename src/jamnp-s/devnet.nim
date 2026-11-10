@@ -3,6 +3,11 @@
 
 ## Bounded loopback devnet transport: pinned TLS identities and canonical CE128 one-child
 ## polling. Callbacks only frame/copy bytes; block execution and catalog publication stay outside.
+##
+## A stable incoming owner serves one selected child from the host-published catalog.
+## Absence produces an empty response. The outgoing path requires complete framing
+## and FIN before returning copied bytes. Admission and durability belong to the host,
+## and the endpoint retires callbacks before releasing their borrowed storage.
 
 import std/assertions
 import ../quic/transport

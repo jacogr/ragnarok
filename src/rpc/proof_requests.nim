@@ -3,6 +3,11 @@
 
 ## Connection-local bounded proof selectors, independent of canonical state and native worker lifetime.
 ## Immutable namespace identities prevent stale or foreign completions from consuming a replacement slot.
+##
+## One request per session retains copied, sorted, unique keys and an exact block
+## selector. Claiming moves its intent to dispatched. Cancellation can remove
+## either intent, while Services retains worker and graph ownership until retirement.
+## A matching terminal completion consumes the slot once.
 
 import ../state/proof/plan as proof_plan
 import ../codec/bounded

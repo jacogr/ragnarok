@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent complete observed-map test doubles verify native differential plumbing without claiming external-client execution."""
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 import json
@@ -45,5 +46,5 @@ def expected_observations(check_frozen=True):
             observations_sha256=[None if w is None else hashlib.sha256(w).hexdigest() for w in j['observations']],expected=answer) for j,answer in zip(jobs,expected)])
     result=dict(transitions=evidence['transitions'],chains=evidence['chains'],roots=evidence['roots'],checkpoint_sha256=evidence['checkpoint_sha256'],traces=traces,cases=len(jobs),rejected_jobs=7)
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return jobs,expected,result

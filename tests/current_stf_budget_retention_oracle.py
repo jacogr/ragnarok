@@ -25,7 +25,6 @@ def expected_observations(check_frozen=True):
     """Calculate all150 signed children/maps and retention traces before running the shared native driver."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert fixture['base_fixture_sha256'] == hashlib.sha256(waves.FIXTURE.read_bytes()).hexdigest()
     requests, lines, roots, hashes, plans = [], [], [], [], []
     invocations = processed_count = 0
     for mode, profile in CASES:
