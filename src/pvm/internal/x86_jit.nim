@@ -973,7 +973,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditGasShift = 7'u8
         readCycleCreditSpanShift = 5'u8
 
-      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+7, int]
+      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+8, int]
 
       proc readCycleContextOp(code: var X86Block, encoding: openArray[byte], offset: int) =
         ## Context operations use disp32 because the accounting fields follow the extent table.
@@ -1178,7 +1178,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI.
         cycleEdge(code, fixes, 0x84, unpaid)
         readCycleDirtyPage(code, fixes, unpaid, false)
+        # A four-byte aligned write stays in one page. Keep both checks for unaligned words.
+        let pagesReady = nextLabel
+        inc nextLabel
+        put(code, [0xf6'u8, 0xc2, 0x03]) # TEST DL,3.
+        cycleEdge(code, fixes, 0x84, pagesReady)
         readCycleDirtyPage(code, fixes, unpaid, true)
+        labels[int(pagesReady)] = code.bytes.len
 
         if not credits: readCycleDebit(code, span, price, budgetRegisters)
         readAccess(code, access, word.valueLane, false)
