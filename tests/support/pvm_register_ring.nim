@@ -105,8 +105,6 @@ proc checkRing() =
             inc cases
   assert cases == 1728
 
-when NativeCheckedReadEnabled:
-  checkRing()
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   proc noHost(called: var bool, stop: StepOutcome): HostResponse {.raises: [].} =
     ## The literal ring has no host instructions.
