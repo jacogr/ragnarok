@@ -6,6 +6,11 @@
 ## includes report publication. Other extrinsics, wall-clock admission and complete block
 ## execution remain separate stages.
 ##
+## Admission binds the block to the exact parent before disputes and Safrole.
+## Subsequent stages consume private working state and retain their own certificates.
+## This prefix returns the candidate through assurances. Report admission and
+## accumulation extend it before the caller can publish a complete successor.
+##
 ## Exposes blockTransitionProfile and advanceBlockState with checked admission, disputes,
 ## Safrole and availability results.
 

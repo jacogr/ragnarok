@@ -12,34 +12,10 @@ checkpoint trust, bounded history and explicit finality.
 
 ## Lifetimes and intended progression
 
-One `receiveChildren` activation keeps stable authenticated endpoints and one
-Services owner for the complete run. `BlockDownloadLoop.nextChild` rearms only
-after a genuine consumed adoption, native stream close, input retirement and
-worker/publication lease release. Refusals preserve the prior adoption diagnostic
-and ancestry. All graph/ancestry replacement happens on the host between jobs;
-final shutdown joins before outer canonical inspection or alias retirement.
-
-`--download-blocks COUNT` is download-only, defaults to one and accepts canonical
-positive decimal values 1–64. Before file/Services IO reserve initial ancestors
-plus `COUNT-1` older headers and one additional selected parent in report policy.
-Actual per-header/input/report bytes are checked again before each new child.
-Never drop old headers to make a quota fit. Each adopted parent's sealed header
-is prepended newest-first for the next child; no history/state is fabricated.
-
-Retry/stage budgets restart explicitly per child on the same monotonic clock.
-One shared run deadline starts after Services startup and is checked between
-bounded dispatcher turns; successful children never reset it. No new handshake
-or connection slot is consumed per child. Existing finality, checkpoint trust,
-exact-parent authority and memory/disk receipt rules remain unchanged.
-
-`runDownloads` returns immutable scalar requested/adopted counts plus a terminal
-reason; the old `runDownload` status-only API remains. Count only consumed genuine
-adoptions. After joined teardown also reconcile the one possible outstanding
-durable receipt against the actual canonical child. A timeout can therefore
-report confirmed progress while retaining its Timeout reason. These diagnostics
-are not execution certificates. Every later refusal preserves the confirmed
-prefix. No fork choice, automatic finality, discovery, partial light-map claim or
-storage-maintenance adoption is introduced.
+The [command](../src/app/download/command.nim) owns the run deadline, ancestor preparation
+and confirmed progress. [Rearming](../src/jamnp-s/block/download/loop.nim) owns the
+per-child transition and native lifetime checks. Current-profile sync has a
+[separate command owner](../src/app/current/download/command.nim).
 
 ## Completion witnesses
 

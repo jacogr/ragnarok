@@ -40,37 +40,10 @@ with zero remaining gas and a zero local simulation limit.
 
 ## API and ownership
 
-`StepResult` has private status/payload fields and a success-only `value` accessor.
-Successful evaluation carries a copied `StepOutcome` with `Continued`, `OutOfGas`,
-`Panic`, `Halt`, `Fault` or `Host` and its immutable `Machine`. Outcome `exit` is read-only;
-only the private `Fault` alternative stores a physical page, exposed by a guarded
-`faultPage` accessor. Only `Host` carries a nominal identifier, exposed by guarded
-`hostCall`. Local errors carry no machine or tentative gas debit:
-`InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the historical `NegativeBranchTarget` and `AmbiguousAccessOrder` identifiers.
-Current PolkaVM-aligned pricing and scalar inspection emit neither. Bounded
-`execute` also returns local `StepLimitExceeded`. Default
-results are `Uninitialized`.
-Guest out-of-gas is a completed evaluation, not one of those local errors.
-
-The program is extracted from the source snapshot via `programOf`; callers cannot
-supply a substitute program for the same machine state. Program and memory owners
-are shared immutably; registers and scalar state are copied. A charged or prepaid completed step
-allocates one new machine root without any back-reference to its source. Out-of-gas
-retains the original root. Updating a later register or memory snapshot cannot alter
-any retained source or earlier step.
-
-`containingBlockStart` validates the instruction address, then scans backwards for
-the closest marked terminator. Terminator-valued operand bytes are ignored. The scan
-is bounded by the validated program size, independently of `GasCycleLimit`, which
-bounds only pipeline simulation. No cost cache or scan optimization is introduced.
-The existing program byte limit controls owner capture size.
-
-`captureMachine` remains a trusted environment/import API, not proof that gas was
-previously charged. Its supplied charged flag is followed exactly as specified;
-the executor does not add a second gas policy or silently reset imported state.
-Standard initialization and host resumption are supplied separately by the
-[initializer](pvm-initialization.md), [host-response application](pvm-host-response.md)
-and [host-aware executor](pvm-host-execution.md).
+The [step module](../src/pvm/step.nim) owns local refusal, guest outcomes and immutable
+machine ownership. [Machine capture](../src/pvm/machine.nim) documents the trusted
+paid-block input. [Program queries](../src/pvm/program.nim) own block-boundary lookup.
+The following sections retain pinned control-flow and memory semantics.
 
 ## Control-flow semantics
 

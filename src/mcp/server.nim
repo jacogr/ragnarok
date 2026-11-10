@@ -128,6 +128,8 @@ proc response(status: string, body = "", extra = ""): string =
 
 proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, context: QueryContext) =
   ## Strict single-message HTTP framing rejects ambiguous lengths, browser origins and upgrades.
+  ## The stock scanner and parser own syntax and head extent. Keep the parsed
+  ## message within this activation, then apply MCP selectors and body policy.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
   if headBytes < 0:

@@ -37,6 +37,8 @@ proc hasToken(value, expected: string): bool =
 proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags()): string =
   ## Accept a complete version-13 WebSocket upgrade at /, with no body and an optional exact UI browser Origin.
   ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
+  ## The stock request-head parser handles syntax. This routine owns Upgrade,
+  ## endpoint, selector uniqueness and exact Origin policy.
   result = ""
   # Each handshake owns its parsed message until return. The listener reuses the vocabulary.
   var head = http_msg.initHttpMsg(tags)
