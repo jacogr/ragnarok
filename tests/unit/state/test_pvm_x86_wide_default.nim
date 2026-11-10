@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Unbound checked seven-block histories and source seals; explicit legacy parent refusal stays separate.
+## Unbound seven-block histories and exact source seals, with separate direct publisher controls.
 
 import std/[assertions, syncio]
 import ../../../src/codec/natural
@@ -13,7 +13,7 @@ import ../../../src/pvm/internal/x86_jit
 when not defined(pvmX86Jit):
   assert false, "the default x86 suite needs pvmX86Jit"
 when not defined(pvmX86WideParentRefusalWitness):
-  assert false, "the default x86 suite needs its isolated parent-refusal control"
+  assert false, "the x86 suite needs its direct parent-refusal control"
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Encode only the program container; the instruction and branch bytes below are independent literals.
@@ -113,9 +113,6 @@ proc equalOutcome(actual, checked: FlatFrame) =
 proc checkUnbound(frame: FlatFrame) =
   ## Ordinary frames have no shared session or old JIT; semantic comparisons prove the guest result.
   assert flatX86Statistics(frame) == default(array[5, uint64]), "unbound frame has no native image or entry"
-  assert flatX86WideStatistics(frame) == default(array[2, uint64]), "wide native feature remains unported"
-  assert flatX86MemoryCycleStatistics(frame) == default(array[2, uint64]), "no dormant child execution"
-  assert flatX86WidePendingCountWitness(frame) == 0, "no legacy pending admission without an old JIT"
 
 let sourceProgram = source()
 let nativePlan = prepared(sourceProgram, true)
@@ -209,22 +206,109 @@ equalOutcome(aliasFrame, checkedReadRefusal)
 assert aliasFrame.exit == StepExit.Fault
 checkUnbound(aliasFrame)
 
-# Explicit LEGACY control: the existing hook creates an old JIT; this is not common worker refusal.
-# Keep the full checked outcome and no child/parent execution checks; zero calls alone do not establish refusal.
-let refusalPlan = prepared(sourceProgram, true)
-var refused = newFlatFrame(refusalPlan, initialPages, infoAt())
-flatX86RefuseWideParentOnceWitness(refused)
-runFlat(refused, 20000)
-replaceFlatMemory(refused, initialPages, infoAt())
-var checkedRefusal = newFlatFrame(checkedPlan, initialPages, infoAt())
-runFlat(refused, 20000)
-runFlat(checkedRefusal, 20000)
-equalOutcome(refused, checkedRefusal)
-assert flatX86WideStatistics(refused)[0] == 0 and
-  flatX86MemoryCycleStatistics(refused)[0] == 0
+when defined(linux) and defined(amd64) and not defined(pvmX86JitRefuse):
+  proc directWidePublication(refuseParent: bool) =
+    ## The raw publisher owns only code and copied source. The checked frame never gains a native handler.
+    let plan = prepared(sourceProgram, true)
+    let foreign = prepared(sourceProgram, true)
+    var initial = pages()
+    for offset in 0..<4096: initial[1].bytes[offset] = 0xa5
+    var frame = newFlatFrame(plan, initial, infoAt())
+    const Budget = 20000'u64
+    runFlat(frame, Budget) # Warm only the checked source edges used by the seal.
+    resetFlatFrame(frame, infoAt())
+    runFlat(frame, 2) # The checked prelude writes one byte, then jumps to the unpaid Gate.
+    assert frame.info.pc == CodeAddress(12) and not frame.info.blockCharged
+    let cpu = frame.info
+    let snapshot = flatMemorySnapshot(frame)
+    let before = memoryImages(snapshot).value
+    assert before.len == 2 and before[0] == initial[0] and before[1].bytes != initial[1].bytes
+    var candidate = default(X86WideCycleCandidate)
+    var emission = default(X86WideEmission)
+    assert flatX86WideSourceProof(frame, 31, candidate, emission)
+    assert candidate.loopBranch.pc == 12 and candidate.rare.pc == 68
+    let owner = newX86Jit()
+    let identity = cast[pointer](plan)
+    let other = cast[pointer](foreign)
+    assert identity != other
+    let child = publishX86MemoryCycle(owner, candidate.cycle, emission.prefix, identity)
+    assert child >= 0 and owner.fragments == 1 and owner.codeBytes > 0
+    assert x86CycleBound(owner, child, identity) and not x86CycleBound(owner, child, other)
+    let childBytes = owner.codeBytes
+    if refuseParent:
+      x86WideRefuseParentOnceWitness(owner)
+      assert x86WideParentRefusalPending(owner)
+    let installed = publishX86WideCycle(owner, candidate, emission, child, identity)
+    assert installed != refuseParent and not x86WideParentRefusalPending(owner)
+    checkUnbound(frame)
+
+    # Both descriptors point to private fixture copies. The prelude proved page 149 dirty.
+    var ro = before[0]
+    var rw = before[1]
+    let roStart = uint64(uint32(ro.index))*4096
+    let rwStart = uint64(uint32(rw.index))*4096
+    var dirty = @[0'u64, 0'u64, 1'u64 shl (149 mod 64)]
+    let beforeDirty = dirty
+    var memory = X86WideMemory(
+      cycle: X86CycleMemory(readPtr: addr ro.bytes[0], readFirst: roStart, readEnd: roStart+4096,
+        writePtr: addr rw.bytes[0], writeFirst: rwStart, writeEnd: rwStart+4096,
+        dirtyWords: uint32(dirty.len)),
+      # The absent stack sorts above the fixture extents, exactly as in the frame.
+      regions: [X86WideReadRegion(first: uint64(high(uint32)), ending: uint64(high(uint32))),
+        X86WideReadRegion(data: addr rw.bytes[0], first: rwStart, ending: rwStart+4096),
+        X86WideReadRegion(data: addr ro.bytes[0], first: roStart, ending: roStart+4096)])
+    var registers = cpu.registers
+    var state = X86WideState(cycle: X86CycleState(gas: uint64(cpu.gas), attempts: Budget,
+      lastCompleted: high(uint32)))
+    let untouched = state
+    if refuseParent:
+      # A source-valid child occupies the arena, but no frame or active parent can enter it.
+      assert owner.fragments == 1 and owner.codeBytes == childBytes
+      assert not x86WideActive(owner) and not x86WideBound(owner, identity)
+      assert callX86WideCycle(owner, registers, memory, dirty, state) == 0
+      assert state == untouched and registers == cpu.registers and dirty == beforeDirty
+      assert ro == before[0] and rw == before[1]
+      assert owner.calls == 0 and x86MemoryCycleStatistics(owner) == default(array[2, uint64])
+      var expected = newFlatFrame(checkedPlan, before, cpu)
+      runFlat(frame, Budget)
+      runFlat(expected, Budget)
+      equalOutcome(frame, expected)
+    else:
+      assert owner.fragments == 2 and owner.codeBytes > childBytes
+      assert x86WideBound(owner, identity) and not x86WideBound(owner, other)
+      let receipt = callX86WideCycle(owner, registers, memory, dirty, state)
+      let next = uint32(receipt and 0xffffffff'u64)
+      assert receipt shr 32 == 1 and state.cycle.exitKind == 2 and next == candidate.rare.header,
+        "positive parent must return at the genuine rare exit"
+      assert flatX86WideReceiptProof(candidate, uint64(cpu.gas), Budget, state, next),
+        "positive parent receipt must match original charged source spans"
+      assert recordX86WideCycle(owner, candidate, state)
+      assert x86WideStatistics(owner)[0] == 1 and x86MemoryCycleStatistics(owner)[0] == 320
+      assert state.childCalls == 320 and state.cycle.wordGroups > 0
+      assert dirty == beforeDirty and ro == before[0] and rw.bytes != before[1].bytes
+      let used = Budget-state.cycle.attempts
+      assert used == 12508 and uint64(cpu.gas)-state.cycle.gas == 68956
+      var prefix = newFlatFrame(checkedPlan, before, cpu)
+      runFlat(prefix, used)
+      assert prefix.remaining == 0 and prefix.reason == StepError.StepLimitExceeded
+      let afterCpu = MachineInfo(pc: CodeAddress(uint64(candidate.rare.pc)),
+        gas: MachineGas(state.cycle.gas), registers: registers)
+      assert prefix.info == afterCpu
+      assert memoryImages(flatMemorySnapshot(prefix)).value == @[ro, rw]
+      var resumed = newFlatFrame(checkedPlan, [ro, rw], afterCpu)
+      var expected = newFlatFrame(checkedPlan, before, cpu)
+      runFlat(resumed, state.cycle.attempts)
+      runFlat(expected, Budget)
+      equalOutcome(resumed, expected)
+    assert memoryImages(snapshot).value == before
+    checkFlatSource(frame, initial)
+    checkUnbound(frame)
+
+  directWidePublication(true)
+  directWidePublication(false)
 
 # A tail backedge can be cached while the outer guard's other arm remains unprepared.
-# Moving the checked source with its stream preserves zero legacy pending entries and later source proof.
+# Moving the checked stream preserves the partial graph and allows a later source proof.
 let pendingPlan = prepared(sourceProgram, true)
 var fromPrefix = infoAt()
 fromPrefix.pc = CodeAddress(31)
@@ -235,11 +319,9 @@ var pendingShape = default(X86WideCycleCandidate)
 assert pending.reason == StepError.StepLimitExceeded and
   flatX86SealMemoryCycle(pending, 31, narrowShape) and
   not flatX86SealWideCycle(pending, 31, pendingShape)
-assert flatX86WidePendingCountWitness(pending) == 0
 var pendingStream = takeFlatStream(pending)
 var later = newFlatFrame(pendingPlan, initialPages, infoAt())
 restoreFlatStream(later, pendingStream)
-assert flatX86WidePendingCountWitness(later) == 0
 var laterChecked = newFlatFrame(checkedPlan, initialPages, infoAt())
 runFlat(later, 20000)
 runFlat(laterChecked, 20000)
@@ -280,7 +362,7 @@ when defined(pvmX86MemoryCycleSealWitness):
       not flatX86CompleteTargetWitness(frame, uint32(suffix[0])), "overlapping suffix cannot authorize stale target"
     assert flatX86CompleteTargetWitness(frame, header), "original complete source remains valid"
 
-# Retain every distinct decoy source/backedge and late source outcome without an old pending table.
+# Retain every distinct decoy source/backedge and late source outcome.
 # Each copied narrow loop still lacks the complete outer wide edge, as its source proof must show.
 let crowdedProgram = source(17)
 let crowdedPlan = prepared(crowdedProgram, true)
@@ -299,12 +381,10 @@ for copy in 0..<17:
   var decoyWide = default(X86WideCycleCandidate)
   assert flatX86SealMemoryCycle(crowded, pc, decoyNarrow) and
     not flatX86SealWideCycle(crowded, pc, decoyWide)
-  assert flatX86WidePendingCountWitness(crowded) == 0
 replaceFlatMemory(crowded, initialPages, fromPrefix)
 runFlat(crowded, 30)
 assert flatX86SealMemoryCycle(crowded, 31, narrowShape) and
   not flatX86SealWideCycle(crowded, 31, pendingShape)
-assert flatX86WidePendingCountWitness(crowded) == 0
 replaceFlatMemory(crowded, initialPages, infoAt())
 var checkedCrowded = newFlatFrame(crowdedCheckedPlan, initialPages, infoAt())
 runFlat(crowded, 20000)
