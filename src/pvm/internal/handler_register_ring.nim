@@ -10,9 +10,12 @@ when declared(FlatFrame):
     if f.plan == nil or f.plan.singleStep or f.pricingKind != 0 or
         f.preparationFailure != FlatError.None:
       return
-    let shapeA: FlatHandler = flatChargedShape[200, 139, 82]
-    let shapeB: FlatHandler = flatChargedShape[131, -1, 88]
-    let shapeC: FlatHandler = flatChargedShape[151, 152, 173]
+    let shapeA: FlatHandler = flatChargedShape[200, 139, 82, true]
+    let shapeB: FlatHandler = flatChargedShape[131, -1, 88, true]
+    let shapeC: FlatHandler = flatChargedShape[151, 152, 173, true]
+    let checkedA: FlatHandler = flatChargedShape[200, 139, 82, false]
+    let checkedB: FlatHandler = flatChargedShape[131, -1, 88, false]
+    let checkedC: FlatHandler = flatChargedShape[151, 152, 173, false]
     let branchA: FlatHandler = flatBranch[82]
     let branchB: FlatHandler = flatBranch[88]
     let branchC: FlatHandler = flatBranch[173]
@@ -29,11 +32,11 @@ when declared(FlatFrame):
       let charged = f.handlers[int(header)]
       let ending = f.handlers[int(terminal)]
       if index == 0:
-        if charged != shapeA or ending != branchA: return
+        if (charged != shapeA and charged != checkedA) or ending != branchA: return
       elif index == 1:
-        if charged != shapeB or ending != branchB: return
+        if (charged != shapeB and charged != checkedB) or ending != branchB: return
       else:
-        if charged != shapeC or ending != branchC: return
+        if (charged != shapeC and charged != checkedC) or ending != branchC: return
       let first = f.sites[int(header)]
       if uint64(first)+uint64(span) > uint64(f.plan.facts.len): return
       let root = f.plan.facts[int(first)]
@@ -72,11 +75,25 @@ when declared(FlatFrame):
       ring.blocks[index] = item
     if ring.complete: result = ring
 
-  proc flatObserveNativeRing(f: FlatFrame, headers: array[3, uint32]) =
-    ## An observed exact closed round can nominate a copied candidate once per epoch.
+  proc flatSelectRingHandlers[Ring: static[bool]](f: var FlatFrame, headers: array[3, uint32]) =
+    ## Swap only the three certified headers after a complete checked round or ready revalidation.
+    let a: FlatHandler = flatChargedShape[200, 139, 82, Ring]
+    let b: FlatHandler = flatChargedShape[131, -1, 88, Ring]
+    let c: FlatHandler = flatChargedShape[151, 152, 173, Ring]
+    f.handlers[int(headers[0])] = a
+    f.handlers[int(headers[1])] = b
+    f.handlers[int(headers[2])] = c
+
+  proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.} =
+    ## Nominate a checked round once, then dispatch the stock checked worker until publication.
     let epoch = nativeRingAdmissionEpoch(f.nativeSession)
-    if epoch != 0:
-      nominateNativeRing(f.nativeSession, flatRingCertificate(f, headers), epoch)
+    if epoch == 0: return false
+    let headers = [first, middle, last]
+    let ring = flatRingCertificate(f, headers)
+    if not ring.complete: return false
+    nominateNativeRing(f.nativeSession, ring, epoch)
+    flatSelectRingHandlers[false](f, headers)
+    true
 
   proc flatInstallNativeRing(f: var FlatFrame, ring: NativeRegisterRing) =
     ## Compare every source and pricing fact after restoring the same exclusive stream.
@@ -84,7 +101,7 @@ when declared(FlatFrame):
     if flatRingCertificate(f, headers) != ring:
       invalidateNativeStream(f.nativeSession)
     else:
-      # Keep original handlers installed so the next checked dispatch always owns unpaid fallback.
+      flatSelectRingHandlers[true](f, headers)
       f.nativeRingInstalled = true
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =

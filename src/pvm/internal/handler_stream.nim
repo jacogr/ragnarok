@@ -874,48 +874,49 @@ template flatChargedStep(f: var FlatFrame, off: uint32, First, Second, Branch: s
     flatBranchSelect(f, args, Branch, destination)
 
 when NativeCheckedReadEnabled:
-  proc flatObserveNativeRing(f: FlatFrame, headers: array[3, uint32])
+  proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.}
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool
 
-proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
+proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f: var FlatFrame,
+    off: uint32): uint32 =
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
   var current = off
   var destination = flatStop
-  when NativeCheckedReadEnabled:
+  when Ring:
     if f.nativeRingInstalled and flatTryNativeRing(f, off, destination): return destination
   var middleOff = flatStop
   var lastOff = flatStop
   # Every logical block still performs its own complete gas and source-budget reservation.
   flatChargedStep(f, current, First, Second, Branch, destination)
   when First == 131:
-    let middle: FlatHandler = flatChargedShape[151, 152, 173]
+    let middle: FlatHandler = flatChargedShape[151, 152, 173, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 151, 152, 173, destination)
-    let last: FlatHandler = flatChargedShape[200, 139, 82]
+    let last: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
     flatChargedStep(f, current, 200, 139, 82, destination)
   elif First == 200:
-    let middle: FlatHandler = flatChargedShape[131, -1, 88]
+    let middle: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 131, -1, 88, destination)
-    let last: FlatHandler = flatChargedShape[151, 152, 173]
+    let last: FlatHandler = flatChargedShape[151, 152, 173, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
     flatChargedStep(f, current, 151, 152, 173, destination)
   else:
-    let middle: FlatHandler = flatChargedShape[200, 139, 82]
+    let middle: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 200, 139, 82, destination)
-    let last: FlatHandler = flatChargedShape[131, -1, 88]
+    let last: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
@@ -924,11 +925,14 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
-  when NativeCheckedReadEnabled:
-    # Canonical certificate order is independent of the observed entry rotation.
-    when First == 200: flatObserveNativeRing(f, [off, fixedMiddle, fixedLast])
-    elif First == 131: flatObserveNativeRing(f, [fixedLast, off, fixedMiddle])
-    else: flatObserveNativeRing(f, [fixedMiddle, fixedLast, off])
+  when Ring:
+    # Once the observed proof is copied, the original worker owns the remaining cold work.
+    when First == 200:
+      if flatObserveNativeRing(f, off, fixedMiddle, fixedLast): return off
+    elif First == 131:
+      if flatObserveNativeRing(f, fixedLast, off, fixedMiddle): return off
+    else:
+      if flatObserveNativeRing(f, fixedMiddle, fixedLast, off): return off
   when ArmRegionWitness:
     # The legacy owner is installed only by the region witness.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
@@ -960,8 +964,15 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
   let cached: FlatHandler = flatBranch[Branch]
   if f.handlers[int(branchOff)] == cached:
     # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
-    let combined: FlatHandler = flatChargedShape[First, Second, Branch]
-    f.handlers[int(off)] = combined
+    let checked: FlatHandler = flatChargedShape[First, Second, Branch, false]
+    when NativeCheckedReadEnabled:
+      if nativeEpoch(f.nativeSession) != 0:
+        let observed: FlatHandler = flatChargedShape[First, Second, Branch, true]
+        f.handlers[int(off)] = observed
+      else:
+        f.handlers[int(off)] = checked
+    else:
+      f.handlers[int(off)] = checked
   outcome
 
 proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
