@@ -27,8 +27,8 @@ bound runtime. Unported capabilities remain checked until their real shared path
 | Capability | Former ARM64 implementation | Former x86-64 implementation | Initial shared path and migration obligation |
 | --- | --- | --- | --- |
 | Pure register operations | Resident guest lanes with live-in and dirty masks | Canonical array access, with separate resident-access support | Copied pure spans exist on both. Preserve all register aliases and exact arithmetic while improving allocation independently. |
-| Conditional block control | Immediate/register branch suffixes | Immediate/register branch suffixes | Only restricted unsigned-less self-loop promotion exists. Migrate the applicable predicates and resolved control edges through shared certificates. |
-| Connected pure regions | Two/three-block cycles | One/two-block regions, with additional restricted prototypes | A restricted single-block loop exists. Add bounded multi-block source graphs with explicit weighted accounting and side exits. |
+| Conditional block control | Immediate/register branch suffixes | Immediate/register branch suffixes | The shared self-loop uses unsigned less-than. The three-header loop adds exact immediate inequality, signed less-or-equal and register signed less-than edges. |
+| Connected pure regions | Two/three-block cycles | One/two-block regions, with additional restricted prototypes | Shared single-block and bounded three-header register loops use exact weighted accounting and checked side exits. General connected control remains open. |
 | Indirect scalar reads | All seven width/sign forms, prefixes and transactional bodies | A narrower retained read path | Shared bodies admit U8, S32 and U64 under restricted geometry. Extend the shared operand and refusal contract for the remaining applicable forms on both ISAs. |
 | Direct-address reads | Direct loads with pure suffix/control lowering | No equivalent retained frame adapter | Checked only. Represent genuine decoded memory operands in copied IR before adding either public native path. |
 | Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Checked only. Migrate loads, stores, arithmetic and control together with precise fault, quota and dirty-page effects. |
@@ -146,6 +146,33 @@ The independent three-block checked shape can still reach the legacy connected p
 private witness supplies an old ARM64 owner. The raw ARM64 branch, region and dirty-store
 emitters and their native witnesses remain. General connected control and mixed-store coverage
 still require equivalent shared ARM64 and x86-64 qualification.
+
+## Shared three-header register loop
+
+The [copied certificate](../src/pvm/internal/native_register_ring.nim) admits complete original
+`200/139/82 → 131/88 → 151/152/173` blocks with one closed successor and one resolved checked
+exit per block. Admission follows a real closed checked round. The [stream binding](../src/pvm/internal/handler_register_ring.nim)
+copies decoded operations, both marked successors, and original prices. Every ready lease matches
+that certificate against its restored stream. Entry supports all three rotations under the existing
+worker, image ceiling, and registration credits.
+
+Every native block checks the whole source quota and the unsigned original gas charge before debit.
+A failed guard returns to the exact unpaid checked header. The original worker still owns partial
+prefix execution and the zero-attempt and out-of-gas ordering. The entry wrapper verifies per-role visits,
+weighted gas and attempt totals, the connected visit order, and the final branch against the
+committed register file.
+
+The sealed DOOM init observed the three-header loop during its first checked invocation. Stock
+selected a two-operation pure prefix and had no read nomination. The ring can supersede that bare
+prefix while a certified self-loop or a retained read keeps its existing selection. Tick still
+selects its connected read renderer. On macOS ARM64 each ready init call recorded 9,032 native
+entries and 170,413,402 complete original attempts. Each ready tick recorded the stock 651 native
+calls and 10,865,293 operations. These receipts count source work. The application oracle compares
+gas, all registers, every mapped byte, and the complete host event stream.
+
+The direct witness ran 1,728 cases on each native Linux ISA before runtime integration, including
+all entry rotations, each external branch, zero and partial quotas, and full-width prices. Both
+legacy direct region suites also passed. [Direct native CI](https://github.com/jacogr/ragnarok/actions/runs/42861336730)
 
 ## Remaining legacy admission witnesses
 

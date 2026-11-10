@@ -6,6 +6,7 @@
 
 import std/assertions
 import ../[program, machine]
+import ./native_register_ring
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
@@ -1390,10 +1391,9 @@ func armRegionChargeMatches*(jit: ArmJit, index: range[0..2], header, span: uint
   jit.region.status == 2 and jit.region.headers[index] == header and
     jit.region.spans[index] == span and jit.region.prices[index] == price
 
-proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
-    count: range[2..3] = 3): bool =
-  ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
-  assert jit.region.status == 0
+proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
+    rotating: bool): seq[uint32] =
+  ## Emit one resident loop with a whole-source guard at each original header.
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
@@ -1411,15 +1411,22 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
   for slot in 0..<13:
     if (resident and (1'u32 shl slot)) != 0:
       words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  if rotating:
+    # The caller validates the entry index. Zero falls through to the first guarded block.
+    words.add(0xf9401621'u32) # LDR X1,[X17,#40].
+    words.add(0xf100043f'u32) # CMP X1,#1.
+    armRegionEdge(words, fixes, blocks[1].header, 0, false)
+    words.add(0xf100083f'u32) # CMP X1,#2.
+    armRegionEdge(words, fixes, blocks[2].header, 0, false)
   for index in 0..<count:
     # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
     let item = blocks[index]
     if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
-      return false
+      return @[]
     if item.body.terminal.len notin [6, 10]:
       # Only our explicit regional policy can shorten the compare constant; the final five return words remain fixed.
       if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
-        return false
+        return @[]
     labels[index] = words.len
     words.add(0xf100007f'u32 or (item.span shl 10)) # CMP Xremaining,#wholeSourceSpan.
     armRegionEdge(words, fixes, item.header, 3, true) # LO returns before charging a partial block.
@@ -1483,7 +1490,7 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
   words.add(0xfd000e31'u32)
   words.add(0xfd001232'u32)
   words.add(0x2a0103e0'u32) # MOV W0,Wtarget after register/state publication.
-  if words.len >= 1024: return false
+  if words.len >= 1024: return @[]
   for at in epilogueBranches:
     # Stub branches are forward and bounded by the same 1,024-word image ceiling.
     words[at] = 0x14000000'u32 or uint32(epilogue-at)
@@ -1502,6 +1509,32 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     words[fix.at] = if fix.condition < 16:
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
+  words
+
+proc encodeArmRegisterRing*(ring: NativeRegisterRing): seq[uint32] =
+  ## Reuse the resident regional emitter without retaining a legacy owner.
+  var blocks = default(array[3, ArmRegionBlock])
+  for index in 0..2:
+    let item = ring.blocks[index]
+    var body = newArmRegionBody()
+    for operation in 0..<int(item.span)-1:
+      let op = item.body[operation]
+      emitArmOperation(body, op.opcode, op.slots, op.immediate)
+    let branch = item.branch
+    emitArmBranch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
+    blocks[index] = ArmRegionBlock(header: item.header, span: item.span,
+      operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
+  result = armRegionWords(blocks, 3, true)
+  if result.len != 0:
+    # Direct shared publication expects a complete image including the leaf return.
+    result.add(0xd65f03c0'u32)
+
+proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
+    count: range[2..3] = 3): bool =
+  ## Preserve the legacy publisher and its original nonrotating entry.
+  assert jit.region.status == 0
+  var words = armRegionWords(blocks, count, false)
+  if words.len == 0: return false
   # Shape/span/image negatives stay local under existing header probes; only owner-wide storage failure is sticky.
   jit.region.status = 1
   if not publishArmEntry(jit, blocks[0].header, 0, 0, words, true): return false

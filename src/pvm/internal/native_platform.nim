@@ -6,7 +6,7 @@
 import std/assertions
 import ../machine
 import ./[native_ir, native_control]
-import ./native_read_body
+import ./[native_read_body, native_register_ring]
 when NativeReadCycleEnabled:
   import ./native_read_cycle
 when defined(pvmX86Jit):
@@ -54,6 +54,8 @@ type NativeImage* = object ## Exclusive published image with its exact call ABI.
   offset: uint32
   bytesValue: uint64
   kindValue: NativeKind
+  when NativeCheckedReadEnabled:
+    ringValue: NativeRegisterRing
 
 proc `=copy`*(destination: var NativeImage, source: NativeImage) {.error.}
   ## Executable authority cannot be duplicated by copying its POD handle.
@@ -67,6 +69,8 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   image.offset = 0
   image.bytesValue = 0
   image.kindValue = NativeKind.PurePrefix
+  when NativeCheckedReadEnabled:
+    image.ringValue = default(NativeRegisterRing)
 
 proc `=destroy`*(image: NativeImage) =
   ## Default, failed and moved-from images own no executable storage.
@@ -161,6 +165,62 @@ proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
   if image.handle == nil or image.kind != NativeKind.ClosedRegisterLoop: abortNativeReceipt()
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+  else:
+    abortNativeReceipt()
+
+proc lowerNativeRegisterRing*(ring: NativeRegisterRing): NativeImage =
+  ## Validate and publish one bounded pure image in the selected platform arena.
+  result = default(NativeImage)
+  if not nativePlatformSupported() or not ring.complete: return
+  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    when defined(pvmX86Jit):
+      var encoded = encodeX86RegisterRing(ring)
+      const unitBytes = 1
+    else:
+      var encoded = encodeArmRegisterRing(ring)
+      const unitBytes = 4
+    let count = encoded.len
+    if count == 0 or count > NativeImageByteLimit div unitBytes: return
+    let handle = createNativeArena()
+    if handle == nil: return
+    let offset = arenaPublish(handle, addr encoded[0], uint32(count))
+    if offset < 0:
+      arenaRelease(handle)
+      return
+    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(
+        count*unitBytes),
+      kindValue: NativeKind.RegisterRing)
+    when NativeCheckedReadEnabled:
+      result.ringValue = ring
+
+func nativeRegisterRingCertificate*(image: NativeImage): NativeRegisterRing =
+  ## Only the published image owns the exact certificate used by its entry receipt.
+  when NativeCheckedReadEnabled:
+    if image.ready and image.kind == NativeKind.RegisterRing: return image.ringValue
+  default(NativeRegisterRing)
+
+func nativeRegisterRingRotation*(image: NativeImage, header: uint32): uint64 =
+  ## Select the bound entry without copying the full certificate on the execution path.
+  when NativeCheckedReadEnabled:
+    if image.ready and image.kind == NativeKind.RegisterRing:
+      for index in 0..2:
+        if image.ringValue.blocks[index].header == header: return uint64(index)
+  high(uint64)
+
+proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
+    context: var NativeRingContext): uint32 =
+  ## Validate rotation before borrowing state and verify the complete receipt before returning.
+  assert sizeof(RegisterFile) == 104 and sizeof(NativeRingContext) == 48
+  if not image.ready or image.kind != NativeKind.RegisterRing or
+      context.entry > 2 or context.visits != [0'u64, 0, 0]:
+    abortNativeReceipt()
+  when NativeCheckedReadEnabled:
+    let entry = NativeRingIndex(context.entry)
+    let gas = context.gas
+    let remaining = context.remaining
+    result = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+    if not validRingReceipt(image.ringValue, entry, result, gas, remaining, context, registers):
+      abortNativeReceipt()
   else:
     abortNativeReceipt()
 

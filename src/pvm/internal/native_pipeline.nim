@@ -9,8 +9,8 @@
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
-import ./[native_ir, native_platform, native_read_body]
-export native_ir, native_read_body
+import ./[native_ir, native_platform, native_read_body, native_register_ring]
+export native_ir, native_read_body, native_register_ring
 
 when NativeReadCycleEnabled:
   import ./native_read_cycle
@@ -34,6 +34,8 @@ type NativeRequest = object
   span: NativeSpan
   when NativeCheckedReadEnabled:
     readProof: NativeReadStorage
+    ring: NativeRegisterRing
+    ringEpoch: uint64
 
 when defined(pvmSharedAsyncWitness):
   type
@@ -99,6 +101,8 @@ type
     when NativeCheckedReadEnabled:
       readProof: NativeReadStorage
       readNominated, readValidated: bool # Validation belongs to this invocation's restored stream.
+      ring: NativeRegisterRing
+      ringEpoch: uint64                  # Only the exact stream epoch may nominate or collect this ring.
     when NativeReadCycleEnabled:
       readRouteValid: bool
     image: NativeImage
@@ -178,6 +182,11 @@ func requestMatches(request: NativeRequest, key: JobKey): bool =
   of NativeKind.PurePrefix, NativeKind.ClosedRegisterLoop:
     request.span.len >= NativeMinimumOperations and request.span.epoch == key.epoch and
       request.span.kind == key.kind
+  of NativeKind.RegisterRing:
+    when NativeCheckedReadEnabled:
+      request.ringEpoch == key.epoch and request.ring.complete
+    else:
+      false
   of NativeKind.CheckedReadBody:
     when NativeCheckedReadEnabled:
       readCertificate(request.readProof).complete and
@@ -200,6 +209,7 @@ func acceptedKind(data: NativeSessionData): NativeKind =
       return NativeKind.ConnectedReadCycle
   when NativeCheckedReadEnabled:
     if readCertificate(data.readProof).complete: return NativeKind.CheckedReadBody
+    if data.ringEpoch == data.epoch: return NativeKind.RegisterRing
   data.span.kind
 
 func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
@@ -356,6 +366,14 @@ proc compilerRun(raw: pointer) =
       let span = runtime.request.span
       if releaseCompilerClaim(runtime, key):
         image = lowerNative(span)
+    of NativeKind.RegisterRing:
+      when NativeCheckedReadEnabled:
+        # The exact copied ring is private to this worker before the lock can be released.
+        let ring = runtime.request.ring
+        if releaseCompilerClaim(runtime, key):
+          image = lowerNativeRegisterRing(ring)
+      else:
+        abortNativeReceipt()
     of NativeKind.CheckedReadBody:
       when NativeCheckedReadEnabled:
         # Only read-capable builds own this payload, with no invocation memory borrow.
@@ -575,6 +593,23 @@ proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
     data.span.promote(loop)
 
 when NativeCheckedReadEnabled:
+  func nativeRingAdmissionEpoch*(session: NativeSession): uint64 =
+    ## Only deferred owner storage can retain a newly observed complete checked round.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or data.state != NativeState.Deferred or
+        data.ticket != 0 or data.image.ready or data.ringEpoch != 0 or
+        data.invocationBudget < NativeInvocationFloor or
+        data.span.kind == NativeKind.ClosedRegisterLoop:
+      return 0'u64
+    data.epoch
+
+  proc nominateNativeRing*(session: NativeSession, ring: NativeRegisterRing, epoch: uint64) =
+    ## Keep a single exact source-bound ring, with no new image or worker credit.
+    let data {.cursor.} = session.data
+    if data != nil and epoch != 0 and nativeRingAdmissionEpoch(session) == epoch and ring.complete:
+      data.ring = ring
+      data.ringEpoch = epoch
+
   func nativeReadAdmissionEpoch*(session: NativeSession): uint64 =
     ## Only the exclusive deferred owner may compare an unpublished read with its incumbent.
     let data {.cursor.} = session.data
@@ -672,6 +707,7 @@ proc invalidateNativeStream*(session: NativeSession) =
     clearReadCertificate(data)
     data.readNominated = false
     data.readValidated = false
+    data.ringEpoch = 0
   data.nextScan = 0
   data.ticket = 0
   data.provenWork = 0
@@ -770,8 +806,13 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     data.readNominated and data.span.kind != NativeKind.ClosedRegisterLoop
   else:
     false
-  # Short/failed calls cannot replace a stronger retained nomination with its pure prefix.
-  let candidate = if waitingRead: selectRead else: data.span.len >= NativeMinimumOperations
+  let selectRing = when NativeCheckedReadEnabled:
+    not waitingRead and data.span.kind == NativeKind.PurePrefix and data.ringEpoch == data.epoch
+  else:
+    false
+  # Preserve read and certified self-loop precedence. A real ring outranks a bare pure prefix.
+  let candidate = if waitingRead: selectRead
+    else: selectRing or data.span.len >= NativeMinimumOperations
   # Check admission under the mutex already required to release this invocation's lease.
   acquire(runtime.lock)
   if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
@@ -780,9 +821,11 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
       runtime.nextTicket < high(uint64) and registerSession(runtime, data):
     inc runtime.nextTicket
     assert not data.image.ready and not runtime.slots[data.slot].completion.ready
-    # selectRead already excludes a certified closed loop. Write only the selected payload.
+    # Selection is fixed for this ticket. Only the selected ABI crosses the mailbox.
     template stockKind(): NativeKind =
-      if selectRead: NativeKind.CheckedReadBody else: data.span.kind
+      if selectRead: NativeKind.CheckedReadBody
+      elif selectRing: NativeKind.RegisterRing
+      else: data.span.kind
     when NativeReadCycleEnabled:
       let selectCycle = selectRead and data.readRouteValid and readCertificate(
           data.readProof).complete
@@ -798,8 +841,12 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
           else: readCertificate(runtime.request.readProof) = readCertificate(data.readProof)
         else:
           readCertificate(runtime.request.readProof) = readCertificate(data.readProof)
+      elif selectRing:
+        runtime.request.ring = data.ring
+        runtime.request.ringEpoch = data.ringEpoch
       else:
         runtime.request.span = data.span
+      if not selectRing: data.ringEpoch = 0
     else:
       runtime.request.span = data.span
     assert requestMatches(runtime.request, key)
@@ -908,6 +955,40 @@ func nativeControlStatistics*(session: NativeSession): NativeControlStatistics =
   NativeControlStatistics(branchCalls: data.branchCalls, headerCalls: data.headerCalls)
 
 when NativeCheckedReadEnabled:
+  func nativeRingReady(session: NativeSession): bool =
+    ## A ready ring is usable only under this invocation's existing work horizon and exact epoch.
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    data.invocation and data.allowed and data.state == NativeState.Ready and
+      data.ringEpoch == data.epoch and data.image.kind == NativeKind.RegisterRing
+
+  func nativeRingInfo*(session: NativeSession): NativeRegisterRing =
+    ## Compare the image-bound proof to the restored checked stream before its first entry.
+    let data {.cursor.} = session.data
+    if data != nil and nativeRingReady(session): return nativeRegisterRingCertificate(data.image)
+    default(NativeRegisterRing)
+
+  func nativeRingRotation*(session: NativeSession, header: uint32): uint64 =
+    ## The installed image maps an original charged header to a bounded rotation.
+    let data {.cursor.} = session.data
+    if data != nil and nativeRingReady(session): return nativeRegisterRingRotation(data.image, header)
+    high(uint64)
+
+  proc runNativeRing*(session: NativeSession, registers: var RegisterFile,
+      context: var NativeRingContext): uint32 =
+    ## The exact image checks the unpaid return and all debits before recording native work.
+    let data {.cursor.} = session.data
+    if data == nil or not nativeRingReady(session): abortNativeReceipt()
+    let remaining = context.remaining
+    result = enterNativeRegisterRing(data.image, registers, context)
+    let operations = remaining-context.remaining
+    if operations == 0: return
+    if data.calls < high(uint64): inc data.calls
+    if data.branchCalls < high(uint64): inc data.branchCalls
+    if context.visits[0]+context.visits[1]+context.visits[2] > 1 and
+        data.headerCalls < high(uint64): inc data.headerCalls
+    if data.operations <= high(uint64)-operations: data.operations += operations
+
   func nativeReadInfo*(session: NativeSession): NativeReadBodyInfo =
     ## An installed, permitted read image exposes only its copied geometry.
     let data {.cursor.} = session.data

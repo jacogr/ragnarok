@@ -179,6 +179,8 @@ type
       readProbe: ReadProbeState
     nativeSession*: NativeSession         # Prepared identity only; never passed to the compiler thread.
     nativeOriginal: nil FlatHandler
+    when NativeCheckedReadEnabled:
+      nativeRingInstalled: bool           # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
     nativeInstalledEpoch: uint64
     pricingKind: byte # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
@@ -900,10 +902,16 @@ template flatChargedStep(f: var FlatFrame, off: uint32, First, Second, Branch: s
     let args = f.arguments[int(branchOff)]
     flatBranchSelect(f, args, Branch, destination)
 
+when NativeCheckedReadEnabled:
+  proc flatObserveNativeRing(f: FlatFrame, headers: array[3, uint32])
+  proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool
+
 proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
   var current = off
   var destination = flatStop
+  when NativeCheckedReadEnabled:
+    if f.nativeRingInstalled and flatTryNativeRing(f, off, destination): return destination
   var middleOff = flatStop
   var lastOff = flatStop
   # Every logical block still performs its own complete gas and source-budget reservation.
@@ -945,6 +953,11 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
+  when NativeCheckedReadEnabled:
+    # Canonical certificate order is independent of the observed entry rotation.
+    when First == 200: flatObserveNativeRing(f, [off, fixedMiddle, fixedLast])
+    elif First == 131: flatObserveNativeRing(f, [fixedLast, off, fixedMiddle])
+    else: flatObserveNativeRing(f, [fixedMiddle, fixedLast, off])
   when ArmRegionWitness:
     # The legacy owner is installed only by the region witness.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
@@ -1798,18 +1811,24 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   runNativeSpan(f.nativeSession, f.info.registers)
   span.past
 
-func flatNativeHeader(f: FlatFrame, header, pc: uint32): bool =
-  ## Accept only a materialized, ordinary, original block header at this exact source PC.
+func flatSourceHeader(f: FlatFrame, header, pc: uint32): bool =
+  ## Accept only a materialized original block header at this exact source PC.
   if header >= NativeEntryLimit or uint64(header) >= uint64(f.handlers.len) or
       uint64(header) >= uint64(f.sites.len) or uint64(pc) >= uint64(f.compiledForPc.len):
     return false
-  if f.handlers[int(header)] != flatCharge or
-      f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
+  if f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
   let ordinal = f.sites[int(header)]
   if uint64(ordinal) >= uint64(f.plan.facts.len): return false
   let fact = f.plan.facts[int(ordinal)]
   fact.pc == pc and uint64(fact.priceIndex) < uint64(f.plan.pricePcs.len) and
     uint64(f.plan.pricePcs[int(fact.priceIndex)]) == uint64(pc)
+
+func flatNativeHeader(f: FlatFrame, header, pc: uint32): bool =
+  ## The single-header loop also requires the original ordinary charge worker.
+  flatSourceHeader(f, header, pc) and f.handlers[int(header)] == flatCharge
+
+when NativeCheckedReadEnabled:
+  include ./handler_register_ring
 
 proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
   ## Check the one selected prefix against resolved source, without admitting or pricing another node.
@@ -1913,6 +1932,11 @@ proc installNative(f: var FlatFrame) =
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch != 0:
       installFlatReadBody(f, read)
+      return
+  when NativeCheckedReadEnabled:
+    let ring = nativeRingInfo(f.nativeSession)
+    if ring.blocks[0].span != 0:
+      flatInstallNativeRing(f, ring)
       return
   if not nativeSpanReady(f.nativeSession): return
   let span = nativeSpanInfo(f.nativeSession)
@@ -3711,6 +3735,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
     # The prior segment always restores its terminal handlers before any host transition.
     assert not f.readProbe.observing
     replacement.readProbe = f.readProbe
+    replacement.nativeRingInstalled = f.nativeRingInstalled
   replacement.preparationFailure = f.preparationFailure
   replacement.preparationUsed = f.preparationUsed
   replacement.pricingPlan = f.pricingPlan
