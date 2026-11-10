@@ -281,7 +281,8 @@ vendor-directory sweep. Duplicate JSON keys, conflicting pins, malformed tables 
 preflight. Missing local files and incomplete evidence lists also fail preflight; missing vendor
 bytes remain listed and must be present when runtime, E2E or guard reports hash their inputs.
 `make check-fixture-provenance` verifies declared checked-in fixture checksums once, including the
-shared manifest links in JAM input witnesses. `make check`, full CI and CI requests that include
+shared manifest links in JAM input witnesses and the frozen evidence links declared in
+`tests/fixtures/jam-evidence-links.json`. `make check`, full CI and CI requests that include
 Smoke run it before starting their workloads. Full CI runs the gate once for all jobs, including
 Smoke. A stale checksum stops that run at the gate. Other focused targets can run directly.
 Vendor download checks, generated fixture checks and comparisons against independent expected

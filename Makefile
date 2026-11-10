@@ -175,11 +175,14 @@ clean-tools:
 	$(PYTHON) tools/managed_tools.py clean
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
-.PHONY: check-fixture-provenance
+.PHONY: check-fixture-provenance check-workloads
 check-fixture-provenance:
 	$(PYTHON) tools/native_fixture_contracts.py
 
-check: check-fixture-provenance check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
+check: check-fixture-provenance
+	$(MAKE) check-workloads
+
+check-workloads: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.

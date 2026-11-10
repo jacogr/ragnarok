@@ -16,7 +16,7 @@ from harness_fixtures import temporary_folder
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from native_fixture_contracts import load_fixture_contracts, validate_fixture_contracts, verify
+from native_fixture_contracts import load_fixture_contracts, validate_fixture_contracts, verify, verify_fixture_links
 import native_requirements
 import native_tests
 
@@ -60,6 +60,7 @@ class NativeFixtureContractsHarness(unittest.TestCase):
             manifest.write_text('current manifest')
             witness = root/'tests/fixtures/jam-sample-input.json'
             witness.parent.mkdir(parents=True)
+            (witness.parent/'jam-evidence-links.json').write_text('{}')
             witness.write_text(json.dumps({'bandersnatch_pins_sha256': '0'*64}))
             digest = hashlib.sha256(witness.read_bytes()).hexdigest()
             contracts = {'sample': ('RAGNAROK_SAMPLE', witness, ((witness, digest),))}
@@ -68,6 +69,18 @@ class NativeFixtureContractsHarness(unittest.TestCase):
                     'runtime_provenance.pinned_fixture_digests', return_value={witness: digest}):
                 with self.assertRaisesRegex(ValueError, 'manifest checksum mismatch.*jam-sample-input'):
                     verify()
+
+    def test_frozen_evidence_link_rejects_stale_digest(self):
+        """A frozen record can match its own pin while citing an older input."""
+        with temporary_folder() as folder:
+            evidence, witness = folder/'evidence.json', folder/'input.json'
+            witness.write_text('current input')
+            evidence.write_text(json.dumps({'ring_input_sha256': '0'*64}))
+            descriptor = folder/'links.json'
+            descriptor.write_text(json.dumps({evidence.name: {'ring_input_sha256': witness.name}}))
+            digests = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (evidence, witness)}
+            with self.assertRaisesRegex(ValueError, 'evidence.json ring_input_sha256 -> input.json'):
+                verify_fixture_links(folder, descriptor, digests)
 
     # A new descriptor is discovered without adding its identity to a Python registry.
     def test_new_descriptor(self):

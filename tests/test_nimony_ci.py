@@ -361,8 +361,9 @@ class NimonyCISafeguards(unittest.TestCase):
         complete = make_plan('check')
         preflight = 'tools/native_fixture_contracts.py'
         self.assertEqual(complete.count(preflight), 1)
-        self.assertLess(complete.index(preflight), complete.index('tools/test_models.py'))
+        self.assertLess(complete.index(preflight), complete.index('echo check-workloads'))
         self.assertNotIn(preflight, runtime+module_plan+python_plan)
+        complete = make_plan('check-workloads')
         for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)

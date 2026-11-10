@@ -93,7 +93,21 @@ def validate_fixture_contracts(identities, extra=()):
     for path, digest in expected.items():
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError(f'Fixture checksum mismatch: {path}')
-    return len(expected)
+    return expected
+
+
+def verify_fixture_links(folder, descriptor, digests):
+    """Check frozen input links against the files already verified by the preflight."""
+    links = json.loads(descriptor.read_text(), object_pairs_hook=unique_object)
+    for name, fields in links.items():
+        evidence = fixture_path(folder, descriptor, name)
+        record = json.loads(evidence.read_text(), object_pairs_hook=unique_object)
+        for field, target in fields.items():
+            source = fixture_path(folder, descriptor, target)
+            if evidence not in digests or source not in digests:
+                raise ValueError(f'Unpinned fixture link: {name} {field} -> {target}')
+            if record.get(field) != digests[source]:
+                raise ValueError(f'Fixture link checksum mismatch: {name} {field} -> {target}')
 
 
 def verify():
@@ -102,14 +116,16 @@ def verify():
     # Vendor bytes are verified by their source consumers after provisioning.
     extra = [(path, digest) for path, digest in pinned_fixture_digests(ROOT).items()
              if path.relative_to(ROOT).parts[0] != 'vendor']
-    count = validate_fixture_contracts(FIXTURE_CONTRACTS, extra)
+    digests = validate_fixture_contracts(FIXTURE_CONTRACTS, extra)
+    folder = ROOT/'tests/fixtures'
+    verify_fixture_links(folder, folder/'jam-evidence-links.json', digests)
     manifest = hashlib.sha256((ROOT/'spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     for path in sorted((ROOT/'tests/fixtures').glob('jam-*-input.json')):
         # Only witnesses declaring the shared pin digest participate in this contract.
         record = json.loads(path.read_text(), object_pairs_hook=unique_object)
         if 'bandersnatch_pins_sha256' in record and record['bandersnatch_pins_sha256'] != manifest:
             raise ValueError(f'Bandersnatch manifest checksum mismatch: {path.relative_to(ROOT)}')
-    return count
+    return len(digests)
 
 
 def main():
