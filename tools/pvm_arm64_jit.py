@@ -128,7 +128,7 @@ def macro_witness_receipts(output, mode):
         'ARM_MACRO_LATE_READ_REFUND': 0,
         'ARM_MACRO_SIGNED_BACKEDGE': 0,
         'ARM_MACRO_OWNER_MOVE': 0,
-        'ARM_MACRO_LINKED_FALLBACK_CASES': 162 if mode in (
+        'ARM_MACRO_CHECKED_REENTRY_CASES': 162 if mode in (
             'native', 'macro-refused', 'resident-refused') else 0,
         'ARM_MACRO_RESIDENT': 0,
         'ARM_MACRO_ROLLBACK_ALIAS': 0,
