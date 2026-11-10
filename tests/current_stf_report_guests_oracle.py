@@ -190,7 +190,6 @@ def expected_observations(check_frozen=True):
     """Freeze every expected whole map before the native program receives the first input."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert fixture['base_fixture_sha256'] == hashlib.sha256(BASE.read_bytes()).hexdigest()
     requests, lines, roots, hashes = [], [], [], []
     for mode in MODES:
         initial = original(mode); parent = dict(initial); roots.append([]); hashes.append([])

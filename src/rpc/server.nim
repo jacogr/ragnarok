@@ -216,7 +216,10 @@ proc enableStateProofs*(server: var Server): bool =
   true
 
 proc takeStateProofRequest*(server: var Server): RpcProofDispatch =
-  ## Claim at most one connection selector fairly, outside RPC tick and every canonical lease.
+  ## Claim one detached selector by rotating across the live connection slots.
+  ## Run after RPC tick and outside the canonical lease, so no request view survives
+  ## worker admission. Completion remains tied to the original request namespace,
+  ## even when the transport reuses a slot or descriptor.
   if not server.opened or not server.proofs or server.lease != nil:
     return default(RpcProofDispatch)
   for step in 0..<MaxConnections:

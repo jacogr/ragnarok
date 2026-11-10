@@ -9,19 +9,8 @@ partial light-state storage needs a separate contract and database.
 
 ## Version one
 
-Bytes are ASCII `RAGNAROK-FULL-V1` plus LF, then an eight-byte little-endian
-entry count, the existing 32-byte complete state root, and sorted records. Each
-record contains its 31-byte serialized key, an eight-byte little-endian value
-length, and exactly that many raw value bytes. Present-empty values remain
-records. Keys follow the store's strict lexicographic order. No native integer
-width, padding, compression, alternate encoding or protocol fallback is used.
-
-`encodeFullCheckpoint(snapshot, ByteLimit)` preflights total fixed overhead and
-value bytes by checked subtraction before allocating the output. Both configured
-and host sequence bounds apply. Default snapshots refuse; failures expose only
-reasons. Successful output owns independent mutable bytes, while historical
-snapshot inputs retain their exact immutable version. Encoding performs no
-hashing, publication or disk I/O. Callers must respect any active worker lease.
+The [checkpoint codec](../src/state/checkpoint.nim) owns the exact local envelope,
+complete-map preflight and root checks.
 
 ## Completion checks and next layers
 
@@ -34,16 +23,8 @@ M1 framing is complete; full state serialization and JAM parity remain open.
 
 ## Strict restoration
 
-`decodeFullCheckpoint(input, StateStoreLimits, ByteLimit)` first checks the exact
-version, fixed overhead, full-width counts/lengths, strictly increasing keys,
-complete consumption and entry/per-value/aggregate byte ceilings. No record is
-allocated until the entire borrowed input passes structural/policy checks. Input
-must remain stable for this synchronous call. It then owns raw entries, constructs
-the complete store under the supplied trie/node ceilings and compares every byte
-of its recomputed root with the envelope root. Only complete success returns a
-store; no partial map or root is published. Restored stores inherit the caller's
-explicit subsequent mutation budgets. This verifies internal integrity, not an
-externally trusted chain head or adversarial file authenticity.
+The [decoder](../src/state/checkpoint.nim) owns whole-envelope preflight and exact
+root validation. Caller-selected mutation ceilings apply to the restored store.
 
 Native checks cover exact round trips, every truncated prefix and short input
 ceiling, all single-byte tampering, duplicate/reversed keys, trailers, uint64

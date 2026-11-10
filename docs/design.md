@@ -3,8 +3,8 @@
 **Language:** Nimony 0.6.3 (pinned nightly), ARC. **Target:** native Linux. **State:** protocol foundation;
 full JAM execution, the complete state-transition pipeline and validator operation remain future work.
 
-Protocol target: Gray Paper 0.8.0; the Bandersnatch draft-text/reference discrepancy remains an explicit
-[parity gate](../spec/graypaper-0.8.0.md).
+Protocol authority and exceptions are recorded in [spec/AGENTS.md](../spec/AGENTS.md)
+and the [discrepancy register](../spec/graypaper-discrepancies.md).
 
 ## Module design
 
@@ -22,9 +22,9 @@ boundaries; it is not a running list of feature increments.
 | State storage and transitions | [State design](design/state.md) |
 | Telemetry | [Telemetry design](design/telemetry.md) |
 
-[Implementation scope](design/scope.md) records milestone coverage and remaining boundaries.
-Feature contracts, normative interpretations, current limitations and next bounded work belong
-in the corresponding `spec/<feature>.md`, not this index or an unrelated module's page.
+[Implementation scope](design/scope.md) records milestone coverage. Module and routine
+docs in the owning Nim source explain implemented design. Feature records keep protocol
+interpretation, pins and focused evidence.
 
 ## Shared boundaries
 

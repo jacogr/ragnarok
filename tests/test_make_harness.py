@@ -249,6 +249,9 @@ import sys
 name = Path(__file__).name
 with Path('calls').open('a') as output:
     output.write(name+(' --prefetch-blobs vendor/jamtestvectors' if '--prefetch-blobs' in sys.argv else ' --group failures' if '--group' in sys.argv else ' --rpc-test' if '--rpc-test' in sys.argv else '')+'\\n')
+# Provenance failure must stop the full check before any workload starts.
+if name == 'native_fixture_contracts.py' and os.environ.get('FAIL_PROVENANCE'):
+    sys.exit(7)
 # A malformed inventory must stop Make before it invokes provisioning or native verification.
 if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
     sys.exit(7)
@@ -274,7 +277,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('check_jam_network', 'setup_jam_minifuzz', 'check_jam_fuzzer_interface', 'setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'prepare_failures', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('native_fixture_contracts', 'check_jam_network', 'setup_jam_minifuzz', 'check_jam_fuzzer_interface', 'setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_tlanif', 'setup_nimony', 'setup_submodules', 'prepare_failures', 'test_models', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -316,6 +319,14 @@ os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
             result = subprocess.run(arguments+['check'], cwd=folder, env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
+            self.assertEqual(calls[0], 'native_fixture_contracts.py')
+            self.assertEqual(calls.count('native_fixture_contracts.py'), 1)
+            # Keep-going must still refuse to start any workload after a provenance failure.
+            (folder/'calls').write_text('')
+            failed_provenance = subprocess.run(arguments+['-k', 'check'], cwd=folder,
+                env={**environment, 'FAIL_PROVENANCE': '1'}, capture_output=True, text=True)
+            self.assertNotEqual(failed_provenance.returncode, 0)
+            self.assertEqual((folder/'calls').read_text().splitlines(), ['native_fixture_contracts.py'])
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
             failed_model = subprocess.run(arguments+['check-models'], cwd=folder,
                 env={**environment, 'FAIL_MODELS': '1'}, capture_output=True, text=True)

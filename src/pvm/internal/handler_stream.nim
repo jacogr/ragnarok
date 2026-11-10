@@ -2,11 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
-## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
+## Public immutable snapshot and host adapters live in pvm/step.
+##
+## A plan owns exact immutable source facts. The executable stream owns handlers,
+## sealed operands, sites and stable offsets. A private frame owns mutable CPU,
+## guest memory, budgets and callbacks. Restore and take move code-only state
+## across calls. The executable cache retains no invocation pointers. Idle byte
+## scratch has a separate lease and is restored before another invocation uses it.
+##
+## Host suspension publishes an immutable observation. Resident deltas can resume
+## the existing frame. Mapping or permission changes build a complete private
+## replacement before swapping ownership, so refusal preserves the stopped frame.
 
 import std/[algorithm, assertions]
-when defined(pvmArmMixedGroupReceipt):
-  import std/syncio
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
@@ -14,9 +22,13 @@ import ./register_ops
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  import ./[arm64_jit, jit_rules]
+  import ./arm64_jit
 when defined(pvmX86Jit):
   import ./x86_jit
+
+const
+  ArmRegionWitness = defined(pvmArm64Jit) and not defined(pvmX86Jit) and
+    defined(pvmArmMacroReceipt)
 
 when NativeCheckedReadEnabled:
   const
@@ -71,13 +83,6 @@ type
   FlatSourceInterval = object ## Bounded source coordinates and a captured charge, without complete-header authority.
     first, last, span: uint32
     price: uint64
-  FlatMixedOp = object ## Cold source event; each destination write is retained independently.
-    memory, store, writes: bool
-    base, destination: uint32
-    displacement, width: uint32
-  FlatMixedGroup = object ## One stable base and one pointer lane absent from the entire guest body.
-    writable: bool
-    first, minDisp, maxEnd, lane: uint32
   FlatTarget = object ## Only genuine jump-table and block-membership validation supplies positive target facts.
     pc: uint32
     valid: bool
@@ -111,13 +116,6 @@ type
     payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
     rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
   FlatMemoryScratch* = ref FlatMemoryScratchData
-  FlatX86WideProbe = object ## One source PC awaiting complete positive cached targets.
-    pc: uint32
-    attempts: uint8
-  FlatX86WideAdmission = object ## Bounded owner-local cold work, moved with its handlers and JIT.
-    count: uint8
-    probes: array[16, FlatX86WideProbe]
-    seen: seq[byte]             # One lazy bit per source byte prevents repeat enrollment after refusal.
   FlatDynamicOffsets = ref object ## Invocation-owned positive ordinal tags and stable offsets.
     slots: array[256, uint64]
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
@@ -150,37 +148,32 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]       # Absolute physical-page bits, bounded by the highest mapped page.
+    dirtyPages: seq[uint64]               # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
-    pricingPlan: GasPlan          # Optional source-bound immutable prices, selected only during cold emission.
-    pricingMemo: GasMemo          # Optional caller-owned bounded price memo, never CPU or paid gas.
+    pricingPlan: GasPlan # Optional source-bound immutable prices, selected only during cold emission.
+    pricingMemo: GasMemo                  # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-      armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
+      when ArmRegionWitness:
+        armOriginal: seq[nil FlatHandler] # Retain original checked entries for the witness owner.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
-    when defined(pvmX86Jit):
-      x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
-      x86Jit: nil X86Jit          # Exclusive code-only owner; never contains an invocation address.
-      x86WideAdmission: FlatX86WideAdmission # Source PCs and retry counts persist with the exact code owner.
-      when defined(pvmX86CheckedStoreReceipt):
-        x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
+    when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+      x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
       readContext: NativeReadContext
       readContextReady: bool
       readProbe: ReadProbeState
-    nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
+    nativeSession*: NativeSession         # Prepared identity only; never passed to the compiler thread.
     nativeOriginal: nil FlatHandler
+    when NativeCheckedReadEnabled:
+      nativeRingInstalled: bool           # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
     nativeInstalledEpoch: uint64
-    pricingKind: byte             # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
-    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-      armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
-      armPreviousValid: bool
-      armMemory: ArmReadContext   # Raw three triplets precede clipped reads; never retained by FlatStream.
-      when defined(pvmArmMacroStateTrace):
-        armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
-    rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
+    pricingKind: byte # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
+    when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
+      armMacroLastState: ArmMacroState    # Private receipt compares every ABI word with linked fallback.
+    rwStorage: RWStorage # Append cold ownership after existing fields; the hot RW view remains two words.
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -210,15 +203,9 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Native code owners move; invocation byte descriptors lose all authority in the source.
-    `=wasMoved`(frame.armOriginal)
+    when ArmRegionWitness:
+      `=wasMoved`(frame.armOriginal)
     `=wasMoved`(frame.armJit)
-    frame.armMemory = default(ArmReadContext)
-  when defined(pvmX86Jit):
-    # The admission object's managed bitmap moves with its code-only children.
-    `=wasMoved`(frame.x86Original)
-    `=wasMoved`(frame.x86Jit)
-    `=wasMoved`(frame.x86WideAdmission)
   when NativeCheckedReadEnabled:
     # A moved frame cannot retain a ready context into storage now owned elsewhere.
     frame.readContext = default(NativeReadContext)
@@ -256,8 +243,6 @@ proc `=wasMoved`*(scratch: var FlatMemoryScratchData) {.nodestroy, inline.} =
 proc clearFlatBorrowedMemory(f: var FlatFrame) {.inline.} =
   ## Manual child transfer needs the same view retirement as a whole-frame move.
   f.rw = default(RWView)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    f.armMemory = default(ArmReadContext)
   when NativeCheckedReadEnabled:
     f.readContext = default(NativeReadContext)
     f.readContextReady = false
@@ -302,13 +287,9 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   if (x and 0x80000000'u32) != 0: uint64(x) or 0xffffffff00000000'u64
   else: uint64(x)
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+when ArmRegionWitness:
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
-
-when defined(pvmX86Jit):
-  proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32)
-    ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32)
 when NativeCheckedReadEnabled:
@@ -836,13 +817,7 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   f.arguments[int(off)].y = no
   let patched: FlatHandler = flatBranch[Code]
   f.handlers[int(off)] = patched
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
-    # The original cached branch clears paid state before cold source admission.
-    let destination = flatBranch[Code](f, off)
-    when Code == 173: flatX86ColdWideAdmission(f, off)
-    destination
-  else:
-    off
+  off
 
 proc flatFusedRegisterBranch[First, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Combine only a validated cached branch with its preceding arithmetic; both source nodes remain addressable.
@@ -898,43 +873,50 @@ template flatChargedStep(f: var FlatFrame, off: uint32, First, Second, Branch: s
     let args = f.arguments[int(branchOff)]
     flatBranchSelect(f, args, Branch, destination)
 
-proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
+when NativeCheckedReadEnabled:
+  proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.}
+  proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool
+
+proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f: var FlatFrame,
+    off: uint32): uint32 =
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
   var current = off
   var destination = flatStop
+  when NativeCheckedReadEnabled and Ring:
+    if f.nativeRingInstalled and flatTryNativeRing(f, off, destination): return destination
   var middleOff = flatStop
   var lastOff = flatStop
   # Every logical block still performs its own complete gas and source-budget reservation.
   flatChargedStep(f, current, First, Second, Branch, destination)
   when First == 131:
-    let middle: FlatHandler = flatChargedShape[151, 152, 173]
+    let middle: FlatHandler = flatChargedShape[151, 152, 173, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 151, 152, 173, destination)
-    let last: FlatHandler = flatChargedShape[200, 139, 82]
+    let last: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
     flatChargedStep(f, current, 200, 139, 82, destination)
   elif First == 200:
-    let middle: FlatHandler = flatChargedShape[131, -1, 88]
+    let middle: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 131, -1, 88, destination)
-    let last: FlatHandler = flatChargedShape[151, 152, 173]
+    let last: FlatHandler = flatChargedShape[151, 152, 173, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
     flatChargedStep(f, current, 151, 152, 173, destination)
   else:
-    let middle: FlatHandler = flatChargedShape[200, 139, 82]
+    let middle: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     if f.handlers[int(destination)] != middle: return destination
     middleOff = destination
     current = middleOff
     flatChargedStep(f, current, 200, 139, 82, destination)
-    let last: FlatHandler = flatChargedShape[131, -1, 88]
+    let last: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     if f.handlers[int(destination)] != last: return destination
     lastOff = destination
     current = lastOff
@@ -943,8 +925,16 @@ proc flatChargedShape[First, Second, Branch: static[int]](f: var FlatFrame, off:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Keep the original first closed round; connected code may run only after all three real branch capabilities exist.
+  when NativeCheckedReadEnabled and Ring:
+    # Once the observed proof is copied, the original worker owns the remaining cold work.
+    when First == 200:
+      if flatObserveNativeRing(f, off, fixedMiddle, fixedLast): return off
+    elif First == 131:
+      if flatObserveNativeRing(f, fixedLast, off, fixedMiddle): return off
+    else:
+      if flatObserveNativeRing(f, fixedMiddle, fixedLast, off): return off
+  when ArmRegionWitness:
+    # The legacy owner is installed only by the region witness.
     if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
   while true:
     # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
@@ -974,8 +964,15 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
   let cached: FlatHandler = flatBranch[Branch]
   if f.handlers[int(branchOff)] == cached:
     # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
-    let combined: FlatHandler = flatChargedShape[First, Second, Branch]
-    f.handlers[int(off)] = combined
+    let checked: FlatHandler = flatChargedShape[First, Second, Branch, false]
+    when NativeCheckedReadEnabled:
+      if nativeEpoch(f.nativeSession) != 0:
+        let observed: FlatHandler = flatChargedShape[First, Second, Branch, true]
+        f.handlers[int(off)] = observed
+      else:
+        f.handlers[int(off)] = checked
+    else:
+      f.handlers[int(off)] = checked
   outcome
 
 proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
@@ -1796,18 +1793,24 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   runNativeSpan(f.nativeSession, f.info.registers)
   span.past
 
-func flatNativeHeader(f: FlatFrame, header, pc: uint32): bool =
-  ## Accept only a materialized, ordinary, original block header at this exact source PC.
+func flatSourceHeader(f: FlatFrame, header, pc: uint32): bool =
+  ## Accept only a materialized original block header at this exact source PC.
   if header >= NativeEntryLimit or uint64(header) >= uint64(f.handlers.len) or
       uint64(header) >= uint64(f.sites.len) or uint64(pc) >= uint64(f.compiledForPc.len):
     return false
-  if f.handlers[int(header)] != flatCharge or
-      f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
+  if f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
   let ordinal = f.sites[int(header)]
   if uint64(ordinal) >= uint64(f.plan.facts.len): return false
   let fact = f.plan.facts[int(ordinal)]
   fact.pc == pc and uint64(fact.priceIndex) < uint64(f.plan.pricePcs.len) and
     uint64(f.plan.pricePcs[int(fact.priceIndex)]) == uint64(pc)
+
+func flatNativeHeader(f: FlatFrame, header, pc: uint32): bool =
+  ## The single-header loop also requires the original ordinary charge worker.
+  flatSourceHeader(f, header, pc) and f.handlers[int(header)] == flatCharge
+
+when NativeCheckedReadEnabled:
+  include ./handler_register_ring
 
 proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
   ## Check the one selected prefix against resolved source, without admitting or pricing another node.
@@ -1911,6 +1914,11 @@ proc installNative(f: var FlatFrame) =
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch != 0:
       installFlatReadBody(f, read)
+      return
+  when NativeCheckedReadEnabled:
+    let ring = nativeRingInfo(f.nativeSession)
+    if ring.blocks[0].span != 0:
+      flatInstallNativeRing(f, ring)
       return
   if not nativeSpanReady(f.nativeSession): return
   let span = nativeSpanInfo(f.nativeSession)
@@ -2029,60 +2037,6 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
           break
       assert found
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmReadRegionSpan(first: uint64, bytes: openArray[byte]): array[3, uint64] =
-    ## Private region storage never resizes in place; a replacement frame rebuilds every borrowed descriptor before use.
-    result = [first, 0'u64, 0'u64]
-    if bytes.len >= 8:
-      # Positive extent and owned storage jointly prove the native scalar's complete readable allocation.
-      result[1] = uint64(bytes.len-7)
-      result[2] = cast[uint64](addr bytes[0])
-
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmClippedReadRegionSpan(first: uint64, bytes: openArray[byte]): array[3, uint64] =
-    ## Intersect a moved private region with the existing eight-byte native read bounds.
-    result = [0'u64, 0'u64, 0'u64]
-    if bytes.len < 8: return
-    let length = uint64(bytes.len)
-    assert first <= 0x100000000'u64 and length <= 0x100000000'u64-first
-    let extent = length-7'u64
-    assert first <= high(uint64)-extent
-    let endOfRegion = first+extent
-    let low = max(first, 65536'u64)
-    let highExclusive = min(endOfRegion, 0xfffffff8'u64)
-    if highExclusive <= low: return
-    let offset = low-first
-    assert offset <= length-8'u64 and offset < uint64(bytes.len)
-    result = [low, highExclusive-low, cast[uint64](addr bytes[int(offset)])]
-
-  proc flatArmReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
-    ## Managed regions retain their original descriptor equations through a scoped borrow.
-    flatArmReadRegionSpan(first, bytes)
-
-  proc flatArmReadRegion(first: uint64, bytes: RWView): array[3, uint64] =
-    ## Empty views never take element zero; live RW owners supply the complete original extent.
-    if bytes.len < 8: return [first, 0'u64, 0'u64]
-    flatArmReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1))
-
-  proc flatArmClippedReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
-    ## Existing managed clipping remains shared with the RW borrowed view.
-    flatArmClippedReadRegionSpan(first, bytes)
-
-  proc flatArmClippedReadRegion(first: uint64, bytes: RWView): array[3, uint64] =
-    ## Apply the original low/high clipping only after a complete nonempty borrow is possible.
-    if bytes.len < 8: return [0'u64, 0'u64, 0'u64]
-    flatArmClippedReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1))
-
-  proc flatBuildArmReadContext(f: var FlatFrame) =
-    ## Rebuild both tables only after the frame owns every moved private byte allocation.
-    assert sizeof(ArmReadContext) == 144
-    f.armMemory[0] = flatArmReadRegion(f.stackBase, f.stack)
-    f.armMemory[1] = flatArmReadRegion(f.rwBase, f.rw)
-    f.armMemory[2] = flatArmReadRegion(f.roBase, f.ro)
-    f.armMemory[3] = flatArmClippedReadRegion(f.stackBase, f.stack)
-    f.armMemory[4] = flatArmClippedReadRegion(f.rwBase, f.rw)
-    f.armMemory[5] = flatArmClippedReadRegion(f.roBase, f.ro)
-
 proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Memory,
     info: MachineInfo, pageCount, dirtyWordCount: int): FlatFrame =
   ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
@@ -2104,10 +2058,6 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
         RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    result.armPreviousHeader = flatStop
-    result.armPreviousNext = flatStop
-    result.armPreviousValid = false
 
 proc flatRegionPast(images: openArray[PageDescription], first: int): int =
   ## Group only genuinely adjacent pages with equal permission before any region payload allocation.
@@ -2209,8 +2159,6 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       frame.stackBase = region.first
       frame.stack = move(region.bytes)
     else: frame.extra.add(region)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    flatBuildArmReadContext(frame) # All final storage is live before native descriptors exist.
   FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
@@ -2295,11 +2243,9 @@ when defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
-  proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
-    ## Copy real region counters when a witness frame owns the legacy code cache.
-    let jit = f.x86Jit
-    if jit == nil: default(array[2, uint64])
-    else: x86RegionStatistics(jit)
+  func flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
+    ## The checked stream has no private x86 region owner. Raw regions report through their own JIT.
+    default(array[2, uint64])
 
   when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
@@ -2608,12 +2554,6 @@ when defined(pvmX86Jit):
     proc flatX86CycleAbort() {.cdecl, importc: "abort", header: "stdlib.h".}
       ## An impossible post-native receipt cannot be rolled back or replayed through checked code.
 
-    func flatX86CyclePrefixMatches(f: FlatFrame, candidate: X86MemoryCycleCandidate): bool =
-      ## Reuse the seal only while its prefix still has the exact checked charge handler.
-      let prefix = candidate.prefix
-      prefix.kind == X86MemoryCycleHandlerKind.Ordinary and
-        int(prefix.header) < f.handlers.len and f.handlers[int(prefix.header)] == flatCharge
-
     proc flatX86CycleReadRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         width: uint8, memory: var X86CycleMemory) =
       ## A current private region supplies one clipped address interval, or no native read capability.
@@ -2738,84 +2678,7 @@ when defined(pvmX86Jit):
         tailStep: f.arguments[int(candidate.tail.header+2)].slots,
         tailBranch: f.arguments[int(candidate.tail.terminal)].slots)
 
-    proc flatX86CycleWorker(f: var FlatFrame, offset: uint32): uint32 =
-      ## Only the explicit proof installer can make this checked dirty-header wrapper reachable.
-      let saved = if int(offset) < f.x86Original.len: f.x86Original[int(offset)] else: nil
-      if saved == nil: flatX86CycleAbort(); return flatStop
-      let jit = f.x86Jit
-      if jit == nil: return saved(f, offset)
-      let slot = x86CycleSlot(jit, offset)
-      if slot < 0: return saved(f, offset)
-      let candidate = x86CycleCandidate(jit, slot)
-      if f.plan == nil or not x86CycleBound(jit, slot, cast[pointer](f.plan)):
-        flatX86CycleAbort()
-        return flatStop
-      if f.preparationFailure != FlatError.None or not f.plan.allowNative or
-          f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop:
-        return saved(f, offset)
-      if int(candidate.tail.header) >= f.handlers.len or
-          int(candidate.outside.header) >= f.handlers.len or
-          f.handlers[int(offset)] != flatX86CycleWorker or
-          not flatX86CyclePrefixMatches(f, candidate) or
-          f.handlers[int(candidate.tail.header)] != flatCharge or
-          f.handlers[int(candidate.outside.header)] != flatCharge:
-        # A persistent handler promotion only retires this optimization, preserving its pure region.
-        retireX86Cycle(jit, slot)
-        if f.handlers[int(offset)] == flatX86CycleWorker: f.handlers[int(offset)] = saved
-        return saved(f, offset)
-      var memory = flatX86CycleMemory(f, candidate)
-      if memory.writePtr == nil: return saved(f, offset)
-      var state = X86CycleState(gas: uint64(f.info.gas), attempts: f.remaining,
-        visits: [0'u64, 0'u64, 0'u64], wordGroups: 0, lastCompleted: high(uint32),
-        exitKind: 0, reserved: 0)
-      let startGas = state.gas
-      let startAttempts = state.attempts
-      let receipt = callX86MemoryCycle(jit, slot, f.info.registers, memory, f.dirtyPages, state)
-      if receipt == 0: return saved(f, offset) # C refused before invoking any native byte.
-      if receipt shr 32 != 1: flatX86CycleAbort(); return flatStop
-      let next = uint32(receipt and 0xffffffff'u64)
-      if not flatX86CycleReceiptValid(candidate, startGas, startAttempts, state, next):
-        flatX86CycleAbort()
-        return flatStop
-      if not recordX86MemoryCycle(jit, state.visits[0], state.visits[1],
-          state.visits[2], state.wordGroups): flatX86CycleAbort(); return flatStop
-      f.info.gas = MachineGas(state.gas)
-      f.remaining = state.attempts
-      if state.lastCompleted != high(uint32):
-        let completed = if state.lastCompleted == candidate.prefix.header: candidate.prefix
-          elif state.lastCompleted == candidate.dirty.header: candidate.dirty
-          else: candidate.tail
-        f.stoppedAt = completed.terminal
-        f.reservation = completed.header or flatReservationHeaderFlag
-        f.attemptedExit = false
-        f.info.blockCharged = false
-        f.barrier = flatStop
-      if state.exitKind == 2: return next
-      if next == offset: return saved(f, offset)
-      let selected = f.handlers[int(next)]
-      selected(f, next)
-
-    when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
-      proc flatX86WideMemory(f: var FlatFrame,
-          candidate: X86WideCycleCandidate): X86WideMemory =
-        ## Borrow only complete immutable extents for one call; extra/fragmented reads replay.
-        result = default(X86WideMemory)
-        result.cycle = flatX86CycleMemory(f, candidate.cycle)
-        if f.stackBase <= f.rwBase or f.rwBase <= f.roBase: return
-        let ceiling = uint64(high(uint32))+1'u64
-        if f.stackBase > ceiling or uint64(f.stack.len) > ceiling-f.stackBase or
-            f.rwBase > ceiling or uint64(f.rw.len) > ceiling-f.rwBase or
-            f.roBase > ceiling or uint64(f.ro.len) > ceiling-f.roBase: return
-        result.regions[0].first = f.stackBase
-        result.regions[0].ending = f.stackBase+uint64(f.stack.len)
-        if f.stack.len > 0: result.regions[0].data = addr f.stack[0]
-        result.regions[1].first = f.rwBase
-        result.regions[1].ending = f.rwBase+uint64(f.rw.len)
-        if f.rw.len > 0: result.regions[1].data = addr f.rw[0]
-        result.regions[2].first = f.roBase
-        result.regions[2].ending = f.roBase+uint64(f.ro.len)
-        if f.ro.len > 0: result.regions[2].data = addr f.ro[0]
-
+    when defined(pvmX86WideParentRefusalWitness):
       func flatX86WideReceiptValid(candidate: X86WideCycleCandidate, startGas,
           startAttempts: uint64, state: X86WideState, next: uint32): bool =
         ## Exact charged/completed equations include a speculative read charged before replay.
@@ -2909,101 +2772,6 @@ when defined(pvmX86Jit):
           return openBranches == 1 and readVisits-outsideVisits == 1
         false
 
-      func flatX86WideMatches(f: FlatFrame,
-          candidate: X86WideCycleCandidate): bool =
-        ## Immutable plan identity plus current charges/positive arms retire any stale stream view.
-        let cycle = candidate.cycle
-        let headers = [cycle.prefix, cycle.dirty, cycle.tail, cycle.outside,
-          candidate.loopGuard, candidate.loopBranch, candidate.readBlock]
-        for header in headers:
-          if int(header.header) >= f.arguments.len or
-              int(header.terminal) >= f.arguments.len or
-              f.arguments[int(header.header)].x != header.price or
-              f.arguments[int(header.header)].y != header.span: return false
-        if not flatX86CyclePrefixMatches(f, cycle) or
-            f.handlers[int(cycle.dirty.header)] != flatX86CycleWorker or
-            f.handlers[int(cycle.tail.header)] != flatCharge or
-            f.handlers[int(cycle.outside.header)] != flatCharge or
-            f.handlers[int(candidate.readBlock.header)] != flatCharge or
-            f.handlers[int(candidate.loopBranch.header)] != flatX86WideWorker or
-            f.handlers[int(cycle.outside.terminal)] != flatCachedJump[40] or
-            f.handlers[int(candidate.loopGuard.terminal)] != flatBranch[81] or
-            f.handlers[int(candidate.loopBranch.terminal)] != flatBranch[88] or
-            f.handlers[int(candidate.readBlock.terminal)] != flatCachedJump[1]:
-          return false
-        if candidate.loopGuard.kind != X86MemoryCycleHandlerKind.Ordinary or
-            f.handlers[int(candidate.loopGuard.header)] != flatCharge: return false
-        let outside = f.arguments[int(cycle.outside.terminal)]
-        let guardArms = f.arguments[int(candidate.loopGuard.terminal)]
-        let branchArms = f.arguments[int(candidate.loopBranch.terminal)]
-        let readTarget = f.arguments[int(candidate.readBlock.terminal)]
-        outside.y == candidate.loopGuard.header and
-          uint32(guardArms.x shr 32) == candidate.loopGuard.yes and
-          guardArms.y == candidate.loopGuard.no and
-          uint32(branchArms.x shr 32) == candidate.loopBranch.yes and
-          branchArms.y == candidate.loopBranch.no and
-          readTarget.y == cycle.prefix.header
-
-      proc flatX86WideWorker(f: var FlatFrame, offset: uint32): uint32 =
-        ## One linked image returns only complete receipts or an already-charged read replay.
-        let saved = if int(offset) < f.x86Original.len: f.x86Original[int(offset)] else: nil
-        if saved == nil: flatX86CycleAbort(); return flatStop
-        let jit = f.x86Jit
-        if jit == nil or not x86WideActive(jit): return saved(f, offset)
-        if f.plan == nil or not x86WideBound(jit, cast[pointer](f.plan)):
-          flatX86CycleAbort()
-          return flatStop
-        let candidate = x86WideCandidate(jit)
-        let child = x86CycleSlot(jit, candidate.cycle.dirty.header)
-        if child < 0 or not x86CycleBound(jit, child, cast[pointer](f.plan)) or
-            f.preparationFailure != FlatError.None or not f.plan.allowNative or
-            f.plan.singleStep or f.pricingKind != 0 or f.info.blockCharged or
-            f.barrier != flatStop or offset != candidate.loopBranch.header or
-            not flatX86WideMatches(f, candidate):
-          retireX86Wide(jit)
-          if f.handlers[int(offset)] == flatX86WideWorker:
-            f.handlers[int(offset)] = saved
-          return saved(f, offset)
-        var memory = flatX86WideMemory(f, candidate)
-        if memory.cycle.writePtr == nil: return saved(f, offset)
-        var state = X86WideState(cycle: X86CycleState(gas: uint64(f.info.gas),
-          attempts: f.remaining, visits: [0'u64, 0'u64, 0'u64], wordGroups: 0,
-          lastCompleted: high(uint32), exitKind: 0, reserved: 0),
-          outerVisits: [0'u64, 0'u64, 0'u64, 0'u64], childCalls: 0)
-        let startGas = state.cycle.gas
-        let startAttempts = state.cycle.attempts
-        let receipt = callX86WideCycle(jit, f.info.registers, memory, f.dirtyPages, state)
-        if receipt == 0: return saved(f, offset)
-        if receipt shr 32 != 1: flatX86CycleAbort(); return flatStop
-        let next = uint32(receipt and 0xffffffff'u64)
-        if not flatX86WideReceiptValid(candidate, startGas, startAttempts, state, next) or
-            not recordX86WideCycle(jit, candidate, state):
-          flatX86CycleAbort()
-          return flatStop
-        f.info.gas = MachineGas(state.cycle.gas)
-        f.remaining = state.cycle.attempts
-        f.info.blockCharged = state.cycle.exitKind == 3
-        if state.cycle.lastCompleted != high(uint32):
-          let completed = state.cycle.lastCompleted
-          let headers = [candidate.cycle.prefix, candidate.cycle.dirty,
-            candidate.cycle.tail, candidate.cycle.outside, candidate.loopGuard,
-            candidate.loopBranch, candidate.readBlock]
-          for header in headers:
-            if completed == header.header:
-              f.stoppedAt = header.terminal
-              f.reservation = header.header or flatReservationHeaderFlag
-              break
-          f.attemptedExit = false
-          f.barrier = flatStop
-        if state.cycle.exitKind == 3:
-          f.reservation = candidate.readBlock.header or flatReservationHeaderFlag
-          if int(next) >= f.handlers.len: flatX86CycleAbort(); return flatStop
-          let selected = f.handlers[int(next)]
-          return selected(f, next)
-        if state.cycle.exitKind == 2: return next
-        if next == offset: return saved(f, offset)
-        next
-
     proc flatX86MemoryCycleImageProof*(f: FlatFrame, prefixPc: uint32,
         image: var seq[byte]): bool =
       ## A private witness can inspect exact generated bytes without publishing or executing x86.
@@ -3011,27 +2779,6 @@ when defined(pvmX86Jit):
       var candidate = default(X86MemoryCycleCandidate)
       if not flatX86SealMemoryCycle(f, prefixPc, candidate): return false
       buildX86MemoryCycleImage(candidate, flatX86CycleEmission(f, candidate), image)
-
-    proc flatX86InstallMemoryCycle(f: var FlatFrame, prefixPc: uint32): bool =
-      ## Publish one sealed child; refusal leaves the original checked dirty header installed.
-      var candidate = default(X86MemoryCycleCandidate)
-      if not flatX86SealMemoryCycle(f, prefixPc, candidate): return false
-      let jit = f.x86Jit
-      if jit == nil or x86CycleSlot(jit, candidate.dirty.header) >= 0: return false
-      if int(candidate.dirty.header) >= f.handlers.len or
-          f.handlers[int(candidate.dirty.header)] != flatChargedWordLoop: return false
-      let published = publishX86MemoryCycle(jit, candidate,
-        flatX86CycleEmission(f, candidate), cast[pointer](f.plan))
-      if published < 0: return false
-      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-      f.x86Original[int(candidate.dirty.header)] = f.handlers[int(candidate.dirty.header)]
-      f.handlers[int(candidate.dirty.header)] = flatX86CycleWorker
-      true
-
-    when defined(pvmX86MemoryCycleNativeProof):
-      proc flatX86InstallMemoryCycleProof*(f: var FlatFrame, prefixPc: uint32): bool =
-        ## Private witness uses the same source-bound child publisher as default admission.
-        flatX86InstallMemoryCycle(f, prefixPc)
 
     when defined(pvmX86WideCycleProof):
       proc flatX86WideImageProof*(f: FlatFrame, prefixPc: uint32,
@@ -3044,182 +2791,16 @@ when defined(pvmX86Jit):
             not flatX86WideEmission(f, candidate, emission): return false
         buildX86WideCycleImage(candidate, emission, 16'u32, 0'u32, image)
 
-      proc flatX86WidePublishedImageProof*(f: FlatFrame,
-          image: var seq[byte]): bool =
-        ## Retained publication identity for the cold B/C timing control.
-        image = @[]
-        let jit = f.x86Jit
-        if jit == nil or not x86WideBound(jit, cast[pointer](f.plan)):
-          return false
-        var emission = default(X86WideEmission)
-        if not flatX86WideEmission(f, x86WideCandidate(jit), emission):
-          return false
-        x86WidePublishedSourceImage(jit, emission, image)
-
-    func flatX86WideStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Validated wider entries and canonical replay refusals only.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86WideStatistics(jit)
-
-    func flatX86MemoryCycleStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Validated narrow child calls and groups exclude dormant published code.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86MemoryCycleStatistics(jit)
-
     when defined(pvmX86WideParentRefusalWitness):
-      func flatX86WidePendingCountWitness*(f: FlatFrame): uint32 =
-        ## Test-only count proves unrelated startup backedges fill the bounded source table.
-        uint32(f.x86WideAdmission.count)
+      proc flatX86WideSourceProof*(f: FlatFrame, prefixPc: uint32,
+          candidate: var X86WideCycleCandidate, emission: var X86WideEmission): bool =
+        ## Give the direct backend witness the exact checked graph and copied operands.
+        flatX86SealWideCycle(f, prefixPc, candidate) and flatX86WideEmission(f, candidate, emission)
 
-      proc flatX86RefuseWideParentOnceWitness*(f: var FlatFrame) =
-        ## Test-only refusal happens after dormant child publication and before parent publication.
-        if f.x86Jit == nil: f.x86Jit = newX86Jit()
-        let jit = f.x86Jit
-        assert jit != nil
-        if jit != nil: x86WideRefuseParentOnceWitness(jit)
-
-    when defined(pvmX86WideCycleProof):
-      func flatX86WideStatisticsProof*(f: FlatFrame): array[2, uint64] =
-        ## Preserve the private witness name over the production counter.
-        flatX86WideStatistics(f)
-
-    proc flatX86InstallWideCycle(f: var FlatFrame, prefixPc: uint32,
-        childPublished: var bool, activateParent = true,
-        proofChildFirst = false): bool =
-      ## Default admission publishes both images before either handler changes. Private proof
-      ## controls may install the narrow child first to retain their exact dormant-parent lane.
-      childPublished = false
-      var candidate = default(X86WideCycleCandidate)
-      var emission = default(X86WideEmission)
-      if not flatX86SealWideCycle(f, prefixPc, candidate): return false
-      let jit = f.x86Jit
-      if jit == nil or f.plan == nil or x86WideActive(jit) or
-          not f.plan.allowNative or f.plan.singleStep or f.pricingKind != 0:
-        return false
-      let dirty = int(candidate.cycle.dirty.header)
-      let branch = int(candidate.loopBranch.header)
-      if dirty >= f.handlers.len or branch >= f.handlers.len or
-          f.handlers[dirty] != flatChargedWordLoop or
-          f.handlers[branch] != flatCharge or
-          (dirty < f.x86Original.len and f.x86Original[dirty] != nil) or
-          (branch < f.x86Original.len and f.x86Original[branch] != nil) or
-          x86CycleSlot(jit, candidate.cycle.dirty.header) >= 0:
-        return false
-      # Reconstruct only after existing publication/installed-handler refusals, before any mutable publication.
-      if not flatX86WideEmission(f, candidate, emission): return false
-      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-      var child = -1
-      if proofChildFirst:
-        if not flatX86InstallMemoryCycle(f, prefixPc): return false
-        child = x86CycleSlot(jit, candidate.cycle.dirty.header)
-      else:
-        child = publishX86MemoryCycle(jit, candidate.cycle,
-          flatX86CycleEmission(f, candidate.cycle), cast[pointer](f.plan))
-      if child < 0: return false
-      childPublished = true
-      if not x86CycleBound(jit, child, cast[pointer](f.plan)) or
-          x86CycleCandidate(jit, child) != candidate.cycle or
-          f.handlers[branch] != flatCharge:
-        return false
-      if proofChildFirst:
-        if f.x86Original[dirty] != flatChargedWordLoop or
-            f.handlers[dirty] != flatX86CycleWorker: return false
-      elif f.handlers[dirty] != flatChargedWordLoop or
-          f.x86Original[dirty] != nil: return false
-      if not publishX86WideCycle(jit, candidate, emission, child,
-          cast[pointer](f.plan)): return false
-      if not proofChildFirst:
-        f.x86Original[dirty] = f.handlers[dirty]
-        f.handlers[dirty] = flatX86CycleWorker
-      # Private timing can leave only the parent handler dormant after identical publication.
-      if activateParent:
-        f.x86Original[branch] = f.handlers[branch]
-        f.handlers[branch] = flatX86WideWorker
-      true
-
-    when defined(pvmX86WideCycleProof):
-      proc flatX86InstallWideCycleProof*(f: var FlatFrame,
-          prefixPc: uint32, childInstalled: var bool,
-          activateParent = true): bool =
-        ## Private witness can keep its narrow child active with a dormant parent.
-        flatX86InstallWideCycle(f, prefixPc, childInstalled, activateParent, true)
-
-    proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32) =
-      ## Resolve a tail's copied backedge once; try pending source PCs only at an invocation boundary.
-      ## Sixteen pending sources and thirty-two boundary attempts each bound work without an owner-wide
-      ## negative shape latch. A refused source leaves every original checked worker available.
-      let jit = f.x86Jit
-      if f.plan == nil or jit == nil or not f.plan.allowNative or f.plan.singleStep or
-          f.preparationFailure != FlatError.None or f.pricingKind != 0 or
-          not x86WideCanPublish(jit): return
-      if tail != flatStop:
-        if int(tail) >= f.arguments.len or int(tail) >= f.handlers.len or
-            f.handlers[int(tail)] != flatBranch[173]: return
-        var prefix = default(X86MemoryCycleHeader)
-        let target = uint32(f.arguments[int(tail)].x shr 32)
-        if not flatX86CompleteTarget(f, target, prefix) or prefix.opcode != 1 or
-            prefix.span < 4 or prefix.kind != X86MemoryCycleHandlerKind.Ordinary: return
-        var opcodes = default(array[4, byte])
-        var operations = 0
-        for ordinal in prefix.ordinal..<prefix.ordinal+prefix.span:
-          let opcode = f.plan.facts[int(ordinal)].opcode
-          if opcode != 2:
-            if operations >= opcodes.len: return
-            opcodes[operations] = opcode
-            inc operations
-        if operations != 4 or opcodes != [51'u8, 200, 149, 1]: return
-        if int(prefix.pc) >= f.plan.factAt.len: return
-        if f.x86WideAdmission.seen.len == 0:
-          f.x86WideAdmission.seen = newSeq[byte]((f.plan.factAt.len+7) div 8)
-        let byteIndex = int(prefix.pc) div 8
-        let mask = 1'u8 shl (int(prefix.pc) mod 8)
-        if (f.x86WideAdmission.seen[byteIndex] and mask) != 0: return
-        for index in 0..<int(f.x86WideAdmission.count):
-          if f.x86WideAdmission.probes[index].pc == prefix.pc: return
-        var index = int(f.x86WideAdmission.count)
-        if index == f.x86WideAdmission.probes.len:
-          # A late source may displace the most-attempted pending source; neither is a guest refusal.
-          index = 0
-          for candidate in 1..<f.x86WideAdmission.probes.len:
-            if f.x86WideAdmission.probes[candidate].attempts >
-                f.x86WideAdmission.probes[index].attempts: index = candidate
-        else:
-          inc f.x86WideAdmission.count
-        f.x86WideAdmission.probes[index] = FlatX86WideProbe(pc: prefix.pc, attempts: 0)
-        f.x86WideAdmission.seen[byteIndex] = f.x86WideAdmission.seen[byteIndex] or mask
-        return
-      if f.reason != oracle.StepError.None or f.barrier != flatStop: return
-      var index = 0
-      while index < int(f.x86WideAdmission.count):
-        let pc = f.x86WideAdmission.probes[index].pc
-        var childInstalled = false
-        let before = x86Clock()
-        let installed = flatX86InstallWideCycle(f, pc, childInstalled)
-        jit.compilationNs += x86Clock()-before
-        if installed:
-          f.x86WideAdmission.count = 0
-          return
-        inc f.x86WideAdmission.probes[index].attempts
-        if childInstalled or f.x86WideAdmission.probes[index].attempts >= 32:
-          let last = int(f.x86WideAdmission.count)-1
-          f.x86WideAdmission.probes[index] = f.x86WideAdmission.probes[last]
-          dec f.x86WideAdmission.count
-        else:
-          inc index
-
-    func flatX86MemoryCycleProofStatistics*(f: FlatFrame): array[2, uint64] =
-      ## Only validated native calls and completed four-block groups appear in the private receipt.
-      let jit = f.x86Jit
-      if jit == nil: default(array[2, uint64])
-      else: x86MemoryCycleStatistics(jit)
-
-    func flatX86CycleTailVisitsProof*(f: FlatFrame): uint64 =
-      ## Counts only validated native tail completions, not checked fallback reads.
-      let jit = f.x86Jit
-      if jit == nil: 0'u64
-      else: x86MemoryCycleTailVisits(jit)
+      func flatX86WideReceiptProof*(candidate: X86WideCycleCandidate, gas, attempts: uint64,
+          state: X86WideState, next: uint32): bool =
+        ## Validate a typed native completion without installing a frame handler.
+        flatX86WideReceiptValid(candidate, gas, attempts, state, next)
 
     func flatX86CycleBoundaryProof*(f: FlatFrame): array[7, uint64] =
       ## Private literals can inspect the exact unstarted/paid/refund bookkeeping after fallback.
@@ -3236,25 +2817,6 @@ when defined(pvmX86Jit):
         memory.readEnd, uint64(if memory.writePtr == nil: 0 else: 1),
         memory.writeFirst, memory.writeEnd, uint64(memory.dirtyWords)]
 
-    func flatX86CycleRegionStatusProof*(f: FlatFrame): uint8 =
-      ## Inspect the separate pure-region owner without exposing its code offset or invocation pointer.
-      let jit = f.x86Jit
-      if jit == nil: 0'u8 else: x86RegionStatus(jit)
-
-    proc flatX86PublishIndependentRegionProof*(f: var FlatFrame): bool =
-      ## Publish one inert pure-region image solely to prove the cycle retains the same region owner.
-      let jit = f.x86Jit
-      if jit == nil: return false
-      if x86RegionStatus(jit) == 2: return true
-      if x86RegionStatus(jit) != 0: return false
-      var body = default(X86Block)
-      emitX86Operation(body, 149'u8, default(RegisterSlots), 1)
-      emitX86Branch(body, 171'u8, default(RegisterSlots), 0, 500, 501)
-      var blocks = default(array[2, X86RegionBlock])
-      blocks[0] = X86RegionBlock(header: 500, span: 2, operations: 2,
-        yes: 500, no: 501, price: 3, body: move(body))
-      publishX86Region(jit, blocks, 1)
-
     func flatX86CycleReceiptProof*(candidate: X86MemoryCycleCandidate, startGas,
         startAttempts: uint64, state: X86CycleState, next: uint32): bool =
       ## A positive and corrupted synthetic ledger exercise the same production validator.
@@ -3266,247 +2828,7 @@ when defined(pvmX86Jit):
       if not flatX86CycleReceiptValid(candidate, startGas, startAttempts, state, next):
         flatX86CycleAbort()
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool
-    ## A positive original branch cache is required before any native continuation is published.
-
-  proc flatArmRunNext[ClearPaid: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
-    ## A complete checked reservation precedes native arithmetic/branch work; no native path can exit mid-prefix.
-    block:
-      # The exclusive frame retains its cache throughout this non-host call; only disjoint register bytes are borrowed mutably.
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      if jit != nil:
-        let destination = callArmBranch(jit, offset, f.info.registers)
-        assert int(destination) < f.handlers.len
-        when ClearPaid: f.info.blockCharged = false
-        return destination
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial source prefixes always reenter the original checked operations and exact temporary barrier.
-    if f.barrier != flatStop:
-      let original = f.armOriginal[int(offset)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    flatArmRunNext[true](f, offset)
-
-  proc flatArmCheckedTail(f: var FlatFrame, offset: uint32): uint32 =
-    ## A checked prefix keeps its original fault and memory effects, then enters an already validated native suffix.
-    flatReserve(f, offset)
-    let next = offset+1
-    let selected = f.handlers[int(next)]
-    let destination = selected(f, next)
-    if f.barrier == flatStop and destination == offset+3 and
-        int(destination) < f.handlers.len and
-        f.handlers[int(destination)] == flatArmBranch:
-      return flatArmBranch(f, destination)
-    destination
-
-  proc flatArmDirtyShape(f: FlatFrame, header: uint32): bool =
-    ## One sealed five-op source block; neither admission nor code emission depends on a guest PC.
-    if int(header)+6 >= f.handlers.len or f.pricingKind != 0: return false
-    let start = f.sites[int(header)]
-    if f.sites[int(header+1)] != start or f.arguments[int(header)].y != 5: return false
-    for step in 2..5:
-      if f.sites[int(header)+step] != start+uint32(step-1): return false
-    if f.sites[int(header+6)] != start+5: return false
-    if f.handlers[int(header+3)] != flatArmBranch: return false
-    let prefix = f.plan.facts[int(f.sites[int(header+1)])]
-    let store = f.plan.facts[int(f.sites[int(header+2)])]
-    if prefix.opcode != 198 or store.opcode != 120: return false
-    let prefixPayload = flatSourcePayload(f.plan, prefix)
-    let storePayload = flatSourcePayload(f.plan, store)
-    if prefixPayload.args.slots.destinationIndex == storePayload.args.slots.bIndex: return false
-    if f.plan.facts[int(f.sites[int(header+3)])].opcode != 149 or
-        f.plan.facts[int(f.sites[int(header+4)])].opcode != 149 or
-        f.plan.facts[int(f.sites[int(header+5)])].opcode != 171: return false
-    let branch = f.arguments[int(header+5)]
-    let yes = uint32(branch.x shr 32)
-    let no = branch.y
-    (yes == header and no != header) or (no == header and yes != header)
-
-  func flatArmWordShape(f: FlatFrame, header: uint32): ArmDirtyWordShape =
-    ## Only sealed, disjoint source roles authorize a word candidate; every value remains invocation-local.
-    let prefix = f.arguments[int(header+1)]
-    let store = f.arguments[int(header+2)]
-    let baseStep = f.arguments[int(header+3)]
-    let shiftStep = f.arguments[int(header+4)]
-    let branch = f.arguments[int(header+5)]
-    let source = prefix.slots.aIndex
-    let shift = prefix.slots.bIndex
-    let destination = prefix.slots.destinationIndex
-    let base = store.slots.bIndex
-    let bound = branch.slots.bIndex
-    let roles = [source, shift, destination, base, bound]
-    for i in 0..<5:
-      for j in i+1..<5:
-        if roles[i] == roles[j]: return default(ArmDirtyWordShape)
-    if uint32(branch.x shr 32) != header or store.slots.aIndex != destination or
-        baseStep.slots.aIndex != base or baseStep.slots.bIndex != base or baseStep.x != 1 or
-        shiftStep.slots.aIndex != shift or shiftStep.slots.bIndex != shift or shiftStep.x != 8 or
-        branch.slots.aIndex != base:
-      return default(ArmDirtyWordShape)
-    ArmDirtyWordShape(enabled: true, source: source, shift: shift, destination: destination,
-      base: base, bound: bound)
-
-  proc flatArmDirtyLoop(f: var FlatFrame, offset: uint32): uint32 =
-    ## Every failed native guard returns the unstarted charged header with prior whole blocks published.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let charge = f.arguments[int(offset)]
-    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        not armDirtyLoopChargeMatches(jit, offset, charge.y, charge.x):
-      return flatArmCheckedTail(f, offset)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64]
-    let destination = callArmDirtyLoopContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len:
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if destination == offset: return flatArmCheckedTail(f, offset)
-    destination
-
-  proc flatArmDirtyBody(f: FlatFrame, offset: uint32): ArmRegionBlock {.noinline.} =
-    ## Rebuild the same sealed five-op dirty source IR for standalone and resident lowering.
-    let branch = f.arguments[int(offset+5)]
-    var native = newArmRegionBody()
-    let prefix = f.plan.facts[int(f.sites[int(offset+1)])]
-    let store = f.plan.facts[int(f.sites[int(offset+2)])]
-    let prefixPayload = flatSourcePayload(f.plan, prefix)
-    let storePayload = flatSourcePayload(f.plan, store)
-    emitArmOperation(native, prefix.opcode, prefixPayload.args.slots, prefixPayload.args.x)
-    emitArmDirtyRegionByteStore(native, storePayload.args.slots.aIndex)
-    for step in 3..4:
-      let fact = f.plan.facts[int(f.sites[int(offset)+step])]
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-    emitArmBranch(native, 171, branch.slots, flatSext32(uint32(branch.x and 0xffffffff'u64)),
-        uint32(branch.x shr 32), branch.y)
-    let charge = f.arguments[int(offset)]
-    result = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
-        yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
-
-  proc flatArmDirtyProbeTail(f: var FlatFrame, offset: uint32): uint32 =
-    ## Only a genuinely completed self-loop contributes to the bounded admission threshold.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if armDirtyLoopStatus(jit) != 0:
-      f.handlers[int(offset)] = flatArmCheckedTail
-      return flatArmCheckedTail(f, offset)
-    let destination = flatArmCheckedTail(f, offset)
-    if f.barrier != flatStop or f.info.blockCharged: return destination
-    let branch = f.arguments[int(offset+5)]
-    if destination != offset and destination != uint32(branch.x shr 32) and
-        destination != branch.y: return destination
-    let probe = armDirtyLoopObserve(jit, offset, destination == offset)
-    if probe == 0: return destination
-    if probe == 2:
-      f.handlers[int(offset)] = flatArmCheckedTail
-      return destination
-    if not flatArmDirtyShape(f, offset):
-      f.handlers[int(offset)] = flatArmCheckedTail
-      return destination
-    let before = armClock()
-    let store = f.plan.facts[int(f.sites[int(offset+2)])]
-    let item = flatArmDirtyBody(f, offset)
-    let word = flatArmWordShape(f, offset)
-    let storePayload = flatSourcePayload(f.plan, store)
-    let admitted = publishArmDirtyLoop(jit, item, storePayload.args.slots.bIndex,
-        uint32(storePayload.args.x and 0xffffffff'u64), word)
-    jit.compilationNs+=armClock()-before
-    f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
-    destination
-
-  proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
-    ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
-    flatReserve(f, offset)
-    if f.barrier != flatStop:
-      let selected = f.handlers[int(offset+1)]
-      return selected(f, offset+1)
-    block:
-      # End the cache borrow before the next helper receives the whole mutable frame; no owner reference needs retaining.
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatArmRunNext[true](f, offset+1)
-
-  proc flatArmWhole(f: var FlatFrame, offset: uint32): uint32 =
-    ## Complete pure blocks cannot observe a transient paid flag; every partial/paid/error case uses the original entry.
-    let args = f.arguments[int(offset)]
-    if f.barrier != flatStop or f.info.blockCharged or f.remaining < uint64(args.y) or
-        uint64(f.info.gas) < args.x:
-      # These nonmutating guards preserve zero-budget, gas and resumed-block precedence in the existing reservation worker.
-      return flatArmEnter(f, offset)
-    # The sealed suffix includes its cached conditional: no host, fault or exit can observe these two omitted paid writes.
-    f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
-    f.remaining-=uint64(args.y)
-    # Retain the source-bound header; a later attempted exit alone resolves its exact reserved endpoint.
-    f.reservation = offset or flatReservationHeaderFlag
-    block:
-      # The cache borrow ends before the whole invocation frame is passed to native execution.
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatArmRunNext[false](f, offset+1)
-
-  proc flatArmProbeWhole(f: var FlatFrame, offset: uint32): uint32 =
-    ## At most eight complete visits per header discover actual two-block cycles; ordinary dispatch then has no probe.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if f.pricingKind != 0 or armRegionStatus(jit) != 0:
-      # A saved region fallback may still refer to this worker; never overwrite the region's active root handler.
-      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
-      return flatArmWhole(f, offset)
-    let args = f.arguments[int(offset)]
-    let complete = f.barrier == flatStop and not f.info.blockCharged and
-        f.remaining >= uint64(args.y) and uint64(f.info.gas) >= args.x
-    let destination = flatArmWhole(f, offset)
-    if not complete: return destination
-    # Only genuinely completed adjacent headers establish a closed round; partial reservations do not consume probes.
-    let previous = f.armPreviousHeader
-    let closed = f.armPreviousValid and f.armPreviousNext == offset and
-        destination == previous and previous != offset
-    f.armPreviousHeader = offset
-    f.armPreviousNext = destination
-    f.armPreviousValid = true
-    if closed:
-      var connected = destination
-      if flatArmCycle(f, previous, offset, flatStop, connected): return connected
-    if armRegionStatus(jit) != 0:
-      # Failed publication can mark the sole region refused; retain its original checked continuation without retrying.
-      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
-    elif armFinishProbe(jit, offset):
-      # Exhaustion permanently restores the existing hot worker, with no status or history test on subsequent visits.
-      if f.handlers[int(offset)] == flatArmProbeWhole: f.handlers[int(offset)] = flatArmWhole
-    destination
-
-  proc flatArmExecute(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial budgets retain original atomic handler behaviour, including a second-node barrier.
-    if f.barrier != flatStop:
-      let original = f.armOriginal[int(offset)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    block:
-      # Native arithmetic cannot replace the frame-owned cache or invoke a host; the owner outlives this register borrow.
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      if jit != nil: return callArmEntry(jit, offset, f.info.registers)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmPending(f: var FlatFrame, offset: uint32): uint32 =
-    ## First execution retains original branch resolution; only subsequent positive cached capability enables promotion.
-    if f.barrier != flatStop: return flatArmExecute(f, offset)
-    if flatArmUpgrade(f, offset): return flatArmBranch(f, offset)
-    flatArmExecute(f, offset)
-
+when ArmRegionWitness:
   func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original handler identity certifies both arms already passed genuine source and preparation checks.
     let code = f.plan.facts[int(f.sites[int(offset)])].opcode
@@ -3528,257 +2850,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     of 174: f.handlers[int(offset)] == flatBranch[174]
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
-
-  proc flatArmMixed(f: var FlatFrame, header: uint32): uint32 =
-    ## The original checked header charges once; a guard exit resumes at its exact paid memory op.
-    assert f.armJit != nil and int(header) < f.armOriginal.len
-    let original = f.armOriginal[int(header)]
-    assert original != nil
-    let charge = f.arguments[int(header)]
-    var terminal = flatStop
-    var operationCount = 0'u32
-    block:
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      terminal = armEnding(jit, header)
-      operationCount = armMixedOperationCount(jit, header)
-    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x:
-      return original(f, header)
-    # Publication certified the source-bound terminal arms. Temporary budget patching
-    # is excluded above; stream reuse preserves these cached offsets and their exact plan.
-    # This complete, unpaid fast entry cannot expose its paid state until native guard replay.
-    f.info.gas = MachineGas(uint64(f.info.gas)-charge.x)
-    f.remaining-=uint64(charge.y)
-    f.reservation = header or flatReservationHeaderFlag
-    var state = default(ArmMixedState)
-    var next = flatStop
-    block:
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      next = callArmMixedContext(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
-    if state[0] == 1:
-      let branch = f.arguments[int(terminal)]
-      if (next == uint32(branch.x shr 32) or next == branch.y) and
-          state[4] == uint64(operationCount):
-        return next
-    # Guard replay and every malformed receipt retain the original paid reservation.
-    f.info.blockCharged = true
-    if state[0] == 2 and next > header and next < terminal and int(next) < f.sites.len:
-      let fact = f.plan.facts[int(f.sites[int(next)])]
-      if fact.opcode notin 120'u8..130'u8 or fact.ending or not fact.fallthrough:
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      # Publication certifies one lowered operation per physical body node.
-      let completed = uint64(next-header-1)
-      if state[4] != completed:
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      # The current stream worker may be fused or native; this immutable fact is the one-op checked worker.
-      let payload = flatSourcePayload(f.plan, fact)
-      let handler = payload.handler
-      assert handler != nil
-      return handler(f, next)
-    flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-
-  const armMixedMaximumSourceSpan = 32
-
-  proc flatArmPublishMixed(f: var FlatFrame, header, terminal: uint32): bool =
-    let jit = f.armJit
-    assert jit != nil and flatArmCachedBranch(f, terminal)
-    # Plan from ordered source events, including repeated writes that an OR/XOR mask cannot prove absent.
-    var operations: seq[FlatMixedOp] = @[]
-    var used = 0'u32
-    for current in header+1..<terminal:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      let slots = payload.args.slots
-      used = used or (1'u32 shl int(slots.aIndex)) or
-          (1'u32 shl int(slots.bIndex)) or (1'u32 shl int(slots.destinationIndex))
-      var entry = default(FlatMixedOp)
-      if fact.opcode in 120'u8..130'u8:
-        assert fact.opcode >= 120 and fact.opcode <= 130 # Keep the admitted conversion proof local.
-        let access = indirectMemoryAccess(range[120..130](fact.opcode))
-        entry.memory = true
-        entry.store = access.kind == IndirectMemoryKind.Store
-        entry.base = uint32(slots.bIndex)
-        entry.writes = not entry.store
-        entry.destination = uint32(slots.aIndex)
-        entry.displacement = uint32(payload.args.x and 0xffffffff'u64)
-        entry.width = access.width
-      elif supportedArmOpcode(fact.opcode):
-        entry.writes = true
-        entry.destination = uint32(slots.destinationIndex)
-      else: return false
-      operations.add(entry)
-    let branch = f.plan.facts[int(f.sites[int(terminal)])]
-    let branchPayload = flatSourcePayload(f.plan, branch)
-    let branchSlots = branchPayload.args.slots
-    used = used or (1'u32 shl int(branchSlots.aIndex)) or
-        (1'u32 shl int(branchSlots.bIndex)) or
-        (1'u32 shl int(branchSlots.destinationIndex))
-    var groups = default(array[2, FlatMixedGroup])
-    var groupOf = default(array[armMixedMaximumSourceSpan, int])
-    for index in 0..<armMixedMaximumSourceSpan: groupOf[index] = -1
-    var groupCount = 0
-    for base in 0..<13:
-      if groupCount == 2: break
-      var first = -1
-      var last = -1
-      var count = 0
-      var minDisp = high(uint32)
-      var maxEnd = 0'u32
-      var writable = false
-      var valid = true
-      for index in 0..<operations.len:
-        let entry = operations[index]
-        if not entry.memory or entry.base != uint32(base): continue
-        if first < 0: first = index
-        last = index
-        inc count
-        if entry.displacement < minDisp: minDisp = entry.displacement
-        let end64 = uint64(entry.displacement)+uint64(entry.width)
-        if end64 > uint64(high(uint32)): valid = false
-        elif uint32(end64) > maxEnd: maxEnd = uint32(end64)
-        if entry.store: writable = true
-      if count < 2 or not valid or maxEnd-minDisp > 4096: continue
-      # A write at the first access still changes the base before the next member.
-      for index in first..<last:
-        if operations[index].writes and operations[index].destination == uint32(base):
-          valid = false
-          break
-      if not valid: continue
-      var lane = 0'u32
-      for candidate in 4'u32..16'u32:
-        let bit = 1'u32 shl int(candidate-4)
-        if (used and bit) == 0:
-          lane = candidate
-          used = used or bit
-          break
-      if lane == 0: continue
-      groups[groupCount] = FlatMixedGroup(writable: writable,
-          first: uint32(first), minDisp: minDisp,
-          maxEnd: maxEnd, lane: lane)
-      for index in first..last:
-        if operations[index].memory and operations[index].base == uint32(base):
-          groupOf[index] = groupCount
-      inc groupCount
-    if groupCount == 0: return false # Retain the accepted checked header when no window exists.
-    var mixed = newArmMixedBody()
-    for current in header+1..<terminal:
-      # Refuse publication unless every preceding physical node lowered exactly once.
-      if armMixedLowered(mixed) != current-header-1: return false
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      if fact.opcode in 120'u8..130'u8:
-        assert fact.opcode >= 120 and fact.opcode <= 130
-        let index = int(current-header-1)
-        let groupIndex = groupOf[index]
-        if groupIndex >= 0:
-          let group = groups[groupIndex]
-          emitArmMixedWindowMemory(mixed, range[120..130](fact.opcode), payload.args.slots,
-              uint32(payload.args.x and 0xffffffff'u64), current, group.minDisp,
-              group.maxEnd, group.lane, uint32(index) == group.first, group.writable)
-        else:
-          emitArmMixedMemory(mixed, range[120..130](fact.opcode), payload.args.slots,
-              uint32(payload.args.x and 0xffffffff'u64), current)
-      elif supportedArmOpcode(fact.opcode):
-        emitArmMixedPure(mixed, fact.opcode, payload.args.slots, payload.args.x)
-      else: return false
-    let args = f.arguments[int(terminal)]
-    emitArmMixedBranch(mixed, branch.opcode, args.slots,
-        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
-    # The terminal branch contributes exactly one additional lowered operation.
-    if armMixedLowered(mixed) != terminal-header: return false
-    var words = armMixedInstructions(mixed)
-    if words.len >= 1024:
-      when defined(pvmArmMixedGroupReceipt):
-        echo "ARM_MIXED_GROUP_OVERSIZE,", f.plan.facts[int(f.sites[int(header)])].pc, ",",
-            branch.pc, ",", groupCount, ",", words.len
-      return false
-    let published = publishArmEntry(jit, header, terminal, armMixedLowered(mixed), words)
-    if published:
-      armMixedPublishedGroups(jit, uint32(groupCount))
-      when defined(pvmArmMixedGroupReceipt):
-        echo "ARM_MIXED_GROUP_PUBLISH,", f.plan.facts[int(f.sites[int(header)])].pc, ",",
-            branch.pc, ",", groupCount
-    published
-
-  proc flatArmMixedProbe(f: var FlatFrame, header: uint32): uint32 =
-    ## Count only source-owned header visits after both conditional arms have checked certificates.
-    let jit = f.armJit
-    assert jit != nil and int(header) < f.armOriginal.len
-    let original = f.armOriginal[int(header)]
-    assert original != nil
-    let terminal = armEnding(jit, header)
-    if f.pricingKind != 0:
-      # A retained unpriced stream can be leased after selecting prices; retire its ineligible observer.
-      f.handlers[int(header)] = original
-      return original(f, header)
-    if f.barrier == flatStop and not f.info.blockCharged and
-        f.remaining >= uint64(f.arguments[int(header)].y) and
-        uint64(f.info.gas) >= f.arguments[int(header)].x and
-        flatArmCachedBranch(f, terminal) and armFinishProbe(jit, header):
-      let before = armClock()
-      let published = flatArmPublishMixed(f, header, terminal)
-      jit.compilationNs+=armClock()-before
-      if published:
-        f.handlers[int(header)] = flatArmMixed
-        return flatArmMixed(f, header)
-      f.handlers[int(header)] = original
-    original(f, header)
-
-  proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool =
-    ## Rebuild immutable arithmetic facts only after both existing scalar branch arms are admitted; no pricing/resolve is moved.
-    let jit = f.armJit
-    if jit == nil: return false
-    let ending = armEnding(jit, offset)
-    if not flatArmCachedBranch(f, ending): return false
-    let before = armClock()
-    var native = default(ArmBlock)
-    var current = offset
-    while current < ending:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc current
-    let args = f.arguments[int(ending)]
-    let fact = f.plan.facts[int(f.sites[int(ending)])]
-    emitArmBranch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
-        uint32(args.x shr 32), args.y)
-    var words = armInstructions(native)
-    let promoted = publishArmEntry(jit, offset, ending, ending-offset+1, words)
-    jit.compilationNs+=armClock()-before
-    if not promoted:
-      # A full arena retains the already published arithmetic leaf; never replace a valid entry with a refusal marker.
-      f.handlers[int(offset)] = flatArmExecute
-      return false
-    f.handlers[int(offset)] = flatArmBranch
-    if offset > 0:
-      let header = offset-1
-      let plain: FlatHandler = flatCharge
-      # Only an exact ordinary header owning this complete source suffix can fuse. Memo/errors/special shapes remain original.
-      if f.handlers[int(header)] == plain and
-          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
-        f.armOriginal[int(header)] = plain
-        assert f.arguments[int(header)].y > 0
-        if f.pricingKind == 0 and armRegionStatus(jit) == 0:
-          # Header coordinates already exist in the bounded source map; no extra table or per-iteration policy is needed.
-          armStartProbe(jit, header)
-          f.handlers[int(header)] = flatArmProbeWhole
-        else:
-          # A priced or already-connected owner keeps the established worker immediately.
-          f.handlers[int(header)] = flatArmWhole
-    # One checked pair may cover two source nodes before this positively promoted native suffix.
-    # A complete ordinary header is the only entry that can make the direct tail call.
-    if offset > 2:
-      let header = offset-3
-      let plain: FlatHandler = flatCharge
-      if f.handlers[int(header)] == plain and f.sites[int(header)] == f.sites[int(header+1)] and
-          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y and
-          f.handlers[int(header+1)] != flatSourcePayload(f.plan,
-            f.plan.facts[int(f.sites[int(header+1)])]).handler:
-        f.handlers[int(header)] = flatArmCheckedTail
-        if flatArmDirtyShape(f, header): f.handlers[int(header)] = flatArmDirtyProbeTail
-    true
 
   proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
     ## A fresh invocation context never escapes this call; guarded returns resume the original checked header.
@@ -3893,6 +2964,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     destination = flatArmRegion(f, first)
     true
 
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmRegionStatistics*(f: FlatFrame): array[2, uint64] =
     ## A focused witness proves actual connected execution separately from ordinary arithmetic leaves.
     let jit = f.armJit
@@ -3904,18 +2976,12 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: default(array[3, uint64])
     else: armDirtyLoopStatistics(jit)
 
+  # The former mixed-memory observer had no installer. Keep the raw ARM64 lowering
+  # for its paid-prefix witnesses while the shared runtime lacks equivalent mixed regions.
   proc flatArmMixedStatistics*(f: FlatFrame): array[4, uint64] =
     let jit = f.armJit
     if jit == nil: default(array[4, uint64])
     else: armMixedStatistics(jit)
-
-  when defined(pvmArmMixedGroupReceipt) or defined(pvmArmDirtyLoopOwnerReceipt):
-    proc flatArmMixedProbes*(f: FlatFrame): uint64 =
-      ## Diagnostic active admission work distinguishes an ineligible probe from ordinary checked execution.
-      result = 0
-      for handler in f.handlers:
-        # Count installed observers, including those that have not yet reached their promotion threshold.
-        if handler == flatArmMixedProbe: inc result
 
   proc flatArmMixedGroupStatistics*(f: FlatFrame): array[3, uint64] =
     ## Private publication/guard activity, with no retained invocation memory.
@@ -4017,9 +3083,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # No observed edge can bridge an invocation or host stop; cached code itself remains source-owned.
-    f.armPreviousValid = false
   if limit == 0:
     f.reason = oracle.StepError.StepLimitExceeded
     return
@@ -4033,9 +3096,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if f.preparationFailure != FlatError.None:
     f.reason = oracle.StepError.InvalidPreparedProgram
     return
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
-    # A reset or same-plan stream lease supplies an uncharged cold boundary after warmup.
-    flatX86ColdWideAdmission(f, flatStop)
   let cache {.cursor.} = f.dynamicOffsets
   if cache != nil:
     # A resumed segment starts with empty tags and may reuse its existing private allocation.
@@ -4090,9 +3150,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)
-  when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
-    # A restored partial barrier or final cached jump can make a pending graph admissible.
-    flatX86ColdWideAdmission(f, flatStop)
   flatPromoteNativeLoop(f)
 
 proc runFlatSingle*(f: var FlatFrame) =
@@ -4267,6 +3324,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
     # The prior segment always restores its terminal handlers before any host transition.
     assert not f.readProbe.observing
     replacement.readProbe = f.readProbe
+    replacement.nativeRingInstalled = f.nativeRingInstalled
   replacement.preparationFailure = f.preparationFailure
   replacement.preparationUsed = f.preparationUsed
   replacement.pricingPlan = f.pricingPlan
@@ -4282,12 +3340,9 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
-    replacement.armOriginal = move(f.armOriginal)
+    when ArmRegionWitness:
+      replacement.armOriginal = move(f.armOriginal)
     replacement.armJit = move(f.armJit)
-  when defined(pvmX86Jit):
-    replacement.x86Original = move(f.x86Original)
-    replacement.x86Jit = move(f.x86Jit)
-    replacement.x86WideAdmission = move(f.x86WideAdmission)
   f = move(replacement)
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -4478,12 +3533,9 @@ type FlatStream* = object
   failure: FlatError
   preparation: uint64
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    armOriginal: seq[nil FlatHandler]
+    when ArmRegionWitness:
+      armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
-  when defined(pvmX86Jit):
-    x86Original: seq[nil FlatHandler]
-    x86Jit: nil X86Jit
-    x86WideAdmission: FlatX86WideAdmission
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
@@ -4501,15 +3553,15 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     nativeInstalledEpoch: f.nativeInstalledEpoch)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
-    result.armOriginal = move(f.armOriginal)
+    when ArmRegionWitness:
+      result.armOriginal = move(f.armOriginal)
     result.armJit = move(f.armJit)
-  when defined(pvmX86Jit):
-    result.x86Original = move(f.x86Original)
-    result.x86Jit = move(f.x86Jit)
-    result.x86WideAdmission = move(f.x86WideAdmission)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
-  ## Lease only exact-source code; CPU, memory, budgets and callbacks remain freshly captured by the frame.
+  ## Restore an executable stream only for the exact immutable plan.
+  ## Sealed prices and errors belong to their emitting policy. If either side uses
+  ## complete-plan or memo pricing, discard the stream and reemit under the new
+  ## frame's policy. This also preserves stricter cycle limits on a fresh memo.
   if stream.sourcePlan != nil and stream.sourcePlan != f.plan:
     # Refuse before consuming another owner's price, executable capability or scalar coordinates.
     f.preparationFailure = FlatError.InvalidProgram
@@ -4521,12 +3573,9 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     stream = default(FlatStream)
     return
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    f.armOriginal = move(stream.armOriginal)
+    when ArmRegionWitness:
+      f.armOriginal = move(stream.armOriginal)
     f.armJit = move(stream.armJit)
-  when defined(pvmX86Jit):
-    f.x86Original = move(stream.x86Original)
-    f.x86Jit = move(stream.x86Jit)
-    f.x86WideAdmission = move(stream.x86WideAdmission)
   stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
@@ -4553,23 +3602,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 
 when defined(pvmX86Jit):
   func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
-    ## Copy diagnostics only; the code mapping and all mutable owner state remain private.
-    let jit = stream.x86Jit
-    if jit == nil: return default(array[7, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs, jit.branchCalls,
-        jit.headerCalls]
+    ## Private frame counters are empty. Prepared execution reports through the shared native owner.
+    default(array[7, uint64])
 
   func flatX86Statistics*(frame: FlatFrame): array[5, uint64] =
-    ## Focused internal witnesses distinguish native execution from complete checked fallback.
-    let jit = frame.x86Jit
-    if jit == nil: return default(array[5, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs]
+    ## Unbound witness frames retain checked execution without a private executable cache.
+    default(array[5, uint64])
 
   func flatX86ControlStatistics*(frame: FlatFrame): array[2, uint64] =
-    ## Copied native branch/header counts prove control executed without exposing the exclusive cache.
-    let jit = frame.x86Jit
-    if jit == nil: return default(array[2, uint64])
-    [jit.branchCalls, jit.headerCalls]
+    ## Unbound frame probes have no native branch or header entries.
+    default(array[2, uint64])
 
 when defined(pvmArm64JitOwnerReceipt):
   func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
@@ -4689,9 +3731,6 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
         (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0:
       flatRestoreScratchPage(frame, page)
   flatClearDirty(frame)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.
-    flatBuildArmReadContext(frame)
   reused = true
   FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
 

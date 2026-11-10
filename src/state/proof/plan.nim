@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Root-free immutable global/service query identities, with bounded capture and exact union.
-## A plan requests evidence; it is neither verified partial state nor a complete-map snapshot.
+## Root-free immutable selectors for global and service queries.
+##
+## Capture owns a sorted copy and refuses duplicates. Union coalesces equal key
+## identities after counting the exact output. An explicit empty plan requests
+## no evidence, while a default handle has no admitted plan. Authentication
+## binds these requested keys to a caller-selected root in a separate step.
 
 import std/[algorithm, assertions]
 import ../../codec/bounded

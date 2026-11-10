@@ -1,8 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Deterministic local full-map checkpoints preserve serialized keys/values and the complete root.
-## This storage envelope is not a JAM wire encoding and never accepts partial light state.
+## Deterministic local full-map checkpoint envelope.
+##
+## Version one writes the domain marker, E8 entry count and complete root, then
+## strictly ordered 31-byte keys with E8 lengths and exact value bytes. A present
+## empty value still owns a record. The layout is independent of host word size.
+##
+## Encoding copies one immutable map. Decoding revalidates the complete layout
+## and root before returning an owner. Restoration with external authority also
+## checks the independently supplied expected root. Partial light state has its
+## own persistence contract.
 
 import ./store
 import ../codec/state/[trie as state_trie, layout as state_layout]
@@ -96,7 +104,11 @@ proc before(left, right: array[31, byte]): bool =
 
 proc decodeFullCheckpoint*(input: openArray[byte], limits: StateStoreLimits,
     limit: ByteLimit): CheckpointResult[StateStore] =
-  ## Borrow stable input synchronously; validate its entire shape/policy before owning any entries.
+  ## Borrow stable input until restoration completes.
+  ## Preflight the full envelope and map quotas before allocating entries. Build
+  ## under the supplied store policy and compare the recomputed complete root.
+  ## Success proves internal consistency. The expected-root overload binds
+  ## that result to separately trusted authority.
   if uint64(input.len) > uint64(limit):
     return CheckpointResult[StateStore](status: CheckpointError.LimitExceeded)
   if input.len < HeaderBytes:

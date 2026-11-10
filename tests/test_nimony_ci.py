@@ -79,7 +79,7 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_requested_workloads_and_lightweight_pr_updates(self):
         """Requests select real workloads; ordinary updates and unrelated labels cannot start heavy work."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        required = {'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards',
+        required = {'check-fixture-provenance', 'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards',
                     'check-unit', 'check-failures', 'check-e2e', 'check-mcp-interop',
                     'check-pvm-reference', 'check-telemetry-interop-ci', 'package-binary',
                     'check-docker', 'bench-pvm-performance', 'bench-storage', 'bench-storage-growth',
@@ -98,11 +98,11 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertTrue(required <= set(scheduled_targets(text, event)))
         for action in ('opened', 'reopened', 'synchronize'):
             selected = set(scheduled_targets(text, event_context('pull_request', action)))
-            self.assertEqual({s for s in selected if not s.startswith('summary-')}, {'check-smoke'})
+            self.assertEqual({s for s in selected if not s.startswith('summary-')}, {'check-fixture-provenance', 'check-smoke'})
         for label in ('lgtm', 'unrelated'):
             selected = set(scheduled_targets(text, event_context('pull_request', 'labeled', label)))
             self.assertEqual({s for s in selected if not s.startswith('summary-')},
-                             {'check-smoke'} if label == 'lgtm' else set())
+                             {'check-fixture-provenance', 'check-smoke'} if label == 'lgtm' else set())
         tooling = event_context('workflow_dispatch', suite='tooling')
         selected = scheduled_targets(text, tooling)
         self.assertEqual(set(selected) & required,
@@ -112,7 +112,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(len(families), 1)
         self.assertEqual(families[0]['group'], 'python')
         focused = {
-            'unit': {'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards', 'check-unit'},
+            'unit': {'check-fixture-provenance', 'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards', 'check-unit'},
             'docker': {'check-docker'}, 'e2e': {'check-e2e', 'check-mcp-interop'},
             'interop': {'check-pvm-reference', 'check-telemetry-interop-ci'},
             'perf': {'bench-pvm-performance', 'bench-storage', 'bench-storage-growth', 'bench-storage-memory-ceilings'},
@@ -190,6 +190,30 @@ class NimonyCISafeguards(unittest.TestCase):
                     else:
                         self.assertTrue(host.startswith('ubuntu-'), host)
                         self.assertEqual(host.endswith('-arm'), family['platform'] == 'linux-arm64', host)
+
+    def test_fixture_gate_stops_smoke_and_full_fanout(self):
+        """Smoke and full jobs wait for the shared gate, while other focused requests can skip it."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        full = event_context()
+        gate = 'fixture-provenance'
+        self.assertTrue(expression(job_condition(text, gate), full))
+        failed = dict(full, needs={gate: {'result': 'failure'}})
+        for name, job in workflow(text)['jobs'].items():
+            if name != gate and expression(job.get('if', True), full):
+                self.assertEqual(job.get('needs'), gate)
+                self.assertFalse(expression(job.get('if', True), failed), name)
+        for smoke in (event_context('pull_request', 'opened'),
+                      event_context('pull_request', 'labeled', 'lgtm'),
+                      event_context('workflow_dispatch', suite='smoke')):
+            self.assertTrue(expression(job_condition(text, gate), smoke))
+            self.assertTrue(expression(job_condition(text, 'build'), smoke))
+            self.assertFalse(expression(job_condition(text, 'unit'), smoke))
+            smoke['needs'][gate]['result'] = 'failure'
+            self.assertFalse(expression(job_condition(text, 'build'), smoke))
+        tooling = event_context('workflow_dispatch', suite='tooling')
+        tooling['needs'][gate]['result'] = 'skipped'
+        self.assertFalse(expression(job_condition(text, gate), tooling))
+        self.assertTrue(expression(job_condition(text, 'build'), tooling))
 
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
@@ -335,6 +359,11 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('cargo', python_plan)
         self.assertNotIn('tools/test_e2e.py', runtime)
         complete = make_plan('check')
+        preflight = 'tools/native_fixture_contracts.py'
+        self.assertEqual(complete.count(preflight), 1)
+        self.assertLess(complete.index(preflight), complete.index('echo check-workloads'))
+        self.assertNotIn(preflight, runtime+module_plan+python_plan)
+        complete = make_plan('check-workloads')
         for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)

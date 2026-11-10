@@ -6,6 +6,7 @@
 
 import std/assertions
 import ../[program, machine]
+import ./native_register_ring
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
@@ -964,8 +965,9 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
 
 when NativeCheckedReadEnabled:
   proc emitArmCheckedReadAt(span: var ArmReadSpan, destination: uint32,
-      opcode: range[124..130]) =
-    ## Read the true width from the invocation's clipped descriptors using the address in X3.
+      opcode: range[124..130], pointerOnly: bool = false) =
+    ## Resolve the full access at X3 in descriptor order. Load the word or
+    ## retain its invocation-local address for the caller.
     let width = indirectMemoryAccess(opcode).width
     var accepted = default(array[3, int])
     for region in 0..<3:
@@ -979,8 +981,11 @@ when NativeCheckedReadEnabled:
       span.body.words.add(0xeb02003f'u32) # CMP X1,X2.
       span.body.words.add(0x54000088'u32) # B.HI next_descriptor (offset exceeds the last load).
       span.body.words.add(0xf9400222'u32 or ((descriptor+2) shl 10)) # LDR X2,[X17,#data].
-      span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
-        destination) # Unsigned loads clear upper bits; signed loads extend into the full Xd.
+      if pointerOnly:
+        span.body.words.add(0x8b010040'u32 or destination) # ADD Xd,X2,X1, without a guest read.
+      else:
+        span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
+          destination) # Unsigned loads clear upper bits; signed loads extend into the full Xd.
       accepted[region] = span.body.words.len
       span.body.words.add(0x14000000'u32) # B next_operation (patched below).
     armReadRefusal(span, 0x14000000'u32, false) # B refuse (skip the commit epilogue).
@@ -1386,10 +1391,9 @@ func armRegionChargeMatches*(jit: ArmJit, index: range[0..2], header, span: uint
   jit.region.status == 2 and jit.region.headers[index] == header and
     jit.region.spans[index] == span and jit.region.prices[index] == price
 
-proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
-    count: range[2..3] = 3): bool =
-  ## Compile one already-validated closed loop with resident registers and complete gas/source guards at every block.
-  assert jit.region.status == 0
+proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
+    rotating: bool): seq[uint32] =
+  ## Emit one resident loop with a whole-source guard at each original header.
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
@@ -1407,15 +1411,22 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
   for slot in 0..<13:
     if (resident and (1'u32 shl slot)) != 0:
       words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  if rotating:
+    # The caller validates the entry index. Zero falls through to the first guarded block.
+    words.add(0xf9401621'u32) # LDR X1,[X17,#40].
+    words.add(0xf100043f'u32) # CMP X1,#1.
+    armRegionEdge(words, fixes, blocks[1].header, 0, false)
+    words.add(0xf100083f'u32) # CMP X1,#2.
+    armRegionEdge(words, fixes, blocks[2].header, 0, false)
   for index in 0..<count:
     # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
     let item = blocks[index]
     if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
-      return false
+      return @[]
     if item.body.terminal.len notin [6, 10]:
       # Only our explicit regional policy can shorten the compare constant; the final five return words remain fixed.
       if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
-        return false
+        return @[]
     labels[index] = words.len
     words.add(0xf100007f'u32 or (item.span shl 10)) # CMP Xremaining,#wholeSourceSpan.
     armRegionEdge(words, fixes, item.header, 3, true) # LO returns before charging a partial block.
@@ -1479,7 +1490,7 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
   words.add(0xfd000e31'u32)
   words.add(0xfd001232'u32)
   words.add(0x2a0103e0'u32) # MOV W0,Wtarget after register/state publication.
-  if words.len >= 1024: return false
+  if words.len >= 1024: return @[]
   for at in epilogueBranches:
     # Stub branches are forward and bounded by the same 1,024-word image ceiling.
     words[at] = 0x14000000'u32 or uint32(epilogue-at)
@@ -1498,6 +1509,32 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     words[fix.at] = if fix.condition < 16:
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
+  words
+
+proc encodeArmRegisterRing*(ring: NativeRegisterRing): seq[uint32] =
+  ## Reuse the resident regional emitter without retaining a legacy owner.
+  var blocks = default(array[3, ArmRegionBlock])
+  for index in 0..2:
+    let item = ring.blocks[index]
+    var body = newArmRegionBody()
+    for operation in 0..<int(item.span)-1:
+      let op = item.body[operation]
+      emitArmOperation(body, op.opcode, op.slots, op.immediate)
+    let branch = item.branch
+    emitArmBranch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
+    blocks[index] = ArmRegionBlock(header: item.header, span: item.span,
+      operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
+  result = armRegionWords(blocks, 3, true)
+  if result.len != 0:
+    # Direct shared publication expects a complete image including the leaf return.
+    result.add(0xd65f03c0'u32)
+
+proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
+    count: range[2..3] = 3): bool =
+  ## Preserve the legacy publisher and its original nonrotating entry.
+  assert jit.region.status == 0
+  var words = armRegionWords(blocks, count, false)
+  if words.len == 0: return false
   # Shape/span/image negatives stay local under existing header probes; only owner-wide storage failure is sticky.
   jit.region.status = 1
   if not publishArmEntry(jit, blocks[0].header, 0, 0, words, true): return false
@@ -2764,7 +2801,9 @@ when NativeReadCycleEnabled:
   proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
-    ## the common exit publishes the changed lanes.
+    ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
+    ## readable extent once. Tail checks for a missing extent after gas and quota, and loads
+    ## the current signed word after preceding Stores.
     const
       readCount = 22
       readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,
@@ -2816,7 +2855,7 @@ when NativeReadCycleEnabled:
         emitArmOperation(setupBank, op.opcode, op.slots, op.immediate)
     var tail = default(ArmReadSpan)
     armCompactImmediate(tail.body.words, 3, cycle.tailLoad.immediate and 0xffffffff'u64)
-    emitArmCheckedReadAt(tail, 0, 129) # Absolute LDRSW stages in X0 before the tail debit.
+    emitArmCheckedReadAt(tail, 26, 129, pointerOnly = true)
     let tailSlot = uint32(cycle.tailLoad.slots.aIndex)
     var tailStep = newArmRegionBody()
     emitArmOperation(tailStep, cycle.tailStep.opcode, cycle.tailStep.slots,
@@ -2845,6 +2884,13 @@ when NativeReadCycleEnabled:
           ((first+1) shl 10) or (31'u32 shl 5) or first)
     cycleMove(words, 19, 0)
     cycleMove(words, 20, 1)
+    # Resolve only entry-local extent metadata. A miss stays zero until Tail.
+    words.add(0xaa1f03fa'u32) # MOV X26,XZR. X26 is already saved in the frame.
+    cycleMove(words, 17, 20)
+    let tailProbeStart = words.len
+    for instruction in tail.body.words:
+      words.add(instruction)
+    armReadPatchGuards(words, tail, tailProbeStart-1, words.len)
     cycleLoad(words, 21, 20, uint32(NativeCycleGasOffset))
     cycleLoad(words, 22, 20, uint32(NativeCycleRemainingOffset))
     cycleImmediate(words, 23, NativeCycleNoCompleted)
@@ -2885,7 +2931,10 @@ when NativeReadCycleEnabled:
         cycleAddImmediate(words, base, base, 4)
         cycleAddImmediate(words, shift, shift, 32)
       of NativeCycleRole.Tail:
-        appendArmCycleRead(words, fixes, tail, unpaid)
+        # A missing extent leaves this already-checked role unpaid.
+        cycleCompareImmediate(words, 26, 0)
+        cycleEdge(words, fixes, unpaid, 0)
+        words.add(0xb9800340'u32) # LDRSW X0,[X26] reads bytes after all prior Stores.
         armCycleDebit(words, span, price)
         cycleMove(words, tailSlot+4, 0)
         for instruction in tailStep.words: words.add(instruction)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independently authored published Genesis files and externally anchored current STF replay."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -44,6 +45,6 @@ def expected_observations(check_frozen=True):
     traces=dict(source_sha256=hashlib.sha256(source.FIXTURE.read_bytes()).hexdigest(),genesis=genesis,bootstrap_refusals=120,transition_refusals=evidence['refusals'])
     result=dict(transitions=evidence['transitions'],chains=evidence['chains'],roots=evidence['roots'],checkpoint_sha256=evidence['checkpoint_sha256'],traces=traces,refusals=885)
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
         assert BINARY.read_bytes()==bytes.fromhex(next(line[2:] for line in requests if line.startswith('G ')))
     return requests,lines,result

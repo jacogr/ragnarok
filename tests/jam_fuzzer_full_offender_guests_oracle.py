@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full-profile same-block offender exclusion, prior-active assurance eligibility and genuine guest effects."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_pending_disputes_oracle as pending
 import jam_fuzzer_full_profile_oracle as full
@@ -68,5 +68,5 @@ def expected_observations(check_frozen=True):
                     full_guests_sha256=hashlib.sha256(guests.FIXTURE.read_bytes()).hexdigest(),
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

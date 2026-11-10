@@ -2798,7 +2798,7 @@ let mixedInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
 when defined(pvmArm64Jit) and (defined(pvmArmMixedGroupReceipt) or
     defined(pvmArmDirtyLoopOwnerReceipt)) and not defined(pvmArm64JitRefuse):
   for policy in 0..<3:
-    # The same mixed source must observe eligible unpriced work, while priced work has no permanent observer.
+    # Compare checked mixed execution across ordinary, planned and memoized prices.
     var admission = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
     if policy == 1:
       let prices = newGasPlan(mixedProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
@@ -2812,20 +2812,16 @@ when defined(pvmArm64Jit) and (defined(pvmArmMixedGroupReceipt) or
       assert selectFlatPrices(admission, default(GasPlan), prices.value) == StepError.None
     verifyControl(admission, mixedProgram, mixedInfo, if policy == 0: 10'u64 else: 123'u64,
         [mixedPage, mixedSecond])
-    let observers = flatArmMixedProbes(admission)
-    assert observers == 0, "unbound priced/default frames have no legacy mixed observer"
-    echo "ARM_MIXED_PRICED_PROBES,", policy, ",", observers
+    assert flatArmMixedStatistics(admission) == default(array[4, uint64])
     if policy != 0:
-      # A priced frame discards even an unpromoted default-priced observer before execution.
+      # Restore an unpriced stream under the selected pricing policy and check it again.
       var unpriced = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
       verifyControl(unpriced, mixedProgram, mixedInfo, 10, [mixedPage, mixedSecond])
-      assert flatArmMixedProbes(unpriced) == 0, "checked source restoration needs no native observer"
       var retained = takeFlatStream(unpriced)
       restoreFlatStream(admission, retained)
-      assert streamNodes(retained) == 0 and flatArmMixedProbes(admission) == 0
+      assert streamNodes(retained) == 0
       verifyControl(admission, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
-      assert flatArmMixedProbes(admission) == 0
-      echo "ARM_MIXED_RETAINED_PRICED_PROBES,", policy, ",0"
+      assert flatArmMixedStatistics(admission) == default(array[4, uint64])
 var mixedFrame = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
 verifyControl(mixedFrame, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
 when defined(pvmArm64Jit):

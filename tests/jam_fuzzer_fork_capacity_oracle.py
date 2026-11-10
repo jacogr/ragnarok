@@ -3,8 +3,8 @@
 
 """Independent full guest maps for nine valid siblings, eight-state eviction and original-last continuation."""
 from functools import cache
+from frozen_fixture_results import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 import jam_fuzzer_full_guests_oracle as guests
 import jam_fuzzer_full_epochs_oracle as epochs
@@ -48,5 +48,5 @@ def calculate():
 def expected_observations(check_frozen=True):
     """Expose only precommitted independently authored seed/header/block/map streams."""
     lines,evidence = calculate()
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence # Observed native states never supply an expected map.
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence) # Observed native states never supply an expected map.
     return [],list(lines),dict(evidence)

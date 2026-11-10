@@ -249,6 +249,9 @@ proc readEmbedded(slot: var Connection) =
 
 proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
   ## Parse complete stock HTTP GET/HEAD headers with no body or ambiguous framing.
+  ## After stock syntax validation, apply UI method, path and encoding policy.
+  ## The parsed request stays local to this call, while the response owns its
+  ## selected asset or development descriptor across dispatcher turns.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
   if headBytes < 0:
