@@ -1098,11 +1098,13 @@ read-body/continuation certificate consumers use the same genuine-source reconst
 requests still own their operation certificates and acquire no Program/plan/frame borrow.
 
 Existing cached-entry, native epoch/span and installed-handler guards precede reconstruction.
-Shared native pure/loop/read success handlers remain decode-free. ARM mixed-memory successful
-receipts also bypass reconstruction; only its validated exceptional one-operation replay rebuilds
-the original checked handler. Read-body discovery, nomination and install revalidation remain cold;
-their installed success and refusal/replay handlers are unchanged. Separate bounded cold builders
-may decode an instruction more than once; the catalogue does not promise one decode overall.
+Shared native pure/loop/read success handlers remain decode-free. Read-body discovery, nomination
+and install revalidation remain cold. Separate bounded cold builders may decode an instruction more
+than once.
+
+The retired ARM64 mixed-memory frame observer reconstructed the original checked handler to replay
+the first uncommitted operation. The direct ARM64 emitter still has paid-prefix exit witnesses.
+That mixed-memory coverage remains to be ported to the shared ARM64 and x86-64 path.
 
 The existing prepared-block suite adds short operand encodings, cross-marker operands, legal
 true-end zero suffixes, reordered cold/warm entries and paid/unpaid state. These compare paths
