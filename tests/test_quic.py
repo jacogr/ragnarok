@@ -33,7 +33,8 @@ def io_pool_threads():
 
 
 IO_POOL_THREADS = io_pool_threads()
-# Application peers have a dispatcher and a logging writer in addition to the fixed I/O pool.
+# The dispatcher and logging writer run alongside the fixed I/O pool. Readiness
+# and idle checks compare against this exact count so extra workers fail the test.
 THREAD_BASELINES = {'nim': 2 + IO_POOL_THREADS}
 # The original bounded authentication and framing matrix is shared by the Nimony migration runner.
 SCENARIOS = ('valid', 'wrong-san', 'no-san', 'multi-san', 'ecdsa', 'wrong-signature', 'missing-cert', 'bad-server-san',

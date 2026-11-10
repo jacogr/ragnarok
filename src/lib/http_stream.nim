@@ -1,8 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Move an accepted socket into one bounded Reader/Writer task. The dispatcher
-## exchanges owned byte chunks and keeps all service policy and application state.
+## UI, MCP, and management hand each accepted connection to one task that owns
+## its Reader and Writer. The dispatcher checks the stream deadline before
+## handling a request or reading another asset chunk. One owned byte chunk at
+## a time crosses to the dispatcher, which retains policy, assets, and state.
+##
+## Joining the task keeps mailbox storage alive until both halves retire.
+## std/ioring starts the process-wide worker pool on import. The executable
+## shuts down that reactor after every service has joined its stream tasks.
 
 import std/[assertions, atomics, ioring, streamio, strutils, threadpool]
 import ./logging
