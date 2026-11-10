@@ -98,7 +98,8 @@ when NativeReadCycleEnabled:
 
   proc checkEntry(image: NativeImage, tailReadable: bool, gas, remaining: uint64,
       expectedHeader: uint32, expectedGas, expectedRemaining: uint64, exit: ReadExit,
-      receiptLayout = layout, pageDirty = true, expectedImage: openArray[byte] = []) =
+      receiptLayout = layout, pageDirty = true, expectedImage: openArray[byte] = [],
+      storeAddress = wordAddress, trailingDirty = false, bitmapWords = 1'u64) =
     ## Compare each entire register/memory checkpoint and the receipt after real machine code.
     var registers = default(RegisterFile)
     for i in 0..<registers.len:
@@ -156,7 +157,14 @@ when NativeReadCycleEnabled:
 
     var writable = original
     let readable = [0xfe'u8, 0xff, 0xff, 0xff, 0x80, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87]
-    let initialDirty = if pageDirty: 1'u64 shl (wordAddress shr 12) else: 0'u64
+    let firstPage = storeAddress shr 12
+    let lastPage = (storeAddress+3) shr 12
+    var initialDirty = default(array[2, uint64])
+    if pageDirty:
+      initialDirty[int(firstPage shr 6)] = 1'u64 shl (firstPage and 63)
+    if trailingDirty:
+      initialDirty[int(lastPage shr 6)] = initialDirty[int(lastPage shr 6)] or
+        (1'u64 shl (lastPage and 63))
     var dirty = initialDirty
     let readableRegion =
       if tailReadable: initNativeReadRegion(tailAddress, readable)
@@ -166,10 +174,10 @@ when NativeReadCycleEnabled:
       else: initNativeReadRegion(wordAddress, writable)
     var context = NativeCycleContext(
       read: [default(NativeReadRegion), wordReadable, readableRegion],
-      writable: [NativeCycleWritable(first: 0x13000),
-        NativeCycleWritable(first: wordAddress, length: uint64(writable.len),
+      writable: [NativeCycleWritable(first: max(0x13000'u64, storeAddress+8)),
+        NativeCycleWritable(first: storeAddress, length: uint64(writable.len),
           data: cast[pointer](addr writable[0]))],
-      dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: remaining,
+      dirty: cast[pointer](addr dirty[0]), dirtyWords: bitmapWords, gas: gas, remaining: remaining,
       visits: [2'u64, 3, 4, 5, 6, 7, 8], lastCompleted: 9, paidRead: 9)
     let destination =
       when defined(pvmReadCycleCreditWitness):
@@ -407,6 +415,29 @@ when NativeReadCycleEnabled and defined(pvmX86Jit):
     checkTailPointerEntry(image, second, true, 9)
     assert first[0] == 1 and second[0] == 9
 
+when NativeReadCycleEnabled and defined(pvmX86Jit):
+  proc checkStoreDirtyBoundary() =
+    ## Exercise first/last page authority across the boundary between bitmap words.
+    const pageEnd = 0x3ffff'u64
+    let storeHeader = layout.sites[NativeCycleRole.Store].header
+    for address in [pageEnd-4, pageEnd-3, pageEnd-2, pageEnd-1, pageEnd]:
+      var cycle = cycleFixture()
+      cycle.word.displacement = address-wordAddress
+      let image = lowerNativeReadCycle(cycle)
+      assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+      if address <= pageEnd-3:
+        checkEntry(image, false, 1000, 1000, tailHeader, 969, 976, ReadExit.UnpaidTail,
+          storeAddress = address)
+      else:
+        checkEntry(image, false, 1000, 1000, storeHeader, 997, 996, ReadExit.UnpaidStore,
+          storeAddress = address, trailingDirty = true)
+        checkEntry(image, false, 1000, 1000, storeHeader, 997, 996, ReadExit.UnpaidStore,
+          storeAddress = address, bitmapWords = 2)
+        checkEntry(image, false, 1000, 1000, storeHeader, 997, 996, ReadExit.UnpaidStore,
+          pageDirty = false, storeAddress = address, trailingDirty = true, bitmapWords = 2)
+        checkEntry(image, false, 1000, 1000, tailHeader, 969, 976, ReadExit.UnpaidTail,
+          storeAddress = address, trailingDirty = true, bitmapWords = 2)
+
 proc runReadCycleExecution*() =
   ## Run the same checked entry witness for the selected host ISA.
   when defined(pvmReadCycleRoleWitness):
@@ -469,7 +500,9 @@ proc runReadCycleExecution*() =
         ReadExit.UnpaidTail, receiptLayout = wide, expectedImage = wideBytes)
     when defined(pvmReadCycleRoleWitness):
       runReadCycleRoleWitness()
-    when defined(pvmX86Jit): checkTailPointerReuse()
+    when defined(pvmX86Jit):
+      checkTailPointerReuse()
+      checkStoreDirtyBoundary()
   echo "PASS shared native read cycle execution"
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
