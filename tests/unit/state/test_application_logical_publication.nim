@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical refresh composes with actual durable publication in both journal and managed layouts under the existing native lease.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[current_repeated_logical_context, collected_logical_context,
@@ -26,14 +27,17 @@ import ../../../src/state/store
 import ../../../src/chain/[provider, genesis]
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/[bounded, report_owned]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield scalar phase polling without touching any leased graph owner.
+
 proc waitDisk(owner: var Services) =
   ## Done retains publication exclusion until the following explicit host tick actually collects.
   let start = getMonoTime()
   while owner.diskPublicationPhase != DiskWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc run(fixture: CurrentRepeatedLogicalFixture, managed: bool) {.raises.} =
   ## Reparse a complete selected parent and continue two actual native current children across confirmed durable publication.
   var path = "application-logical-publication-chain.json"
@@ -89,6 +93,7 @@ proc run(fixture: CurrentRepeatedLogicalFixture, managed: bool) {.raises.} =
         CollectedLogicalError.StaleUpdate
     if slot == 2: wire = currentWire(signedChild(update.currentUpdateChild))
   assert prior.logicalProducer.currentUpdateChildContext.slot == 3
+
 proc main() {.raises.} =
   ## The maintained complete signed fixture supplies all authenticated namespace and execution authority.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

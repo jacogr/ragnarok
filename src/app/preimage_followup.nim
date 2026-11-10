@@ -3,6 +3,7 @@
 
 ## Bounded CE142-triggered CE143 acquisition owns exact peer/worker generations independently of public requests.
 ## Detached hash-checked content never mutates canonical state or certifies GP admission.
+
 import std/[monotimes, times, assertions]
 import ./services
 import ./proof/worker
@@ -30,10 +31,13 @@ type
     cache: PreimageCache
     acquired: array[8, PreimageAnnouncement]
     acquiredCount: int
+
 proc `=copy`*(destination: var PreimageFollowups, source: PreimageFollowups) {.error.}
   ## Copying would duplicate cancellation authority over network/CPU resources.
+
 proc `=dup`*(source: PreimageFollowups): PreimageFollowups {.error.}
   ## Initialization also cannot duplicate the resource owner.
+
 proc `=wasMoved`*(owner: var PreimageFollowups) {.nodestroy, requires: owner.count == 0.} =
   ## Only a retired owner may transfer storage.
   `=wasMoved`(owner.entries)
@@ -41,14 +45,17 @@ proc `=wasMoved`*(owner: var PreimageFollowups) {.nodestroy, requires: owner.cou
   owner.count = 0
   owner.cursor = 0
   owner.active = -1
+
 proc requireClosed(owner: PreimageFollowups) {.requires: owner.count == 0.} =
   ## All operation authority must have been explicitly retired.
   discard
+
 proc `=destroy`*(owner: PreimageFollowups) =
   ## Destruction never silently cancels or joins a borrowed Services owner.
   requireClosed(owner)
   `=destroy`(owner.entries)
   `=destroy`(owner.cache)
+
 proc reset*(owner: var PreimageFollowups) {.requires: owner.count == 0.} =
   ## Reopening discards retained content and all historical peer generations.
   owner.cache.clear()
@@ -56,31 +63,40 @@ proc reset*(owner: var PreimageFollowups) {.requires: owner.count == 0.} =
   owner.acquiredCount = 0
   owner.active = -1
   owner.cursor = 0
+
 func pendingCount*(owner: PreimageFollowups): int =
   ## Count fixed queued and active intents, including cancelled uncollected CPU work.
   owner.count
+
 func cachedCount*(owner: PreimageFollowups): int =
   ## Detached statistics remain safe while Services is exclusively leased.
   owner.cache.len
+
 func cachedBytes*(owner: PreimageFollowups): int =
   ## Logical wire bytes exclude bounded transient copies.
   owner.cache.byteLength
+
 proc retain*(owner: var PreimageFollowups, checked: CheckedReadReply): PreimageCacheError =
   ## Only the sealed whole-content verifier can populate the cache.
   owner.cache.remember(checked)
+
 proc find*(owner: var PreimageFollowups, request: ReadRequest): PreimageCacheResult =
   ## Frozen exact hash/method binding is preserved for the native responder.
   owner.cache.find(request)
+
 proc fetchRequest(notice: PreimageAnnouncement): ReadRequest {.requires: notice.valid.} =
   ## Fetch on CE143 carries the full hash and no untrusted service-selected state key.
   let identity = array[32, byte](notice.hash)
   decodeReadRequest(ReadKind.Preimage, identity).value
+
 proc held(owner: PreimageFollowups, notice: PreimageAnnouncement): bool =
   ## Exact length and full identity suppress redundant retrieval without copying blob bytes.
   owner.cache.contains(fetchRequest(notice), uint32(notice.length))
+
 proc has*(owner: PreimageFollowups, notice: PreimageAnnouncement): bool =
   ## Detached full identity/length possession is rechecked before any gossip send.
   notice.valid and owner.held(notice)
+
 proc recordAcquired(owner: var PreimageFollowups, notice: PreimageAnnouncement) =
   ## Eight fixed notifications preserve service namespaces even when content retrieval is shared.
   for index in 0..<owner.acquiredCount:
@@ -89,6 +105,7 @@ proc recordAcquired(owner: var PreimageFollowups, notice: PreimageAnnouncement) 
   if owner.acquiredCount >= 8: return # Bounded metadata refusal never drops already verified content.
   owner.acquired[owner.acquiredCount] = notice
   inc owner.acquiredCount
+
 proc takeAcquired*(owner: var PreimageFollowups): AnnouncementResult =
   ## Notifications carry copied facts only; canonical request and current possession must be rechecked before distribution.
   if owner.acquiredCount == 0: return default(AnnouncementResult)
@@ -96,12 +113,14 @@ proc takeAcquired*(owner: var PreimageFollowups): AnnouncementResult =
   let notice = owner.acquired[owner.acquiredCount]
   owner.acquired[owner.acquiredCount] = default(preimage_announcement.PreimageAnnouncement)
   announcementRequest(notice.service, notice.hash, notice.length)
+
 proc drop(owner: var PreimageFollowups, index: int) {.requires: index >= 0 and index < 8.} =
   ## Caller has retired any native/CPU ticket before dropping detached storage.
   assert owner.entries[index].phase != FetchPhase.Empty
   owner.entries[index] = default(FetchEntry)
   dec owner.count
   if owner.active == index: owner.active = -1
+
 proc enqueue*(owner: var PreimageFollowups, streams: NodeService, peer: NodePeer,
     notice: PreimageAnnouncement, clock: MonoTime): bool =
   ## Fixed capacity and identity/length deduplication precede accepting followup responsibility.
@@ -120,6 +139,7 @@ proc enqueue*(owner: var PreimageFollowups, streams: NodeService, peer: NodePeer
       inc owner.count
       return true
   false
+
 proc close*(owner: var PreimageFollowups, services: var Services, streams: var NodeService) =
   ## Only successful exact cancellation authorizes joining the shared worker; foreign leases survive unchanged.
   for index in 0..<8:
@@ -132,6 +152,7 @@ proc close*(owner: var PreimageFollowups, services: var Services, streams: var N
     owner.entries[index] = default(FetchEntry)
   owner.count = 0
   owner.reset()
+
 proc poll*(owner: var PreimageFollowups, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Work per host turn is bounded by eight slots; no canonical alias is acquired here.
@@ -198,6 +219,7 @@ proc poll*(owner: var PreimageFollowups, services: var Services,
       return
     if admitted.error notin [NodeError.Unavailable, NodeError.LimitExceeded]:
       owner.drop(index) # Temporary quotas preserve bounded queued intent; other refusals retire it.
+
 proc submitWaiting*(owner: var PreimageFollowups, services: var Services): bool {.raises.} =
   ## Host arbitration gives this private verification one turn without occupying the caller's checked slot.
   if owner.count == 0 or owner.active < 0: return false

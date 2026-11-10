@@ -2,24 +2,30 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard selected-parent global evidence with a genuine signed configured-parent positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_profile_context, parent_globals_context]
 import ../../src/state/parent/[globals as parent_globals, profile as parent_profile]
 import ../../src/state/global_snapshot
 import ../../src/chain/provider
 import ../../src/codec/report_owned
+
 proc extract(outcome: ParentGlobalsResult[SelectedParentGlobals]) {.noinline.} =
   ## No failed/default result grants complete selected-parent globals.
   discard outcome.value
+
 proc reason(outcome: ParentGlobalsResult[SelectedParentGlobals]) {.noinline.} =
   ## Only genuinely failed global validation grants this nested reason.
   discard outcome.globalFailure
+
 proc profile(owner: SelectedParentGlobals) {.noinline.} =
   ## Default handles expose no original selection.
   discard owner.parentGlobalsProfile.value
+
 proc globals(owner: SelectedParentGlobals) {.noinline.} =
   ## Default handles expose no complete globals.
   discard owner.parentGlobals.value
+
 proc main() {.raises.} =
   ## Signed input construction belongs only to genuine initialized extraction control.
   case paramStr(1)

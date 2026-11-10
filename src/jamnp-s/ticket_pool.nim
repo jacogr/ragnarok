@@ -3,6 +3,7 @@
 
 ## Fixed detached pending-ticket retention accepts only sealed proof results for a current finalized epoch context.
 ## Pool contents are prospective GP inputs, never canonical inclusion or sealer-schedule authority.
+
 import std/assertions
 import ./ticket_validation
 import ../codec/[header, tickets]
@@ -22,17 +23,21 @@ type
     lastBlock: array[32, byte]
     lastRoot: StateRoot
     included: seq[WinningTicketId] # Fresh copied immutable IDs never alias the worker-shared source owner.
+
 func len*(pool: PendingTicketPool): int =
   ## Count retained complete proofs even while an unrelated Services worker owns canonical state.
   pool.count
+
 proc clear*(pool: var PendingTicketPool) =
   ## Dropping detached immutable proof owners cannot cancel a Native stream or CPU job.
   pool = default(PendingTicketPool)
+
 proc expire*(pool: var PendingTicketPool, now: StateTime) =
   ## Observed clock changes retire obsolete proof owners before collecting any asynchronously completed job.
   if not pool.active: return
   if uint32(now) div pool.duration != pool.epoch or uint32(now) mod pool.duration >= pool.tail:
     pool.clear()
+
 proc advance*(pool: var PendingTicketPool, source: TicketSource, now: StateTime): TicketPoolError =
   ## Caller refreshes finalized source under the graph gate; this local operation retains no source/roster reference.
   if not source.valid: return TicketPoolError.NoSource
@@ -64,6 +69,7 @@ proc advance*(pool: var PendingTicketPool, source: TicketSource, now: StateTime)
   pool.lastBlock = blockHash
   pool.lastRoot = root
   TicketPoolError.None
+
 proc retain*(pool: var PendingTicketPool, ticket: CheckedNetworkTicket,
     now: StateTime): TicketPoolError =
   ## Fresh clock/context checks are load-bearing even when an older CPU result was fully cryptographically valid.
@@ -88,6 +94,7 @@ proc retain*(pool: var PendingTicketPool, ticket: CheckedNetworkTicket,
       return TicketPoolError.None
   assert false # Fixed capacity and a checked smaller limit prove an unused row exists.
   TicketPoolError.Full
+
 proc ticketAt*(pool: PendingTicketPool, ordinal: int): CheckedNetworkTicket {.requires: ordinal >=
     0 and ordinal < pool.count.} =
   ## Return an immutable complete proof by owner-bound ordinal, not a mutable backing row.

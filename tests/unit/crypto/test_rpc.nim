@@ -22,6 +22,8 @@ from ../../../src/codec/state/service_values as state_service_values import serv
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 include ../../../src/rpc/server
 
+let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
+
 # Structured output preserves integer endpoints and distinguishes data strings from embedded JSON.
 assert $json(high(uint64)) == "18446744073709551615"
 assert $json(low(int64)) == "-9223372036854775808"
@@ -284,6 +286,7 @@ let serviceText = genesisText.replace(genesisState, serviceState)
 let serviceGenesis = configuredGenesis(serviceText, genesisParameters.value)
 assert serviceGenesis.error == GenesisError.None
 let serviceInfo = ClientInfo(chain: genesisView(serviceGenesis))
+
 # Produce ordinary positional calls while keeping expected payloads independent of production codecs.
 proc serviceCall(methodName, service, extra: string): string =
   "{\"jsonrpc\":\"2.0\",\"method\":\"" & methodName & "\",\"params\":[\"" & genesisHash & "\"," &
@@ -334,14 +337,36 @@ extracted[0] = 99
 assert readMetadata.value.bytes[0] == 0
 
 let upgradeHeader = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+block reused_header_scanner:
+  # A retired client's long partial header must not move the next client's scan past its terminator.
+  var reused = Connection(input: repeat('x', 1000))
+  assert reused.headScanner.findHeadEnd(toOpenArray(reused.input, 0, reused.input.len - 1)) ==
+    http_parse.ParseIncomplete
+  assert reused.headScanner.pos == 1000
+  reused.close()
+  let suffix = masked("probe", 9)
+  reused.input = upgradeHeader & suffix
+  reused.process(requestTags, default(ClientInfo), 1)
+  assert reused.upgraded, "Reused RPC slot finds a shorter header on its first processing turn"
+  assert reused.input == suffix, "Buffered WebSocket bytes remain after the exact header boundary"
+  assert "101 Switching Protocols" in reused.output
+  reused.close()
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
 assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
+for version in ["HTTP/1.0", "HTTP/2"]:
+  # The stock head parser recognizes these versions, but the RPC upgrade requires HTTP/1.1.
+  assert upgrade(upgradeHeader.replace("HTTP/1.1", version)).len == 0, version & " refuses WebSocket upgrade"
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin : http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: local\x00host")).len == 0
 assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin: http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
 assert upgrade(upgradeHeader.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
+# Stock HTTP syntax precedes the WebSocket-specific challenge policy.
+for extra in ["X-Client: a\tb\r\n",
+    "Content-Length: 000000\r\n"]:
+  assert upgrade(upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & extra)).len == 0
+assert upgrade(upgradeHeader.replace("\r\n", "\n")).len > 0 # Stock framing accepts LF.
 let encoded = masked(request)
 # Every proper prefix is incomplete and has no success-only payload or consumption fields.
 for n in 0..<encoded.len: assert decodeFrame(encoded[0..<n]).status == incomplete
@@ -382,25 +407,26 @@ for origin in ["http://localhost", "http://127.0.0.1"]:
 var slot = default(Connection)
 slot.upgraded = true
 slot.input = masked(request[0..<20], 1, false)
-slot.process(info, 0)
+slot.process(requestTags, info, 0)
 assert slot.fragmented and slot.output.len == 0
 slot.input = masked("hello", 9)
-slot.process(info, 1)
+slot.process(requestTags, info, 1)
 assert slot.output == frame("hello", 10)
 slot.output = ""
 slot.input = masked(request[20..^1], 0)
-slot.process(info, 2)
+slot.process(requestTags, info, 2)
 var framedSession = default(RpcSession)
 assert not slot.fragmented and slot.output == frame(respond(request, info, framedSession))
 slot.output = ""
 slot.input = masked("", 0)
-slot.process(info, 3)
+slot.process(requestTags, info, 3)
 assert slot.closing and slot.output == frame("\x03\xea", 8)
 # Independently encoded chapter 13: two six-validator natural-counter arrays, four core tuples and one service.
 let activityHex = "06" & repeat("00", 36) & "06" & repeat("00", 36) & repeat("00", 32) &
     "012a000000" & repeat("00", 10) & "ff" & repeat("ff", 8)
 let activityKey = "0d" & repeat("00", 30)
 let previousKey = "09" & repeat("00", 30)
+
 # Build a fresh configured view, preserving independent current and previous roster encodings.
 proc activityInfo(wire: string, previous = "06" & repeat("00", 2016)): ClientInfo =
   let state = genesisState[0..^2] & ",\"" & previousKey & "\":\"" & previous & "\",\"" &
@@ -448,6 +474,7 @@ assert activityView.error == StatisticsReadError.None
 var activityCopy = activityView.value.bytes
 activityCopy[0] = 0
 assert activityView.value.bytes[0] == 6
+
 # Repeated decoding and response construction must release roster and statistics temporary owners.
 proc retireActivityReply() =
   assert respond(activityCall, activityOwner) == activityAnswer
@@ -472,11 +499,13 @@ for invalid in [listCall.replace(genesisHash, "bad"), listCall.replace("],", ",0
     listCall.replace("[\"" & genesisHash & "\"]", "[]"), listCall.replace("[\"" & genesisHash &
         "\"]", "{}")]:
   assert "\"code\":-32602" in respond(invalid, serviceInfo) # Exactly one canonical hash is mandatory.
+
 # Independently construct literal C(255, service) keys without the production constructor.
 proc accountHex(service: uint32): string =
   result = "ff"
   for shift in 0..<4: result.add(toHex(int64((service shr (shift * 8)) and 255), 2) & "00") # E4 interleaving.
   result.add(repeat("00", 22)) # Complete all fixed zero positions of the 31-byte key.
+
 # Capture one map from supplied account JSON; source buffers may be edited/dropped afterward.
 proc discoveryInfo(accounts: string): ClientInfo =
   let state = genesisState[0..^2] & accounts & "}"
@@ -530,6 +559,7 @@ let requestState = serviceState[0..^2] &
 let requestsText = genesisText.replace(genesisState, requestState)
 let requestsInfo = ClientInfo(chain: genesisView(configuredGenesis(requestsText,
     genesisParameters.value)))
+
 # Build four-argument history queries without narrowing unsigned length literals.
 proc requestCall(length: string): string =
   serviceCall("serviceRequest", "42", ",\"" & repeat("A", 43) & "=\"," & length)
@@ -582,6 +612,7 @@ let longHistoryText = requestsText.replace(threeSlots & "\"", threeSlots & "00\"
 let longHistoryInfo = ClientInfo(chain: genesisView(configuredGenesis(longHistoryText,
     genesisParameters.value)))
 assert "\"code\":0" in respond(requestCall("3"), longHistoryInfo)
+
 proc retireRequestReply() =
   assert "\"result\":[0,2147483648,4294967295]" in respond(requestCall("3"), requestsInfo)
 retireRequestReply()
@@ -594,6 +625,7 @@ var server = default(Server)
 assert server.start(0, "server")
 server.tick(0)
 server.close(); server.close()
+
 # Probe custom-destructor lowering with owned strings even when explicit close is never called.
 proc retireBuffers() =
   var owner = default(Server)
@@ -606,6 +638,7 @@ retireBuffers() # Warm fixed allocator bookkeeping before measuring retained app
 let baseline = getOccupiedMem()
 for iteration in 0..<100: retireBuffers() # Repeated custom destruction must not retain nested slot strings.
 assert getOccupiedMem() <= baseline + 256
+
 # A newly imported snapshot must retire with the server, even without explicit shutdown.
 proc retireGenesis() =
   var owner = default(Server)
@@ -688,6 +721,7 @@ assert "\"code\":-32602" in respond(reportCall.replace(reportHashText, "bad"), r
 # Complete parent validation rejects truncation, invalid tags and suffixes even after a matching report.
 for wire in ["", "02", reportWire[0..^3], reportWire & "00"]:
   assert "\"code\":0" in respond(reportCall, reportInfo(wire))
+
 # Repeated lookup must retire parent snapshots, report copies and cryptographic temporary buffers.
 proc retireReportReply() =
   ## Assert lookup while retaining only the original configured state across calls.
@@ -711,6 +745,7 @@ assert workReport(reportOwner.chain.bestBlock.value, reportIdentity, ByteLimit(3
     ReportReadError.None
 assert workReport(reportOwner.chain.bestBlock.value, default(WorkReportHash), ByteLimit(0)).error ==
     ReportReadError.Missing
+
 # A returned report owns its bytes even after the configured map and parent decoder retire.
 proc retainedReport(): OwnedReport =
   ## Return just the validated report owner from a short-lived configured state.
@@ -737,6 +772,7 @@ let readyReportHex = "30466e0ae1b05dde5249872475f6beeac368fd014b5a3413ceb32d3872
 let readyReportHash = "xFVJ93pjaMduU8oqsAhx/ts/IQl3aFgxetYf8dWPqcw="
 let readyCall = reportCall.replace(reportHashText, readyReportHash)
 let readyAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"MEZuCuGwXd5SSYckdfa+6sNo/QFLWjQTzrMtOHIUMoQqAAAAevEf2qcXw5jiIyEYQrQTkvGN9LvE6g9M+5cvGcemSUkGAOjlKUn25PsdlDJI30jD8rU4IA/d/qIjiOXgYb6OvyGnRQDAVkxeDeCUJYnfQ0OtGVbaZnlyQOKi8tb4EWtQR3aJhgsAAAD2lnZY32Jvo5y/tgFLUBltI7ws+/pxp1kcp3FUct0rSJMp3mNdS7uMR83Mu8EoXki/nbrTZa9EsgU0PpneopjzYHUatbJRNh+/061bDoTwUczs5rAIMK7TGlNU4Asgue0hAAAAj2ZcQFc/Eoh0l2dBdDD2I2DjeGXvdzwkGGUnqiS1pJMAAgIuXhZcyL1YZAQlf1zW9aMRd7XJUesHbHwQF0+QAG7vAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+
 proc readyReportInfo(wire: string, assignments = "", largeEpoch = false): ClientInfo =
   ## Retain supplied ready bytes and optional availability under one captured parameter context.
   var state = genesisState[0..^2] & ",\"0e" & repeat("00", 30) & "\":\"" & wire & "\""
@@ -779,6 +815,7 @@ assert workReport(readyOwner.chain.bestBlock.value, readyIdentity, ByteLimit(393
     ReportReadError.None
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 1048577)))
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 4097), largeEpoch = true))
+
 proc retainReadyReport(): OwnedReport =
   ## Return a child owner beyond both genesis and ready-ring decoder lifetimes.
   let transient = readyReportInfo(readyWire)
@@ -789,6 +826,7 @@ let readyRetained = retainReadyReport()
 var readyCopy = newSeq[byte](393)
 assert encodeOwnedReport(readyRetained, readyCopy).error == OwnershipError.None
 assert base64.encode(readyCopy) in readyAnswer
+
 proc retireReadyReply() =
   ## Decode and release ring rows, dependency storage and report owners on every call.
   assert respond(readyCall, readyOwner) == readyAnswer
@@ -825,6 +863,7 @@ for args in ["[]", "[0,0]", "[\"" & genesisHash & "\"]", "[\"" & genesisHash & "
     "[\"" & genesisHash & "\",\"" & rawTimeKey & "\",0]"]:
   assert "\"code\":-32602" in respond(rawCall.replace("[\"" & genesisHash & "\",\"" & rawTimeKey &
       "\"]", args), withGenesis)
+
 proc rawValueInfo(hex: string): ClientInfo =
   ## Capture opaque bytes at an otherwise absent serialized key; no schema validation is implied.
   let state = genesisState[0..^2] & ",\"ff" & repeat("00", 30) & "\":\"" & hex & "\"}"
@@ -840,6 +879,7 @@ assert "\"code\":0" in respond(rawOpaqueCall, rawValueInfo(repeat("78", 32769)))
 let rawBatch = respond("[" & rawOpaqueCall & "," & rawOpaqueCall & "]", rawLarge)
 assert rawBatch.len <= 65535 and "\"code\":0" in rawBatch
 assert rawLargeReply in rawBatch # A later refusal does not truncate an earlier complete reply.
+
 proc retireRawReply() =
   ## Repeated raw copies and response serialization must release all temporary storage.
   assert respond(rawCall, withGenesis) == rawAnswer
@@ -893,6 +933,7 @@ assert keysMaximumReply.split("==").len == 130
 let keysBatch = respond("[" & repeat(keysMaximum & ",", 15) & keysMaximum & "]", manyServices)
 assert keysBatch.len <= 65535 and "\"code\":0" in keysBatch
 assert keysMaximumReply in keysBatch
+
 proc retireKeysReply() =
   ## Retain the immutable index while temporary key copies and JSON responses retire.
   assert respond(keysRequest, withGenesis) == keysFirst
@@ -915,6 +956,7 @@ assert "\"code\":1" in respond(headerCall, info)
 assert "\"code\":1" in respond(headerCall.replace(genesisHash, repeat("A", 43) & "="), withGenesis)
 for args in ["[]", "[0]", "[\"bad\"]", "[\"" & genesisHash & "\",0]"]:
   assert "\"code\":-32602" in respond(headerCall.replace("[\"" & genesisHash & "\"]", args), withGenesis)
+
 proc retainedHeader(): OwnedHeader =
   ## Retain the sealed owner after the chainspec text and temporary genesis handle retire.
   var source = genesisText
@@ -928,6 +970,7 @@ assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
 headerCopy[0] = 255 # Caller-owned copies cannot mutate the retained wire or its identity.
 assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
 assert base64.encode(headerCopy) in headerAnswer
+
 # Independently framed winner/offender fields produce exact 32 KiB and one-byte-over valid headers.
 proc headerBoundary(epoch: int, offender: bool): tuple[info: ClientInfo, raw: string] =
   ## Author canonical C.2 fields directly; no production header encoder constructs this fixture.
@@ -953,6 +996,7 @@ assert base64.encode(headerAtLimit.raw) in headerLargeAnswer
 assert "\"code\":0" in respond(headerOverCall, headerOverLimit.info)
 let headerBatch = respond("[" & headerAtCall & "," & headerAtCall & "]", headerAtLimit.info)
 assert headerBatch.len <= 65535 and "\"code\":0" in headerBatch and headerLargeAnswer in headerBatch
+
 proc retireHeaderReply() =
   ## Header response construction must release byte copies and Base64 buffers on each call.
   assert respond(headerCall, withGenesis) == headerAnswer
@@ -1871,7 +1915,7 @@ proc publicationReply(fd: cint): string =
   result = ""
   var bytes = default(array[4096, char])
   let count = receive(fd, addr bytes[0], csize_t(bytes.len), 0)
-  assert count > 0
+  assert count > 0, "expected bytes on the connected RPC socket"
   for index in 0..<count:
     result.add(bytes[index]) # Copy only the initialized native receive prefix.
 
@@ -1898,6 +1942,49 @@ proc backpressureSubscriber(fd: cint) =
       assert written > 0
   assert false, "slow-peer fixture reaches kernel backpressure within its finite allowance"
 
+proc upgradeReceiveBounds(owner: var Server) =
+  ## Exercise both sides of the HTTP boundary through actual dispatcher reads.
+  let first = "X-Padding-A: " & repeat('a', 8100) & "\r\n"
+  let second = "X-Padding-B: "
+  let padding = first & second &
+    repeat('b', http_parse.MaxHeadLen - upgradeHeader.len - first.len - second.len - 2) & "\r\n"
+  let head = upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & padding)
+  assert head.len == http_parse.MaxHeadLen
+  for oversized in [true, false]:
+    # Drive one fresh client per case. The final write crosses the former combined receive cap.
+    var pair = default(array[2, cint])
+    assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+    defer: discard posix.close(pair[1])
+    assert nonblocking(pair[0]) and nonblocking(pair[1])
+    owner.connections[0].opened = true
+    owner.connections[0].fd = pair[0]
+    owner.connections[0].deadline = getMonoTime().ticks div 1_000_000 + 5000
+    let prefix = head.substr(0, head.len - 5)
+    for turn in 0..<4:
+      # Feed one dispatcher read at a time so the socket's send buffer cannot truncate the fixture.
+      let start = turn * 4096
+      var chunk = prefix.substr(start, min(start + 4096, prefix.len) - 1)
+      assert sendBytes(pair[1], chunk.toCString(), csize_t(chunk.len), 0) == chunk.len
+      owner.tick(0)
+    assert owner.connections[0].input == prefix and not owner.connections[0].upgraded,
+      "incomplete head stays buffered: " & $owner.connections[0].input.len
+    let ping = repeat('p', 32)
+    var suffix = if oversized: repeat('x', 64) else: head.substr(head.len - 4) & masked(ping, 9)
+    assert sendBytes(pair[1], suffix.toCString(), csize_t(suffix.len), 0) == suffix.len, "send the final read"
+    owner.tick(0)
+    if oversized:
+      # HTTP refusal closes without sending a WebSocket close frame.
+      var octet = '\0'
+      assert receive(pair[1], addr octet, 1, 0) == 0, "oversized upgrade closes without a binary frame"
+      assert not owner.connections[0].opened
+    else:
+      # The complete head upgrades before consuming the buffered Ping.
+      assert publicationReply(pair[1]).startsWith("HTTP/1.1 101 "), "head at the stock limit upgrades"
+      owner.tick(0)
+      assert publicationReply(pair[1]) == frame(ping, 10), "buffered Ping survives the upgrade"
+      owner.connections[0].close()
+
 ## Own an ephemeral listener and connected WS transport while publishing between dispatcher turns.
 ## Synthetic snapshots establish handoff behavior only, not execution/signature validity.
 proc publicationLifecycle() =
@@ -1918,6 +2005,7 @@ proc publicationLifecycle() =
   assert nonblocking(owner.fd)
   assert bindSocket(owner.fd, addr address, SockLen(sizeof(address))) == 0
   assert listenSocket(owner.fd, 1) == 0
+  owner.upgradeReceiveBounds()
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   owner.chain = historySeed
   owner.parameters = genesisParameters

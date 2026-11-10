@@ -25,11 +25,6 @@ import ../../support/[arc_evidence, report_context]
 ## Refuse hashing after input preparation to prove policy has no crypto/state-write side effects.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 
-
-
-
-
-
 ## Match exact published policy errors, never treating an earlier credential failure as success.
 proc expected(text: string): ReportPolicyError =
   case text
@@ -96,10 +91,6 @@ proc official(): OwnedReport {.raises.} =
     assert array[32, byte](parent.commitment.root) == array[32, byte](
         state.snapshot.value.commitment.root)
   assert total == 20 and accepted == 8
-
-
-
-
 
 ## A scoped success or later-digest refusal must release every certificate and snapshot handle.
 proc releaseCycle(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Larger distinct-payload backend lifetimes verify exact heads before and after strict durable reopen.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../support/[storage_deployment_samples, storage_deployment_backends, storage_allocations,

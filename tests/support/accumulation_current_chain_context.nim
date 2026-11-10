@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current composed fixtures and exact source parameters support state/view and durable-publication witnesses.
+
 import std/assertions
 import ./service_namespace_seed
 import ../../src/chain/[parameters, genesis, provider]
@@ -32,22 +33,27 @@ type CurrentChainFixture* = object ## Actual current authority retains its struc
   parent*: BlockSnapshotResult
   entries*: seq[StateEntry]
   older*: seq[OwnedHeader] ## Exact original report lookup inputs, never synthesized ancestry certificates.
+
 proc currentChainSettings*(epoch = 12'u8, alteredPrice = false): Parameters =
   ## Use the exact frozen execution tuple; mismatch probes alter only one explicit epoch or deposit field.
   var wire = currentRoundParameters().encodeParameters
   wire[30] = epoch
   if alteredPrice: wire[8] = 1 # depositPerByte differs while all core/epoch/validator domains remain unchanged.
   decodeParameters(wire).value
+
 proc currentChainBytes*(header: OwnedHeader): seq[byte] =
   ## Copy exact sealed bytes only after genuine owner metadata selects their complete extent.
   result = newSeq[byte](header.headerInfo.value.consumed)
   assert header.encodeOwnedHeader(result).error == HeaderError.None
+
 proc currentChainAdmission*(source: PreparedCurrentAccumulationConsensus): AdmittedReports =
   ## Retain the source's exact admission; this test helper grants no synthetic completion authority.
   source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value.completedSequenceSource.value.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value
+
 proc currentChainParent*(source: PreparedCurrentAccumulationConsensus): StateStoreSnapshot =
   ## Cached original-parent preimage admission retains exact identity even for an empty extrinsic.
   source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivityPreimages.value.preimagePrior.value
+
 proc currentChainFixture*(base: OwnedReport, uses = 0, available = false, blobs = false,
     disputed = false, ticket = false, rotated = false, writes = 1000'u64,
         completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): CurrentChainFixture =
@@ -76,6 +82,7 @@ proc currentChainFixture*(base: OwnedReport, uses = 0, available = false, blobs 
   assert captured.error == GenesisError.None, "exact source parameter tuple captures genuine parent"
   CurrentChainFixture(source: source, parent: captured, entries: authored.entries,
       older: authored.older)
+
 proc currentChainSeeded*(context: CurrentChainFixture): ChainView =
   ## Explicit finality stays on the retained parent while its child becomes the selected head.
   genesisView(context.parent).finalizeView(context.parent.value.blockHash).value

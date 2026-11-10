@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_import_recovery_arc_release"}
 
 ## Selected original rosters, paired parity reconstruction and hostile proof pages exercise source-bound CE139/140 recovery.
+
 import std/[assertions, syncio, rawthreads]
 import ../../../src/chain/[genesis, provider, import_catalog]
 import ../../../src/jamnp-s/import_recovery
@@ -19,6 +21,7 @@ import ../../support/[pvm_computed_report, jamnp_import_recovery_fixture, jamnp_
 
 type ChunkPair = object ## Caller-owned raw row buffers carry no verification or report authority.
   segment, page: seq[byte]
+
 proc chunks(source: AvailabilityCommitment, index: int,
     indices: openArray[ErasureShardIndex]): ChunkPair =
   ## Genuine original erasure rows contain both the requested export and its distinct combined proof-page row.
@@ -31,6 +34,7 @@ proc chunks(source: AvailabilityCommitment, index: int,
     for octet in exports.exportErasureChunk(shard, ExportErasureIndex(uint64(uint16(
         info.exports))+uint64(index div 64))).value:
       result.page.add(octet)
+
 proc checkSource(source: AvailabilityCommitment, index: int, indices: openArray[
     ErasureShardIndex]) =
   ## Pair recovery must reproduce a genuine normalized original export and authenticate its independently retained root.
@@ -41,6 +45,7 @@ proc checkSource(source: AvailabilityCommitment, index: int, indices: openArray[
   assert recovered.value.verifiedImportInfo.value.root.bytes ==
       source.availabilityInfo.value.specifier.segmentRoot.bytes
   assert uint16(recovered.value.verifiedImportInfo.value.index) == uint16(index), "recovered original ordinal"
+
 proc catalogChecks(source: AvailabilityCommitment) =
   ## Retained registration snapshots bind old assurers across a real population/credential-domain change.
   let first = registrationSnapshot(source)
@@ -110,6 +115,7 @@ type StackContext = object ## The host freezes every selected graph and raw buff
   indices: seq[ErasureShardIndex]
   root: SegmentRoot
   passed: bool
+
 proc boundedRecovery(context: pointer) =
   ## Maximum-population catalog capture and paired parity reconstruction must fit the real managed-worker stack ceiling.
   let selected = cast[ptr StackContext](context)
@@ -121,6 +127,7 @@ proc boundedRecovery(context: pointer) =
     selected.data.page, selected.indices, importRecoveryLimits())
   assert recovered.error == ImportRecoveryError.None, "bounded stack recovery"
   selected.passed = true
+
 proc checkStack(source: AvailabilityCommitment, indices: seq[ErasureShardIndex]) {.raises.} =
   ## No host-side ARC operation or observation of the shared context overlaps its private CPU borrow.
   let saved = registrationSnapshot(source, active = 1023, previous = 1023)
@@ -131,6 +138,7 @@ proc checkStack(source: AvailabilityCommitment, indices: seq[ErasureShardIndex])
   thread.create(boundedRecovery, addr context, stackSize = 524288)
   thread.join()
   assert context.passed, "bounded recovery stack joined"
+
 proc cycle(source: ReportedImport, data: ChunkPair, indices: seq[ErasureShardIndex]) =
   ## Complete verified imports and late corrupted proof pages release every reconstructed buffer and selected source alias.
   assert recoverImport(source, ImportIndex(0), data.segment, data.page, indices,

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical complete namespace resource policies refuse malformed/partial input atomically and configure only the explicitly named producer fields.
+
 import std/[assertions, syncio, envvars, cmdline, strutils]
 import std/posix/posix
 import ../support/[current_namespace_policy_context, accumulation_current_candidate_context, arc_evidence]
@@ -13,14 +14,18 @@ import ../../src/state/logical_continuation
 import ../../src/state/accumulation/effects as accumulation_effects
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Lexical/schema/file policy checks never require cryptographic availability.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Missing/unknown/duplicate/overflow admission stays hash-free.
+
 proc joined(left, right: seq[string]): seq[string] =
   ## Explicit argument copying preserves caller arrays without relying on unsupported sequence concatenation.
   result = left
   for value in right: result.add(value)
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CurrentNamespacePolicyResult)

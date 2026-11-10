@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded test-authored logical identities qualify actual candidate values without supplying any posterior values.
+
 import std/assertions
 import ../../src/state/store
 import ../../src/codec/bounded

@@ -208,7 +208,6 @@ except:
   # Missing trusted fixtures fail the suite without changing protocol error semantics.
   quit(2)
 
-
 block:
   # A generic owned value set can be larger, but a block preimage component has a fixed protocol maximum.
   var rows: seq[byte] = @[]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently authored complete bytes qualify typed composition and explicit-root checkpoint restoration.
+
 import std/[assertions, envvars, strutils, syncio, parseutils]
 import ../../support/state_complete_serialization_context
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
@@ -21,6 +22,7 @@ const
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(1), serialized: mapLimits,
       storageKeyBytes: ByteLimit(65)))
+
 proc check(fixture: seq[seq[byte]], expected: seq[byte], caseId: int) =
   ## Compose logical fields and require every envelope byte before decoding independently supplied bytes.
   var chapters = default(StateChapters)
@@ -43,6 +45,7 @@ proc check(fixture: seq[seq[byte]], expected: seq[byte], caseId: int) =
   let restored = decodeValidatedCheckpoint(expected, StateRoot(root), services, profile, limits)
   assert restored.error == ValidatedCheckpointError.None
   assert encodeFullCheckpoint(restored.value.manifestSource.value, limits.checkpointBytes).value == expected
+
 proc main() {.raises.} =
   ## Run every pinned independent complete state; require exact fixture cardinality and no skipped rows.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

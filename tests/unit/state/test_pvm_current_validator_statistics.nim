@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_validator_statistics_arc_release"}
 
 ## Current signed terminal observations preserve every literal validator counter, epoch/reporter rule and failure boundary.
@@ -33,6 +34,7 @@ import ../../support/[accumulation_execution_context, accumulation_current_round
 
 # Fault injection starts only after real signatures, accumulation and complete-map construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Exact chain domains are inherited; these values bound only local resource use.

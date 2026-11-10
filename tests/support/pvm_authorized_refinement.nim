@@ -23,10 +23,12 @@ type
     package*: OwnedWorkPackage
     parameters*: Parameters
     inputs*: RefinementInputs
+
 proc authorizedLimits*(): AuthorizedRefinementLimits =
   ## Independent local caps admit complete ordered computation while retaining bounded child behavior.
   AuthorizedRefinementLimits(trace: FetchTraceLimit(49152), refinement: reportLimits(),
       digests: digestLimits())
+
 proc authorizedFixture*(authCode: openArray[seq[byte]], guests: openArray[ReportGuest],
     authCodeSize = 0, missingAuth = false): AuthorizedFixture =
   ## Merge original test-only complete state entries, then capture a new canonical package before its authorizer runs.

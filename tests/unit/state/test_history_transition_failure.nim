@@ -16,8 +16,10 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 ## Test-only observer flags independently refuse Blake2b (1) and Keccak (2).
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Delay root refusal until private trie construction has begun.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Distinguish failed hashing from validation that must reject before hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -2,22 +2,28 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Cached unchanged subtrees and atomic rollback must hold through the existing StateStore interface.
+
 import std/[assertions, syncio]
 import ../../../src/state/store
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer state or refuse a required hash.
+
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Allow a path prefix to hash before refusing the remaining candidate.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count only the update under test; independent reference checks happen afterward.
+
 proc key(index: int): StateKey =
   ## The first 256 identities form a balanced eight-level tree; 256 is independently absent.
   var raw = default(array[31, byte])
   raw[0] = byte(index mod 256)
   raw[1] = byte(index div 256)
   StateKey(raw)
+
 proc run() =
   ## Failure never publishes either half of the map/trie candidate or corrupts a retained root.
   reset(0)

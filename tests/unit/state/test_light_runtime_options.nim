@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit node/backend selection never converts incomplete light authority into full checkpoint recovery.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
+
 proc main() =
   ## Atomic refusals clear all formerly successful mode/path authority.
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-mode", "light",

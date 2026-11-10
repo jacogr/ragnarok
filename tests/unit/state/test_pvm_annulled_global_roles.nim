@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_annulled_global_roles_arc_release"}
 
 ## Genuine parallel role hosts prove R, annulment, original authority and bounded immutable C(12) selection.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/global/roles as accumulation_global_roles
 import ../../../src/state/accumulation/[annulment as accumulation_annulment,
@@ -19,11 +21,14 @@ import ../../support/[accumulation_batch_context, accumulation_annulment_context
   pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc put(bytes: var seq[byte], value: uint64, width: int) =
   ## Encode independent E4/E8 oracle fields without the production privilege serializer.
   for offset in 0..<width:
     bytes.add(byte((value shr (8*offset)) and 255)) # Explicit fixed widths bound every shift.
+
 proc profile(): Parameters =
   ## Tiny deposits isolate global choices; assign still reads its exact eighty-hash queue.
   var wire = encodeParameters(pvmParameters())
@@ -33,15 +38,18 @@ proc profile(): Parameters =
   wire[82] = 80
   wire[83] = 0
   decodeParameters(wire).value
+
 proc selfWrite(code: var seq[seq[byte]]) =
   ## A real no-op upgrade marks the invoking account for conflict detection.
   for instruction in @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
       registerImmediate(9, 0), registerImmediate(10, 0), @[10'u8, 21]]:
     code.add(instruction) # Only actual executed host facts contribute membership.
+
 proc foreignWrite(code: var seq[seq[byte]], target, owner: uint64) =
   ## Matching prior supervision authorizes a real foreign membership mutation.
   for instruction in @[registerImmediate(7, target), registerImmediate(8, owner), @[10'u8, 29]]:
     code.add(instruction) # Restoring an equal supervisor still records membership.
+
 proc managerProgram(changed, cancelManager, cancelOwner: bool, pairs: int): seq[byte] =
   ## Manager handoffs and allowance values are independent of the original assigner's update.
   var payload: seq[byte] = @[]
@@ -60,6 +68,7 @@ proc managerProgram(changed, cancelManager, cancelOwner: bool, pairs: int): seq[
   if cancelOwner: code.foreignWrite(99, 42) # The original supervisor marks the junior.
   code.add(@[50'u8, 0])
   guestEnvelope(code, writable = payload)
+
 proc ownerProgram(cancelManager, cancelOwner: bool): seq[byte] =
   ## Original owner changes core zero and staging; its successor never becomes this round's source.
   var payload = newSeq[byte](96)
@@ -70,6 +79,7 @@ proc ownerProgram(cancelManager, cancelOwner: bool): seq[byte] =
   if cancelManager: code.foreignWrite(42, 99) # Reciprocal prior supervision tests original outcome decisions.
   code.add(@[50'u8, 0])
   guestEnvelope(code, writable = payload)
+
 proc seedSupervisor(fixture: var BatchFixture, service, supervisor: uint32) =
   ## Amend the complete authored prior before either real execution captures it.
   let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
@@ -80,11 +90,13 @@ proc seedSupervisor(fixture: var BatchFixture, service, supervisor: uint32) =
       ServiceMetadataBytes)).value
   assert fixture.state.apply([StateWrite(key: key, kind: StateWriteKind.Put,
     value: entry.value)]).error == StateStoreError.None, "seed genuine prior authority"
+
 proc policy(): AccumulationGlobalRoleLimits =
   ## Chain dimensions and independent work/component/aggregate ceilings are explicit.
   AccumulationGlobalRoleLimits(privileges: PrivilegeConfig(cores: CoreCount(2),
     maxAlways: ElementLimit(2), maxBytes: ByteLimit(128)), outcomes: ElementLimit(2),
     checks: ElementLimit(256), totalBytes: ByteLimit(512))
+
 proc selected(changed, cancelManager, cancelOwner: bool, pairs: int,
     reverse = false): PreparedAccumulationAnnulment =
   ## Only real common-input normalized executions can construct the conflict certificate.
@@ -108,6 +120,7 @@ proc selected(changed, cancelManager, cancelOwner: bool, pairs: int,
   let originals = if reverse: @[second, first] else: @[first, second]
   prepareAccumulationAnnulment(fixture.inputs, fixture.state.snapshot.value, originals,
     annulmentPolicy()).value
+
 proc check(changed, canceledManager, canceledOwner: bool, pairs: int, reverse = false) =
   ## Independent literal bytes prove the exact R alternatives and complete cancellation projection.
   let source = selected(changed, canceledManager, canceledOwner, pairs, reverse)

@@ -3,6 +3,7 @@
 
 ## Main-thread bounded possession-delivery scheduling retains fixed claims and exact native ticket authority only.
 ## The application rechecks canonical request and retained hash-checked content before dispatch; acknowledgments confer no state authority.
+
 import std/[assertions, monotimes, times]
 import ./[node, connections, read_stream, read_client, preimage_announcement]
 import ../codec/bounded
@@ -39,10 +40,13 @@ type
     activeRow, activePeer: int
     started: MonoTime
     delivered: uint64
+
 proc `=copy`*(destination: var PreimageGossip, source: PreimageGossip) {.error.}
   ## Duplicating a scheduler would duplicate cancellation authority over its live stream.
+
 proc `=dup`*(source: PreimageGossip): PreimageGossip {.error.}
   ## Initialization cannot duplicate the owner either.
+
 proc `=wasMoved`*(owner: var PreimageGossip) {.nodestroy, requires: not owner.active.} =
   ## A retired scheduler can transfer only detached fixed claims and ARC peer namespaces.
   `=wasMoved`(owner.identity)
@@ -50,40 +54,50 @@ proc `=wasMoved`*(owner: var PreimageGossip) {.nodestroy, requires: not owner.ac
   `=wasMoved`(owner.ticket)
   owner.active = false
   owner.count = 0
+
 proc requireClosed(owner: PreimageGossip) {.requires: not owner.active.} =
   ## Destruction never abandons an exact outstanding native request.
   discard
+
 proc `=destroy`*(owner: PreimageGossip) =
   ## Explicit close retires native authority before ARC observations leave scope.
   requireClosed(owner)
   `=destroy`(owner.identity)
   `=destroy`(owner.rows)
   `=destroy`(owner.ticket)
+
 func len*(owner: PreimageGossip): int =
   ## Detached intent count is safe while a foreign graph lease is active.
   owner.count
+
 func sending*(owner: PreimageGossip): bool =
   ## One active native ticket includes withheld acknowledgment FIN and queued local opens.
   owner.active
+
 func deliveredCount*(owner: PreimageGossip): uint64 =
   ## Saturating diagnostics count successful acknowledgment collections, not remote adoption.
   owner.delivered
+
 func valid*(candidate: GossipCandidate): bool =
   ## Defaults cannot select a row or authorize dispatch.
   candidate.owner != nil and candidate.generation != 0
+
 func notice*(candidate: GossipCandidate): PreimageAnnouncement {.requires: candidate.valid.} =
   ## Return fixed untrusted claim facts for the application's fresh possession/request checks.
   candidate.notice
+
 func live(owner: PreimageGossip, candidate: GossipCandidate): bool =
   ## Both ordinal and nonwrapping row generation precede any mutable access.
   if not candidate.valid or candidate.owner != owner.identity: return false
   if candidate.row < 0 or candidate.row >= MaxPreimageGossip: return false
   owner.rows[candidate.row].generation == candidate.generation
+
 proc clearActive(owner: var PreimageGossip) =
   ## Caller has collected or cancelled the exact native request.
   owner.active = false
   owner.ticket = default(NodeRequestTicket)
   owner.started = default(MonoTime)
+
 proc remove(owner: var PreimageGossip, streams: var NodeService, index: int) =
   ## Eviction cancels an active announcement before reusing its row or peer indexes.
   if owner.active and owner.activeRow == index:
@@ -92,6 +106,7 @@ proc remove(owner: var PreimageGossip, streams: var NodeService, index: int) =
   if owner.rows[index].generation != 0:
     owner.rows[index] = default(GossipRow)
     dec owner.count
+
 proc close*(owner: var PreimageGossip, streams: var NodeService) =
   ## Only exact owned network tickets are cancelled; no Services worker or canonical alias exists here.
   for index in 0..<MaxPreimageGossip: owner.remove(streams, index)
@@ -99,6 +114,7 @@ proc close*(owner: var PreimageGossip, streams: var NodeService) =
   owner.next = 0
   owner.cursor = 0
   owner.delivered = 0
+
 proc offer*(owner: var PreimageGossip, streams: var NodeService, notice: PreimageAnnouncement,
     acknowledged = default(NodePeer)): bool =
   ## Queue only fixed claim facts; dispatch still requires the host's fresh canonical/content checks.
@@ -134,6 +150,7 @@ proc offer*(owner: var PreimageGossip, streams: var NodeService, notice: Preimag
     if owner.rows[selected].peers.len < MaxGossipPeers:
       owner.rows[selected].peers.add(Delivery(peer: acknowledged, done: true))
   true
+
 proc candidate*(owner: var PreimageGossip): GossipCandidate =
   ## Rotate at most eight rows; the application must recheck this exact candidate before dispatch.
   if owner.active: return default(GossipCandidate)
@@ -144,12 +161,14 @@ proc candidate*(owner: var PreimageGossip): GossipCandidate =
       return GossipCandidate(owner: owner.identity, row: index, generation: owner.rows[
           index].generation, notice: owner.rows[index].notice)
   default(GossipCandidate)
+
 proc reject*(owner: var PreimageGossip, streams: var NodeService,
     candidate: GossipCandidate): bool =
   ## Withdrawal, eviction or failed current-state checks retire only the checked row generation.
   if not owner.live(candidate): return false
   owner.remove(streams, candidate.row)
   true
+
 proc poll*(owner: var PreimageGossip, streams: var NodeService, clock: MonoTime) =
   ## Observe one exact acknowledgment while canonical state may be exclusively leased elsewhere.
   if not owner.active: return
@@ -166,6 +185,7 @@ proc poll*(owner: var PreimageGossip, streams: var NodeService, clock: MonoTime)
     owner.rows[row].peers[position].done = owner.rows[row].peers[position].attempts >= 3
     owner.rows[row].peers[position].retry = clock+initDuration(seconds = 30)
   owner.clearActive()
+
 proc dispatch*(owner: var PreimageGossip, streams: var NodeService,
     candidate: GossipCandidate, clock: MonoTime): bool =
   ## Caller just checked retained whole content and the canonical outstanding request outside native callbacks.

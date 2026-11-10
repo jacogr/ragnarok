@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_admission_arc_release"}
 
 ## Genuine computed package admission preserves original semantic policy and exact child failures.
@@ -20,8 +21,10 @@ import ../../support/[pvm_computed_admission, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Detect any unintended crypto before original semantic-profile gates.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Copy actual backend observations without faking successful crypto.
+
 proc expect[T](outcome: ComputedAdmissionResult[T], reason: ComputedAdmissionError) =
   ## Verify exact refusal alternative before extracting successful data or child causes.
   if outcome.error != reason:
@@ -78,12 +81,14 @@ expect(default(AdmittedComputedReports).computedAdmissionSource,
     ComputedAdmissionError.Uninitialized)
 expect(default(AdmittedComputedReports).computedAdmissionReports,
     ComputedAdmissionError.Uninitialized)
+
 proc detached(): AdmittedComputedReports =
   ## Retain source computations and complete admission after all caller-owned configuration/fixtures retire.
   let source = admissionFixture()
   admitComputedReports(source, computedAdmissionConfig(source)).value
 let retained = detached()
 assert retained.computedAdmissionReports.value.reportCredentials.value.verifiedGuaranteeCount.value == 2
+
 proc cycle(source: IncludedComputedGuarantees, config: ReportAdmissionConfig) =
   ## Release independently verified credentials, policy/package indexes and original source sharing every iteration.
   let done = admitComputedReports(source, config).value

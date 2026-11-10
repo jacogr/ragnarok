@@ -3,6 +3,7 @@
 
 ## Isolated slow-peer adoption probe: close a peer while stock WebSocket output is backpressured.
 ## The assessment runner records exact process termination; a signal is never transport success.
+
 import std/[assertions, syncio]
 import ../support/websocket_adoption
 

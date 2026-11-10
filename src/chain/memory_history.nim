@@ -3,6 +3,7 @@
 
 ## Immutable compressed 256-bit historical index keeps memory-backend archives out of the rolling view.
 ## Each append copies at most one hash path; cached ordinal ranges prune bounded history without a list.
+
 import std/assertions
 import ./genesis
 import ../storage/history/index as history_index

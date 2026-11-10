@@ -9,19 +9,9 @@ overload; no CLI policy, protocol equations or PVM execution changes belong here
 
 ## Contract and completion tests
 
-`Services.start(options, role, StateStoreLimits)` requires an explicit complete-state
-policy and complete configured seed even when RPC is disabled. Read the bounded
-chain file once; initialize the canonical map once and seed enabled RPC from its
-exact retained head and parameter tuple without decoding the map or rehashing again.
-Telemetry continues to use the same captured text. No missing/invalid seed fallback.
-
-Only immutable state/history accessors escape. Adoption delegates the existing
-application coordinator; the RPC choice is retained at startup, so a subsequently
-closed enabled listener refuses instead of silently using independent adoption.
-A second start refuses without disturbing the live owner. Close/destruction retire
-listeners and canonical owners after dispatcher/native borrows end; close is
-idempotent and restart requires a new configured seed. Explicit close also releases
-RPC's retained history. Old reader snapshots remain valid independently.
+The [Services owner](../src/app/services.nim) coordinates seed capture, startup,
+canonical selection and listener retirement. Proof-peer and canonical entry points
+have separate configuration contracts.
 
 Test real temporary chainspec files, no-RPC and loopback RPC startup/adoption,
 one-pass hash counts, exact identity, genuine re-admission/finalization, immutable

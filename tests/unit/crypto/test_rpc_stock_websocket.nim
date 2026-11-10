@@ -2,18 +2,28 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real stock WebSocket tasks feed detached bytes to the canonical RPC dispatcher and its subscription FIFO.
+
 import std/[assertions, syncio, strutils, base64, threadpool, ioring]
 import std/websocket as ws
 import std/httpserver as http
 import std/socket as tcp
+import std/posix/posix as posix
 import ../../../src/rpc/[server, protocol, websocket_transport]
 import ../../../src/rpc/transport_bridge as transport
 import ../../../src/chain/[genesis, parameters, provider]
 from ../../../src/codec/state/layout import chapterKey, StateChapter
 from ../../../src/codec/state/trie import StateEntry
 
+proc inspectBind(fd: cint, address: pointer, size: ptr posix.SockLen): cint {.
+    importc: "getsockname", header: "<sys/socket.h>".}
+  ## Observe the actual kernel listener address.
+
+proc networkAddress(value: uint32): uint32 {.importc: "htonl", header: "<arpa/inet.h>".}
+  ## Compare the bound address in network byte order.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Only the foreground test driver pauses natively; transport jobs yield through the reactor.
+
 proc sendRequest(peer: var tcp.Socket, request: string, opcode: int = 1) =
   ## Independent client masking keeps the wire oracle outside the stock server implementation.
   assert request.len < 126
@@ -98,11 +108,19 @@ proc rejectUpgrade(listener: var http.HttpServer, port: uint16, target, extra: s
 
 proc main() {.raises.} =
   ## Finish handshake setup before lending stable bridge/state addresses to task callbacks.
-  var listener = http.listenHttp(0, http.newHttpTags())
-  assert configureWebSocketListener(listener)
+  var listener = listenRpcWebSocket(0)
+  assert listener.fd >= 0
+  var address = default(posix.Sockaddr_in)
+  var length = posix.SockLen(sizeof(address))
+  assert inspectBind(listener.fd, addr address, addr length) == 0
+  assert address.sin_addr.s_addr == networkAddress(0x7f000001'u32), "listener binds only IPv4 loopback"
   let port = boundPort(listener.fd)
+  var duplicate = listenRpcWebSocket(port)
+  assert duplicate.fd < 0, "an occupied port fails without a live listener"
+  duplicate.close()
   rejectUpgrade(listener, port, "/wrong", "")
   rejectUpgrade(listener, port, "/", "Origin: http://untrusted\r\n")
+  rejectUpgrade(listener, port, "/", "Origin:\r\n")
   rejectUpgrade(listener, port, "/", "Host: duplicate\r\n")
   rejectUpgrade(listener, port, "/", "Content-Length: 0\r\n")
   var peer = tcp.connect("127.0.0.1", port, afterMs(5000))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual fuzzer ticket siblings and original-last epoch transitions preserve immutable whole-map branch contexts.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[fuzz_backend_context, current_stf_epoch_context, accumulation_current_chain_context]
 import ../../src/app/fuzz/[backend as fuzz_backend, rejection as fuzz_rejection]
@@ -21,6 +22,7 @@ proc observe(backend: var FuzzBackend, body: OwnedBlock): StateStoreSnapshot =
   echo "B ", hex(wire)
   echo "O ", checkpointHex(state)
   state
+
 proc run(parent: BlockSnapshot, bank: seq[BankTicket], mode: int) =
   ## Mutants always restore the exact original parent; dropping a ticket changes the contest without changing later originals.
   var config = fuzzBackendTestConfig()
@@ -60,6 +62,7 @@ proc run(parent: BlockSnapshot, bank: seq[BankTicket], mode: int) =
     selected = captureBlockSnapshot(currentChainBytes(backend.fuzzBackendHeader.value), state,
         config.parameters).value
   assert checkpointHex(backend.executeFuzz(fuzzGetState(parent.header)).value.fuzzState.value) == original
+
 proc main() {.raises.} =
   ## Fixed native Ring proofs are inputs; the independent mathematical oracle owns all successor maps.
   let raw = readFile(paramStr(1))

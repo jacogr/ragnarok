@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Prepared complete reports move every report refusal before content work while retaining exact owners and guarded errors.
+
 # @@Verification={"arc": "state_account_review_plan_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_plan_context,
@@ -18,14 +19,18 @@ import ../../../src/state/preimage/[content as preimage_content, linkage as prei
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and refuse hashing while checking preparation and report/resource failures.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe only account content work after complete source construction.
+
 proc cycle(source: StateInventory, profile: StateEconomicProfile) =
   ## Retire a complete prepared-report and executed-review graph on every cycle.
   let plan = planAccountReview(source, profile, reviewPlanTestLimits).value
   assert executeAccountReview(plan).value.accountReviewInfo.value.invariants.content.bytes == 3
+
 proc main() {.raises.} =
   ## Build genuine complete sources before disabling the backend; fixed reports need no content hash.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

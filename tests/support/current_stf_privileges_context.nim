@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal nonempty privilege programs for independently calculated current-STF dictionary/scheduling witnesses.
+
 import ./pvm_accumulation_program
 
 proc blessAllowanceCode*(mode: int): seq[byte] =

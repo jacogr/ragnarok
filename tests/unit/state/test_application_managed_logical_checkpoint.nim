@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed logical checkpoint capture preserves actual post-collection source, no-finality distinction and detached bytes after joined shutdown.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[collected_native_context, collected_logical_services_context, managed_supplied_context]
@@ -12,6 +13,7 @@ import ../../../src/state/current/[logical as current_logical, checkpoint as cur
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/state/store
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## Actual Services preparation owns the selected prior; source extraction/copy occurs only after matching collection.
   let fixture = collectedNativeFixture()

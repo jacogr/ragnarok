@@ -16,6 +16,7 @@ proc limits(): RecordLimits =
     totalValueBytes: ByteLimit(132), nodes: TrieNodeLimit(1000)),
     records: TrieExportLimits(records: TrieNodeLimit(1000), valueBytes: ByteLimit(132)),
     encoded: ByteLimit(100000))
+
 proc main() =
   ## Every prefix/trailer and uint64 count/length attack refuses without partial output.
   let policy = limits()

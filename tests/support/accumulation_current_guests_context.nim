@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current tiny-chain guest proof ceilings reuse maintained signed-runner engine configuration.
+
 import ../../src/chain/parameters
 import ../../src/codec/bounded
 import ../../src/codec/work/digest as work_digest
@@ -17,6 +18,7 @@ import ../../src/state/accumulation/[creation_union as accumulation_creation_uni
 import ../../src/state/accumulation/global/[stage as accumulation_global_stage,
     roles as accumulation_global_roles]
 import ./accumulation_runner_context
+
 proc currentGuestLimits*(): AccumulationGuestLimits =
   ## Reuse maintained tiny-chain engine ceilings while explicitly enabling current proof capture.
   let old = runnerLimits()
@@ -39,6 +41,7 @@ proc currentAccountStageLimits*(): AccumulationAccountStageLimits =
       accounts: ElementLimit(2), checks: ElementLimit(256)),
     writes: SelectedAccountWriteLimits(accounts: ElementLimit(10), facts: ElementLimit(64),
       writes: ElementLimit(8), checks: ElementLimit(512), valueBytes: ByteLimit(2048)))
+
 proc currentGuestParameters*(): Parameters =
   ## Zero-deposit chain configuration isolates actual creation while keeping the genuine admitted profile.
   var wire = encodeParameters(runnerParameters())

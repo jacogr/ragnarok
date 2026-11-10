@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_record_arc_release"}
 
 ## Genuine CE137 data tests complete persistent-record restart verification, fixed-time promises, aggregate preflight and independent canonical metadata binding.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[assurance_record, availability_proof, availability_merkle]
 import ../../../src/state/availability/specifier
@@ -11,21 +13,27 @@ import ../../../src/codec/bounded
 import ../../../src/codec/work/report
 import ../../../src/crypto/primitives
 import ../../support/[pvm_computed_report, arc_evidence]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual primitive counts and optional backend refusal for one isolated sequential witness.
+
 proc after(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail after an observed successful metadata checksum to preserve a genuine payload child failure.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe attempted maintained Blake2b calls without replacing any protocol calculation.
+
 proc limits(): AssuranceRecordLimits =
   ## Separate serialized bytes and exact checksum/proof work remain explicit test-only inputs.
   AssuranceRecordLimits(bytes: ByteLimit(16000000), verification: AvailabilityMerkleLimits(
     bytes: ByteLimit(64000000), hashes: ElementLimit(10000), hashBytes: ByteLimit(64000000)))
+
 proc chain(): AssuranceChainId =
   ## The expected chain is selected independently of a persistence record and its shard root.
   var bytes = default(array[32, byte])
   bytes[0] = 29
   AssuranceChainId(bytes)
+
 proc transfer(kind: int, shards: uint16): VerifiedAvailabilityTransfer =
   ## Only detached verified bytes survive the genuine execution/erasure source; no report session is retained by a record.
   let source = computedAvailabilityAtCore(kind, 1, shards)
@@ -40,6 +48,7 @@ proc transfer(kind: int, shards: uint16): VerifiedAvailabilityTransfer =
     packet.segmentShards, packet.justification, limits().verification)
   assert verified.error == AvailabilityTransferError.None, "verify distribution: " & $verified.error
   verified.value
+
 proc check(source: VerifiedAvailabilityTransfer) =
   ## Empty, odd and proof-page row geometries must survive exact metadata serialization and full proof re-verification.
   let made = prepareAssuranceRecord(source, chain(), AssuranceTime(1000), limits())
@@ -101,6 +110,7 @@ proc check(source: VerifiedAvailabilityTransfer) =
   assert uint64(record.recordInfo.value.promisedAt) == 1000, "renewal preserves immutable original"
   assert renewAssuranceRecord(record, AssuranceTime(999), limits()).error ==
       AssuranceRecordError.InvalidTime, "backwards renewal refused"
+
 proc malformed(source: VerifiedAvailabilityTransfer) =
   ## A valid stored checksum alone cannot substitute for payload proof verification or exact independent expected chain/shape.
   let made = prepareAssuranceRecord(source, chain(), AssuranceTime(1000), limits()).value
@@ -151,6 +161,7 @@ proc malformed(source: VerifiedAvailabilityTransfer) =
       uint64)-AssuranceRetentionSeconds), limits())
   assert edge.error == AssuranceRecordError.None, "exact last representable promise"
   assert uint64(edge.value.recordInfo.value.retainUntil) == high(uint64), "full-width exact retention boundary"
+
 proc cycle(source: VerifiedAvailabilityTransfer) =
   ## Record construction, independent restoration, serving extraction and late budget refusal all retire before ARC comparison.
   let record = prepareAssuranceRecord(source, chain(), AssuranceTime(1000), limits()).value
@@ -161,6 +172,7 @@ proc cycle(source: VerifiedAvailabilityTransfer) =
   var narrow = limits()
   narrow.verification.hashes = ElementLimit(1)
   assert decodeAssuranceRecord(wire, chain(), narrow).error == AssuranceRecordError.LimitExceeded, "ARC late aggregate refusal"
+
 proc main() =
   ## Real erasure sources cover empty, ordinary and proof-page distributions; no filesystem or signature authority is inferred from this codec suite.
   assert not default(AssuranceRecord).valid, "default record disabled"

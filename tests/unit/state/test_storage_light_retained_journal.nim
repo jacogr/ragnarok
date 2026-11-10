@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real durable quota eviction matches manual frames, binds policy/position and survives witnessed append deaths through explicit recovery.
+
 # @@Verification={"arc":"storage_light_retained_journal_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[arc_evidence, storage_io, storage_crash, storage_light_root, storage_light_journal]
@@ -13,16 +14,21 @@ import ../../../src/storage/light/delta as light_delta
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation/publication observations distinguish verified proof work from durable IO.
+
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Every actual proof, image and frame checksum boundary receives a consumed provider refusal.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## A prepared append must never rehash its retained target.
+
 func retention(): LightRetentionLimits =
   ## Three retained queries force one old-query removal when the fourth protected query arrives.
   LightRetentionLimits(items: ElementLimit(3), valueBytes: ByteLimit(128), bytes: ByteLimit(8192),
     entries: ElementLimit(4), evictions: ElementLimit(1))
+
 proc seed(path: string, fixture: LightRootFixture): PreparedLightSnapshot =
   ## Start with three known queries and retain a detached independent absence proof for the fourth.
   result = fixture.source.forget([lightKey(255)]).value
@@ -30,6 +36,7 @@ proc seed(path: string, fixture: LightRootFixture): PreparedLightSnapshot =
   assert initializeLightJournalCache(owner, path, fixture.oldConfig, result).error ==
       FileError.None, "seed retained journal"
   assert owner.close == FileError.None, "retire initializer"
+
 proc cycle(owner: LightJournalCache, fixture: LightRootFixture, count: int) =
   ## Copied success and last-checksum refusal retain no predecessor image or native lease chain.
   let prepared = prepareLightRetainedUpdate(owner, [fixture.sourceProofs[3]], retention()).value
@@ -39,6 +46,7 @@ proc cycle(owner: LightJournalCache, fixture: LightRootFixture, count: int) =
   assert prepareLightRetainedUpdate(owner, [fixture.sourceProofs[3]], retention()).error ==
       FileError.BackendFailure, "late frame checksum refusal"
   resetHash(0)
+
 proc normal(fixture: LightRootFixture) {.raises.} =
   ## Independent manual preparation proves exact canonical output, one barrier and original-reader semantics.
   let path = "retained-normal-" & $storageProcessId()
@@ -94,6 +102,7 @@ proc normal(fixture: LightRootFixture) {.raises.} =
       expected.encodedBytes, "strict retained reopen"
   assert owner.close == FileError.None
   retireLightJournal(path)
+
 proc policies(fixture: LightRootFixture) {.raises.} =
   ## Every journal policy scalar, including safe loosening, refuses old batches before publication work.
   let path = "retained-policy-" & $storageProcessId()
@@ -140,6 +149,7 @@ proc policies(fixture: LightRootFixture) {.raises.} =
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(4))
   retireLightJournal(path)
+
 proc refusal(fixture: LightRootFixture) {.raises.} =
   ## Frame/global capacities precede crypto and leave confirmed knowledge, position and bytes intact.
   let path = "retained-refusal-" & $storageProcessId()
@@ -172,6 +182,7 @@ proc refusal(fixture: LightRootFixture) {.raises.} =
   assert owner.preparedSnapshot.value.encodedBytes == source.encodedBytes
   assert owner.close == FileError.None
   retireLightJournal(path)
+
 proc interrupted(fixture: LightRootFixture, operation, skip: cint, chunk: int,
     injected: bool): uint64 {.raises.} =
   ## Separate EIO injection and actual stopped-child deaths preserve exact frame prefixes for strict or explicit recovery.
@@ -261,6 +272,7 @@ proc interrupted(fixture: LightRootFixture, operation, skip: cint, chunk: int,
       owner.sequence.value) == 2
   assert owner.close == FileError.None
   retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Native controls qualify one atomic frame, every successful short write and barrier, plus independent IO-refusal paths.
   let fixture = rootFixture()

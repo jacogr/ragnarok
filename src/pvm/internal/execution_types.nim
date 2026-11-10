@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared execution domains; private interpreter workers never import public snapshot adapters.
+
 import ../machine
 
 type
@@ -15,3 +16,7 @@ type
         InvalidPreparedProgram, PreparedProgramBusy, BackendNotBuilt, BackendUnavailable,
         BackendReentryUnsupported, BackendRevisionMismatch, BackendProgramUnsupported,
           BackendCapabilityUnsupported, BackendFailure, ResidentAllocationRefused
+
+func `==`*(left, right: HostCallId): bool {.inline.} =
+  ## Compare complete host-call numbers without accepting unrelated register-width domains.
+  uint64(left) == uint64(right)

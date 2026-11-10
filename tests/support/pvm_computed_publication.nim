@@ -20,6 +20,7 @@ proc publicationFixture*(withReady = false, withRound = false,
   let admitted = admitComputedReports(source, computedAdmissionConfig(source))
   assert admitted.error == ComputedAdmissionError.None, "genuine computed admission for publication"
   admitted.value
+
 proc rebuiltStore*(snapshot: StateStoreSnapshot): StateStore =
   ## Equal full serialized mappings remain independently owned and cannot replace the original execution version.
   var entries = newSeq[StateEntry](snapshot.commitment.entries)

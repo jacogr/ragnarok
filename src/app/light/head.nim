@@ -3,6 +3,7 @@
 
 ## Independently trusted light headers own bounded immutable history and partial verified evidence, never complete-map state.
 ## Cross-thread callers serialize shared ARC aliases as with the other immutable application owners.
+
 import std/assertions
 import ../checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
 import ../../chain/[genesis, parameters]

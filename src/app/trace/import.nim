@@ -3,6 +3,7 @@
 
 ## Prepare real current-profile STF imports against the actual selected application chain.
 ## Advertised pre/post maps are comparison inputs, never sources of Parameters or installable state.
+
 import ../[chain, candidate]
 import ../../codec/header
 import ../../state/trace/[step as trace_step, state as trace_state]
@@ -64,7 +65,6 @@ proc prepareTraceImport*(chain: ApplicationChain, step: TraceStep,
   if not sameMapping(prepared.value.currentUpdateState, after):
     return TraceImportResult(status: TraceImportError.PostStateMismatch) # Retire the actual prepared candidate without exposing it when the advertised complete successor differs.
   TraceImportResult(status: TraceImportError.None, completed: prepared.value)
-
 
 proc prepareTraceObservation*(chain: ApplicationChain, expected: TraceStep,
     observed: TraceState, ancestors: openArray[OwnedHeader],

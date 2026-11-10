@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Differential prepared execution covers the complete opcode set, source snapshots, budgets, cache reuse and bounded segments.
+
 # @@Verification={"arc": "pvm_prepared_blocks_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -184,6 +185,46 @@ proc registerPrefixMatrix() =
   assert prefixes == 85
 
 registerPrefixMatrix()
+
+proc immediateBranchReuse() =
+  ## Retained public streams preserve the checked pair across first/second entry and both session-free policies.
+  var cases = 0
+  for mode in [0, 1, 2]:
+    # Backward and invalid arms exercise restoration after partial exits as well as successful forward branches.
+    for descriptor in [0x11'u8, 0x21'u8, 0xff'u8]:
+      let destination = min(12, int(descriptor mod 16))
+      for word in [3'u64, 0x80000000'u64, 0xffffffff'u64]:
+        # The comparison word is encoded as four bytes; its sign bit must extend before unsigned comparison.
+        var branch = @[83'u8, byte(64+destination)]
+        immediate(branch, word)
+        immediate(branch, if mode == 0: 15'u64 elif mode == 1: 0xfffffffd'u64 else: 1'u64)
+        let program = owner([@[131'u8, descriptor, 1'u8], branch,
+          @[51'u8, 7'u8, 17'u8], @[50'u8, 0'u8], @[51'u8, 7'u8, 34'u8], @[50'u8, 0'u8]])
+        for policy in [PvmBackend.Interpreted, PvmBackend.Jit]:
+          # Requested JIT without a bound runtime has no native session and uses the same checked stream.
+          let admitted = newPreparedProgram(program, defaultPreparedLimits(GasCycleLimit(100000)),
+            policy)
+          assert admitted.error == PreparationError.None
+          let prepared = admitted.value
+          for bits in [0'u64, 0x7fffffff'u64, high(uint64)]:
+            var initial = default(RegisterFile)
+            initial[0] = RegisterValue(0xffff0000'u64)
+            initial[1] = RegisterValue(bits)
+            initial[2] = RegisterValue(bits xor 0xffffffff'u64)
+            initial[12] = RegisterValue(bits)
+            for paid in [false, true]:
+              # Reordered entry reuses one public owner after both the arithmetic and independent branch paths.
+              for pc in [0'u64, 3'u64, 0'u64, 3'u64]:
+                let input = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(pc),
+                  gas: MachineGas(100000), blockCharged: paid, registers: initial)).value
+                for budget in [1'u64, 2, 3, 7]:
+                  # The direct matrix observes hidden quota CPU; public calls additionally move stream and memory leases.
+                  compare(input, prepared, budget, 100000)
+                  inc cases
+          assert preparedInfo(prepared).value.nativeFragments == 0
+  assert cases == 5184
+
+immediateBranchReuse()
 
 proc registerPrefixBytePressure() =
   ## Bounded node profiles cover adjacent add/load cells; aliasing and mapped-page endpoints expose premature pairing.
@@ -491,6 +532,7 @@ proc reply(context: var ReplyContext, stopped: StepOutcome): HostResponse {.rais
     registers: regs, memory: changed.value)
 
 type ReplyRefusal = enum Refused ## Enum ordinal zero remains a selected callback refusal.
+
 proc fallibleReply(context: var ReplyContext, stopped: StepOutcome): HostResult[
     ReplyRefusal] {.raises: [].} =
   ## A selected refusal and an unselected default result must remain separate from engine/guest outcomes.
@@ -537,6 +579,7 @@ for mode in 0..7:
 
 type MemoryPrefixContext = object ## Only callback progress escapes a successful checked load/host pair.
   calls: int
+
 proc memoryPrefixReply(context: var MemoryPrefixContext,
     stopped: StepOutcome): HostResponse {.raises: [].} =
   ## An independent byte-level expectation identifies the exact second source site and the first load's visible result.
@@ -592,6 +635,7 @@ proc positionPrefix(): seq[seq[byte]] =
 
 type PositionContext = object ## Callback observations depend on immutable fixture byte positions, not another interpreter.
   calls: int
+
 proc positionReply(context: var PositionContext, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## Assert the causing byte PC after a segment split and again after a resumed ordinary prefix.
   let state = machineInfo(stopped.machine).value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Unrelated/default current candidate alternatives grant no successful update or fabricated child cause.
+
 import std/cmdline
 import ../../src/app/candidate
 let outcome = default(CurrentCandidateResult)

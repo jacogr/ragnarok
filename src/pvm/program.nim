@@ -5,8 +5,8 @@
 ## during validation, then copied into private acyclic ARC storage.
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
-## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
-## and containing-block queries. Genuine instruction results additionally expose success-guarded
+## structural-header/instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding,
+## and block-boundary and containing-block queries. Genuine instruction results expose success-guarded
 ## instructionHasFallthrough/TargetStartsBlock and instructionRegisters/instructionMemoryOperands
 ## without publishing mutable validation metadata.
 
@@ -59,6 +59,12 @@ type
     loadingValue, signedValue: bool
     baseValue: MemoryBase
     immediateValue: bool
+  InstructionHeader* = object
+    ## Copied structural facts retain no owner, operands or static-target authority.
+    address*: CodeAddress
+    opcode*: byte
+    skip*: range[0..24]
+    fallthroughPresent: bool # Owner lookup alone grants the sequential successor fact.
   Instruction* = object ## Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
  ## Offsets remain signed displacements: resolving a target must not wrap a negative address.
     address*: CodeAddress
@@ -89,6 +95,11 @@ func instructionHasFallthrough*(decoded: ProgramResult[Instruction]): bool {.inl
     requires: decoded.status == ProgramError.None.} =
   ## A genuine successful decode proves whether its sequential successor is executable in the same immutable program.
   ## Default/failed results grant no fact. Extracted mutable operand copies cannot change or rebind this capability.
+  decoded.completed.fallthroughPresent
+
+func instructionHasFallthrough*(decoded: ProgramResult[InstructionHeader]): bool {.inline,
+    requires: decoded.status == ProgramError.None.} =
+  ## Query the genuine header result; editing an extracted structural copy cannot rebind this fact.
   decoded.completed.fallthroughPresent
 
 func instructionTargetStartsBlock*(decoded: ProgramResult[Instruction]): bool {.inline,
@@ -536,6 +547,30 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
       # Captured PCs fit host int and nonnegative offsets fit signed32, so this uint64 sum cannot wrap.
       item.targetStartsBlock = validStaticTarget(data, pc+uint64(item.displacement))
   ProgramResult[Instruction](status: ProgramError.None, completed: item)
+
+proc instructionHeader*(program: Program, address: CodeAddress): ProgramResult[InstructionHeader] =
+  ## Copy marked instruction boundaries without decoding operands or resolving static destinations.
+  ## Owner/address/marker errors match instruction(); absent instructions have no zero-suffix header.
+  if program.data == nil:
+    # A default handle has no captured code or marker bitmap.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidOwner)
+  let data = program.data
+  let pc = uint64(address)
+  if pc >= uint64(data.codeLength):
+    # Prove the host-index bound before narrowing or consulting the bitmap.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
+  if not marked(data.bytes, data.maskOffset, int(pc)):
+    # Operand locations never become instructions, even when their bytes resemble valid opcodes.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
+  let opcode = data.bytes[data.codeOffset+int(pc)]
+  if not validOpcode(opcode):
+    # Owner capture excludes this case; retain the rich decoder's explicit opcode refusal.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
+  let skip = distance(data.bytes, data.maskOffset, data.codeLength, int(pc))
+  # The validated chain and bounded skip prove the same successor; pc<codeLength makes subtraction safe.
+  ProgramResult[InstructionHeader](status: ProgramError.None, completed: InstructionHeader(
+    address: address, opcode: opcode, skip: skip,
+    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1))
 
 proc instructionOpcode*(program: Program, address: CodeAddress): ProgramResult[byte] =
   ## Copy the opcode at a validated marked instruction location without decoding its operands.

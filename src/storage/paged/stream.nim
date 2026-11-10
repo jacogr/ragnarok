@@ -3,6 +3,7 @@
 
 ## Synchronous bounded paged-light construction, complete admission and authenticated disk-search algorithms.
 ## Callbacks are borrowed only during each call. Checked metadata owns no file, pin, callback or resident index.
+
 import std/assertions
 import ./codec as paged_codec
 import ../state_proof

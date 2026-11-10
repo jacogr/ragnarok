@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Historical reads require same-root account, actual preimage content and actual-length request history.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/proof/[service as proof_service, view as proof_view]
@@ -10,6 +11,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
+
 proc main() =
   ## Independently spell each interval's expected membership at exact boundary times.
   let service = ServiceIndex(7)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-capture joins reject equal-source substitutions and defaults without rehashing certified evidence.
+
 # @@Verification={"arc": "state_account_invariants_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_invariant_context, arc_evidence]
@@ -9,10 +10,13 @@ import ../../../src/state/account/invariants as account_invariants
 import ../../../src/state/[inventory, footprint_audit]
 import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable all hashing after generating real independently bounded certificates.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Joining and owner comparisons must not hash or rebuild a source.
+
 proc cycle(footprints: CheckedAccountFootprints, content: CheckedPreimageContent,
     linkage: CheckedPreimageLinkage) =
   ## Retire one joined handle and its successful source extraction before observation.
@@ -20,6 +24,7 @@ proc cycle(footprints: CheckedAccountFootprints, content: CheckedPreimageContent
   assert checked.accountInvariantInfo.value.content.bytes == 3
   assert sameStateInventory(checked.accountInvariantInventory.value,
       footprints.footprintInventory.value)
+
 proc main() {.raises.} =
   ## Separate captures of the same complete source intentionally have different logical identities.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

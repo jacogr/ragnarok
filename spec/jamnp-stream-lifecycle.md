@@ -6,26 +6,9 @@ The pinned JAMNP-S “Protocols and streams” section requires UP streams to be
 by the connection initiator. When multiple streams of one UP kind are observed on a
 connection, the greatest stream ID is retained and the others are reset/stopped.
 
-`src/quic/transport.nim` exposes a nominal copied `NativeStreamId` from the maintained
-`rq_stream_id` bridge. The bridge only calls pristine LSQUIC's public `lsquic_stream_id`;
-it does not decide JAM protocol policy or retain a connection pointer. IETF QUIC stream
-numbers are below 2^62. Their low bits distinguish initiator and direction: client-initiated
-bidirectional streams have both bits zero. `src/jamnp-s/streams.nim` applies these facts to
-JAMNP-S UP admission and greatest-ID selection. `AnnouncementRoute.bindStream` checks the
-actual live native ID before installing a route or enabling callbacks.
-
-The development/current-sync responder admits a candidate UP0 in two passes over its fixed
-routing slots. First it checks every nonfailed, still-bound UP0 on the same authenticated
-connection, rejecting a lower/equal candidate without changing prior routes. Then it revokes
-claims on all older matching routes and resets their native streams. Only final native close
-releases those slots and their byte owners. A pending route participates in replacement before
-its handshake becomes known, so delayed message processing cannot create two UP0 owners.
-Streams on different native connections retain independent ID spaces and cannot replace or
-reject each other through this comparison.
-
-Malformed replacement handshakes cannot revive older claims. Claims are revoked before native
-reset, and failed routes do not process buffered messages. This is stream/lifetime authority
-only; peer leaves remain untrusted claims and grant neither execution nor finality authority.
+The [stream policy](../src/jamnp-s/streams.nim) interprets copied QUIC IDs, and the
+[development responder](../src/jamnp-s/devnet.nim) owns UP0 replacement and retirement.
+Peer leaves remain untrusted claims. Stream authority grants neither execution nor finality.
 
 ## Verification
 

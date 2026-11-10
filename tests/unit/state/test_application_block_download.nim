@@ -21,6 +21,7 @@ import ../../support/[application_candidate_context, accumulation_completion_con
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse primitive calls during framing/native callbacks to detect accidental synchronous preparation.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Independent primitive observations distinguish actual validation from cheap byte reception.
 

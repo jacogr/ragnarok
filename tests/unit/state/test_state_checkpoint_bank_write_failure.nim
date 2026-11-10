@@ -13,21 +13,22 @@ import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
 
-
-
 const
   Directory = "state-bank-write-failure"
   Prefix = Directory & "/checkpoint"
+
 proc policy(): StateStoreLimits =
   ## Distinct nonempty prior and empty candidate roots reveal incorrect old-generation adoption.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(100), nodes: TrieNodeLimit(1024)), writes: ElementLimit(1),
         writeValueBytes: ByteLimit(100))
+
 proc clearFiles() =
   ## Parent-only teardown removes known committed files while leaving orphan temporaries observable through final rmdir.
   for suffix in [".head", ".head.lock", ".0", ".1"]:
     var path = Prefix & suffix
     discard posix.unlink(path.toCString()) # Every child is joined and all cooperating bank descriptors are already closed.
+
 proc attempt(prior, candidate: StateStoreSnapshot, ceiling: uint64, staged, succeeds: bool) =
   ## The selected old slot survives every refusal, even after the new inactive data became durable.
   clearFiles()
@@ -86,6 +87,7 @@ proc attempt(prior, candidate: StateStoreSnapshot, ceiling: uint64, staged, succ
     assert readBoundedFile(Prefix & ".1", ByteLimit(1000)).error ==
         AtomicFileError.IoFailure # Inactive write failure never publishes a partial canonical slot.
   assert bank.close() == CheckpointBankError.None
+
 proc main() =
   ## Six actual zero/partial write failures and exact/ample success controls separately witness both transaction stages.
   var directory = Directory

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Atomic backend parsing keeps explicit disk selection independent from state activation and import trust.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
 import ../../../src/codec/bounded
+
 proc main() =
   ## Each failed/default parse clears prior successful disk/path ownership.
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-writes", "1",

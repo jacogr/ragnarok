@@ -1,11 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JIP-3 v1 registration and event encoding; pinned layout and limits: spec/telemetry.md. Values
-## own their bytes; encoding never retains borrowed input or native pointers.
+## JIP-3 v1 registration, status, loss and connection lifecycle frames.
 ##
-## Exposes typed metadata and registration/status/connection event encoders with checked owned
-## wire results.
+## Each frame starts with the four-byte little-endian payload length. Strings use the JAM
+## natural length codec. The status core array has a length implied by registration and
+## carries no length prefix. Wire timestamps are microseconds from 2025-01-01 12:00:00 UTC.
+##
+## Encoders return owned bytes for the exporter's fixed queue. See spec/telemetry.md for
+## the pinned wire reference and fixture provenance.
 
 import ../codec/natural
 

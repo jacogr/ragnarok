@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full supplied logical seed preserves exact selected physical/history/parameter/finality provenance and atomic matching/resource refusal.
+
 # @@Verification={"arc": "state_parent_logical_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_typed_context,
@@ -16,14 +17,18 @@ import ../../../src/state/store
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing only after mandatory full supplied-map matching.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Fixed source queries, detached reconstruction and cached manifest refusal perform no hashes.
+
 proc cycle(source: SelectedParentGlobals, services: openArray[StateService]) =
   ## Retire complete supplied raw-key/compact and original selected-owner graphs every cycle.
   let owner = captureLogicalParent(source, services, suppliedLogicalTestLimits).value
   assert owner.logicalParentInventory.value.suppliedLogicalInfo.value.services == 2
+
 proc verify(view: ChainView) =
   ## Every declaration remains supplied information, exhaustively matched to the original selected physical state.
   let profile = captureParentProfile(view, parentProfileTestLimits).value
@@ -62,6 +67,7 @@ proc verify(view: ChainView) =
   assert sameStateSnapshot(owner.logicalParentGlobals.value.parentGlobals.value.globalSource.value, snapshot)
   assert calls() == 0
   fail(0)
+
 proc main() {.raises.} =
   ## Finalized/unfinalized, dispute/ticket and epoch parent fixtures remain genuine original configured contexts.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

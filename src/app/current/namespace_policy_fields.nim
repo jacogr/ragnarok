@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact independently required namespace continuation/producer resource leaves; lexicographic output is canonical and no hidden defaults are supplied.
+
 template currentNamespacePolicyFields(policy, context, visit: untyped) {.untyped.} =
   ## Visit each reviewed unsigned nominal scalar exactly once; failed assignment remains private to the parser.
   visit(context, "continuation.checks", policy.continuation.checks)

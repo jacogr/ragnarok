@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared application configuration, parsed once before any service opens a socket.
-## Options owns normalized command arguments and explicit enable/configuration values. Failed parsing
-## clears the output; private fields and read accessors prevent partial configuration from escaping.
+## Options owns normalized arguments and explicit enable and configuration values.
+## Configuration can be supplied independently of activation. The UI enable switch
+## also enables RPC because the browser depends on that endpoint. Failed parsing
+## clears the output so callers cannot use partial configuration.
 
 import ../lib/logging
 

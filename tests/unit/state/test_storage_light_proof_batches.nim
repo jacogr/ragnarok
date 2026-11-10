@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Batch proof retrieval preflights one bounded canonical scan and returns detached evidence in request order.
+
 # @@Verification={"arc":"storage_light_proof_batches_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,29 +15,36 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Batch reads must remain usable when all authentication/checksum hashing would refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Only preparation and explicit verification may invoke the provider.
+
 proc key(first: byte): StateKey =
   ## Fixed ordered query identities distinguish small/long/empty presence, absence and unknown evidence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## Bound the independently authenticated fixture and all retained image copies.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(5),
     writes: ElementLimit(5), valueBytes: ByteLimit(68),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc budget(): LightProofBatchLimits =
   ## Bound sort descriptors, examined headers, aggregate payload and individual proof output separately.
   LightProofBatchLimits(queries: ElementLimit(5), entries: ElementLimit(5),
     nodes: ElementLimit(1245), valueBytes: ByteLimit(68), proof: policy().cache.proof)
+
 proc same(actual, expected: StateProof) =
   ## Exact path/value comparisons check transport identity independently of cache lookup results.
   assert actual.nodes.len == expected.nodes.len and actual.value == expected.value
   for index in 0..<actual.nodes.len:
     assert array[64, byte](actual.nodes[index]) == array[64, byte](expected.nodes[index])
+
 proc compare(image: PreparedLightSnapshot, trie: FullStateTrie, keys: openArray[StateKey],
     bounds: LightProofBatchLimits) =
   ## Arbitrary request order must survive private sorting while every returned proof verifies at the independent root.
@@ -53,6 +61,7 @@ proc compare(image: PreparedLightSnapshot, trie: FullStateTrie, keys: openArray[
     same(retained.proof, one)
     let verified = verifyStateProof(image.root, query, retained.proof, policy().cache.proof).value
     assert verified.kind == image.cache.lookup(query).value.kind
+
 proc detached(image: PreparedLightSnapshot) =
   ## Independently mutable output cannot change retained evidence or another extraction.
   var found = image.prove([key(255), key(0)], budget()).value
@@ -63,12 +72,14 @@ proc detached(image: PreparedLightSnapshot) =
   assert again[0].proof.value[0] == 0 and image.cache.lookup(key(0)).value.bytes[0] == 0
   assert array[64, byte](again[0].proof.nodes[0]) != default(array[64, byte])
   assert array[31, byte](again[1].key) == array[31, byte](key(255))
+
 proc restoredProofs(image: PreparedLightSnapshot): seq[LightStateProof] =
   ## All batch proof buffers outlive a temporary transferred image and its consumed source bytes.
   var bytes = image.bytes
   let restored = takeLightSnapshot(bytes, image.chainId, image.root, image.limits).value
   assert bytes.len == 0
   restored.prove([key(0), key(255)], budget()).value
+
 proc cycle(image: PreparedLightSnapshot) =
   ## Retire successful output and sorted scratch for late unknown/aggregate failures within an isolated scope.
   detached(image)
@@ -80,6 +91,7 @@ proc cycle(image: PreparedLightSnapshot) =
   assert limited.error == LightSnapshotError.LimitExceeded
   let complete = image.prove([key(192), key(128), key(0)], budget()).value
   assert complete.len == 3 and complete[1].proof.value.len == 0
+
 proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   ## All subset sizes and reversed order share one header budget, with exact aggregate boundary witnesses.
   let identities = [key(0), key(64), key(128), key(192), key(255)]
@@ -169,6 +181,7 @@ proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_proof_batches", 1000, before, after)
+
 proc empty() =
   ## Zero-node authenticated absence, empty knowledge and unknown queries never collapse into one result.
   let chain = default(StorageChainId)
@@ -185,6 +198,7 @@ proc empty() =
   assert blank.prove([], default(LightProofBatchLimits)).value.len == 0
   assert calls() == 0
   resetHash(0)
+
 proc files(image: PreparedLightSnapshot) {.raises.} =
   ## Batch evidence from a real reopened file remains usable after closing the directory lease and removing files.
   var owner = default(LightFileCache)
@@ -211,6 +225,7 @@ proc files(image: PreparedLightSnapshot) {.raises.} =
   assert found.len == 3 and found[1].proof.value[0] == 7 and found[2].proof.value[0] == 0
   assert calls() == 0 and ioCalls(writeIo) == 0 and ioCalls(syncIo) == 0 and ioCalls(renameIo) == 0
   resetHash(0)
+
 proc main() {.raises.} =
   ## Complete-map hashing establishes an independent root before selecting retained query evidence.
   resetHash(0)

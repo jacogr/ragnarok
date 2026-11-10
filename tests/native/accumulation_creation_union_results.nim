@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused creation union alternatives cannot reveal metadata, maps, outcomes or identities.
+
 import std/cmdline
 import ../../src/state/accumulation/[creation_union as accumulation_creation_union,
     annulment as accumulation_annulment]

@@ -18,22 +18,27 @@ import ../../support/[pvm_computed_envelope, pvm_computed_credentials, report_co
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new hashing after real original computation, credentials and native signature checks complete.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual hash attempts during materialization and output queries.
+
 proc expect[T](outcome: ComputedEnvelopeResult[T], reason: ComputedEnvelopeError) =
   ## Compare exact selected alternatives before guarded extraction.
   assert outcome.error == reason, "computed envelope reason: " & $outcome.error
+
 proc originalWire(source: CredentialedComputedReport): seq[byte] =
   ## Recover exact original canonical report bytes through complete credential/computation provenance.
   let context = source.computedCredentialSource.value
   let transcript = context.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value.computedProfileSource.value.computedLookupSource.value.computedRecentSource.value.computedStateSource.value.computedLinkSource.value
   transcript.computedGuaranteeReport.value.computedReportBytes.value
+
 proc cap(source: CredentialedComputedReport, reporters = 3'u64): ComputedEnvelopeLimits =
   ## Independent literal standalone suffix width is E4 plus one count octet plus66 bytes per credential.
   let report = originalWire(source)
   let count = source.computedCredentialInfo.value.credentials
   ComputedEnvelopeLimits(reportBytes: ByteLimit(uint64(report.len)),
     bytes: ByteLimit(uint64(report.len+5+66*count)), reporters: ElementLimit(reporters))
+
 proc independentWire(source: CredentialedComputedReport): seq[byte] =
   ## Assemble the protocol tuple explicitly without calling any guarantee encoder.
   result = originalWire(source)
@@ -46,6 +51,7 @@ proc independentWire(source: CredentialedComputedReport): seq[byte] =
     result.add(byte(index and 255))
     result.add(byte(index shr 8)) # Index is E2 even when its value would fit one compact octet.
     for octet in array[64, byte](record.signature): result.add(octet) # Preserve every verified signature byte.
+
 proc key(text: string): array[32, byte] =
   ## Literal public-key references independently generated with OpenSSL Ed25519 PKCS8 seed import.
   result = default(array[32, byte])
@@ -158,12 +164,14 @@ expect(prepareComputedEnvelope(source, shortSet), ComputedEnvelopeError.LimitExc
 discard done.computedEnvelopeBytes.value
 assert hashes() == 0, "materialization and reporter extraction perform no hashes"
 reset(0)
+
 proc detached(): ComputedGuaranteeEnvelope =
   ## Retain source credentials, independent report, canonical wire and reporter set after caller owners retire.
   let source = envelopeFixture(prior = true)
   prepareComputedEnvelope(source, cap(source)).value
 let retained = detached()
 assert uint16(retained.computedEnvelopeGuarantee.value.credentials[1].validator) == 8
+
 proc cycle(source, repeated: CredentialedComputedReport, limits, repeatedLimits,
     short: ComputedEnvelopeLimits) =
   ## Release captured reports/wires, fixed reporter storage, returned copies and late reporter-policy refusals.

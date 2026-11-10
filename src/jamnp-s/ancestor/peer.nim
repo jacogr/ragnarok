@@ -3,6 +3,7 @@
 
 ## One pinned outgoing ancestor request owns its native endpoint, receiver and callback binding.
 ## Nonblocking host ticks authenticate, transfer and retire the stream before exposing producer decoding.
+
 import ../network
 
 import std/assertions

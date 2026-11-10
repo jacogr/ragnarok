@@ -24,8 +24,11 @@ import ../../src/codec/[header, tickets]
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc blockPolicy*(): BlockActivityConfig =
   ## Explicit producer budgets precede independent complete encoded-output limits.
   BlockActivityConfig(core: CoreActivityConfig(cores: ElementLimit(2), incoming: ElementLimit(2),
@@ -36,6 +39,7 @@ proc blockPolicy*(): BlockActivityConfig =
       reporters: ElementLimit(6), reporterWork: ElementLimit(36), rosterBytes: ByteLimit(4096),
       statisticsBytes: ByteLimit(4096), preimageFrameBytes: ByteLimit(19), preimageBytes: ByteLimit(3),
       assuranceBytes: ByteLimit(4096)), services: ElementLimit(3), maxBytes: ByteLimit(4096))
+
 proc blockPrior*(): StateEntry =
   ## Stale per-block core/service data must disappear while zero epoch counters receive only this block's credits.
   var state = ActivityState(cores: newSeq[CoreActivity](2), services: @[ServiceStatisticsEntry(
@@ -48,6 +52,7 @@ proc blockPrior*(): StateEntry =
   activityStateEntry(state, ActivityConfig(cores: CoreCount(2), current: ValidatorCount(6),
       previous: ValidatorCount(6),
     maxServices: ElementLimit(1), maxBytes: ByteLimit(4096))).value
+
 proc blockTemplate*(base: OwnedReport): OwnedReport =
   ## Fix independent incoming metrics; genuine signing later overrides identity/code fields and retains bounded refinement gas.
   let raw = reportBytes(base)
@@ -62,9 +67,11 @@ proc blockTemplate*(base: OwnedReport): OwnedReport =
   let encoded = encodeReportBorrowed(report, raw, 2, bytes)
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
+
 proc putE4(output: var seq[byte], value: uint32) =
   ## Independently emit fixed service IDs without using the production codec.
   for index in 0..<4: output.add(byte((value shr (index*8)) and 255))
+
 proc expectedWire(admission: AdmittedReports, empty: bool): seq[byte] =
   ## Every non-maximal natural in these authored cases fits one octet; neither encoder nor metric producer supplies expected fields.
   let staged = admission.reportBlockStage.value

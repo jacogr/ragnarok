@@ -855,6 +855,7 @@ jobs:
             build/tests/pvm-performance/*.md
             build/tests/pvm-performance/**/*.log
             build/tests/pvm-native/*.json
+            build/tests/pvm-native/pvm_shared_read_widths_*-evidence/pvm_read_widths_*.json
             build/tests/pvm-native/*.log
             build/tests/native/selected/pvm_memory_reuse.log
             build/tests/native/compiler-*/evidence/pvm_memory_reuse.json

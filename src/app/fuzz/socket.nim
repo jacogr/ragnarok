@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Move-only local fuzzer listener bounds each tick and hands execution tickets to the host outside IO.
+
 import std/[nativesocket, oserrors, strutils, monotimes, assertions]
 import std/posix/posix
 import ../../state/fuzz/[protocol as fuzz_protocol, session as fuzz_session]

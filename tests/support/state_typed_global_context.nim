@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical GP T sources for complete encoder comparisons; no expected bytes feed these constructors.
+
 import std/assertions
 import ../../src/codec/[bounded, assurances, composite]
 import ../../src/codec/work/[digest as work_digest, report as work_report]
@@ -14,14 +15,17 @@ import ../../src/codec/state/[layout as state_layout, trie as state_trie,
 const
   items = ElementLimit(50000)
   budget = ByteLimit(2000000)
+
 proc patterned[N: static[int]](seed: int): array[N, byte] =
   ## Fixed logical octets expose positional swaps independently of wire encoding.
   result = default(array[N, byte])
   for i in 0..<N: result[i] = byte((seed+i) mod 251)
+
 proc repeated[N: static[int]](value: byte): array[N, byte] =
   ## Canonical sets use distinct constant-octet identities with explicit ordering.
   result = default(array[N, byte])
   for i in 0..<N: result[i] = value
+
 proc roster(count, seed: int): seq[StateValidator] =
   ## Construct the four nominal fields by record/field position, never by decoding expected roster bytes.
   result = newSeq[StateValidator](count)
@@ -30,9 +34,11 @@ proc roster(count, seed: int): seq[StateValidator] =
     result[i] = StateValidator(bandersnatch: StateBsKey(patterned[32](start)),
       ed25519: StateEdKey(patterned[32](start+32)), bls: StateBlsKey(patterned[144](start+64)),
       metadata: StateValidatorMetadata(patterned[128](start+208)))
+
 proc ticket(seed: int): WinningTicket =
   ## Ticket IDs and E1 attempts retain their exact distinct logical positions.
   WinningTicket(id: WinningTicketId(patterned[32](seed)), attempt: TicketAttempt((seed+32) mod 251))
+
 proc report(profile: StateProfile): OwnedReport =
   ## Encode an authored typed C2 report before immutable capture; expected report bytes are never decoded.
   var source = default(WorkReport)
@@ -55,6 +61,7 @@ proc report(profile: StateProfile): OwnedReport =
   let captured = decodeOwnedReport(bytes, uint64(profile.cores))
   assert captured.error == OwnershipError.None
   captured.value
+
 proc activityService(id: uint32, maximum: bool): ServiceStatisticsEntry =
   ## Map the eleven GP tuple positions to their named fields rather than observing native encoding.
   let values = if maximum: [high(uint64), high(uint64), high(uint64), high(uint64),
@@ -66,6 +73,7 @@ proc activityService(id: uint32, maximum: bool): ServiceStatisticsEntry =
     result.statistics.counters[measure] = ActivityNatural(values[positions[ord(measure)]])
   result.statistics.refinementGas = ActivityGas(values[3])
   result.statistics.accumulationGas = ActivityGas(values[10])
+
 proc typedGlobalEntries*(profile: StateProfile, kind: int): array[16, StateEntry] =
   ## Exercise every public chapter encoder from logical fields under one explicit profile.
   assert profile.valid and kind in [0, 1]

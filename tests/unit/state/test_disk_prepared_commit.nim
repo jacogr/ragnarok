@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Prepared snapshots retain exact owner/policy authority while context and changed nodes commit together.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -11,6 +12,7 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc run() {.raises.} =
   ## Root-equal foreign parents and policy changes cannot redirect this durable publication owner.
   var path = "disk-prepared-commit.db"

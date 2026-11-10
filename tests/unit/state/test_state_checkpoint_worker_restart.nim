@@ -15,16 +15,19 @@ import ../../../src/codec/bounded
 const
   Directory = "state-checkpoint-worker-restart"
   Prefix = Directory & "/checkpoint"
+
 proc policy(): StateStoreLimits =
   ## Distinct original and candidate roots expose any accidental staged-buffer adoption.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(2), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(2),
         writeValueBytes: ByteLimit(200))
+
 proc clearFiles() =
   ## Parent-only cleanup follows every child join and descriptor retirement, leaving unexpected temporaries observable.
   for suffix in [".head", ".head.lock", ".0", ".1"]:
     var path = Prefix & suffix
     discard posix.unlink(path.toCString()) # This private test directory contains no unrelated caller data.
+
 proc attempt(prior, candidate: StateStoreSnapshot, mode: int) {.raises.} =
   ## Exit before dispatch, after cancellation or after durable completion; no live worker/lock is inherited across fork.
   clearFiles()
@@ -88,6 +91,7 @@ proc attempt(prior, candidate: StateStoreSnapshot, mode: int) {.raises.} =
     assert readBoundedFile(Prefix & ".1", ByteLimit(1000)).error ==
         AtomicFileError.IoFailure # Neither an unstarted nor cancelled buffer creates canonical inactive data.
   assert bank.close() == CheckpointBankError.None
+
 proc main() {.raises.} =
   ## Real process retirement is distinct from power loss, native mid-write termination or cross-process ARC accounting.
   var directory = Directory

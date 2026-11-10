@@ -2,21 +2,26 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## External checkpoint controls form one explicit atomic group with independent full-width resource policy.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
 import ../../../src/codec/bounded
+
 proc base(command = "server"): seq[string] =
   ## State activation and chain remain mandatory; this fixture explicitly selects readonly limits.
   @[command, "--with-state", "--chain", "chain.json", "--state-writes", "0", "--state-write-bytes", "0"]
+
 proc complete(number = "100000"): seq[string] =
   ## Paths do not supply policy and policy does not imply independent trust.
   @["--state-checkpoint", "state.bin", "--state-trust", "trust.bin", "--state-header", "header.bin",
       "--state-checkpoint-bytes", number]
+
 proc appended(left, right: seq[string]): seq[string] =
   ## Preserve owned parser input without relying on mutable sharing.
   result = left
   for value in right:
     result.add(value) # Each complete tuple retains exact original argument order.
+
 proc main() =
   ## Every partial subset, duplicate, malformed budget and disabled use clears the whole prior configuration.
   var options = default(Options)

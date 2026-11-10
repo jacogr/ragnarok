@@ -3,6 +3,7 @@
 
 ## Explicit light-file owners bind a separate locked namespace to independently expected chain/root.
 ## Only synchronized atomic publication changes the immutable view; uncertain IO requires reopen.
+
 import std/assertions
 import ./[snapshot as light_snapshot, state_cache as light_state_cache]
 import ../managed/[io as managed_io, manifest as managed_manifest]

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_reentry_arc_release"}
 
 ## Genuine later-round gas releases only the next original-queue range; its actual batch supplies the full successor.
@@ -24,6 +25,7 @@ import ../../support/[accumulation_continuation_execution_context, accumulation_
 
 # Refuse the maintained test hash provider only after genuine signing/execution setup.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent rooted sources and arbitrary-precision expectations qualify complete prepared supervision/economic reports.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context, economic_profile_context]
 import ../../../src/chain/parameters
@@ -16,8 +17,10 @@ import ../../../src/state/service/[directory as service_directory, deposit as se
 import ../../../src/state/account/deposit as account_deposit
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation is tested while content hashing is unavailable.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Successful execution hashes each original preimage exactly once.
 const
@@ -37,6 +40,7 @@ const
       bytes: ByteLimit(4096)), supervision: SupervisionTableLimits(services: ElementLimit(4),
       bytes: ByteLimit(4096)), economics: EconomicsTableLimits(services: ElementLimit(4),
       bytes: ByteLimit(4096)))
+
 proc words(text: string): seq[uint64] =
   ## Decode only complete fixed-width test observations; fixture parsing failure is never a passing assertion.
   let bytes = serializationOctets(text)
@@ -46,6 +50,7 @@ proc words(text: string): seq[uint64] =
     var value = 0'u64
     for j in 0..<8: value = value or (uint64(bytes[8*i+j]) shl (8*j))
     result[i] = value
+
 proc check(row: seq[uint64], singles, multiples: seq[string]): bool =
   ## Original and reverse declarations share an independently committed complete map, not an expected value generated natively.
   fail(0)
@@ -97,6 +102,7 @@ proc check(row: seq[uint64], singles, multiples: seq[string]): bool =
   assert economics.economicTableInfo.value.covered == covered
   assert economics.economicTableInfo.value.uncovered == services.len-covered
   true
+
 proc main() {.raises.} =
   ## All fixture inputs are SHA-verified by the native runner before these independent reports execute.
   let singles = readFile(getEnv("RAGNAROK_COMPLETE_SERIALIZATION")).splitLines()

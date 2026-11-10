@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A real adopted predecessor precedes authenticated guarantees requiring original lookup context; missing context cannot change canonical state.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]

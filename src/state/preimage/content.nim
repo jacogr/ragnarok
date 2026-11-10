@@ -3,6 +3,7 @@
 
 ## Check the content-hash half of GP accounts eq:preimageconstraints on an exact complete inventory.
 ## This independent certificate does not imply request linkage, root trust or application validity.
+
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, service_values as state_service_values]
 import ../../crypto/primitives

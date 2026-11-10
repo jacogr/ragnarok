@@ -2,22 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed parent address and selected shutdown receipt access enforce real lifecycle contracts.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/checkpoint/[session as checkpoint_session, worker as checkpoint_worker,
     file as checkpoint_file]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_worker_context
+
 proc inspect(session: ApplicationCheckpointSession) =
   ## Only retained actual joined work grants a shutdown receipt.
   discard session.shutdown
+
 proc take(session: var ApplicationCheckpointSession) =
   ## Default/already-acknowledged receipts grant no acknowledgement authority.
   discard session.takeShutdown()
+
 proc forgotten() {.raises.} =
   ## Actual thread startup precedes checked composite destruction.
   var session = default(ApplicationCheckpointSession)
   assert session.start("build/application-checkpoint-session-unclosed") ==
       ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Staged joined cancellation is a genuine receipt control, and inactive owners may move.
   let mode = paramStr(1)

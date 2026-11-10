@@ -4,6 +4,7 @@
 ## Stock WebSocket read/write task adapters carry detached bridge bytes only.
 ## The caller owns the HTTP listener, stable bridge/task-state storage and joined IO-runtime lifetime.
 ## An idle stock recv cannot yet be interrupted by bridge closure: retain storage until both tasks finish.
+
 import std/[assertions, atomics, websocket, ioring]
 import std/httpserver as http
 import ./transport_bridge as transport
@@ -18,14 +19,17 @@ type WebSocketTaskState* = object
 proc completed*(state: var WebSocketTaskState): bool =
   ## Joining code observes completion only after the task has retired its IO half.
   atomicLoad(state.done, moAcquire)
+
 proc transferred*(state: var WebSocketTaskState): uint64 =
   ## Scalar observations carry no authority over the task's socket or queue state.
   atomicLoad(state.frames, moAcquire)
+
 proc progress(state: ptr WebSocketTaskState) =
   ## Each state has one producer; guarded counting cannot wrap into false progress.
   let count = atomicLoad(state.frames, moRelaxed)
   assert count < high(uint64)
   atomicStore(state.frames, count + 1, moRelease)
+
 proc yieldTransport() {.passive.} =
   ## Public reactor timeout yields a bounded task turn without blocking a pool worker on a native sleep.
   let continuation = delay()
@@ -36,16 +40,21 @@ proc pollWebSocketTransport*() =
   ## Drive the caller's public IO lane before entering canonical dispatch; passive waits may help tasks there.
   var completions = default(array[transport.BridgeConnections * 2, IoCompletion])
   discard pollCompletions(completions)
+
 proc retire(bridge: ptr transport.RpcTransportBridge,
     connection: transport.BridgeTicket) {.passive.} =
   ## A busy critical section delays retirement rather than losing the close request.
   while bridge[].close(connection) == transport.Busy:
     yieldTransport()
 
-proc configureWebSocketListener*(listener: var http.HttpServer): bool =
-  ## Configure the owned public descriptor before accept; Darwin peers inherit SO_NOSIGPIPE.
-  ## Reuse the application's nonblocking/close-on-exec setup without changing global signal policy.
-  native_io.nonblocking(listener.fd)
+proc listenRpcWebSocket*(port: uint16): http.HttpServer =
+  ## Adopt an already configured loopback descriptor through HttpServer's public fields.
+  ## A negative fd signals startup failure. Darwin peers inherit SO_NOSIGPIPE from listenLoopback.
+  http.HttpServer(fd: native_io.listenLoopback(port, cint(transport.BridgeConnections)),
+    tags: http.newHttpTags(), headMs: http.DefaultHeadMs, requestMs: http.DefaultRequestMs,
+    idleMs: http.DefaultIdleMs, maxRequests: http.DefaultMaxRequests, serverName: "",
+    checkTargets: true, compression: false, compressLevel: http.DefaultCompressLevel,
+    compressMinLen: http.DefaultCompressMinLen)
 
 proc upgradeRpcWebSocket*(connection: var http.HttpConnection, uiPort: uint16 = 0): WebSocket {.
     passive, raises.} =
@@ -60,7 +69,7 @@ proc upgradeRpcWebSocket*(connection: var http.HttpConnection, uiPort: uint16 = 
     connection.close()
     raise ProtocolError
   let origin = connection.requestHeader("Origin")
-  if origin.len > 0:
+  if connection.countRequestHeader("Origin") > 0:
     let suffix = if uiPort == 80: "" else: ":" & $uiPort
     if uiPort == 0 or origin notin ["http://127.0.0.1" & suffix, "http://localhost" & suffix]:
       connection.close()

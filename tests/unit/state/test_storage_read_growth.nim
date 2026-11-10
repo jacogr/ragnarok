@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual post-stat growth must still reach bounded read refusal for both physical layouts.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_io, storage_samples]

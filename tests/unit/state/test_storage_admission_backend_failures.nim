@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Existing test-only primitive refusal after successful prefixes cannot publish or retain private admission owners.
+
 # @@Verification={"arc": "storage_admission_backend_failures_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[admission_samples, storage_samples, arc_evidence]
@@ -15,23 +16,29 @@ type Prefix = object ## Explicit public consumer owns only the provisional recor
   records: seq[TrieRecord]
   starts, calls, stopAfter: int
   declared: uint64
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Restore genuine primitives after every bounded injected failure.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## The existing sequential adapter refuses the next call after a finite genuine successful prefix.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count attempts including the one actual refused primitive operation.
+
 proc prepare(state: var Prefix, info: RecordCollectionInfo) =
   ## Metadata preparation precedes all crypto, even when the first primitive will refuse.
   assert state.starts == 0 and int(calls()) == 0
   state.starts = 1
   state.declared = info.records
+
 proc consume(state: var Prefix, record: var TrieRecord): bool =
   ## Distinguish an explicit public cancellation from a backend refusal before this callback.
   inc state.calls
   if state.stopAfter >= 0 and state.records.len >= state.stopAfter: return false
   state.records.add(move(record))
   true
+
 proc publicFault(body: seq[byte], policy: RecordLimits, prefix: int, cancelled: bool) =
   ## A failed result exposes no summary payload; caller-owned provisional prefixes release independently.
   var state = Prefix(records: @[], starts: 0, calls: 0,
@@ -49,6 +56,7 @@ proc publicFault(body: seq[byte], policy: RecordLimits, prefix: int, cancelled: 
   state.records = @[] # The explicitly retained public prefix owns no source or private repository references.
   assert getOccupiedMem() == before
   reset(0)
+
 proc imageFault(source: AdmissionFixture, body: seq[byte], prefix: int) =
   ## Every already-staged immutable cell retires when the next locally verified record cannot be hashed.
   refuseAfter(cint(prefix))
@@ -58,6 +66,7 @@ proc imageFault(source: AdmissionFixture, body: seq[byte], prefix: int) =
   assert failed.recordError == RecordError.BackendFailure and int(calls()) == prefix+1
   assert getOccupiedMem() == before
   reset(0)
+
 proc publicationFault(body: seq[byte], policy: RepositoryLimits, prefix: int) =
   ## Complete codec refusal outranks staged quota flags and never replaces the original empty head.
   var owner = newNodeRepository(policy)
@@ -72,6 +81,7 @@ proc publicationFault(body: seq[byte], policy: RepositoryLimits, prefix: int) =
   assert uint64(owner.snapshot.value.generation) == 0
   reset(0)
   assert owner.close == RepositoryError.None
+
 proc cycle() =
   ## Exercise immediate and late backend failure, explicit cancellation, earlier quota and both long-leaf hash phases.
   reset(0)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default current-guest results cannot reveal successful coverage or inactive parent refusal payloads.
+
 import std/cmdline
 import ../../src/state/accumulation/guest_runner as accumulation_guest_runner
 let owner = default(AccumulationGuestResult)

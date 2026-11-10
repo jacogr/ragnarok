@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed snapshots bind selected generation/root, retained complete graphs and exact context bytes.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/node/[repository as node_repository, records as node_records]
@@ -10,6 +11,7 @@ import ../../../src/storage/[database_identity, snapshot_codec, record_codec]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/crypto/primitives
+
 proc reseal(bytes: var seq[byte]) =
   ## A valid outer checksum cannot grant authority to corrupt records or false graph metadata.
   assert bytes.len >= 32

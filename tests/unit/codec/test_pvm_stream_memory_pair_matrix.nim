@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -60,7 +63,6 @@ proc memory(): Memory =
       pages[index].bytes[at] = byte((at*17+index*31+3) mod 256)
   captureMemory(pages, PageLimit(2)).value
 
-
 proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
   newFlatPlan(source, GasCycleLimit(100000))
@@ -98,10 +100,10 @@ proc compare(input: Machine, prepared: FlatPlan, steps, cycles: uint64) =
     same(frame, expected, pages)
     sameCpu(machineInfo(input).value, info)
 
-
 let mapped = memory()
 var registers = default(RegisterFile)
 for index in 0..<13: registers[index] = RegisterValue(0xabcdef01'u64+uint64(index)*31)
+
 proc immediate(bytes: var seq[byte], value: uint64) =
   for shift in 0..<4: bytes.add(byte((value shr (shift*8)) and 255))
 
@@ -150,6 +152,5 @@ proc memoryPrefixMatrix(initialRegisters: RegisterFile) =
               compare(source, prepared, steps, 100000)
 
 memoryPrefixMatrix(registers)
-
 
 echo "PASS 25020 memory-first pairs / budgets 0..3 / alias+permission+cross-page / fresh+reused"

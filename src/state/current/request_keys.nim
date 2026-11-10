@@ -3,6 +3,7 @@
 
 ## Bounded physical request-key companion for exact original-to-genuine-current identity preservation.
 ## Compact inventories retain logical request identity/history; this separate owner admits and caches key derivation once.
+
 import ./identities as current_identities
 import ../supplied/logical_inventory as supplied_logical_inventory
 import ../inventory

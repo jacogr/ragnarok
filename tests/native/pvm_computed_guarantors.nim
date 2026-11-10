@@ -11,6 +11,7 @@ import ../support/pvm_computed_guarantors
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Cause actual planning provider refusal after signed original inputs complete.
+
 proc expect[T](outcome: ComputedGuarantorResult[T], reason: ComputedGuarantorError) =
   ## Require intended alternatives before deliberate unsuccessful extraction.
   assert outcome.error == reason, "guarantor guard control"

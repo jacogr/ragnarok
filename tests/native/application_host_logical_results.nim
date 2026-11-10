@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict guarded host logical result extraction with a genuine complete native positive control.
+
 import std/[assertions, syncio, cmdline, envvars]
 import ../../src/app/logical/seed as logical_seed
 import ../../src/app/collected/update as collected_update
@@ -17,6 +18,7 @@ import ../../src/state/accumulation/current/update as accumulation_current_updat
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_supplied_context, parent_profile_context,
     parent_globals_context, supplied_logical_context, current_logical_proof_context, current_logical_review_context]
+
 proc main() {.raises.} =
   ## Every negative mode must fail at its exact original guard; ordinary source/setup failure never satisfies it.
   let mode = if paramCount() > 0: paramStr(1) else: "control"

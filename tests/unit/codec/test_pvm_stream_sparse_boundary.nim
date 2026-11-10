@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fragmented permission regions, exact whole-range faults, host continuation and immutable aliases.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -50,7 +53,6 @@ proc sameCpu(left, right: MachineInfo) =
     # Compare every register, including operands intentionally aliased by a witness.
     assert uint64(left.registers[index]) == uint64(right.registers[index])
 
-
 proc same(frame: FlatFrame, wanted: StepResult, images: openArray[PageImage]) =
   ## Compare every mapped byte/access tag and complete CPU/exit metadata after private execution.
   assert frame.reason == wanted.error
@@ -87,7 +89,6 @@ proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
     # Absolute forms select A1; indirect register forms alias source/destination/base1.
     result.add(if code < 120: 1'u8 else: 17'u8)
     immediate(result, if code < 120: address else: 0'u64)
-
 
 proc samePages(actual, expected: Memory, images: openArray[PageImage]) =
   ## Complete immutable bytes and permissions reveal both missing dirty marks and partial failed writes.
@@ -132,6 +133,7 @@ for code in [30'u8, 31, 32, 33]:
         samePages(flatMemorySnapshot(frame), observed, images)
       samePages(held, memoryOf(expected.value.machine).value, images)
       inc cases
+
 # A write restored to its original bytes must publish the exact original state across budget stops.
 proc byteStore(address, value: uint64): seq[byte] =
   ## Two independently encoded stores expose a flag incorrectly cleared merely by observing memory.

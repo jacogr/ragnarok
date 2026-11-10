@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Genuine folded source spans and paid suffixes keep interval structure separate from header authority.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas

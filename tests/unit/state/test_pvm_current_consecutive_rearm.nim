@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Clock, ancestor-count, malformed-header and byte-budget rearm refusals preserve actual adopted authority before genuine continuation.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -20,6 +21,7 @@ import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
   block_download_transport, current_consecutive_context, current_consecutive_download_context,
   current_download_command_context, managed_storage_samples]
+
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   ## Authenticated host identities come from the two independent local fixture certificates.
   let raw = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -27,6 +29,7 @@ proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   CurrentDownloadPeerKey(bytes)
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now = 0'u64) =
   ## Bounded native polling preserves the authored monotonic deadline until this exact stage is observed.
@@ -36,6 +39,7 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     assert servers.poll()
     assert dispatcher.tick(CurrentDownloadLoopTick(now)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread() # Independent scheduler yield touches no leased canonical/input aliases.
+
 proc transfer(fixture: CurrentConsecutiveFixture, disk, managed: bool) {.raises.} =
   ## Invalid replacement contexts cannot consume the first adopted receipt or prevent a later valid successor.
   var path = "pvm-current-consecutive-rearm-chain"

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_historical_lookup_arc_release"}
 
 ## Literal historical intervals, full-width gas/memory and genuine host execution verify read-only refinement lookup.
@@ -16,7 +17,9 @@ import ../../../src/pvm/gas/gas
 import ../../support/arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc identity(): ServicePreimageHash =
@@ -24,10 +27,12 @@ proc identity(): ServicePreimageHash =
   var bytes = default(array[32, byte])
   bytes[0] = 73
   ServicePreimageHash(bytes)
+
 proc payload(length = 40): seq[byte] =
   ## Freeze an independently patterned value, including a present empty blob.
   result = newSeq[byte](length)
   for index in 0..<length: result[index] = byte(index+1)
+
 proc fixture(history: seq[byte], anchor = 20'u32, damage = 0,
     length = 40): HistoricalLookupContext =
   ## Construct an owned serialized map; damage selectors retain deliberately malformed or absent data.
@@ -51,6 +56,7 @@ proc fixture(history: seq[byte], anchor = 20'u32, damage = 0,
     writes: ElementLimit(32), writeValueBytes: ByteLimit(100000))
   let state = newStateStore(entries, limits).value
   captureHistoricalLookup(state.snapshot.value, ServiceIndex(42), LookupSlot(anchor)).value
+
 proc memory(): Memory =
   ## A fixed readable hash and one writable output page expose missing-page atomicity at its end.
   var hash = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
@@ -60,6 +66,7 @@ proc memory(): Memory =
     bytes: default(array[4096, byte]))
   for index in 0..<4096: output.bytes[index] = 204 # Distinct untouched bytes surround each clipped write.
   captureMemory([hash, output], PageLimit(2)).value
+
 proc registers(): RegisterFile =
   ## Every unaffected register has a nonzero sentinel; r7's all-ones service chooses self.
   result = default(RegisterFile)
@@ -69,14 +76,17 @@ proc registers(): RegisterFile =
   result[9] = RegisterValue(196608)
   result[10] = RegisterValue(0)
   result[11] = RegisterValue(12)
+
 proc run(context: HistoricalLookupContext, regs: RegisterFile, mem: Memory,
     credit = 100000'u64, limit = 64'u64): HistoricalLookupResult[HostResponse] =
   ## The wrapper changes no input and leaves host selection to the eventual refine dispatcher.
   historicalLookupResponse(context, MachineGas(credit), regs, mem, MemoryByteLimit(limit))
+
 proc checkRegisters(response: HostResponse, before: RegisterFile) =
   ## Only the documented return register may differ after a funded successful lookup.
   for index in 0..<13:
     if index != 7: assert uint64(response.registers[index]) == uint64(before[index])
+
 proc respond(context: var HistoricalLookupContext, stopped: StepOutcome): HostResult[
     HistoricalLookupError] {.raises: [].} =
   ## A real fallible host callback delegates only host 7 and propagates local refusals.

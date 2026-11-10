@@ -29,6 +29,7 @@ main()
 
 # The observer is test-only; production-linked corpora use the unmodified primitive bridge.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Copied call counters distinguish complete preflight from backend refusal.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

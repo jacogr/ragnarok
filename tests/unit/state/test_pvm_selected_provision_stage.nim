@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_selected_provision_stage_arc_release"}
 
 ## Signed new/provide and real annulled producers fulfill original provisions over complete selected accounts.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
@@ -20,16 +22,20 @@ import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runne
 import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_current_guests_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc policy(): AccumulationProvisionUnionLimits =
   ## Two original producers and one actual byte remain separate traversal, blob and frame ceilings.
   AccumulationProvisionUnionLimits(contexts: ElementLimit(2),
     values: PreimageLimits(items: ElementLimit(2), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(2)),
     encodedBytes: ByteLimit(128))
+
 proc serviceCode(code: seq[byte]): seq[byte] =
   ## Keep service preimage framing independent from actual guest instruction assembly.
   result = @[0'u8]
   for octet in code: result.add(octet) # Exact canonical metadata prefix before the authored envelope.
+
 proc creationCode(): seq[byte] =
   ## Actual new returns the child in r7; provide uses that real result to target its freshly created request.
   let hash = array[32, byte](blake2b256([73'u8]).value)
@@ -40,6 +46,7 @@ proc creationCode(): seq[byte] =
     registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 20],
     registerImmediate(8, 65536), registerImmediate(9, 1), @[10'u8, 28], @[50'u8, 0]],
         writable = payload))
+
 proc accounts(fixture: ExecutionFixture): PreparedAccumulationAccountStage =
   ## Production guest dispatch captures strict facts before complete private M/n application.
   var limits = currentGuestLimits()
@@ -54,6 +61,7 @@ proc accounts(fixture: ExecutionFixture): PreparedAccumulationAccountStage =
   let stage = prepareAccumulationAccountStage(guests.value, currentAccountStageLimits())
   assert stage.error == AccumulationAccountStageError.None, $stage.error
   stage.value
+
 proc main() {.raises.} =
   ## Static reports pass maintained signature/admission fixtures; all terminal effects originate in actual guest opcodes.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

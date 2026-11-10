@@ -3,6 +3,7 @@
 
 ## Exclusive bounded E4 receiver for descending ancestor responses; callbacks copy bytes only.
 ## Request FIN and actual response FIN are independent; decoding remains an explicit producer operation.
+
 import std/assertions
 import ./response as ancestor_response
 import ../../codec/[bounded, block_codec]

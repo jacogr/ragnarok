@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_absent_account_outcomes_arc_release"}
 
 ## Real metadata absence and signed block authority prove identity before credit, zero execution and exact source lifetime.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/state/accumulation/[absent as accumulation_absent,
     inputs as accumulation_inputs, service as accumulation_service, round as accumulation_round,
@@ -16,8 +18,11 @@ import ../../../src/codec/state/[accounts as state_accounts, privileges as state
 import ../../../src/codec/[report_owned, c2_records]
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
   report_admission_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc inputs(target: uint32, protected = false): PreparedAccumulationInputs =
   ## Huge offered gas and repeated maximum amounts are valid input fields; the absent branch must never sum balances.
   let operands = batchInputSet(false).invocationOperands.value
@@ -29,11 +34,13 @@ proc inputs(target: uint32, protected = false): PreparedAccumulationInputs =
     [AlwaysAccumulate(service: ServiceIndex(target), gas: PrivilegeGas(high(uint64)))],
     AccumulationInputConfig(inputs: ElementLimit(2), allowances: ElementLimit(1),
         services: ElementLimit(1))).value
+
 proc state(): StateStore =
   ## A present account and unrelated chapter distinguish real absence from a default or empty state.
   newStateStore([serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(balance: AccountBalance(10)),
     ByteLimit(ServiceMetadataBytes)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 8])], integrationStoreLimits()).value
+
 proc projections(): AbsentAccumulation =
   ## Exact owners and zero effects survive extreme signed/unsigned domains without code lookup, credit or hashing.
   result = default(AbsentAccumulation)
@@ -67,6 +74,7 @@ proc projections(): AbsentAccumulation =
       assert absent.absentState.value.lookup(chapterKey(StateChapter(250))).value.bytes == @[9'u8,
           8], "caller replacement cannot mutate retained identity"
       result = absent # Retain after caller/source construction scope releases.
+
 proc boundaries() =
   ## Present metadata must follow ordinary service preparation, even when malformed; other sources retain exact typed refusal.
   let source = inputs(99)
@@ -115,6 +123,7 @@ proc boundaries() =
       AccumulationAbsentError.Uninitialized
   assert default(BlockAbsentAccumulation).absentProjection.error ==
       AccumulationAbsentError.Uninitialized
+
 proc roundConfig(): AccumulationRoundConfig =
   ## Keep report gas zero so a genuinely signed block selects only its unknown always-service allowance.
   AccumulationRoundConfig(blockGas: Gas(1), reportGas: Gas(0), privileges: PrivilegeConfig(
@@ -126,6 +135,7 @@ proc roundConfig(): AccumulationRoundConfig =
         totalBlobBytes: ByteLimit(200000), maxBytes: ByteLimit(1000000))),
     inputs: AccumulationInputConfig(inputs: ElementLimit(100), allowances: ElementLimit(10),
         services: ElementLimit(100)))
+
 proc queueConfig(): AccumulationQueueConfig =
   ## Retain the actual tiny signed queue profile without replacing report or block validity.
   AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(2), epochSlots: EpochSlots(12),
@@ -133,6 +143,7 @@ proc queueConfig(): AccumulationQueueConfig =
     totalDependencies: ElementLimit(1000), reportBytes: ByteLimit(100000), maxBytes: ByteLimit(
         1000000)),
     items: ElementLimit(100), dependencies: ElementLimit(1000))
+
 proc boundCase(base: OwnedReport): BlockAbsentAccumulation =
   ## Only real signed admission/queue/round owners supply the absent service's parent, inputs and slot.
   let entry = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](2),
@@ -158,6 +169,7 @@ proc boundCase(base: OwnedReport): BlockAbsentAccumulation =
   assert hashCalls() == 0, "bound factory reads only genuine retained authority, never hashes or bootstraps a guest"
   failHash(0)
   absent
+
 proc main() {.raises.} =
   ## Read the maintained prepared report fixture; every cryptographic admission remains production verification.
   let retained = projections()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual current logical producers feed existing bounded generic proof capture; no response supplies its own trusted root.
+
 import std/assertions
 import ./current_namespace_refresh_context
 import ../../src/app/proof/query as proof_query
@@ -17,6 +18,7 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie,
     composition as state_composition, service_values as state_service_values,
     accounts as state_accounts]
+
 proc logicalProofLimits*(): ProofQueryLimits =
   ## Fixed independent policies cover actual namespace fixtures without deriving budgets or authority from response bytes.
   ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(128), perValue: ByteLimit(65536),
@@ -25,9 +27,11 @@ proc logicalProofLimits*(): ProofQueryLimits =
       items: ElementLimit(32), nodes: ElementLimit(7968), valueBytes: ByteLimit(262144)),
       view: ProofViewLimits(items: ElementLimit(32), valueBytes: ByteLimit(262144)),
       wireBytes: ByteLimit(1048576), hashes: ProofHashLimit(10000000))
+
 proc logicalProducer*(logical: CurrentLogicalState): PreparedCurrentChainUpdate =
   ## Follow only guarded original source provenance; callers must hold the canonical host gate open.
   logical.currentLogicalUpdate.value
+
 proc logicalProofPlan*(): StateProofPlan =
   ## All sixteen global keys plus one retained storage value and an independently selected proven-absent fixed key.
   var keys: seq[StateKey] = @[]
@@ -35,10 +39,12 @@ proc logicalProofPlan*(): StateProofPlan =
   keys.add(serviceStorageKey(ServiceIndex(99), @[5'u8], ByteLimit(1)).value)
   keys.add(chapterServiceKey(StateChapter(255), ServiceIndex(123456)))
   captureStateProofPlan(keys, ElementLimit(18)).value
+
 proc logicalProofQuery*(logical: CurrentLogicalState, plan: StateProofPlan): ProofQuery =
   ## Temporary selected/update aliases retire before a caller can enqueue the sole returned query.
   let selected = logical.logicalProducer.currentUpdateView.bestBlock
   captureProofQuery(selected, plan, logicalProofLimits()).value
+
 proc checkLogicalProof*(logical: CurrentLogicalState, view: ProofView, slot: uint32) =
   ## Existing typed chapter codecs consume authenticated evidence under this producer's original profile; no full-map certificate is created.
   let producer = logical.logicalProducer

@@ -15,12 +15,14 @@ import ../../support/arc_evidence
 proc makeFifo(path: cstring, mode: Mode): cint {.importc: "mkfifo", cdecl, header: "<sys/stat.h>".}
   ## The real SDK FIFO API is absent from the pinned public POSIX wrapper.
 const FileName = "state-atomic-lock-kinds.bin"
+
 proc cycle(fifoPath: string) =
   ## Real special-file refusals leave no live ownership or retained destination bytes.
   var owner = default(AtomicFileWriter)
   assert owner.openAtomicFileWriter(fifoPath) == AtomicFileError.IoFailure
   assert not owner.opened
   assert owner.close() == AtomicFileError.None
+
 proc main() =
   ## Every refused inode kind remains intact; removing it permits ordinary exclusive 0600 lock creation.
   var path = FileName

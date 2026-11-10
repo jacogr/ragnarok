@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_annulled_outputs_arc_release"}
 
 ## Genuine selected yield presence survives zero hashes, cancellation, pair ordering and exact canonical wire limits.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
     annulment as accumulation_annulment, outcome as accumulation_outcome,
@@ -15,7 +17,9 @@ import ../../support/[accumulation_annulment_context, accumulation_batch_context
 
 # Selection and C(16)-format encoding do not compute or publish state roots.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(outcomes = 2'u64, items = 2'u64, bytes = 73'u64): AnnulmentOutputLimits =
   ## Independent limits count all inspected producers and the whole selected pair payload.
   AnnulmentOutputLimits(outcomes: ElementLimit(outcomes), log: OutputLogConfig(items: ElementLimit(

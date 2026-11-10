@@ -1,27 +1,43 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded loopback Streamable HTTP endpoint. One request per connection; no SSE or HTTP sessions.
-## Only serialized bytes survive a tick. Query contexts are borrowed synchronously and never retained.
+## Local Streamable HTTP transport for MCP chain queries.
+##
+## The listener trusts local processes and binds IPv4 loopback. The accepted Host names
+## are the configured loopback address and localhost with the selected port. Rejecting
+## Origin-bearing requests keeps browser traffic outside that trust boundary.
+##
+## POST carries one request per connection. Replies use JSON, with HTTP 202 for valid
+## notifications. Clients advertise both JSON and event-stream support for MCP negotiation.
+## Connections close after the response and clients can reconnect within the same logical
+## lifecycle. Explicit protocol-version headers must match the supported revision.
+##
+## Fixed slots, byte ceilings and absolute deadlines bound work by each dispatcher turn.
+## Only serialized bytes survive a turn, so slow clients cannot extend a query borrow.
+## See spec/mcp.md for protocol references and verification.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
+import std/http/httpmsg as http_msg
+import std/http/httpparse as http_parse
 import ./protocol
 
 const
   MaxConnections = 4
-  MaxHeader = 4096
+  MaxHeader = http_parse.MaxHeadLen
   MaxInput = MaxHeader + MaxMcpBody
 
 type
-  Connection = object ## One bounded request/response and an absolute five-second deadline.
+  Connection = object                   ## One bounded request/response and an absolute five-second deadline.
     opened: bool
     fd: cint
     input, output: string
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
     deadline: int64
-  McpServer* = object ## Native socket owner retains no canonical state or query contexts.
+  McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened: bool
     fd: cint
     port: uint16
@@ -39,6 +55,7 @@ proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
   server.fd = -1
   server.port = 0
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -50,6 +67,7 @@ proc `=destroy`*(server: McpServer) =
   for slot in server.connections:
     if slot.opened: discard posix.close(slot.fd)
   if server.opened: discard posix.close(server.fd)
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
@@ -61,6 +79,7 @@ proc close*(server: var McpServer) =
   ## Idempotent explicit shutdown retires consumers before the listener.
   for slot in mitems(server.connections): slot.close()
   if server.opened: discard posix.close(server.fd)
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.port = 0
 
@@ -107,75 +126,53 @@ proc response(status: string, body = "", extra = ""): string =
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n" &
         extra & "\r\n" & body
 
-proc process(slot: var Connection, port: uint16, context: QueryContext) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, context: QueryContext) =
   ## Strict single-message HTTP framing rejects ambiguous lengths, browser origins and upgrades.
-  let ending = slot.input.find("\r\n\r\n")
-  if ending < 0:
-    if slot.input.len >= MaxHeader: slot.output = response("431 Request Header Fields Too Large")
-    return
+  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes == http_parse.ParseIncomplete: return
+  if headBytes < 0:
+    slot.output = response("431 Request Header Fields Too Large")
+    return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
-  if ending + 4 > MaxHeader: return
-  let lines = slot.input.substr(0, ending - 1).split("\r\n")
-  if lines.len == 0: return
-  var names: seq[string] = @[]
-  var host, contentType, acceptsJson, acceptsEvents = false
-  var length = -1
-  for index in 1..<lines.len:
-    let line = lines[index]
-    let colon = line.find(':')
-    if colon < 1: return
-    let name = line.substr(0, colon - 1).toLowerAscii()
-    for c in name:
-      if c notin {'a'..'z', '0'..'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_',
-          '`', '|', '~'}: return # Whitespace/folding cannot conceal a framing header.
-    if name in names: return
-    names.add(name)
-    let raw = line.substr(colon + 1)
-    for c in raw:
-      if (ord(c) < 32 and c != '\t') or ord(c) == 127: return
-    let value = raw.strip()
-    case name
-    of "host":
-      host = value in ["127.0.0.1:" & $port, "localhost:" & $port]
-      if not host:
-        slot.output = response("403 Forbidden")
-        return # An attacker-controlled DNS alias never acquires local query access.
-    of "origin":
-      slot.output = response("403 Forbidden")
-      return # Initial local-agent policy refuses all browser origins, including opaque/null origins.
-    of "content-type": contentType = value.toLowerAscii() in ["application/json", "application/json; charset=utf-8"]
-    of "accept":
-      for media in value.toLowerAscii().split(','):
-        let kind = media.strip()
-        if kind == "application/json": acceptsJson = true
-        if kind == "text/event-stream": acceptsEvents = true
-    of "mcp-protocol-version":
-      if value != ProtocolVersion: return # Explicit unsupported revisions are HTTP errors before dispatch.
-    of "mcp-session-id", "transfer-encoding", "upgrade", "expect", "content-encoding": return
-    of "content-length":
-      if value.len == 0 or value.len > 5: return
-      length = 0
-      for c in value:
-        if c notin {'0'..'9'}: return
-        length = length * 10 + ord(c) - ord('0') # At most five digits, bounded before body arithmetic.
-    else: discard # Ordinary extra headers grant no additional capabilities.
-  if not host: return
-  if lines[0] != "POST /mcp HTTP/1.1":
+  # The request message retires on return. The listener keeps the vocabulary for later requests.
+  var head = http_msg.initHttpMsg(tags)
+  if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
+      headBytes: return
+  for field in ["host", "content-type", "accept", "mcp-protocol-version"]:
+    if head.countHeaderByName(field) > 1: return # Application selectors must be unambiguous.
+  let host = head.getStr(http_msg.hHost)
+  if host.len == 0: return
+  if host notin ["127.0.0.1:" & $port, "localhost:" & $port] or head.contains(http_msg.hOrigin):
+    slot.output = response("403 Forbidden")
+    return # DNS aliases and browser origins never grant access to the local tool catalog.
+  if head.countHeaderByName("mcp-protocol-version") > 0 and
+      head.findHeader("mcp-protocol-version") != ProtocolVersion: return
+  for forbidden in ["mcp-session-id", "transfer-encoding", "upgrade", "expect", "content-encoding"]:
+    if head.countHeaderByName(forbidden) > 0: return # No sessions, alternate body coding or upgrades.
+  if head.methodOf != http_msg.tag(http_msg.mPost) or head.target != "/mcp":
     slot.output = response("405 Method Not Allowed", extra = "Allow: POST\r\n")
-    return # GET deliberately declines the optional standalone SSE stream; DELETE has no session to close.
-  if not contentType or length < 0: return
+    return # GET declines the optional SSE stream; DELETE has no retained session to close.
+  let contentType = head.getStr(http_msg.hContentType).toLowerAscii()
+  let length = head.contentLength
+  if contentType notin ["application/json", "application/json; charset=utf-8"] or length < 0: return
+  var acceptsJson, acceptsEvents = false
+  for media in head.getStr(http_msg.hAccept).toLowerAscii().split(','):
+    # Both response media types remain an explicit MCP transport requirement.
+    let kind = media.strip()
+    if kind == "application/json": acceptsJson = true
+    if kind == "text/event-stream": acceptsEvents = true
   if not acceptsJson or not acceptsEvents:
     slot.output = response("406 Not Acceptable")
     return
   if length > MaxMcpBody:
     slot.output = response("413 Content Too Large")
     return
-  let total = ending + 4 + length
+  let total = headBytes + length
   if slot.input.len > total: return # Pipelined data is never interpreted as a second request.
   if slot.input.len < total:
     slot.output = ""
     return # Partial bodies retain the original absolute deadline.
-  let body = if length == 0: "" else: slot.input.substr(ending + 4, total - 1)
+  let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
   let reply = respond(body, context)
   slot.output = response(if reply.len == 0: "202 Accepted" else: "200 OK", reply)
   slot.input = "" # No request token/context alias survives the synchronous dispatch.
@@ -183,6 +180,14 @@ proc process(slot: var Connection, port: uint16, context: QueryContext) =
 proc tick*(server: var McpServer, context: QueryContext) =
   ## One accept/read/write per slot and a five-second absolute deadline bound each turn.
   if not server.opened: return
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
@@ -200,7 +205,7 @@ proc tick*(server: var McpServer, context: QueryContext) =
       let count = receive(slot.fd, addr bytes[0], csize_t(MaxInput - slot.input.len), 0)
       if count > 0:
         for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
-        slot.process(server.port, context)
+        slot.process(tags, server.port, context)
       elif count == 0: slot.close()
       elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len > 0:

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_reentry_execution_arc_release"}
 
 ## Bound reentry entropy/provenance survives real PVM execution, complete coverage and canonical actual gas.
@@ -30,6 +31,7 @@ import ../../support/[accumulation_reentry_context, accumulation_continuation_ex
 
 # Refuse the maintained test provider after signed fixture construction; observations and preflight must remain hash-free.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc main() {.raises.} =

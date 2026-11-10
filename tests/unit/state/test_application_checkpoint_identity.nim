@@ -10,12 +10,15 @@ import ../../../src/app/checkpoint/identity as checkpoint_identity
 import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc detached(): ApplicationCheckpointIdentity {.raises.} =
   ## Source application, history, map and header retire before the caller uses metadata.
   captureApplicationCheckpointIdentity(checkpointFixture()).value
+
 proc cycle(owner: ApplicationChain, expected: ApplicationCheckpointIdentity) =
   ## Captures and copied scalar tuples release all temporary borrowed views on return.
   assert sameApplicationCheckpoint(captureApplicationCheckpointIdentity(owner).value, expected)
+
 proc main() {.raises.} =
   ## Different block identities, posterior maps and complete parameter tuples cannot collapse to root-only agreement.
   let absent = default(ApplicationCheckpointIdentity)

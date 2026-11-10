@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Recovered canonical maps export detached bytes during a separate execution lease without mixing publication or shutdown authority.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/services
@@ -18,6 +19,7 @@ import ../../support/application_candidate_context as candidate_context
 import ../../support/application_recovery_execution
 const ChainPath = "application-recovery-export-chain"
 const FileName = "application-recovery-export"
+
 proc scenario(fixture: RecoveryExecutionFixture, acknowledge: bool) {.raises.} =
   ## Only fixed identity and sole prepared bytes survive canonical capture; no map is shared with the I/O worker.
   var input = default(BlockInput)
@@ -68,6 +70,7 @@ proc scenario(fixture: RecoveryExecutionFixture, acknowledge: bool) {.raises.} =
   assert not owner.beginCheckpointExport(ticket)
   owner.close()
   assert not owner.checkpointShutdownPending # Clean idle restart cannot fabricate a duplicate durable publication receipt.
+
 proc main() {.raises.} =
   ## Collected and joined-only completion cross actual restored ownership and both native worker lifetimes.
   defer:

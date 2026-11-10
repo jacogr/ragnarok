@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently authored minimal chain fixture shared by MCP protocol and service tests.
+
 import std/strutils
 
 proc mcpChainText*(): string =

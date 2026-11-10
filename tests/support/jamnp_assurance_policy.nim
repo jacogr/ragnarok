@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit test-owned complete assurance startup settings use a genuine source profile; no production budget defaults are imported or inferred.
+
 import ../../src/app/[node_assurance_policy]
 import ../../src/app/proof/assurance_acquisition
 import ../../src/jamnp-s/[assurance_duty, assurance_possession, availability_proof, availability_read]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/bounded
 import ./jamnp_topology_fixture
+
 proc assuranceSettings*(source: BlockSnapshot, mode = 1'u64): NodeAssuranceSettings =
   ## Finite independent controls are literal test policy; only actual immutable chain dimensions supply profile identity.
   NodeAssuranceSettings(mode: mode, startupMs: 10000,

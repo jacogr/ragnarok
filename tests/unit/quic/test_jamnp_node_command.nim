@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The real foreground node loop serves TLS state reads and retires every child before a joined command thread returns.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times, rawthreads, atomics]
 import ../../../src/app/[options, node_command, work_policy, node_work_policy, work_dispatch]
 import ../../../src/jamnp-s/[work_submission, work_duty, identity]
@@ -21,26 +22,32 @@ type RunContext = object ## Main retains stable immutable options until atomic c
   options: Options
   outcome: NodeCommandError
   done: cint
+
 proc sendSignal(number: cint): cint {.importc: "raise", header: "<signal.h>".}
   ## Target only this native test process after the real foreground owner installs its handler.
 let terminateSignal {.importc: "SIGTERM", header: "<signal.h>".}: cint
   ## Use the platform's real termination signal without assuming a numeric encoding.
+
 proc run(user: pointer) {.nimcall.} =
   ## All command-owned native/ARC resources live on this thread; only a scalar publication crosses back.
   let context = cast[ptr RunContext](user)
   try: context.outcome = runNodeCommand(context.options)
   except: context.outcome = NodeCommandError.StartupFailure
   atomicStore(context.done, 1)
+
 proc refuse(user: pointer, bytes: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Port reservation never accepts a peer or interprets external certificate bytes.
   0
+
 proc ignore(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## The unpolled reservation has no application/native stream ownership.
   discard
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -51,15 +58,18 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc arguments(port: uint16, hash: BlockHash): seq[string] =
   ## Explicit command configuration owns paths and trusted finality, with foreground signal shutdown and a separate finite-deadline control.
   @["node", "--net-port", $port, "--net-cert", getEnv("RAGNAROK_TEST_CERT"),
     "--net-key", getEnv("RAGNAROK_TEST_KEY"), "--node-finalized", hex(array[32, byte](hash)),
     "--net-timeout-ms", "0", "--with-state", "--chain", "node-command-chain.json"]
+
 proc captureStartup(context: nil pointer, batch: string) {.nimcall, raises: [].} =
   ## The one logger thread exclusively owns this bounded diagnostic buffer until joined close; the test reads it only afterward.
   let output = cast[ptr string](context)
   if output[].len+batch.len <= 8192: output[].add(batch)
+
 proc startWork(options: var Options): NodeCommandError {.raises.} =
   ## Failed real startup reports the existing bounded production diagnostic without changing successful output or borrowing across logger shutdown.
   var text = ""
@@ -74,6 +84,7 @@ proc startWork(options: var Options): NodeCommandError {.raises.} =
   options.attachLogWriter(default(LogWriter))
   assert outcome == NodeCommandError.Stopped, "work startup: " & $outcome & "; " & text
   outcome
+
 proc main() {.raises.} =
   ## Independent local complete-map trust checks the response; network bytes cannot supply their own authority.
   assert nodeClock(JamCommonEraUnix-1, 6).error == NodeClockError.BeforeCommonEra

@@ -12,10 +12,13 @@ import ../../support/[pvm_computed_lookup, pvm_computed_lookup_vectors, arc_evid
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observations only after genuine source/chain preparation.
+
 proc after(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse a real hash after a known completed prefix, including the final supplied suffix.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe all attempted real Blake calls without fabricating a successful digest.
+
 proc expect[T](outcome: ComputedLookupResult[T], reason: ComputedLookupError) =
   ## Inspect selected reasons before any guarded payload extraction.
   if outcome.error != reason:
@@ -125,6 +128,7 @@ var changed = done.computedLookupInfo.value
 changed.headers = 0
 assert lookupWire(done.computedLookupHeader(info.anchor).value) == lookupWire(fixture.older[0]), "caller list/wire copies cannot change retained ancestry"
 assert done.computedLookupInfo.value.headers == 3, "info copy isolation"
+
 proc detached(): LookupAnchoredComputedReport =
   ## Retain original recent/state/report provenance and recaptured chain after every fixture local retires.
   let fixture = lookupFixture()
@@ -133,6 +137,7 @@ let retained = detached()
 assert uint32(retained.computedLookupSource.value.computedRecentAnchor.value.slot) == 20, "detached source lifetime"
 assert uint32(headerInfo(retained.computedLookupHeader(
     retained.computedLookupInfo.value.anchor).value).value.unsigned.slot) == 19, "detached header lifetime"
+
 proc cycle(policy: ComputedLookupLimits) =
   ## Release complete recaptured chains and late backend/ancestry failures in each warmed iteration.
   reset(0)

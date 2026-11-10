@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Decode GP makebundle into package-bound authenticated extrinsics and imported leaves. This certifies input commitments only: erasure origin, historical state and report reproduction remain separate private audit prerequisites.
+
 import ../codec/bounded
 import ../codec/work/[package as work_package, report as work_report]
 import ../crypto/primitives
@@ -39,33 +40,41 @@ type
     else: discard # Ordinary format/policy refusals grant no child or input authority.
   ProofExtent = object ## Fixed scratch points only into the stable synchronously borrowed wire, never a returned owner.
     offset, siblings: int
+
 func error*[T](outcome: AuditBundleResult[T]): AuditBundleError =
   ## Read the selected alternative before extracting a payload or genuine child reason.
   outcome.status
+
 func value*[T](outcome: AuditBundleResult[T]): T {.requires: outcome.status ==
     AuditBundleError.None.} =
   ## Only whole success carries authenticated original inputs or copied accounting facts.
   outcome.completed
+
 func packageError*[T](outcome: AuditBundleResult[T]): PackageError {.requires: outcome.status ==
     AuditBundleError.PackageFailure.} =
   ## Preserve syntax, protocol/local resource and configuration refusals distinctly for the eventual evaluator.
   outcome.packageReason
+
 func extrinsicError*[T](outcome: AuditBundleResult[
     T]): ExtrinsicInputsError {.requires: outcome.status == AuditBundleError.ExtrinsicFailure.} =
   ## Failed exact length/hash binding cannot return a successful extrinsic table.
   outcome.extrinsicReason
+
 func importError*[T](outcome: AuditBundleResult[T]): ImportJustificationError {.requires: outcome.status ==
     AuditBundleError.ImportFailure.} =
   ## A bad proof remains distinct from local hash/workspace/backend refusal.
   outcome.importReason
+
 func bindingError*[T](outcome: AuditBundleResult[T]): ImportInputsError {.requires: outcome.status ==
     AuditBundleError.BindingFailure.} =
   ## Preserve exact dictionary and original-manifest correspondence failures.
   outcome.bindingReason
+
 func hashError*[T](outcome: AuditBundleResult[T]): CryptoError {.requires: outcome.status ==
     AuditBundleError.HashFailure.} =
   ## A primitive backend failure is unavailable evaluation, never a negative report judgment.
   outcome.hashReason
+
 func valid*(limits: AuditBundleLimits): bool =
   ## Defaults activate no decoding or crypto; physical count caps also bound temporary descriptors for zero-length repeated extrinsics.
   uint64(limits.package.refineGas) > 0 and uint64(limits.package.accumulateGas) > 0 and
@@ -76,17 +85,20 @@ func valid*(limits: AuditBundleLimits): bool =
     uint64(limits.extrinsics) <= 65536 and uint64(limits.imports) <= 3072 and
     uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 1000000 and
     uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 256'u64*1024*1024
+
 proc decodedInputs*(bundle: DecodedAuditBundle): AuditBundleResult[VerifiedImportInputs] =
   ## Retain immutable original bindings; callers cannot replace their manifest, dictionary or proof bytes.
   let data = bundle.data
   if data == nil: return AuditBundleResult[VerifiedImportInputs](
       status: AuditBundleError.Uninitialized)
   AuditBundleResult[VerifiedImportInputs](status: AuditBundleError.None, completed: data.inputs)
+
 proc decodedInfo*(bundle: DecodedAuditBundle): AuditBundleResult[AuditBundleInfo] =
   ## A default/failed decoder is not an empty authenticated bundle.
   let data = bundle.data
   if data == nil: return AuditBundleResult[AuditBundleInfo](status: AuditBundleError.Uninitialized)
   AuditBundleResult[AuditBundleInfo](status: AuditBundleError.None, completed: data.info)
+
 proc decodeAuditBundle*(wire: openArray[byte], expected: ReportHeader,
     lookup: openArray[SegmentLookup], limits: AuditBundleLimits): AuditBundleResult[
         DecodedAuditBundle] =

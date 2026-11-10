@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current updates use the existing native one-slot worker without losing IO receipts or touching canonical ownership.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/report_context as signed_fixture
@@ -17,8 +18,10 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/history/index as history_index
 import ../../../src/codec/[bounded, report_owned]
 import ../../support/[accumulation_current_chain_context, accumulation_current_disk_context, accumulation_provision_integration]
+
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged namespaces never replace another native test's artifact.
+
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode: int,
     paged = false, replay = false) {.raises.} =
   ## Collect, joined-Done shutdown and immediate joined shutdown all preserve the exact actual operation outcome.
@@ -89,6 +92,7 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode:
   assert worker.start()
   assert worker.collect(ticket).kind == DiskCompletionKind.Uninitialized
   assert worker.close.kind == DiskCompletionKind.Uninitialized
+
 proc main() {.raises.} =
   ## Public allocator counters are per-thread, so repeated joined thread lifetimes are tested without a false process-wide ARC claim.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -16,11 +16,14 @@ import ../../support/[pvm_computed_roster, pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine source execution and signed transition construction.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual primitive attempts while checking population eligibility.
+
 proc expect[T](outcome: ComputedRosterResult[T], reason: ComputedRosterError) =
   ## Compare precise selected reasons before guarded extraction.
   assert outcome.error == reason, "computed roster reason: " & $outcome.error
+
 func sameRecord(left, right: StateValidator): bool =
   ## Compare every nominal fixed record field explicitly without introducing production equality operators.
   let keys = array[32, byte](left.bandersnatch) == array[32, byte](right.bandersnatch) and
@@ -99,6 +102,7 @@ expect(checkComputedRoster(priorShards, limits), ComputedRosterError.WrongErasur
 expect(checkComputedRoster(source, shortCount), ComputedRosterError.LimitExceeded)
 assert hashes() == 0, "roster eligibility performs no new hashes"
 reset(0)
+
 proc detached(): RosterEligibleComputedReport =
   ## Retain original source, authenticated posterior and decoded records after every local source handle retires.
   let fixture = rosterFixture(shrink = true)
@@ -107,6 +111,7 @@ proc detached(): RosterEligibleComputedReport =
 let retained = detached()
 assert validatorCount(retained.computedRosterActive.value).value == 6
 assert uint64(retained.computedRosterSource.value.computedTransitionSource.value.computedProfileContext.value.validators) == 9
+
 proc cycle(source, inactive, wrong: TransitionBoundComputedReport, limits,
     short: ComputedRosterLimits) =
   ## Release decoded records, complete shared provenance and refused alternatives without re-execution or signing.

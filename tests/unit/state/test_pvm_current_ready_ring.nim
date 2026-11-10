@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_ready_ring_arc_release"}
 
 ## Genuine current completion removes only processed parent ready reports and preserves unaffordable original suffixes.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, assurances, report_owned]
 import ../../../src/codec/state/[layout as state_layout, workqueues as state_workqueues]
@@ -14,7 +16,9 @@ import ../../../src/state/store
 import ../../support/[accumulation_current_outputs_context,
   accumulation_current_finalization_context,
   accumulation_ready_witnesses, report_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc main() {.raises.} =
   ## Complete signatures, guest execution, selected state, statistics and timestamps remain genuine prerequisites.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

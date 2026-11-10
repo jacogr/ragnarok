@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze bounded selected request identities from genuine completed current accumulation history; fixed facts preserve original producer positions without payload copying or hashing.
+
 import ./accumulation/current/[driver as accumulation_current_driver,
     sequence as accumulation_current_sequence]
 import ./accumulation/[coverage as accumulation_coverage, annulment as accumulation_annulment,

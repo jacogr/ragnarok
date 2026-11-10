@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque complete selections materialize independent bounded memory owners without hashing trusted data again.
+
 # @@Verification={"arc":"validated_selection_clone_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -9,15 +10,19 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Use real primitive behavior while observing actual hash attempts.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## A trusted materialization must perform no hidden hash or verification calls.
+
 proc cycle(selection: RepositorySelection, limits: RepositoryLimits) =
   ## Independent physical tables retire while selected immutable records remain safely shared.
   var cloned = cloneRepositorySelection(selection, limits).value
   assert cloned.snapshot.value.storedNodes == selection.retainedNodes
   assert cloned.close == RepositoryError.None
+
 proc main() =
   ## Retain an old and current complete root, drop an intermediate map and preserve exact inherited graph policy.
   reset(0)

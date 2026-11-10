@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent fixed-offset metadata and physical-record witnesses exercise full paging's format boundary.
+
 import std/[assertions, syncio]
 import ../../../src/storage/full/paged/codec as full_paged_codec
 import ../../../src/storage/paged/codec as paged_codec
@@ -10,20 +11,26 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive fault injection never substitutes format or graph-validation logic.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Prove shape/policy refusal happens before cryptographic backend work.
+
 func policy(): PagedLimits =
   ## Explicit finite dataset ceiling admits small fixtures without sentinel unlimited values.
   PagedLimits(entries: ElementLimit(10000), bytes: ByteLimit(10000000))
+
 func identity(first: byte): array[32, byte] =
   ## Independent complete scalar fixtures differ in their first byte.
   result = default(array[32, byte])
   result[0] = first
+
 proc put(bytes: var openArray[byte], offset: int, value: uint64) =
   ## Independent oracle writes known eight-byte fields without production encoding helpers.
   for index in 0..<8: bytes[offset+index] = byte((value shr (8*index)) and 255) # Bounded LE.
+
 proc leaf(first: byte, payload: seq[byte]): TrieRecord =
   ## Derive independent JAM addresses directly from the pinned state-layout primitives.
   var key = default(array[31, byte])
@@ -33,6 +40,7 @@ proc leaf(first: byte, payload: seq[byte]): TrieRecord =
   let hashed = hashStateNode(encoded.value)
   assert hashed.error == StateLayoutError.None
   TrieRecord(kind: TrieRecordKind.Leaf, digest: hashed.value, key: StateKey(key), payload: payload)
+
 proc header(): FullPagedHeader =
   ## Two sorted scalar claims include empty history and a nonempty selected root.
   let made = initFullPagedHeader(StorageChainId(identity(7)), StateRoot(identity(2)),

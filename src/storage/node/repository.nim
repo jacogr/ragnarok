@@ -446,7 +446,6 @@ proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
 
-
 func storedDigest(record: StoredRecord): StateNodeHash =
   ## The private staged-publication path exposes only an immutable cell's fixed physical identity.
   record.digest
@@ -838,7 +837,6 @@ proc admitImageRecords(records: var seq[StoredRecord], bytes: uint64,
       commitment: commitment, generation: generation, valueBytes: bytes,
           limits: limits)))
 
-
 proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
   ## Mutable raw images always require independent local integrity and complete graph admission.
@@ -985,7 +983,6 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
       offset += 32 # Physical format retains both complete edges, including the left address's high bit.
   assert offset == output.len-int(suffixBytes) # The writer must end exactly before the reserved suffix.
   RepositoryResult[seq[byte]](status: RepositoryError.None, completed: output)
-
 
 proc encodeRepositorySelection*(selection: RepositorySelection,
     limits: RecordLimits): RepositoryResult[seq[byte]] =

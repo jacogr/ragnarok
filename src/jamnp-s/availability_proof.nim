@@ -3,6 +3,7 @@
 
 ## Source-bound CE137/138/140 transfer construction and exact root/coordinate-bound verification use bounded GP Merkle traces.
 ## Prepared/verified outputs and full guarantor serving snapshots own independent immutable bytes; canonical authority stays with the caller.
+
 import std/assertions
 import ./availability_merkle
 export AvailabilityMerkleLimits
@@ -62,38 +63,46 @@ type
     validators, rows, width, shard, row: int
     outerTree, outerPath, innerTree, innerPath: AvailabilityMerkleWork
     proofBytes: int
+
 func error*[T](outcome: AvailabilityTransferResult[T]): AvailabilityTransferError =
   ## Observe status without selecting mutable variant data.
   outcome.status
+
 func value*[T](outcome: AvailabilityTransferResult[T]): T {.requires: outcome.status ==
     AvailabilityTransferError.None.} =
   ## Failed/default results cannot expose prepared or verified prefixes.
   outcome.completed
+
 func sourceError*[T](outcome: AvailabilityTransferResult[
     T]): AvailabilityCommitmentError {.requires: outcome.status ==
     AvailabilityTransferError.SourceFailure.} =
   ## Preserve the actual failed original availability lookup.
   outcome.sourceReason
+
 func geometryError*[T](outcome: AvailabilityTransferResult[
     T]): ErasureLayoutError {.requires: outcome.status ==
     AvailabilityTransferError.GeometryFailure.} =
   ## Preserve the actual GP geometry refusal.
   outcome.geometryReason
+
 func merkleError*[T](outcome: AvailabilityTransferResult[
     T]): AvailabilityMerkleError {.requires: outcome.status ==
     AvailabilityTransferError.MerkleFailure.} =
   ## Preserve an exact non-backend trace refusal.
   outcome.merkleReason
+
 func cryptoError*[T](outcome: AvailabilityTransferResult[
     T]): CryptoError {.requires: outcome.status == AvailabilityTransferError.BackendFailure.} =
   ## Only a real failed maintained primitive exposes its backend cause.
   outcome.cryptoReason
+
 func failed[T](reason: AvailabilityTransferError): AvailabilityTransferResult[T] {.requires:
     reason notin {AvailabilityTransferError.None, AvailabilityTransferError.SourceFailure,
       AvailabilityTransferError.GeometryFailure, AvailabilityTransferError.MerkleFailure,
       AvailabilityTransferError.BackendFailure}.} =
   ## Simple failures contain only their selected reason.
   AvailabilityTransferResult[T](status: reason)
+
 func propagated[T, U](outcome: AvailabilityTransferResult[U]): AvailabilityTransferResult[
     T] {.requires: outcome.status != AvailabilityTransferError.None.} =
   ## Propagate selected failure types without carrying a previously accepted data owner.
@@ -109,6 +118,7 @@ func propagated[T, U](outcome: AvailabilityTransferResult[U]): AvailabilityTrans
   of AvailabilityTransferError.None: AvailabilityTransferResult[T](
       status: AvailabilityTransferError.Uninitialized) # The checked precondition excludes this unreachable alternative.
   else: failed[T](outcome.status)
+
 func merkleFailure[T, U](outcome: AvailabilityMerkleResult[U]): AvailabilityTransferResult[
     T] {.requires: outcome.error != AvailabilityMerkleError.None.} =
   ## Preserve the genuine backend child rather than flattening it into a structural proof error.
@@ -117,78 +127,95 @@ func merkleFailure[T, U](outcome: AvailabilityMerkleResult[U]): AvailabilityTran
         cryptoReason: outcome.cryptoError)
   AvailabilityTransferResult[T](status: AvailabilityTransferError.MerkleFailure,
       merkleReason: outcome.error)
+
 proc copied(bytes: openArray[byte]): seq[byte] =
   ## Copy only a completely bounded retained/public byte range, never borrow external mutable storage.
   result = newSeq[byte](bytes.len)
   for index in 0..<result.len: result[index] = bytes[index]
+
 func valid*(value: PreparedAvailabilityTransfer): bool =
   ## Defaults contain no constructed transfer, including no successful empty body.
   value.data != nil
+
 func valid*(value: VerifiedAvailabilityTransfer): bool =
   ## A default handle grants no authenticated content.
   value.data != nil
+
 func request*(value: PreparedAvailabilityTransfer): AvailabilityRequest {.requires: value.data != nil.} =
   ## Fixed copied coordinates remain bound to the root used during construction.
   let data = value.data
   assert data != nil
   data.request
+
 func request*(value: VerifiedAvailabilityTransfer): AvailabilityRequest {.requires: value.data != nil.} =
   ## A verified payload cannot be rebound to another shard/row by mutating returned facts.
   let data = value.data
   assert data != nil
   data.request
+
 func specifier*(value: PreparedAvailabilityTransfer): AvailabilitySpecifier {.requires: value.data != nil.} =
   ## This original commitment is distinct from remote/canonical inclusion authority.
   let data = value.data
   assert data != nil
   data.specifier
+
 func specifier*(value: VerifiedAvailabilityTransfer): AvailabilitySpecifier {.requires: value.data != nil.} =
   ## The independent expected descriptor is retained with its exact authenticated content.
   let data = value.data
   assert data != nil
   data.specifier
+
 proc bundleShard*(value: PreparedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## Return an independent copy; segment-only transfers deliberately have an empty bundle field.
   let data = value.data
   assert data != nil
   copied(data.bundle)
+
 proc bundleShard*(value: VerifiedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## An independent verified byte copy cannot mutate retained authenticated content.
   let data = value.data
   assert data != nil
   copied(data.bundle)
+
 proc segmentShards*(value: PreparedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## Distribution has ordered rows, segment mode one row, and audit mode no segment data.
   let data = value.data
   assert data != nil
   copied(data.segments)
+
 proc segmentShards*(value: VerifiedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## Copy the exact authenticated ordered row payload.
   let data = value.data
   assert data != nil
   copied(data.segments)
+
 proc justification*(value: PreparedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## Native output freezes independent exact NP tagged proof bytes.
   let data = value.data
   assert data != nil
   copied(data.proof)
+
 proc justification*(value: VerifiedAvailabilityTransfer): seq[byte] {.requires: value.data != nil.} =
   ## An assurer may retain/forward this checked evidence without touching the original peer buffer.
   let data = value.data
   assert data != nil
   copied(data.proof)
+
 func stageLimits(maximum: AvailabilityMerkleLimits,
     work: AvailabilityMerkleWork): AvailabilityMerkleLimits =
   ## Aggregate precharge happens first; each child then receives only its own exact hash/call allowance.
   AvailabilityMerkleLimits(bytes: maximum.bytes, hashes: ElementLimit(work.hashes),
       hashBytes: ByteLimit(work.hashBytes))
+
 func combined(a, b: AvailabilityMerkleWork): AvailabilityMerkleWork =
   ## Both terms are derived from hard bounded geometry; their sums remain below ten MiB of hash work and 4143 calls.
   AvailabilityMerkleWork(hashes: a.hashes+b.hashes, hashBytes: a.hashBytes+b.hashBytes)
+
 func admitted(work: AvailabilityMerkleWork, bytes: uint64, limits: AvailabilityMerkleLimits): bool =
   ## No allocation/hash may precede complete independent memory, call and preimage caps.
   bytes <= uint64(limits.bytes) and work.hashes <= uint64(limits.hashes) and work.hashBytes <=
       uint64(limits.hashBytes)
+
 proc shape(expected: AvailabilitySpecifier, request: AvailabilityRequest): AvailabilityTransferResult[
     TransferShape] =
   ## Reject untrusted dimensions/coordinates before narrowing, multiplication, slicing or protocol-specific extraction.
@@ -236,6 +263,7 @@ proc shape(expected: AvailabilitySpecifier, request: AvailabilityRequest): Avail
     completed.proofBytes += 33+int(inner.value.proofBytes)
   AvailabilityTransferResult[TransferShape](status: AvailabilityTransferError.None,
       completed: completed)
+
 func constructionWork(shape: TransferShape, kind: AvailabilityTransferKind): AvailabilityMerkleWork =
   ## Trace construction plus leaf reconstruction has whole-tree work; bundle hashing is charged separately where data is present.
   result = shape.outerTree
@@ -244,6 +272,7 @@ func constructionWork(shape: TransferShape, kind: AvailabilityTransferKind): Ava
     result = combined(result, AvailabilityMerkleWork(hashes: 1,
         hashBytes: shape.geometry.bundleChunkBytes))
     if kind == AvailabilityTransferKind.Distribution: result = combined(result, shape.innerTree)
+
 func verificationWork(shape: TransferShape, kind: AvailabilityTransferKind): AvailabilityMerkleWork =
   ## Received evidence needs selected-path hashes only, plus full segment-row root work for distribution.
   result = shape.outerPath
@@ -252,6 +281,7 @@ func verificationWork(shape: TransferShape, kind: AvailabilityTransferKind): Ava
     result = combined(result, AvailabilityMerkleWork(hashes: 1,
         hashBytes: shape.geometry.bundleChunkBytes))
     if kind == AvailabilityTransferKind.Distribution: result = combined(result, shape.innerTree)
+
 proc availabilityVerificationInfo*(expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AvailabilityTransferResult[AvailabilityVerificationInfo] =
   ## Persistence and batch callers precharge exact whole-input verification before hashing or copying any received payload.
@@ -269,12 +299,14 @@ proc availabilityVerificationInfo*(expected: AvailabilitySpecifier,
     completed: AvailabilityVerificationInfo(bundleBytes: bundle, segmentBytes: segments,
       proofBytes: uint64(selected.proofBytes), payloadBytes: payload, workspaceBytes: payload*2,
       hashes: work.hashes, hashBytes: work.hashBytes))
+
 func constructionBytes(shape: TransferShape, kind: AvailabilityTransferKind): uint64 =
   ## Include flat source extraction, all temporary/final proof copies and the largest per-row extraction before allocating.
   result = uint64(shape.validators)*64+uint64(shape.proofBytes)*3
   if kind != AvailabilityTransferKind.Segment: result += shape.geometry.bundleChunkBytes
   if kind != AvailabilityTransferKind.Audit: result += uint64(shape.rows*shape.width+shape.width)
   if kind == AvailabilityTransferKind.Segment: result += uint64(shape.width)
+
 proc prepareAvailabilityTransfer*(source: AvailabilityCommitment, request: AvailabilityRequest,
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
   ## Run under the managed graph lease; returned wire/data owners contain no original source alias or native pointer.
@@ -348,9 +380,11 @@ proc prepareAvailabilityTransfer*(source: AvailabilityCommitment, request: Avail
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: PreparedAvailabilityTransfer(data: TransferData(specifier: described.value.specifier,
       request: request, bundle: bundle, segments: rows, proof: proof)))
+
 func valid*(owner: GuarantorAvailability): bool =
   ## Defaults never stand in for a retained empty report or an accepted capacity reservation.
   owner.data != nil
+
 proc guarantorInfo*(owner: GuarantorAvailability): AvailabilityTransferResult[
     GuarantorAvailabilityInfo] =
   ## Copy fixed aggregate facts without exporting the retained shard table.
@@ -358,12 +392,14 @@ proc guarantorInfo*(owner: GuarantorAvailability): AvailabilityTransferResult[
   if data == nil: return failed[GuarantorAvailabilityInfo](AvailabilityTransferError.Uninitialized)
   AvailabilityTransferResult[GuarantorAvailabilityInfo](status: AvailabilityTransferError.None,
     completed: data.info)
+
 proc guarantorBundle*(owner: GuarantorAvailability): AvailabilityTransferResult[seq[byte]] =
   ## Return independently mutable original CE147 bytes; no execution/state alias is needed for later serving.
   let data = owner.data
   if data == nil: return failed[seq[byte]](AvailabilityTransferError.Uninitialized)
   AvailabilityTransferResult[seq[byte]](status: AvailabilityTransferError.None,
     completed: copied(data.bundle))
+
 proc guarantorTransfer*(owner: GuarantorAvailability,
     shard: ErasureShardIndex): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
   ## Full-width lookup returns only an existing immutable source-free CE137 capability; callers freeze aliases through worker retirement.
@@ -374,6 +410,7 @@ proc guarantorTransfer*(owner: GuarantorAvailability,
     return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidIndex)
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: data.shards[int(uint64(shard))])
+
 proc guarantorSegment*(owner: GuarantorAvailability,
     index: ExportSegmentIndex): AvailabilityTransferResult[FetchSegment] =
   ## Join only original systematic shards for one final export; no original execution graph or parity recovery is needed.
@@ -404,11 +441,13 @@ proc guarantorSegment*(owner: GuarantorAvailability,
     for position in 0..<width: segment[ordinal*width+position] = transfer.segments[first+position]
   AvailabilityTransferResult[FetchSegment](status: AvailabilityTransferError.None,
     completed: FetchSegment(segment))
+
 func validGuarantorLimits*(limits: AvailabilityMerkleLimits): bool =
   ## Shared explicit policy validation keeps startup capacity and complete snapshot capture on the same finite domain.
   uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 256'u64*1024*1024 and
     uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 16000000 and
     uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 1024'u64*1024*1024
+
 proc retainGuarantorAvailability*(source: AvailabilityCommitment,
     limits: AvailabilityMerkleLimits,
     existing: openArray[GuarantorAvailability] = []): AvailabilityTransferResult[
@@ -490,6 +529,7 @@ proc retainGuarantorAvailability*(source: AvailabilityCommitment,
   AvailabilityTransferResult[GuarantorAvailability](status: AvailabilityTransferError.None,
     completed: GuarantorAvailability(data: GuarantorAvailabilityData(info: info,
       bundle: original.value, shards: shards)))
+
 proc verifyAvailabilityTransfer*(expected: AvailabilitySpecifier, request: AvailabilityRequest,
     bundle, segments, proof: openArray[byte],
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
@@ -550,16 +590,19 @@ proc verifyAvailabilityTransfer*(expected: AvailabilitySpecifier, request: Avail
     completed: VerifiedAvailabilityTransfer(data: TransferData(specifier: expected,
       request: request,
       bundle: copied(bundle), segments: copied(segments), proof: copied(proof))))
+
 func payloadBytes*(value: PreparedAvailabilityTransfer): uint64 {.requires: value.data != nil.} =
   ## Exact source-free payload size allows serving to preflight all byte copies before extracting any buffer.
   let data = value.data
   assert data != nil
   uint64(data.bundle.len)+uint64(data.segments.len)+uint64(data.proof.len)
+
 func payloadBytes*(value: VerifiedAvailabilityTransfer): uint64 {.requires: value.data != nil.} =
   ## Copied logical retention size permits capacity admission before any byte owner is allocated.
   let data = value.data
   assert data != nil
   uint64(data.bundle.len)+uint64(data.segments.len)+uint64(data.proof.len)
+
 proc detachVerifiedAvailability*(source: VerifiedAvailabilityTransfer,
     maximum: ByteLimit): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
   ## A private cache receives new storage, so an external caller may release its original during a later CPU lease.
@@ -572,6 +615,7 @@ proc detachVerifiedAvailability*(source: VerifiedAvailabilityTransfer,
     completed: VerifiedAvailabilityTransfer(data: TransferData(specifier: data.specifier,
       request: data.request, bundle: copied(data.bundle), segments: copied(data.segments),
           proof: copied(data.proof))))
+
 proc prepareAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: AvailabilityRequest,
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
   ## CE138 derives its exact outer trace and bundle bytes solely from one fully verified CE137 distribution.
@@ -613,6 +657,7 @@ type
     data: nil StoredSegmentData
   StoredSegmentWork* = object ## Complete one-time extraction/index/hash work can be precharged across an entire batch.
     bytes*, hashes*, hashBytes*: uint64
+
 proc storedSegmentWork*(source: VerifiedAvailabilityTransfer): AvailabilityTransferResult[
     StoredSegmentWork] =
   ## Exact metadata precedes all hash calls and indexed-tree allocation.
@@ -630,6 +675,7 @@ proc storedSegmentWork*(source: VerifiedAvailabilityTransfer): AvailabilityTrans
         selected.rows*2-1)*32,
       hashes: selected.innerTree.hashes+1,
       hashBytes: selected.innerTree.hashBytes+uint64(data.bundle.len)))
+
 proc prepareStoredSegmentProofs*(source: VerifiedAvailabilityTransfer,
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[StoredSegmentProofs] =
   ## One bundle hash and one full indexed row tree replace repeated whole-tree hashing for each requested row.
@@ -654,6 +700,7 @@ proc prepareStoredSegmentProofs*(source: VerifiedAvailabilityTransfer,
   AvailabilityTransferResult[StoredSegmentProofs](status: AvailabilityTransferError.None,
     completed: StoredSegmentProofs(data: StoredSegmentData(source: data, tree: tree.value,
         bundleHash: digest.value)))
+
 proc storedAvailabilityRow*(source: VerifiedAvailabilityTransfer, row: ExportErasureIndex,
     maximum: ByteLimit): AvailabilityTransferResult[seq[byte]] =
   ## Exact row selection copies only the requested authenticated shard, without cloning every stored row.
@@ -671,6 +718,7 @@ proc storedAvailabilityRow*(source: VerifiedAvailabilityTransfer, row: ExportEra
   AvailabilityTransferResult[seq[byte]](status: AvailabilityTransferError.None,
     completed: copied(data.segments.toOpenArray(selected.row*selected.width, (
         selected.row+1)*selected.width-1)))
+
 proc storedAvailabilitySegment*(proofs: StoredSegmentProofs, row: ExportErasureIndex,
     maximum: ByteLimit): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
   ## Indexed paths need no additional hashing; coordinates remain bound to the private original distribution.

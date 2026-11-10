@@ -3,6 +3,7 @@
 
 ## Stable directory-relative managed storage IO keeps one persistent LOCK inode across file epochs.
 ## Callers own the directory namespace; no child name comes from untrusted manifest strings.
+
 import std/[assertions]
 import std/posix/posix
 import ../file/errors as file_errors

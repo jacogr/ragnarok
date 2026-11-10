@@ -15,6 +15,15 @@ from native_fixtures import PROVIDERS
 
 
 # Require complete, typed records so misspelled fields cannot silently weaken a native profile.
+CREDIT_WITNESS_SUITE = 'pvm_read_cycle_credits_x86'
+CREDIT_WITNESS_FLAGS = frozenset({
+    'pvmX86Jit', 'pvmX86ResidentProof', 'pvmReadCycleBudgetWitness',
+    'pvmReadCycleRoleWitness', 'pvmReadCycleCreditWitness', 'pvmX86ReadCycleResident',
+    'pvmX86ReadCycleBudgetRegisters', 'pvmX86ReadCycleRoleRegisters', 'pvmX86ReadCycleCredits',
+})
+CREDIT_ONLY_FLAGS = CREDIT_WITNESS_FLAGS - {'pvmX86Jit', 'pvmX86ResidentProof'}
+
+
 def validate_requirements(records):
     if not isinstance(records, dict) or set(records) != set(UNIT_SUITES):
         # Every discovered source keeps its explicit execution profile; stale profiles also fail.
@@ -28,7 +37,7 @@ def validate_requirements(records):
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
-                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness'},
+                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness'} | CREDIT_ONLY_FLAGS,
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
@@ -44,6 +53,11 @@ def validate_requirements(records):
             values = record[field]
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
+        defines = set(record['defines'])
+        if name == CREDIT_WITNESS_SUITE or defines & CREDIT_ONLY_FLAGS:
+            # All credit flags belong to one exact Linux x86 witness profile.
+            if name != CREDIT_WITNESS_SUITE or defines != CREDIT_WITNESS_FLAGS:
+                raise ValueError('Incomplete or conflicting x86 credit witness profile: '+name)
         provider = record.get('provider')
         variant = record.get('variant', 'default')
         if record['prepared']:
@@ -116,8 +130,8 @@ def load_requirements(folder):
 NATIVE_REQUIREMENTS = load_requirements(Path(__file__).with_suffix(''))
 
 
-# Non-codec suites retain isolated execution, including profiles with no native libraries.
+# Non-codec suites and the explicit credit witness retain isolated execution.
 # The last ordered library remains the primary profile; no second registration is needed.
 UNIT_LINKS = {name: record['libraries'][-1] if record['libraries'] else None
               for name, record in sorted(NATIVE_REQUIREMENTS.items())
-              if record['directory'] != 'codec'}
+              if record['directory'] != 'codec' or name == CREDIT_WITNESS_SUITE}

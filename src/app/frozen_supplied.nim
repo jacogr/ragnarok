@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze unqualified complete declarations under whole-copy quotas, bound to one actual collected supplied target.
+
 import ./chain
 import ./collected/supplied/[plan as collected_supplied_plan, state as collected_supplied_state]
 import ../state/current/logical as current_logical

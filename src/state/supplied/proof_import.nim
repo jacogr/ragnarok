@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Import authenticated complete state and publish supplied logical serialization only after complete-root, global, manifest and raw-key qualification all succeed.
+
 import ../proof/[state_import as proof_state_import, view as proof_view]
 import ../[store, global_snapshot, manifest]
 import ./logical_inventory as supplied_logical_inventory

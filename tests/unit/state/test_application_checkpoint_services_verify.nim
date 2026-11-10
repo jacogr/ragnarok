@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Services verification owns independent decoded state and preserves its distinct joined receipt through a canonical execution lease.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/services
@@ -15,6 +16,7 @@ import ../../support/application_checkpoint_services_context
 const
   SeedPath = "application-checkpoint-services-verify-chain.json"
   FileName = "application-checkpoint-services-verify"
+
 proc main() {.raises.} =
   ## Verification touches no canonical graph and must not be reported as durable publication or canonical recovery.
   defer:

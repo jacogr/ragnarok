@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen supplied plans and logical consumers remain untouched across actual cancelled Done preparation/proof leases and joined shutdown.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../support/[collected_native_context, collected_supplied_context,
     collected_logical_context,
@@ -17,14 +18,17 @@ import ../../../src/app/logical/proof as logical_proof
 import ../../../src/state/current/logical as current_logical
 import ../../../src/state/proof/plan as proof_plan
 import ../../../src/codec/bounded
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Synchronized scalar waits never copy or retire canonical graph aliases.
+
 proc waitProof(worker: var StateProofWorker) =
   ## Done is observed without ending the native graph lease.
   let start = getMonoTime()
   while worker.phase != ProofWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20, "proof worker timed out"
     discard pauseMicros(1000)
+
 proc cycle(preparation: var PreparationWorker, proof: var StateProofWorker,
     chain: var ApplicationChain, input: var CurrentBlockInput, fixture: CollectedNativeFixture,
         plan: CollectedSuppliedPlan,
@@ -49,6 +53,7 @@ proc cycle(preparation: var PreparationWorker, proof: var StateProofWorker,
   assert proof.collect(proofTicket).kind == ProofWorkerCompletionKind.Cancelled
   assert executeCollectedSupplied(chain, plan, fixture.declarations).error ==
       CollectedSuppliedError.None
+
 proc main() {.raises.} =
   ## Real reusable native workers share canonical graphs with persistent frozen plans and complete logical owners under plain ARC.
   let fixture = collectedNativeFixture()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Manifest epochs, snapshot identities and journal pairs remain exact across all byte corruption.
+
 import std/[assertions, syncio]
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/database_identity

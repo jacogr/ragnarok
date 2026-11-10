@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exercise independent selectors, exact completion authority, cancellation/reset and nonwrapping IDs.
+
 import std/[assertions, syncio]
 include ../../../src/rpc/proof_requests
 

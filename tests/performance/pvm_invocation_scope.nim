@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One encompassing process-CPU/wall boundary shared by every canonical PVM workload.
+
 import std/[assertions, monotimes, syncio]
 import ../../src/pvm/step
 import ../support/pvm_owner_record
@@ -33,7 +34,7 @@ proc fullInvocationHeader*() =
   echo "PVM_MEASURE_SCOPE,1,full-invocation-v1,consume-before-reuse-v1,process-cpu"
 
 proc startInvocationRuntime*(): InvocationRuntime =
-  ## A standalone process owns one demand-started application runtime, shared by its code owners.
+  ## Start one application runtime before timing code admission or passing a program.
   result = newNativeRuntime()
   try:
     assert start(result)
@@ -48,7 +49,7 @@ proc closeInvocationRuntime*(runtime: var InvocationRuntime, label: string,
   assert close(runtime)
   runtime = default(InvocationRuntime)
   let stopped = beginInvocation()
-  echo "PVM_RUNTIME_OWNER,1,", label, ",application-process,demand-started,", codeOwners
+  echo "PVM_RUNTIME_OWNER,1,", label, ",application-process,prestarted,", codeOwners
   echo "PVM_RUNTIME_CLOSE,1,", label, ",", stopped.cpu-closing.cpu, ",",
       stopped.wall-closing.wall
   echo "PVM_OWNER_WINDOW,1,", label, ",", stopped.cpu-ownerStart.cpu, ",",

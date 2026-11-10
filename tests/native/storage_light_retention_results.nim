@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic plan/result misuse guards have genuine initialized empty-knowledge positive controls.
+
 import std/[cmdline, syncio]
 import ../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
 import ../../src/storage/database_identity

@@ -59,9 +59,12 @@ proc ins(code: openArray[byte], starts: openArray[int], pc = 0'u64): Instruction
 # Default handles/results cannot fabricate a valid empty program or payload.
 let defaultResult = default(ProgramResult[Program])
 assert defaultResult.error == ProgramError.Uninitialized
+let defaultHeaderResult = default(ProgramResult[InstructionHeader])
+assert defaultHeaderResult.error == ProgramError.Uninitialized
 assert codeLength(default(Program)).error == ProgramError.InvalidOwner
 assert instruction(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 assert instructionOpcode(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
+assert instructionHeader(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 assert jumpTarget(default(Program), JumpIndex(0)).error == ProgramError.InvalidOwner
 assert basicBlockStart(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 
@@ -126,7 +129,7 @@ for op in 0..255:
     let owned = read(blob([byte(op), 0], [0, 1])).value
     assert instructionOpcode(owned, CodeAddress(0)).value == byte(op)
 
-# A cheap opcode query retains independent marker membership across bitmap bytes and copied input ownership.
+# Copied opcode/header queries retain literal marker boundaries across bitmap bytes and input mutation.
 block opcodeLocations:
   var code = newSeq[byte](33)
   for i in 0..<33:
@@ -143,12 +146,20 @@ block opcodeLocations:
       # Complete decoders and the scalar query agree, but explicit marker expectations remain independent.
       let opcode = instructionOpcode(owner, CodeAddress(pc))
       let decoded = instruction(owner, CodeAddress(pc))
+      let header = instructionHeader(owner, CodeAddress(pc))
       assert opcode.error == decoded.error
       if pc in [0'u64, 8, 16, 24, 32]:
         assert opcode.error == ProgramError.None and opcode.value == 0
+        assert header.error == ProgramError.None
+        assert uint64(header.value.address) == pc and header.value.opcode == 0
+        assert header.value.skip == (if pc < 32: 7 else: 0)
+        assert instructionHasFallthrough(header) == (pc < 32)
       else:
         assert opcode.error == ProgramError.InvalidInstruction
+        assert header.error == ProgramError.InvalidInstruction
     assert instructionOpcode(owner, CodeAddress(high(uint64))).error ==
+        ProgramError.InvalidInstruction
+    assert instructionHeader(owner, CodeAddress(high(uint64))).error ==
         ProgramError.InvalidInstruction
     assert instructionByte(owner, CodeAddress(1)).value == 0
     assert instructionByte(owner, CodeAddress(high(uint64))).value == 0
@@ -163,6 +174,11 @@ for gap in 0..26:
     # Accepted skip distances preserve both instruction and basic-block membership.
     assert instruction(parsed.value, CodeAddress(0)).value.skip == gap
     assert not basicBlockStart(parsed.value, CodeAddress(uint64(gap + 1))).value
+    if gap == 24:
+      # The structural header uses the capped marker distance without reading any padded operands.
+      let header = instructionHeader(parsed.value, CodeAddress(0))
+      assert header.error == ProgramError.None and header.value.skip == 24
+      assert header.value.opcode == 2 and instructionHasFallthrough(header)
 
 # All thirteen operand forms: explicit values catch register naming and immediate-width mistakes.
 assert ins([2'u8, 0], [0, 1]).shape == OperandShape.NoArguments
@@ -351,5 +367,12 @@ for padding in 0..24:
   assert instructionTargetStartsBlock(instruction(owner, CodeAddress(0)))
 let absentFallthrough = read(blob([1'u8], [0])).value
 assert not instructionTargetStartsBlock(instruction(absentFallthrough, CodeAddress(0)))
+let finalHeader = instructionHeader(absentFallthrough, CodeAddress(0))
+assert finalHeader.error == ProgramError.None and finalHeader.value.opcode == 1
+assert finalHeader.value.skip == 0 and not instructionHasFallthrough(finalHeader)
+# Paper framing admits a final conditional without a successor; header lookup must not reject it.
+let conditionalHeader = instructionHeader(read(blob([81'u8], [0])).value, CodeAddress(0))
+assert conditionalHeader.error == ProgramError.None and conditionalHeader.value.opcode == 81
+assert not instructionHasFallthrough(conditionalHeader)
 
 echo "PVM program decoding passed"

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Derive report and guarantee transcript only through genuine original refinement, bundle and availability provenance.
+
 import ./work_submission
 import ../codec/bounded
 import ../chain/parameters
@@ -36,41 +37,51 @@ type
     of ReportFailure: reportReason: ComputedReportError
     of TranscriptFailure: transcriptReason: ComputedGuaranteeError
     else: discard # An uninitialized result has neither a source nor an invented failure child.
+
 func error*(outcome: WorkReportResult): WorkReportError =
   ## Scalar failure inspection does not expose successful owners.
   outcome.status
+
 func value*(outcome: WorkReportResult): ComputedGuaranteeTranscript {.requires: outcome.status ==
     WorkReportError.None.} =
   ## A transcript retains its own computed report, which retains the entire original execution/availability chain.
   outcome.completed
+
 func bundleError*(outcome: WorkReportResult): AuditableBundleError {.requires: outcome.status ==
     WorkReportError.BundleFailure.} =
   ## Preserve only the actual failed original bundle encoder.
   outcome.bundleReason
+
 func layoutError*(outcome: WorkReportResult): ErasureLayoutError {.requires: outcome.status ==
     WorkReportError.LayoutFailure.} =
   ## Invalid shard geometry and local layout budgets retain their genuine distinction.
   outcome.layoutReason
+
 func bundleEncodingError*(outcome: WorkReportResult): BundleErasureError {.requires: outcome.status ==
     WorkReportError.BundleEncodingFailure.} =
   ## Parity encoding failure carries no systematic/parity prefix.
   outcome.bundleEncodingReason
+
 func exportEncodingError*(outcome: WorkReportResult): ExportErasureError {.requires: outcome.status ==
     WorkReportError.ExportEncodingFailure.} =
   ## Preserve the selected export/tree/coding error without inventing a nested unavailable cause.
   outcome.exportEncodingReason
+
 func availabilityError*(outcome: WorkReportResult): AvailabilityCommitmentError {.requires: outcome.status ==
     WorkReportError.AvailabilityFailure.} =
   ## No accepted validator-leaf prefix escapes availability refusal.
   outcome.availabilityReason
+
 func reportError*(outcome: WorkReportResult): ComputedReportError {.requires: outcome.status ==
     WorkReportError.ReportFailure.} =
   ## Canonical report serialization errors do not expose earlier availability ownership.
   outcome.reportReason
+
 func transcriptError*(outcome: WorkReportResult): ComputedGuaranteeError {.requires: outcome.status ==
     WorkReportError.TranscriptFailure.} =
   ## Preserve actual hashing/resource failures without a signature or partial message.
   outcome.transcriptReason
+
 proc workReportMatches*(transcript: ComputedGuaranteeTranscript, header: WorkSubmissionHeader,
     executionState: StateStoreSnapshot, parameters: Parameters): bool =
   ## Follow the private computed report's actual execution chain before comparing original package/core/map identity.

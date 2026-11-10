@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default completion results cannot expose success or a fabricated failed child alternative.
+
 import std/cmdline
 import ../../src/state/accumulation/current/completion as accumulation_current_completion
 let outcome = default(CurrentAccumulationCompletionResult)

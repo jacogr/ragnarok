@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical full requests include cold code/runtime admission and every call restoration/publication.
+## Modern host fixtures explicitly select copied-CPU callbacks; legacy/foreign callbacks keep owned snapshots.
 
 import std/[assertions, syncio, envvars, monotimes]
 import ./pvm_invocation_scope
@@ -23,21 +24,32 @@ proc word(data: string, at, width: int): uint64 =
     # Framing is independent of the production operand decoder.
     result = result or (uint64(byte(data[at + i])) shl (8 * i))
 
-proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.raises: [].} =
-  ## Test host replies perform the same increment/sum as the Rust benchmark embedding.
-  let cpu = machineInfo(suspension.machine).value
+proc respondScalar(context: var HostContext, call: HostCallId,
+    cpu: MachineInfo): ScalarHostResponse {.raises: [].} =
+  ## Canonical register-only calls receive copied CPU state, matching the Rust embedding's needed capability.
   var registers = cpu.registers
-  if uint64(suspension.hostCall) == 13:
+  if uint64(call) == 13:
     # Host dispatch and reply construction are part of the measured embedding workload.
     registers[7] = RegisterValue(uint64(registers[7]) + 1)
   else:
     # Unexpected host identifiers are failures, never accepted timing samples.
-    assert uint64(suspension.hostCall) == 14
+    assert uint64(call) == 14
     registers[8] = RegisterValue(uint64(registers[8]) + uint64(registers[7]))
   inc context.calls
-  HostResponse(action: HostAction.Continue, gas: cpu.gas,
+  ScalarHostResponse(action: HostAction.Continue, gas: cpu.gas,
       gasDeficit: GasDeficit(0),
-    registers: registers, memory: memoryOf(suspension.machine).value)
+    registers: registers)
+
+func scalarBenchmarkHost(call: HostCallId): bool =
+  ## Explicit caller capability: only the two authored register-only callbacks select scalar dispatch.
+  uint64(call) in [13'u64, 14'u64]
+
+proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.raises: [].} =
+  ## Legacy execution and explicit foreign engines keep the original retainable snapshot contract.
+  let cpu = machineInfo(suspension.machine).value
+  let response = respondScalar(context, suspension.hostCall, cpu)
+  HostResponse(action: response.action, gas: response.gas, gasDeficit: response.gasDeficit,
+    registers: response.registers, memory: memoryOf(suspension.machine).value)
 
 template runBenchmark(source: Machine, context: var HostContext, kind: uint64,
     steps: ExecutionStepLimit, hosts: HostCallLimit, cycles: GasCycleLimit,
@@ -88,8 +100,9 @@ except:
   quit 2
 assert data.len >= 12 and data[0..7] == "PVMBEN01" and word(data, 8, 4) == 11
 var cursor = 12
-var invocationRuntime = default(InvocationRuntime)
-var processOwnerStart = default(InvocationClock)
+let processOwnerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
 for row in 0..<11:
   # Bound guest inputs before timing or narrowing; malformed corpora cannot create measurements.
   assert data.len - cursor >= 273
@@ -131,9 +144,6 @@ for row in 0..<11:
       originalLayout.add(PageDescription(index: PageIndex(uint32(16 + offset)),
           access: PageAccess.ReadWrite))
   let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
-  if fullInvocation and row == 0:
-    processOwnerStart = coldCall
-    if requestedBackend == "jit": invocationRuntime = startInvocationRuntime()
   let preparation = getMonoTime().ticks
   var wire: seq[byte] = @[]
   for i in 0..<int(length):
@@ -147,12 +157,20 @@ for row in 0..<11:
     # Aligned/crossing guests touch the same first pair; sparse cases retain additional mapped canaries.
     assert address in [0x10000'u64, 0x10fff'u64]
     # Sparse cases admit 64 two-page pairs separated by unmapped holes; all retained bytes validate.
-    for page in 0..<(if kind == 4: 128 else: 2):
-      let offset = if kind == 4: (page div 2)*4 + page mod 2 else: page
-      var image = PageImage(index: PageIndex(uint32(16 + offset)), access: PageAccess.ReadWrite,
-        bytes: default(array[4096, byte]))
-      for i in 0..<4096: image.bytes[i] = 33
-      images.add(image)
+    if kind == 4:
+      # The exact sparse count is known before staging. Fill the final input slots in order.
+      images = newSeq[PageImage](128)
+      for page in 0..<images.len:
+        let offset = (page div 2)*4 + page mod 2
+        images[page].index = PageIndex(uint32(16 + offset))
+        images[page].access = PageAccess.ReadWrite
+        for i in 0..<4096: images[page].bytes[i] = 33
+    else:
+      for page in 0..<2:
+        var image = PageImage(index: PageIndex(uint32(16 + page)), access: PageAccess.ReadWrite,
+          bytes: default(array[4096, byte]))
+        for i in 0..<4096: image.bytes[i] = 33
+        images.add(image)
     for i in 0..<8:
       # Initial scalar bytes are copied from the independent fixture before execution begins.
       let offset = int(address - 0x10000) + i
@@ -230,11 +248,15 @@ for row in 0..<11:
       else: getMonoTime().ticks
     var context = HostContext(calls: 0)
     let evaluated = if modern:
-      # Both public paths include their fresh invocation memory and immutable publication.
+      # Kind 5 at 1,000 iterations keeps 4,001 attempts, below the 4,096 native invocation floor.
+      # Admission requires both this call's budget and retained proven work to meet the floor.
+      # Proven work keeps the maximum from a single completed call, never a lifetime sum.
+      # The modern host role explicitly consumes scalar CPU callbacks; final owned publication stays timed.
+      # Guest attempts, callback/context arithmetic and complete memory oracles are unchanged.
       if kind == 2:
         executeWithHost(source, context, respond, ExecutionStepLimit(
             perLoop*iterations+1),
-          HostCallLimit(2*iterations), prepared)
+          HostCallLimit(2*iterations), prepared, scalarBenchmarkHost, respondScalar)
       else: execute(source, ExecutionStepLimit(perLoop*iterations+1), prepared)
     else:
       runBenchmark(source, context, kind, ExecutionStepLimit(

@@ -2,19 +2,19 @@
 
 ## Scope and decision
 
-Implement a bounded `std/websocket` transport bridge at the unchanged Nimony pin
-`63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` (0.6.3). No Gray Paper wire interpretation
+Implement a bounded `std/websocket` transport bridge at the November 9 Nimony pin
+`fd9742bf1939a1b754144506e89a8acb0e7b747a` (0.6.3). No Gray Paper wire interpretation
 changes or dependency patches are involved. The default CLI/Services transport remains the
 existing RPC listener; this draft adds an explicitly selected dispatcher API and stock split-half
 adapters, exercised together on the real wire.
 
 **Keep this PR draft.** Real subscription delivery and dispatcher lease exclusion now have
-implementation witnesses. Local cancellation, complete framing/deadline parity, loopback listener
-ownership and process-wide runtime integration remain gates before switching Services.
-HTTP message retirement also needs upstream qualification under NIM-009.
+implementation witnesses. Local cancellation, framing and deadline parity, and process-wide
+runtime integration remain gates before switching Services. #2099 fixed the HTTP message
+retirement leak tracked as [Nimony #2940](https://github.com/nim-lang/nimony/issues/2940).
 The macOS listener sets `SO_NOSIGPIPE` through its public descriptor before accept.
 Its accepted connections survive slow-peer closure with catchable send errors and joined cleanup.
-These results do not establish Linux behavior or the behavior of newer upstream revisions.
+Runtime qualification here is on macOS ARM64.
 
 ## Implemented boundary
 
@@ -49,9 +49,9 @@ join those tasks before releasing bridge/state storage or stopping the shared ru
 | Fairness | With one peer's receive buffer constrained and its writer sending 512 frames of 16 KiB, the other seven writers finish and their peers receive the exact update frame while the slow writer remains pending. | The bridge now bounds admission, mailboxes and per-turn dispatch; its real RPC fixture isolates a held slow-writer credit while a healthy subscriber progresses. Qualify sustained load and scheduler behavior. A finite eight-peer progress witness is not a scheduler fairness guarantee or a measured latency bound. |
 | Cancellation | Aborting completed writers leaves all eight idle readers pending. Closing the independent peers releases the positive fixture's readers; all owners retire before pool shutdown. The slow-writer closure is tested in a separate process. | Establish an owner-safe, bounded local stop path for idle reads, blocked writes, queued notifications and shutdown without relying on remote cooperation. |
 | Canonical-state exclusion | Probe tasks carry only owned transport halves, owned strings and pointers to fixed-lifetime atomic scalar observations. They import no application/query/canonical-state modules. | The implemented bridge imports only atomics. Real dispatcher tests cover lease refusal/resume, publication, reused sessions and stale completions. Qualify complete Services/proof-worker lifecycle on supported hosts. |
-| Process lifecycle | Import initializes the shared I/O runtime; shutdown stops its process-wide pool. Calling init again leaves the pool stopped. | Integrate startup and joined shutdown with all existing owners. An RPC listener cannot independently stop a process-global runtime used by other services. |
-| Listener admission | The stock `listenHttp`/`listenTcp` path binds IPv4 wildcard; the probe's clients connect over loopback. | Preserve the production RPC listener's loopback-only binding through supported public APIs before adoption. |
-| HTTP owner retirement | The stock handshake constructs `HttpMsg` owners; [NIM-009](nimony-reports-2026-11-08/http-message-retirement.md) records their retirement failure at this pin. | Qualify the upstream fix and complete connection cleanup; successful delivery alone does not discharge this dependency gate. |
+| Process lifecycle | Import initializes the shared I/O runtime. Shutdown joins the workers, and calling ring init again leaves the worker count at zero. The standalone pool can be restarted separately. | Integrate startup and joined shutdown with all existing owners. An RPC listener cannot independently stop a process-global runtime used by other services. |
+| Listener admission | The RPC stock wire suite checks that the bound socket is IPv4 loopback and that startup refuses an occupied port. | Integrate admission and listener shutdown with the process owner. |
+| HTTP owner retirement | The November 9 pin retains zero bytes in the original retirement probe. #2055 verified stock HTTP parsing and peer cleanup on this pin. | Check complete stock transport owner cleanup when integrating Services. |
 | Peer failure | An unconfigured macOS listener reproduces SIGPIPE. Setting `SO_NOSIGPIPE` before accept makes the slow-peer assessment retire all owners cleanly through the stock error path. | Carry this ordinary Darwin socket configuration into a future transport owner. A configured listener must pass clean retirement; upstream patching is not required for this setting. Qualify supported hosts separately. |
 
 The existing RPC server deliberately services at most one accept, one bounded read, one frame
@@ -119,8 +119,8 @@ defaults is separate from using the demonstrated public listener configuration h
 
 The bounded bridge and real stock-wire subscription path are implemented. Next, qualify an
 owner-safe local cancellation API, independent deadlines and failure-close metadata with the
-updated public library; then implement the loopback listener owner and process-wide Services
-startup/join integration. Do not activate the replacement until those gates and NIM-009 pass.
+public library. The stock wire suite now runs through a loopback-only listener. Process-wide
+Services startup and joined shutdown remain separate qualification work.
 The synchronous slot-reuse and stop-admission regressions pin concrete interleavings; concurrent
 producer tests exercise actual mailbox contention. These witnesses do not claim complete
 scheduler fairness or local cancellation of stock socket operations.

@@ -15,16 +15,19 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-bootstrap"
+
 proc policy(): StateStoreLimits =
   ## Small complete maps exercise present-empty and binary values without protocol transition assumptions.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc clearFiles() =
   ## Explicit test-only teardown removes heads between independent bootstrap attempts; production never auto-resets.
   for suffix in [".head", ".0", ".1"]:
     var path = Prefix & suffix
     discard posix.unlink(path.toCString()) # Stable lock inode is preserved across every active-owner cycle.
+
 proc cycle(bank: var CheckpointBank, snapshot: StateStoreSnapshot) =
   ## A complete bootstrap, guarded reinitialization refusal and restored map all retire before ARC observation.
   clearFiles()
@@ -32,6 +35,7 @@ proc cycle(bank: var CheckpointBank, snapshot: StateStoreSnapshot) =
   assert bank.initialize(snapshot, ByteLimit(1000)).error == CheckpointBankError.AlreadyInitialized
   assert bank.restore(snapshot.commitment.root, policy(), ByteLimit(1000)).error ==
       CheckpointBankError.None
+
 proc main() =
   ## Real rename refusal and malformed existing heads preserve fail-closed explicit initialization semantics.
   clearFiles()

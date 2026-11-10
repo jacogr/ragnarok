@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic codec payload guards retain default/failed reasons and genuine valid controls.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/storage/record_codec
 import ../../src/storage/node/records as node_records

@@ -3,6 +3,7 @@
 
 ## Preserve authenticated initial-round global ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
+
 import ../../../codec/state/[authorization as state_authorization, safrole as state_safrole]
 import ./phase as accumulation_global_phase
 import ../provision/stage as accumulation_provision_stage

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent literal code hashes, complete source association, history boundaries and copy/work policies qualify the full-state catalogue.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[state_inventory_context, arc_evidence]
 import ../../src/state/[code_availability, inventory]
@@ -9,15 +10,19 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     requests as state_requests]
 include ./composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive counters and force real content backend failures after source capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe complete preflight before any selected content hash.
 const limits = CodeAvailabilityLimits(services: ElementLimit(2), visits: ElementLimit(4),
     descriptors: ByteLimit(65536), perCode: ByteLimit(3), totalCodeBytes: ByteLimit(3))
+
 proc captured(chapters: seq[seq[byte]], rows: seq[StateService]): StateInventory =
   ## Match all explicitly supplied declarations to their genuine complete physical source before auditing code.
   captureStateInventory(inventoryManifest(chapters, rows), rows, inventoryCaptureLimits).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CodeAvailabilityResult[StateCodeAvailability])

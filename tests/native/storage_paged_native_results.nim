@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic native-result/receipt guards and live-owner destructor guards use real synchronized positive controls.
+
 import std/[assertions, cmdline, syncio]
 import ../support/paged_native_fixture
 import ../../src/storage/paged/[store as paged_store, io as paged_io, stream as paged_stream,
@@ -9,8 +10,10 @@ import ../../src/storage/paged/[store as paged_store, io as paged_io, stream as 
 import ../../src/storage/file/errors as file_errors
 import ../../src/storage/managed/manifest as managed_manifest
 import ../../src/storage/[state_proof, durability]
+
 proc pid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each standalone probe has an isolated ignored namespace.
+
 proc main() =
   ## Dynamic CLI origins keep guards on actual native runtime paths.
   let member = paramStr(1)

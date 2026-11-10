@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic stream-result/metadata guard probes share real successful admission and lookup controls.
+
 import std/[assertions, cmdline, syncio]
 import ../support/paged_reference
 import ../../src/storage/paged/[stream as paged_stream, codec as paged_codec]
@@ -9,6 +10,7 @@ import ../../src/storage/[database_identity, state_proof]
 import ../../src/storage/light/state_cache as light_state_cache
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc policy(): PagedStreamLimits =
   ## Small positive limits keep every control on the actual admission path.
   let maximum = ElementLimit(100000)
@@ -18,6 +20,7 @@ proc policy(): PagedStreamLimits =
     workingBytes: ByteLimit(100000), cachePages: ElementLimit(1),
     work: PagedWorkLimits(ioCalls: maximum, producerCalls: maximum, pageHashes: maximum,
       proofs: maximum, nodes: maximum, readBytes: bytes, writeBytes: bytes, valueBytes: bytes))
+
 proc source(bytes: seq[byte]): PagedInput =
   ## Borrow a complete immutable test artifact; no result retains these synchronous closures.
   proc read(offset: PagedOffset, output: var openArray[byte]): bool {.closure.} =
@@ -29,6 +32,7 @@ proc source(bytes: seq[byte]): PagedInput =
     output = uint64(bytes.len)
     true
   PagedInput(read: read, extent: extent)
+
 proc main() =
   ## Dynamic CLI origins force actual runtime guards rather than constant-folded compile-time failures.
   let member = paramStr(1)

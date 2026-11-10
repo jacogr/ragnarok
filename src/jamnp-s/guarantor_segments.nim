@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Source-free original-export proof trees authenticate retained systematic shards against their genuine signed segment root.
+
 import ./availability_proof
 import ../codec/bounded
 from ../codec/work/report import SegmentRoot, SegmentCount
@@ -29,21 +30,26 @@ type
     of SourceFailure: sourceReason: AvailabilityTransferResult[FetchSegment]
     of BackendFailure: cryptoReason: CryptoError
     else: discard # A failed/default result exposes no completed tree.
+
 func error*[T](outcome: GuarantorSegmentResult[T]): GuarantorSegmentError =
   ## Select success only after reading this immutable reason.
   outcome.status
+
 func value*[T](outcome: GuarantorSegmentResult[T]): T {.requires: outcome.status ==
     GuarantorSegmentError.None.} =
   ## Only full success carries fixed accounting or an authenticated proof owner/path.
   outcome.completed
+
 func sourceError*[T](outcome: GuarantorSegmentResult[T]): AvailabilityTransferResult[
     FetchSegment] {.requires: outcome.status == GuarantorSegmentError.SourceFailure.} =
   ## Return only a genuine failed systematic-export extraction.
   outcome.sourceReason
+
 func cryptoError*[T](outcome: GuarantorSegmentResult[T]): CryptoError {.requires: outcome.status ==
     GuarantorSegmentError.BackendFailure.} =
   ## Backend detail exists only after an actual failed maintained hash call.
   outcome.cryptoReason
+
 proc guarantorSegmentPlan*(source: GuarantorAvailability): GuarantorSegmentResult[
     GuarantorSegmentInfo] =
   ## Bound every count/product and charge complete work before tree allocation or source extraction.
@@ -63,6 +69,7 @@ proc guarantorSegmentPlan*(source: GuarantorAvailability): GuarantorSegmentResul
     completed: GuarantorSegmentInfo(root: expected.segmentRoot, exports: expected.segmentCount,
       depth: depth, retainedBytes: capacity*2*32, workspaceBytes: 3'u64*4104+4108+68,
       hashes: count+capacity-1, hashBytes: count*4108+(capacity-1)*68))
+
 proc prepareGuarantorSegments*(source: GuarantorAvailability,
     limits: AvailabilityMerkleLimits): GuarantorSegmentResult[GuarantorSegmentTree] =
   ## Canonical GP leaf/node domains and zero-hash padding must reproduce the signed export root before any proof can escape.
@@ -119,6 +126,7 @@ proc prepareGuarantorSegments*(source: GuarantorAvailability,
   GuarantorSegmentResult[GuarantorSegmentTree](status: GuarantorSegmentError.None,
     completed: GuarantorSegmentTree(data: SegmentTreeData(source: source, info: info,
       capacity: capacity, tree: tree)))
+
 proc guarantorSegmentPath*(owner: GuarantorSegmentTree,
     index: ExportSegmentIndex): GuarantorSegmentResult[seq[SegmentRoot]] =
   ## Emit the same root-first opposite-child hashes as the genuine original export commitment.

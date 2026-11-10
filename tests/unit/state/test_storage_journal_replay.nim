@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict fused journal replay preserves checksum, generation, graph and detached context boundaries.
+
 # @@Verification={"arc": "storage_journal_replay_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -12,10 +13,13 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/journal_codec
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset genuine cryptographic attempt counters.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count outer frame integrity separately from inner physical hashes.
+
 proc cycle() =
   ## Both schemas enforce contiguous generation and own successful revision/context bytes independently.
   let limits = storageLimits()

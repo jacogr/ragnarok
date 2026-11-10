@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -59,7 +62,6 @@ proc memory(): Memory =
     for at in 0..<4096:
       pages[index].bytes[at] = byte((at*17+index*31+3) mod 256)
   captureMemory(pages, PageLimit(2)).value
-
 
 proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
@@ -145,7 +147,6 @@ proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
     result.add(if code < 120: 1'u8 else: 17'u8)
     immediate(result, if code < 120: address else: 0'u64)
 
-
 let mapped = memory()
 var registers = default(RegisterFile)
 registers[0] = RegisterValue(0xffff0000'u64)
@@ -176,7 +177,6 @@ for noops in [0, 1, 2, 7]:
 assert cases == 10560
 echo "PASS direct entry /", cases, "/ full and partial reservations / leading noops / first host-fault-panic-halt / unsigned gas / paid suffix / failed prices / restored barriers"
 
-
 var branchCases = 0
 for mode in [0, 1, 2]:
   # Forward, backward-loop and invalid-arm programs keep both taken and untaken branch behavior observable.
@@ -206,6 +206,46 @@ for mode in [0, 1, 2]:
 assert branchCases == 4320
 echo "PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU"
 
+var immediateBranchCases = 0
+for mode in [0, 1, 2]:
+  # A real forward arm, backward edge and operand-byte target distinguish validation from comparison.
+  for descriptor in [0x11'u8, 0x21'u8, 0xff'u8]:
+    let destination = min(12, int(descriptor mod 16))
+    for word in [3'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64]:
+      # Encode four comparison bytes, independently of the four-byte relative destination.
+      var branch = @[83'u8, byte(64+destination)]
+      immediate(branch, word)
+      immediate(branch, if mode == 0: 15'u64 elif mode == 1: 0xfffffffd'u64 else: 1'u64)
+      let source = owner([@[131'u8, descriptor, 1'u8], branch,
+        @[51'u8, 7'u8, 17'u8], @[50'u8, 0'u8], @[51'u8, 7'u8, 34'u8], @[50'u8, 0'u8]])
+      # The existing convenience cache permits legacy native handlers and would miss this checked selector.
+      var admitted = prepareFlatPlan(source, GasCycleLimit(100000), defaultFlatLimits(),
+        allowNative = false)
+      assert admitted.error == FlatError.None
+      let plan = takeValue(admitted)
+      let priced = blockGas(source, CodeAddress(0), GasCycleLimit(100000))
+      assert priced.error == GasError.None
+      let charge = uint64(priced.value)
+      assert charge > 0 and charge < high(uint64)
+      for bits in [0'u64, 2'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64, high(uint64)]:
+        var selected = registers
+        selected[1] = RegisterValue(bits)
+        selected[2] = RegisterValue(bits xor 0xffffffff'u64)
+        selected[12] = RegisterValue(bits)
+        for pc in [0'u64, 3'u64]:
+          # Independent second entry must not repeat the arithmetic, even after a fused first entry warmed the stream.
+          for paid in [false, true]:
+            for gas in [0'u64, charge-1, charge, charge+1, high(uint64)]:
+              let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(pc),
+                gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+              for quota in [0'u64, 1, 2, 3, 7, 16, high(uint64)]:
+                # Negative comparison words can keep the backward edge live for billions of iterations.
+                let budget = if mode == 1 and quota == high(uint64): 17'u64 else: quota
+                compare(input, plan, budget, 100000)
+                compare(input, plan, budget, 100000, true)
+                inc immediateBranchCases
+assert immediateBranchCases == 30240
+echo "PASS checked immediate branch /30240cases / encoded signed32 words / aliases / independent entry / paid gas-quota / cold+cached invalid arms"
 
 var shapeCases = 0
 for family in [0, 1]:
@@ -235,7 +275,6 @@ for family in [0, 1]:
             inc shapeCases
 assert shapeCases == 3888
 echo "PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU"
-
 
 proc compareCycle(source: Program, mapped: Memory, registers: RegisterFile): int =
   ## Every concrete cycle graph sees the same gas/quota cross-check, including a warm stream before short prefixes.
@@ -298,7 +337,6 @@ cycleCases+=compareCycle(diamond, mapped, registers)
 assert cycleCases == 12096
 echo "PASS charged cycles /12096cases / concrete rotations-wrong edges-two-block exits / different records-same shape / every gas and quota boundary"
 
-
 var predicateCases = 0
 let branchBits = [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64,
   0x100000000'u64, 0x7fffffffffffffff'u64, 0x8000000000000000'u64, high(uint64)]
@@ -324,7 +362,6 @@ for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 17
             inc predicateCases
 assert predicateCases == 51840
 echo "PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas"
-
 
 var suffixCases = 0
 for family in [0, 1, 2]:

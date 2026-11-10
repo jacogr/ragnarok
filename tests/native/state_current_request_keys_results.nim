@@ -2,23 +2,28 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict default cache/result guards with an actual nonempty signed/current key derivation control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/current_request_keys_context
 import ../../src/state/current/request_keys as current_request_keys
 import ../../src/state/inventory
 import ../../src/codec/report_owned
+
 proc extract(value: CurrentRequestKeyResult[CurrentRequestKeys]) {.noinline.} =
   ## Defaults and failed captures expose no partial key cache.
   discard value.value
+
 proc reason(value: CurrentRequestKeyResult[CurrentRequestKeys]) {.noinline.} =
   ## Only actual failed key derivation grants its typed original request reason.
   discard value.requestError
+
 proc observe(mode: string, value: CurrentRequestKeys) {.noinline.} =
   ## No default cache owner grants a source, info or physical key.
   case mode
   of "source": discard value.requestKeysSource.value
   of "key": discard value.currentRequestKeyAt(InventoryServiceIndex(0), InventoryRequestIndex(0)).value
   else: discard value.requestKeysInfo.value
+
 proc main() {.raises.} =
   ## Positive control builds full actual original/current nonempty state and bounded cached key derivation.
   case paramStr(1)

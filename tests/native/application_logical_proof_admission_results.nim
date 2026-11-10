@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed retained logical proof submission preserves typed admission failures and actual cancelled-Done collection/join ownership.
+
 import std/[assertions, syncio, cmdline, monotimes, times, envvars]
 import std/posix/posix
 import ../../src/app/services
@@ -18,14 +19,17 @@ import ../../src/chain/[genesis, provider]
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_logical_services_context,
     managed_supplied_context, current_logical_proof_context, accumulation_current_candidate_context]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Poll only scalar native phase under a bounded monotonic deadline.
+
 proc waitProof(owner: var Services) =
   ## Done keeps the managed graph lease closed until exact collection or joined shutdown.
   let start = getMonoTime()
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc main() {.raises.} =
   ## Default result probes fail only at exact guards; positive controls use actual collected uninstalled successor provenance.
   let mode = if paramCount() > 0: paramStr(1) else: "control"

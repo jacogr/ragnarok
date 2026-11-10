@@ -3,6 +3,7 @@
 
 ## Source-free CE134 client framing sends two bounded messages and accepts exactly one96-byte response plus FIN.
 ## Native callbacks perform bounded I/O only; report-hash/signature verification belongs to the managed worker.
+
 import std/assertions
 import ./[sharing_wire, read_stream]
 import ../quic/transport
@@ -23,35 +24,45 @@ type
     output: seq[byte]
     offset, used: int
     input: array[SharingResponseBytes+4, byte]
+
 func error*(outcome: SharingClientResult): ReadError =
   ## Read refusal without writable discriminator access.
   outcome.status
+
 func value*(outcome: SharingClientResult): UntrustedSharingReply {.requires: outcome.status ==
     ReadError.None.} =
   ## Framing success grants only complete untrusted bytes.
   outcome.completed
+
 func sharingClientFailure*(reason: ReadError): SharingClientResult =
   ## The parent can return a reason but cannot manufacture a completed reply.
   SharingClientResult(status: reason)
+
 func valid*(reply: UntrustedSharingReply): bool =
   ## A default fixed array is never an implicit completed response.
   reply.ready
+
 func bytes*(reply: UntrustedSharingReply): array[SharingResponseBytes,
     byte] {.requires: reply.ready.} =
   ## Return independent fixed bytes with no native or canonical owner alias.
   reply.response
+
 func failed*(route: SharingClientRoute): bool =
   ## Native reset/error revokes host extraction immediately.
   route.configured and route.failure != ReadError.None
+
 func ready*(route: SharingClientRoute): bool =
   ## Both exact FINs and the one complete fixed response precede extraction, including after native close.
   route.configured and not route.failed and route.sentFin and route.receivedFin and not route.taken
+
 func bufferedBytes*(route: SharingClientRoute): int =
   ## Prefix and body credit remains charged until host collection or physical retirement.
   route.used
+
 func writtenBytes*(route: SharingClientRoute): int =
   ## Output progress refreshes scalar parent deadlines only.
   route.offset
+
 proc writeMessage(output: var seq[byte], cursor: var int, message: openArray[byte]) =
   ## Caller-owned independent buffers have already passed complete-size preflight; subtraction guards every prefix/copy extent.
   assert cursor >= 0 and cursor <= output.len
@@ -62,6 +73,7 @@ proc writeMessage(output: var seq[byte], cursor: var int, message: openArray[byt
   for octet in message:
     output[cursor] = octet
     inc cursor
+
 proc configureSharing*(route: var SharingClientRoute, request: SharedWorkRequest): ReadError =
   ## The parent reserves the complete output before calling; independent bounded copies contain no canonical state.
   if route.configured: return ReadError.Busy
@@ -76,6 +88,7 @@ proc configureSharing*(route: var SharingClientRoute, request: SharedWorkRequest
   writeMessage(output, cursor, body)
   route = SharingClientRoute(configured: true, failure: ReadError.None, output: output)
   ReadError.None
+
 proc bindSharingClient*(route: var SharingClientRoute, stream: NativeStream): ReadError =
   ## One serialized locally opened bidirectional stream must fulfill the pre-reserved intent.
   if not route.configured or route.failed or route.taken or route.sentFin or route.receivedFin:
@@ -87,6 +100,7 @@ proc bindSharingClient*(route: var SharingClientRoute, stream: NativeStream): Re
   wantRead(stream, 1)
   wantWrite(stream, 1)
   ReadError.None
+
 proc refuse(route: var SharingClientRoute, reason: ReadError) =
   ## The parent retains physical quota and bytes through the eventual native close callback.
   route.failure = reason
@@ -94,6 +108,7 @@ proc refuse(route: var SharingClientRoute, reason: ReadError) =
     wantRead(route.stream, 0)
     wantWrite(route.stream, 0)
     streamAbort(route.stream)
+
 proc event*(route: var SharingClientRoute, stream: NativeStream, kind: cint, budget: ByteLimit) =
   ## One4096-byte write or at most100-byte read per callback; no hash, signature, state or guest work occurs here.
   if stream == NativeStream(nil) or route.stream != stream: return
@@ -154,6 +169,7 @@ proc event*(route: var SharingClientRoute, stream: NativeStream, kind: cint, bud
     if route.input[0] != byte(SharingResponseBytes) or route.input[1] != 0 or route.input[2] != 0 or
         route.input[3] != 0:
       route.refuse(ReadError.InvalidRequest) # Exact E4(96) is the only legal response prefix; no peer length controls allocation.
+
 proc take*(route: var SharingClientRoute): SharingClientResult =
   ## Only complete framing transfers a fixed immutable transcript, once.
   if route.failed: return sharingClientFailure(route.failure)

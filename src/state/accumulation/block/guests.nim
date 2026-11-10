@@ -3,6 +3,7 @@
 
 ## Bind current guest execution to genuine initial-round admission, posterior entropy and chain shape.
 ## Coverage remains private preparation; complete selected publication owns the subsequent state transition.
+
 import ../residency
 import ../../../chain/parameters
 import ../../../codec/header

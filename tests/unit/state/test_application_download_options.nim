@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A finite positive download count remains atomic, command-specific and independent of storage or ancestry.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
+
 proc main() =
   ## Every explicit count is parsed before IO; invalid reparses must erase previous usable requests.
   var selected = default(Options)

@@ -19,6 +19,7 @@ import ../../support/[application_candidate_context, accumulation_completion_con
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refusal observer proves reception/backpressure perform no primitive work.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Read actual primitive call counts, independently of application result status.
 

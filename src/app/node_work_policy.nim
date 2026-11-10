@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Versioned explicit node work startup: v1 remains unsigned; selecting the complete v2 profile enables bounded guaranteeing with the actual TLS identity.
+
 import std/[strutils, syncio]
 import ./work_policy
 import ./work_policy/types
@@ -48,49 +49,62 @@ type
 include ./work_policy/parser
 include ./work_policy/fields
 include ./work_policy/guarantor_fields
+
 func error*(outcome: NodeWorkPolicyResult): WorkPolicyError =
   ## Read the selected immutable status before accessing activation data.
   outcome.status
+
 func value*(outcome: NodeWorkPolicyResult): NodeWorkPolicy {.requires: outcome.status ==
     WorkPolicyError.None.} =
   ## Only complete version-specific validation exposes startup policy.
   outcome.completed
+
 func fieldName*(outcome: NodeWorkPolicyResult): string {.requires: outcome.status !=
     WorkPolicyError.None.} =
   ## Diagnostics identify only a bounded field name, never key or policy file contents.
   outcome.field
+
 func valid*(policy: NodeWorkPolicy): bool =
   ## No file or a default value never activates work handlers.
   policy.ready
+
 func guaranteeing*(policy: NodeWorkPolicy): bool =
   ## Legacy v1 remains unsigned even when its submission policy is ready.
   policy.ready and policy.guaranteeing
+
 func dispatchPolicy*(policy: NodeWorkPolicy): WorkDispatchPolicy {.requires: policy.ready.} =
   ## Submission limits remain the same explicit values used by both local and shared work.
   policy.dispatch
+
 func exchangePolicy*(policy: NodeWorkPolicy): WorkExchangePolicy {.requires: policy.ready and
     policy.guaranteeing.} =
   ## This accessor cannot expose an unsigned profile as ready signing configuration.
   policy.exchange
+
 func distributionPolicy*(policy: NodeWorkPolicy): WorkDistributionPolicy {.requires: policy.ready and
     policy.guaranteeing.} =
   ## Complete v2 enables bounded receipt and delivery using the same explicit eligibility policy.
   policy.distribution
+
 func acquisitionPolicy*(policy: NodeWorkPolicy): WorkAcquisitionPolicy {.requires: policy.ready and
     policy.guaranteeing.} =
   ## CE133 original-segment acquisition never borrows network defaults.
   policy.acquisition
+
 func recoveryPolicy*(policy: NodeWorkPolicy): WorkRecoveryPolicy {.requires: policy.ready and
     policy.guaranteeing.} =
   ## Original-assurer recovery has independent explicit CPU and network ceilings.
   policy.recovery
+
 func refused(reason: WorkPolicyError, field = ""): NodeWorkPolicyResult =
   ## No unsuccessful path carries a ready dispatcher or signer setup.
   NodeWorkPolicyResult(status: reason, field: field)
+
 proc encodeGuarantorPolicy*(settings: NodeWorkSettings): string =
   ## Emission lists every input value; it neither supplies budgets nor loads private keys.
   result = GuarantorPolicyHeader & "\n"
   guarantorPolicyFields(settings, result, writeField)
+
 proc decodeNodeWorkPolicy*(text: string, logging = default(LogWriter)): NodeWorkPolicyResult =
   ## Exact declared versions share lexical validation; there is no header guessing or partially configured fallback.
   if text.len > WorkPolicyBytes: return refused(WorkPolicyError.LimitExceeded)
@@ -161,6 +175,7 @@ proc decodeNodeWorkPolicy*(text: string, logging = default(LogWriter)): NodeWork
   NodeWorkPolicyResult(status: WorkPolicyError.None, completed: NodeWorkPolicy(ready: true,
     guaranteeing: true, dispatch: dispatch, exchange: exchange, distribution: distribution,
     acquisition: acquisition, recovery: recovery))
+
 proc loadNodeWorkPolicy*(path: string, logging = default(
     LogWriter)): NodeWorkPolicyResult {.raises.} =
   ## Read cap+1 bytes and close before policy activation or private TLS key loading can begin.

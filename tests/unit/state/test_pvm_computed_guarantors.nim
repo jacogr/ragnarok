@@ -18,10 +18,13 @@ import ../../support/[pvm_computed_guarantors, pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject actual hash provider refusal only after original signed/PVM sources are complete.
+
 proc after(successes: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after actual completed hash calls to exercise prior-table rollback.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe real shuffle attempts and query purity.
+
 proc expect[T](outcome: ComputedGuarantorResult[T], reason: ComputedGuarantorError) =
   ## Compare precise selected refusal before application extraction.
   assert outcome.error == reason, "computed guarantor reason: " & $outcome.error
@@ -143,12 +146,14 @@ var copied = ninth
 copied.validator.ed25519 = default(StateEdKey)
 assert array[32, byte](coreOne.computedGuarantorAt(GuaranteeSlot(8), GuarantorIndex(
     8)).value.validator.ed25519) == array[32, byte](ninth.validator.ed25519)
+
 proc detached(): ComputedGuarantors =
   ## Retain original computation and posterior tables after every caller source handle retires.
   let source = guarantorFixture(shrink = true, core = 1)
   prepareComputedGuarantors(source, guarantorLimits()).value
 let retained = detached()
 assert uint64(retained.computedGuarantorAt(GuaranteeSlot(8), GuarantorIndex(8)).value.core) == 1
+
 proc cycle(source: RosterEligibleComputedReport, limits: ComputedGuarantorLimits) =
   ## Retire full current/prior tables and both early/late refused planning alternatives.
   let done = prepareComputedGuarantors(source, limits).value

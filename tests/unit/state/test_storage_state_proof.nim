@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete roots and detached record paths witness bounded authenticated lookups and hostile proofs.
+
 # @@Verification={"arc": "storage_state_proof_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -10,24 +11,30 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/records as node_records
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject actual provider refusal and reset its exact attempt counter.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after an exact successful node prefix, including the final long-value hash.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Verification work counts actual node/preimage hashes, independent of complete-map size.
 type Fixture = object ## Separate complete-map root authority and detached full-hash physical records.
   root: StateRoot
   records: seq[TrieRecord]
+
 proc limits(): StateProofLimits =
   ## The protocol path domain and a small raw-value policy are explicit caller ceilings.
   StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))
+
 proc key(index: int): StateKey =
   ## Leading ordinals cover both directions, while the last byte preserves distinct full identities.
   var raw = default(array[31, byte])
   raw[0] = byte(index and 255)
   raw[30] = byte(index shr 8)
   StateKey(raw)
+
 proc fixture(entries: openArray[StateEntry]): Fixture =
   ## The independent flat calculator, rather than proof traversal, establishes the expected complete root.
   reset(0)
@@ -38,6 +45,7 @@ proc fixture(entries: openArray[StateEntry]): Fixture =
   assert array[32, byte](root) == array[32, byte](trie.commitment.root)
   Fixture(root: root, records: exportFullTrie(trie, TrieExportLimits(records: TrieNodeLimit(10000),
     valueBytes: ByteLimit(65536))).value.records)
+
 proc path(source: Fixture, query: StateKey): StateProof =
   ## A test-only linear physical-record producer follows complete child identities, independently of proof links.
   result = StateProof()
@@ -60,6 +68,7 @@ proc path(source: Fixture, query: StateKey): StateProof =
         inc depth
         break # Exactly one complete identity selects the next path record.
     assert found # Complete exported maps contain every nonempty physical child.
+
 proc check(source: Fixture, query: StateKey, present: bool, expected: seq[byte]) =
   ## Each result binds the exact trusted root/query and distinguishes absent from present-empty.
   var proof = path(source, query)
@@ -81,6 +90,7 @@ proc check(source: Fixture, query: StateKey, present: bool, expected: seq[byte])
   proof.nodes.setLen(0)
   proof.value.setLen(0)
   assert lookup.kind == (if present: StateLookupKind.Present else: StateLookupKind.Absent)
+
 proc mappings() =
   ## Real finite maps exercise root/right full hashes, high-bit left hashes and inline/long values.
   for count in [0, 1, 2, 65]:
@@ -100,6 +110,7 @@ proc mappings() =
     for entry in entries: check(source, entry.key, true, entry.value)
     for query in [key(1), key(254), key(255), key(300)]:
       check(source, query, false, @[]) # These full keys are absent from every authored map.
+
 proc hostile() =
   ## Every byte/path/value mutation must fail without returning any lookup authority.
   let query = key(0)
@@ -171,6 +182,7 @@ proc hostile() =
     assert calls() == cint(successful+1) # The last attempt hashes the long raw value, after all node links match.
   reset(0)
   assert verifyStateProof(source.root, query, proof, limits()).error == StateProofError.None
+
 proc depthAndCanonical() =
   ## The last serialized key bit permits 248 branches plus one leaf, never another bit access.
   var last = default(array[31, byte])

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One immutable snapshot retains its exact complete map after owner close and releases at scope exit.
+
 import std/[assertions, syncio]
 import ../../support/[storage_lifetime_samples, storage_allocations]
 

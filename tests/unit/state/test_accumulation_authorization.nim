@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_authorization_arc_release"}
 
 ## Genuine signed source histories bind pool use, posterior queue indexing and exact private complete-map publication.
@@ -19,7 +20,9 @@ import ../../support/[accumulation_activity_context, accumulation_provision_inte
 
 # Faults start only after every genuine signature, guest and earlier private candidate already exists.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc limits(): AccumulationAuthorizationLimits =

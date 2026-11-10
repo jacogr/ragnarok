@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_transfer_arc_release"}
 
 ## Authored transfer programs verify conditional fees, deferred balances and immutable outgoing/checkpoint owners.
@@ -25,8 +26,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Fail only after real fixture construction, retaining the maintained primitive implementation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Detect writes/hashing during pure fee evaluation or unaffordable successful rows.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Exercise cleanup after successful candidate-tree child hashes.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -388,11 +391,13 @@ let unaffordable = source(credit = price(valid)+575)
 failHash(1)
 assert run(unaffordable, capacity = 0).value.exit == StepExit.OutOfGas and hashCalls() == 0, "unaffordable valid transfer performs no hash or append"
 failHash(0)
+
 # All four modes preserve actual payer identity and select independent source/destination pools.
 proc fundedActor(supervisor = 42'u32, incarnation = 43'u32): ServiceMetadata =
   ServiceMetadata(balance: AccountBalance(100), supervisorBalance: AccountBalance(100),
       created: AccountSlot(43), supervisor: ServiceIndex(supervisor),
           supervisorCreated: AccountSlot(incarnation))
+
 proc payer(balance = 100'u64, protected = 100'u64, supervisor = 42'u32): StateEntry =
   serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(balance: AccountBalance(balance),
       supervisorBalance: AccountBalance(protected), created: AccountSlot(7),
@@ -496,6 +501,7 @@ let poor = run(poorGas, capacity = 0)
 assert poor.value.exit == StepExit.OutOfGas and hashCalls() == 0,
     "unaffordable protected foreign transfer neither hashes nor appends"
 failHash(0)
+
 # Zero memo selects immediate credit with base-only gas and no outgoing capacity or copying.
 proc supervisedTarget(supervisor = 42'u32, incarnation = 43'u32,
     liquid = 77'u64, protected = 55'u64): ServiceMetadata =

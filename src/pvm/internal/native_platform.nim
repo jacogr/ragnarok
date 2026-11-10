@@ -1,11 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Thin machine lowering and OS executable-memory mechanics. Admission/lifecycle policy lives in native_pipeline.
 
 import std/assertions
 import ../machine
 import ./[native_ir, native_control]
 import ./native_read_body
+when NativeReadCycleEnabled:
+  import ./native_read_cycle
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -54,14 +57,17 @@ type NativeImage* = object ## Exclusive published image with its exact call ABI.
 
 proc `=copy`*(destination: var NativeImage, source: NativeImage) {.error.}
   ## Executable authority cannot be duplicated by copying its POD handle.
+
 proc `=dup`*(source: NativeImage): NativeImage {.error.}
   ## Exactly one image owner releases the mapping.
+
 proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   ## Primitive move hooks do not clear raw pointers; disarm explicitly.
   image.handle = nil
   image.offset = 0
   image.bytesValue = 0
   image.kindValue = NativeKind.PurePrefix
+
 proc `=destroy`*(image: NativeImage) =
   ## Default, failed and moved-from images own no executable storage.
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
@@ -210,3 +216,63 @@ when NativeCheckedReadEnabled:
     let status = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
     if status != NativeReadSuccess and status != NativeReadRefusal: abortNativeReceipt()
     status == NativeReadSuccess
+
+when NativeReadCycleEnabled:
+  proc lowerNativeReadCycle*(cycle: NativeReadCycle): NativeImage =
+    ## Publish one complete region under its own ABI and image size limit.
+    ## For the admitted opcode profile the conservative bounds are 2,500 bytes on ARM64
+    ## and 3,132 on x86-64, including the return and either register checkpoint.
+    result = default(NativeImage)
+    if not nativePlatformSupported() or not cycle.read.complete: return
+    when defined(pvmX86Jit):
+      var encoded = x86ReadCycleInstructions(cycle)
+      const unitBytes = 1
+    else:
+      var encoded = armReadCycleInstructions(cycle)
+      const unitBytes = 4
+    let count = encoded.len
+    if count == 0 or count > NativeImageByteLimit div unitBytes: return
+    let handle = createNativeArena()
+    if handle == nil: return
+    let offset = arenaPublish(handle, addr encoded[0], uint32(count))
+    if offset < 0:
+      arenaRelease(handle)
+      return
+    result = NativeImage(handle: handle, offset: uint32(offset),
+      bytesValue: uint64(count) * uint64(unitBytes), kindValue: NativeKind.ConnectedReadCycle)
+
+  proc enterNativeReadCycle*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeCycleContext): uint32 =
+    ## The region borrows the same private memory and register file for this call alone.
+    assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
+    if not image.ready or image.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
+    arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+
+  when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+    proc enterNativeReadCycleAbiProof*(image: NativeImage, registers: var RegisterFile,
+        context: var NativeCycleContext): uint32 =
+      ## Check all six SysV preserved registers around the actual connected entry.
+      assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
+      if not image.ready or image.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
+      let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
+      assert tagged shr 32 == 1
+      uint32(tagged and 0xffffffff'u64)
+
+    when defined(pvmReadCycleCreditWitness):
+      proc copyReadCycleRx(handle: nil pointer, offset: uint32,
+          output: ptr byte, count: uint32): cint {.cdecl,
+          importc: "pvm_x86_resident_copy_proof", header: "x86_resident_access_proof.h".}
+        ## Reuse the existing checked copy from the published executable alias.
+
+      proc enterNativeReadCycleAbiProof*(image: NativeImage, registers: var RegisterFile,
+          context: var NativeCycleContext, expected: openArray[byte]): uint32 =
+        ## Verify the exact published bytes before entering that same owner with the SysV sentinel.
+        assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+        assert expected.len > 0 and expected.len <= NativeImageByteLimit
+        assert uint64(expected.len) == image.codeBytes
+        var actual = default(array[NativeImageByteLimit, byte])
+        assert copyReadCycleRx(image.handle, image.offset, addr actual[0], uint32(expected.len)) == 1
+        for index in 0..<expected.len:
+          # No native call happens until the complete executable extent matches the emission.
+          assert actual[index] == expected[index]
+        enterNativeReadCycleAbiProof(image, registers, context)

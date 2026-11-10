@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current finalization exposes neither a map prefix nor inactive child reasons.
+
 import std/cmdline
 import ../../src/state/accumulation/current/[finalization as accumulation_current_finalization,
     accounts as accumulation_current_accounts]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine signed configured state supplies immutable selected heads for proof-query integration tests.
+
 import std/[assertions, envvars, syncio]
 import ../../src/codec/[report_owned, bounded]
 import ../../src/chain/[genesis, provider]
@@ -10,16 +11,19 @@ import ../../src/app/chain
 import ../../src/state/trie_proof
 import ../../src/state/proof/view as proof_view
 import ./application_candidate_context
+
 proc queryContext*(): SeedFixture {.raises.} =
   ## Missing or malformed pinned input must fail, never fabricate a selected empty root.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var wire = newSeq[byte](raw.len)
   for i, octet in raw: wire[i] = byte(octet)
   fixture(decodeOwnedReport(wire, 2).value)
+
 proc querySelection*(context: SeedFixture): BlockSnapshotResult {.raises.} =
   ## Retain the real complete head after temporary application initialization has retired.
   let chain = initialized(context)
   chain.chainView.bestBlock
+
 proc queryLimits*(): ProofQueryLimits =
   ## Test policies are explicit, including conservative complete-map hash work.
   ProofQueryLimits(map: policy().trie,

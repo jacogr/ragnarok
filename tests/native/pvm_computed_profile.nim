@@ -12,6 +12,7 @@ import ../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_looku
 proc check[T](outcome: ComputedProfileResult[T], reason: ComputedProfileError) =
   ## Confirm selected alternatives before deliberate unsuccessful extraction.
   assert outcome.error == reason, "computed profile guard control"
+
 proc refusedProjection(mode: string): BlockSnapshotResult {.noinline.} =
   ## Keep failed context selection dynamic so the runtime contract is tested beyond compile-time variant rejection.
   if mode == "projection": return unavailableGenesis() # Absent/default alternative.

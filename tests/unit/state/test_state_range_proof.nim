@@ -2,19 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete-map roots authenticate range pages; boundary-only omissions and off-path witnesses fail.
+
 import std/[assertions, syncio]
 import ../../../src/state/[range_proof, trie_proof]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout, trie]
+
 proc key(first: byte): StateKey =
   ## Distinct leading bytes expose both left truncated commitments and right full-width commitments.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): StateTrieLimits =
   ## Small deterministic fixtures retain independent node, item and value ceilings.
   StateTrieLimits(items: ElementLimit(16), perValue: ByteLimit(256),
     totalValueBytes: ByteLimit(4096), nodes: TrieNodeLimit(4096))
+
 proc witnesses(full: seq[StateEntry], start: StateKey, page: seq[StateEntry]): seq[
     EncodedStateNode] =
   ## Build root-to-start/last paths from the complete source, not the offered partial page.
@@ -33,6 +37,7 @@ proc witnesses(full: seq[StateEntry], start: StateKey, page: seq[StateEntry]): s
       for previous in result:
         if array[64, byte](previous) == array[64, byte](node): duplicate = true
       if not duplicate: result.add(node) # Preserve parent-before-child order while coalescing shared path nodes.
+
 proc copied(source: seq[StateEntry]): seq[StateEntry] =
   ## Negative mutations never alter the trusted full mapping or a previously verified owner's private bytes.
   result = @[]
@@ -40,6 +45,7 @@ proc copied(source: seq[StateEntry]): seq[StateEntry] =
     var bytes: seq[byte] = @[]
     for octet in entry.value: bytes.add(octet)
     result.add(StateEntry(key: entry.key, value: bytes))
+
 proc deepPrefixes() =
   ## Shared246-bit key prefixes exercise virtual singleton expansion at the key-depth boundary.
   for leading in [0'u8, 255'u8]:
@@ -66,6 +72,7 @@ proc deepPrefixes() =
         finish, policy())
     assert partial.error == RangeProofError.None and not partial.value.complete,
       "deep partial ranges never inherit completeness from authenticated endpoints"
+
 proc main() =
   ## Authentication checks every covered interior subtree rather than just the two endpoint lookups.
   var full: seq[StateEntry] = @[]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine signed current receipts and explicitly supplied known namespaces for host consumer witnesses.
+
 import std/[assertions, envvars, syncio]
 import ./[current_repeated_logical_context, collected_logical_context, accumulation_current_candidate_context]
 import ../../src/app/[chain, preparation_worker]
@@ -22,12 +23,14 @@ type CollectedNativeFixture* = object ## Test descriptors retain immutable genui
   chain*: ApplicationChain
   receipt*: PreparationCompletion
   declarations*: seq[StateService]
+
 proc nativeBase*(): OwnedReport {.raises.} =
   ## Read only the independently pinned native report fixture selected by the supported runner.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for i in 0..<raw.len: bytes[i] = byte(raw[i])
   decodeOwnedReport(bytes, 2).value
+
 proc successorDeclarations*(update: PreparedCurrentChainUpdate,
     original: openArray[StateService]): seq[StateService] =
   ## Retain only supplied raw namespaces; actual known metadata bytes are decoded under the exact current width.
@@ -41,6 +44,7 @@ proc successorDeclarations*(update: PreparedCurrentChainUpdate,
     assert decoded.value.consumed == raw.len
     row.metadata = decoded.value.metadata
     result.add(row)
+
 proc collectNative*(chain: var ApplicationChain, wire: openArray[byte],
     ancestors: openArray[OwnedHeader], policies: CurrentCandidateLimits): PreparationCompletion {.raises.} =
   ## All aliases remain untouched during the actual fixed-address worker lease and retire only after collection/join.
@@ -52,6 +56,7 @@ proc collectNative*(chain: var ApplicationChain, wire: openArray[byte],
   let ticket = worker.submit(input, id, chain).value
   worker.waitPreparationDone()
   worker.collect(ticket)
+
 proc collectedNativeFixture*(): CollectedNativeFixture {.raises.} =
   ## Actual native execution supplies every opaque receipt; no completed private result is synthesized.
   let fixture = repeatedLogicalFixture(nativeBase())

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine ordinary/dispute/ticket/epoch current successors qualify all sixteen globals under their original derived profiles.
+
 # @@Verification={"arc": "state_current_globals_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
@@ -11,14 +12,17 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/state/store
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hash primitives only after genuine current execution finishes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Global framing and identity projection must not rehash completed current state.
 const
   projection = CurrentProfileLimits(validators: ElementLimit(1024), bytes: ByteLimit(65536))
   limits = GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(10000),
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))
+
 proc verify(source: PreparedCurrentChainUpdate) =
   ## Derive exact complete extents independently from cached immutable lookups, then test exact and one-short policies.
   let profile = captureCurrentProfile(source, projection).value
@@ -55,10 +59,12 @@ proc verify(source: PreparedCurrentChainUpdate) =
   assert items.error == CurrentGlobalsError.GlobalFailure
   assert items.globalFailure.error == GlobalStateError.ChapterFailure
   assert items.globalFailure.chapterError == StateCompositionError.LimitExceeded
+
 proc cycle(profile: DerivedCurrentProfile) =
   ## Retire all copied chapter storage and qualified owner aliases each cycle.
   let source = qualifyCurrentGlobals(profile, limits).value
   assert source.qualifiedGlobals.value.globalByteLength.value > 0
+
 proc main() {.raises.} =
   ## All input fixtures execute through the existing authenticating current candidate entry point.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

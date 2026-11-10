@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_state_arc_release"}
 
 ## Atomic state application checks exact-parent authority, private failure rollback and one-pass composition.
@@ -20,7 +21,9 @@ import ../../support/[accumulation_activity_context, accumulation_completion_con
 
 # Failure injection begins only after the real signed execution successor and expected map exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type

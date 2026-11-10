@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A distinct local selection schema anchors light journal epochs without full-image or full-state fallback.
+
 import std/assertions
 import ../[snapshot as light_snapshot, delta as light_delta]
 import ../../database_identity

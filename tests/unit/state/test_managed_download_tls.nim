@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS downloads preserve confirmed progress, complete retained maps and explicit finality through migration and per-child compaction.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../support/[application_download_chain, application_download_command_context,
@@ -16,18 +17,21 @@ import ../../../src/codec/[bounded, report_owned]
 const
   ChainPath = "managed-download-chain.json"
   PolicyPath = "managed-download-policy.conf"
+
 proc extra(path: string, migration = ""): seq[string] =
   ## Native command selection is explicit and retains the existing fixed execution/write policy.
   result = @["--state-storage", "disk", "--state-db", path, "--state-layout", "managed",
       "--state-compact-bytes", "1"]
   if migration.len > 0:
     result.add("--state-migrate-from"); result.add(migration)
+
 proc configured(path: string): Options =
   ## Synchronous inspection disables automatic maintenance and does not mutate test-owned forensic staging files.
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes", "1000",
     "--state-write-bytes", "1000000", "--state-storage", "disk", "--state-db", path,
     "--state-layout", "managed", "--state-compact-bytes", "0"], result)
+
 proc checkPrefix(context: DownloadChainFixture, completed: int, path: string,
     finalized = -1) {.raises.} =
   ## Independent complete-map expectations cover every rolling entry and separately retained finality.
@@ -51,6 +55,7 @@ proc checkPrefix(context: DownloadChainFixture, completed: int, path: string,
   else:
     assert view.finalizedBlock.error == GenesisError.Unavailable
   owner.close()
+
 proc main() {.raises.} =
   ## Signed real children are authored before any forked responders or Services worker starts.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

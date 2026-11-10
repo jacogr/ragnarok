@@ -4,4 +4,5 @@
 # @@Verification={"arc":"current_namespace_policy_arc_release"}
 
 ## Execute the complete feature control through the supported native runner.
+
 import ../../native/current_namespace_policy_results

@@ -2,29 +2,37 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current capsule payload guards retain an actually prepared current producer as positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
 import ../../src/state/current/checkpoint as current_checkpoint
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/[bounded, report_owned]
+
 proc extract(outcome: CurrentCheckpointResult[CurrentUpdateCheckpoint]) {.noinline.} =
   ## Default/source/encoding failure grants no retained capsule.
   discard outcome.value
+
 proc reason(outcome: CurrentCheckpointResult[CurrentUpdateCheckpoint]) {.noinline.} =
   ## Wrong alternatives grant no encoding cause.
   discard outcome.encodingError
+
 proc info(source: CurrentUpdateCheckpoint) {.noinline.} =
   ## A default owner grants no copied identities.
   discard source.currentCheckpointInfo.value
+
 proc bytes(source: CurrentUpdateCheckpoint) {.noinline.} =
   ## A default owner grants no exported bytes.
   discard source.copyCurrentCheckpoint(ByteLimit(524288)).value
+
 proc finality(source: CurrentUpdateCheckpoint) {.noinline.} =
   ## A default owner grants no finalized identity.
   discard source.currentCheckpointFinalized.value
+
 proc origin(source: CurrentUpdateCheckpoint) {.noinline.} =
   ## A default owner grants no producer provenance.
   discard source.currentCheckpointSource.value
+
 proc main() {.raises.} =
   ## Keep trusted positive fixture I/O inside an explicit failure boundary.
   case paramStr(1)

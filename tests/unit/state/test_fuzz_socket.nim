@@ -2,17 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real AF_UNIX exchanges exercise bounded ticks, fragmented frames and repeated isolated sessions.
+
 import std/syncio
 import ../../support/fuzz_protocol_context
 import ../../../src/state/store
 include ../../../src/app/fuzz/socket
+
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## A real client connects through the listener rather than bypassing descriptor admission.
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Isolate filesystem witnesses across concurrently running suite processes.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound retries without a blocking receive on the test client.
+
 proc client(path: string): cint =
   ## Connect one real local peer and make its subsequent IO nonblocking.
   result = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
@@ -23,6 +28,7 @@ proc client(path: string): cint =
   for index, c in path: address.sun_path[index] = c # Policy-proven test path fits the common bound.
   assert connectSocket(result, addr address, SockLen(sizeof(address))) == 0
   assert nonblocking(result)
+
 proc sendFrame(server: var FuzzSocket, peer: cint, message: FuzzMessage) =
   ## Deliberately deliver one byte per tick, including the fragmented length prefix.
   let encoded = message.encodeFuzzFrame(ByteLimit(uint64(server.config.limits.bytes)+4)).value
@@ -30,6 +36,7 @@ proc sendFrame(server: var FuzzSocket, peer: cint, message: FuzzMessage) =
     var one = octet
     assert sendBytes(peer, addr one, 1, 0) == 1
     server.tick() # Tiny deterministic requests never depend on stream packet coalescing.
+
 proc readFrame(server: var FuzzSocket, peer: cint): FuzzMessage =
   ## Bound real socket reads and decode the entire response through a fresh independent reader lifetime.
   var reader = initFuzzFrameReader(fuzzProtocolTestLimits())
@@ -47,6 +54,7 @@ proc readFrame(server: var FuzzSocket, peer: cint): FuzzMessage =
       discard pauseMicros(100) # Retry only transient OS scheduling; EOF is a failure here.
   assert false, "bounded response wait expired"
   default(FuzzMessage)
+
 proc main() {.raises.} =
   ## Synthetic host replies test transport only; no test claims to have executed a JAM transition.
   let limits = fuzzProtocolTestLimits()

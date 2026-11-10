@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine native execution confirms managed publication before automatic maintenance, preserving full maps and restart history.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context, managed_storage_samples]
@@ -17,6 +18,7 @@ import ../../../src/state/accumulation/[finalization as accumulation_finalizatio
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/report_owned
 import ../../../src/codec/state/layout as state_layout
+
 proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFinalAccumulation {.raises.} =
   ## Actual execution creates a certificate bound to this Services owner's independently restored parent map.
   var input = default(BlockInput)
@@ -28,11 +30,13 @@ proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFin
   assert completed.kind == PreparationCompletionKind.Completed and completed.value.error ==
       BlockInputError.None
   completed.value.value
+
 proc configured(chainPath, diskPath: string, threshold: string): Options =
   ## Explicit zero and a one-byte soft threshold exercise disabled and enabled scheduling without widening limits.
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
     "--state-db", diskPath, "--state-layout", "managed", "--state-compact-bytes", threshold], result)
+
 proc cycle(fixture: RecoveryExecutionFixture, automatic: bool) {.raises.} =
   ## Automatic reclamation holds the completed adoption behind the same publication backpressure until every lease ends.
   var chainPath = "managed-auto-chain-" & $(if automatic: 1 else: 0)
@@ -91,6 +95,7 @@ proc cycle(fixture: RecoveryExecutionFixture, automatic: bool) {.raises.} =
     assert not owner.diskPublicationActive # A header-only journal cannot cause an endless compaction loop.
   owner.close()
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+
 proc main() {.raises.} =
   ## Published report inputs feed existing signed two-guest execution fixtures; no production validation is bypassed.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal programs retire/recreate an actual old supervisor before testing incarnation-bound authority on later reports.
+
 import ./pvm_accumulation_program
 
 proc incarnationRebindCode*(mode: int): seq[byte] =

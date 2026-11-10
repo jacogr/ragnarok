@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit-root restored reviews preserve phase refusal, selected parameters, detached input and composite owner retirement.
+
 # @@Verification={"arc": "state_account_review_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_checkpoint_context,
@@ -19,16 +20,20 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
     composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and optionally reject all hashes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Missing economic policy must refuse before restoration hashing.
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile) =
   ## Retire complete restored mappings, audit certificates, directories and fixed observation tables.
   let completed = decodeAccountReviewCheckpoint(wire, root, services, inventoryProfile, profile,
       accountReviewCheckpointTestLimits).value
   assert completed.accountReviewInfo.value.economics.uncovered == 1
+
 proc main() {.raises.} =
   ## Independent source includes an undercovered account, which remains a successful explicit observation.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

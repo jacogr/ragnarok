@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused recent history exposes no header/root/map prefix or inactive nested failure.
+
 import std/cmdline
 import ../../src/state/accumulation/current/recent as accumulation_current_recent
 import ../../src/state/accumulation/recent as accumulation_recent

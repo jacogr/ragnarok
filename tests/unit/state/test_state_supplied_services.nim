@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Hash-free complete logical declaration reconstruction bounds every descriptor/payload and detaches all mutable outputs.
+
 # @@Verification={"arc": "state_supplied_services_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, supplied_logical_context, supplied_services_context, arc_evidence]
@@ -11,14 +12,18 @@ import ../../../src/state/[inventory, manifest]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[composition as state_composition, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reconstruction must succeed with the hash backend disabled after complete capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## All preflight refusals and full reconstruction must attempt zero hashes.
+
 proc cycle(owner: SuppliedLogicalInventory) =
   ## Retire all detached raw keys, values, preimages and request arrays on each cycle.
   let services = copySuppliedServices(owner, suppliedServicesTestLimits).value
   assert services[0].storage[0].key == @[byte(1), 2]
+
 proc main() {.raises.} =
   ## Independent chapters and explicit child identities produce a complete checked logical owner before projection.
   let services = inventoryServices()

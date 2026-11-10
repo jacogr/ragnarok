@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded detached light metadata and the shared RPC request namespace reject malformed, foreign and cancelled imports atomically.
+
 # @@Verification={"arc":"light_rpc_protocol_arc_release"}
 import std/[assertions, syncio, base64, strutils]
 import ../../support/[application_checkpoint_context, arc_evidence]
@@ -11,6 +12,7 @@ import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, header]
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/rpc/[protocol, proof_requests, light_source]
+
 proc source(): RpcLightHead {.raises.} =
   ## Complete fixture context is transient test input; the resulting RPC owner retains only copied metadata.
   let owner = checkpointFixture()
@@ -34,10 +36,12 @@ proc source(): RpcLightHead {.raises.} =
   input[0].wire = wire
   input[0].slot = input[0].slot xor 1
   assert captureRpcLightHead(input, profile, 0).error == RpcLightSourceError.InvalidHeader
+
 proc call(wire: openArray[byte]): string =
   ## RPV1 framing is transport-only; authenticating the proof belongs to the bounded CPU worker.
   "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ragnarok_importStateProof\",\"params\":[" &
     quote(base64.encode(default(array[32, byte]))) & "," & quote(base64.encode(wire)) & "]}"
+
 proc cycle(info: ClientInfo) =
   ## Each complete request/session lifetime releases its detached wire, namespace and terminal notification.
   var session = default(RpcSession)
@@ -47,6 +51,7 @@ proc cycle(info: ClientInfo) =
   assert request.isImport and request.importBytes == wire
   assert session.completeStateProofImport(request, info.light.stateRoot, 0)
   assert "ragnarok_stateProofImported" in session.nextUpdate
+
 proc main() {.raises.} =
   ## Production public entry points preserve the same one-slot read/import namespace, cancellation and strict framing budgets.
   let light = source()

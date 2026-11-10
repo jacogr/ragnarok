@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Initial CE144 evidence binds verified Bandersnatch output to a complete canonical audit context; public shuffle metadata alone grants no audit or private signing authority.
+
 import ./[audits, audit_context]
 import ../bandersnatch/bandersnatch
 import ../codec/[assurances, disputes]
@@ -40,74 +41,90 @@ type
     of SigningFailure: signingReason: BsError
     of HashFailure: hashReason: CryptoError
     else: discard # No failed/default alternative contains an accepted context or selected obligations.
+
 func error*[T](outcome: AuditValidationResult[T]): AuditValidationError =
   ## Inspect the selected result before extracting metadata or actual child failures.
   outcome.status
+
 func value*[T](outcome: AuditValidationResult[T]): T {.requires: outcome.status ==
     AuditValidationError.None.} =
   ## Only whole success grants public deterministic metadata or a checked source-bound announcement.
   outcome.completed
+
 func proofError*[T](outcome: AuditValidationResult[T]): BsResult[
     BsOutput] {.requires: outcome.status == AuditValidationError.ProofFailure.} =
   ## Preserve the actual malformed/invalid/backend proof result without a successful VRF prefix.
   outcome.proofReason
+
 func signingError*[T](outcome: AuditValidationResult[T]): BsError {.requires: outcome.status ==
     AuditValidationError.SigningFailure.} =
   ## Return the original key or signing failure.
   outcome.signingReason
+
 func hashError*[T](outcome: AuditValidationResult[T]): CryptoError {.requires: outcome.status ==
     AuditValidationError.HashFailure.} =
   ## A failed maintained hash remains its exact primitive reason.
   outcome.hashReason
+
 func refused[T](reason: AuditValidationError): AuditValidationResult[T] {.requires: reason notin [
     AuditValidationError.None, AuditValidationError.ProofFailure,
     AuditValidationError.SigningFailure, AuditValidationError.HashFailure].} =
   ## Ordinary refusals cannot manufacture accepted or unrelated child payloads.
   AuditValidationResult[T](status: reason)
+
 func valid*(limits: AuditProofLimits): bool =
   ## Defaults activate no crypto; zero remaining hash capacity is a valid finite budget and is checked against actual work.
   uint64(limits.proofs) > 0 and uint64(limits.proofs) <= 1000000 and
     uint64(limits.hashes) <= 1000000 and uint64(limits.hashBytes) <= 128'u64*1024*1024 and
     uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 64'u64*1024*1024
+
 func valid*(claim: CheckedAuditAnnouncement): bool =
   ## Neither default metadata nor a public shuffle selection can stand in for a completed proof.
   claim.ready and claim.context.valid
+
 proc announcementInfo*(claim: CheckedAuditAnnouncement): AuditValidationResult[
     AuditAnnouncementInfo] =
   ## A fixed copied observation retains no canonical graph or private-key alias.
   if not claim.valid: return refused[AuditAnnouncementInfo](AuditValidationError.Uninitialized)
   AuditValidationResult[AuditAnnouncementInfo](status: AuditValidationError.None,
       completed: claim.info)
+
 proc announcementContext*(claim: CheckedAuditAnnouncement): AuditValidationResult[AuditContext] =
   ## The immutable checked source remains tied to this exact proof and its original available report set.
   if not claim.valid: return refused[AuditContext](AuditValidationError.Uninitialized)
   AuditValidationResult[AuditContext](status: AuditValidationError.None, completed: claim.context)
+
 proc announcementRecord*(claim: CheckedAuditAnnouncement): AuditValidationResult[
     AuditAnnouncement] =
   ## Forwarding copies the exact verified record; it cannot alter header, validator, intent or proof bytes.
   if not claim.valid: return refused[AuditAnnouncement](AuditValidationError.Uninitialized)
   AuditValidationResult[AuditAnnouncement](status: AuditValidationError.None,
       completed: claim.claim)
+
 proc selectedCore*(claim: CheckedAuditAnnouncement, ordinal: int): AuditValidationResult[CoreIndex] =
   ## Dense bounded selection exposes only real newly available cores selected by the authenticated proof.
   if not claim.valid: return refused[CoreIndex](AuditValidationError.Uninitialized)
   if ordinal < 0 or ordinal >= claim.info.selected: return refused[CoreIndex](
       AuditValidationError.InvalidIndex)
   AuditValidationResult[CoreIndex](status: AuditValidationError.None, completed: claim.selected[ordinal])
+
 func selectionWork(cores: uint64): uint64 =
   ## Ten initial draws need at most two complete eight-word entropy groups, independently of the validator population.
   if cores < 10: (cores+7) div 8 else: 2'u64
+
 func selectionFits(cores: uint64, limits: AuditProofLimits): bool =
   ## Reserve complete hash groups, their input bytes and the transient shuffle buffer.
   let hashes = selectionWork(cores)
   hashes <= uint64(limits.hashes) and hashes*36 <= uint64(limits.hashBytes) and
     uint64(limits.bytes) >= 4096
+
 func initialTranscript(entropy: array[32, byte]): array[41, byte] =
   ## Signing and verification use the same domain and the verified header VRF output.
   result = default(array[41, byte])
   const domain = "jam_audit"
   for index, octet in domain: result[index] = byte(octet)
   for index in 0..<32: result[domain.len+index] = entropy[index]
+
 proc initialAuditSelection*(cores: CoreCount, entropy: BsOutput,
     limits: AuditProofLimits): AuditValidationResult[InitialAuditSelection] =
   ## GP Fisher-Yates uses BLAKE2b(output || E4(group)) and LE32 draws; returned public metadata grants no proof authenticity.
@@ -143,6 +160,7 @@ proc initialAuditSelection*(cores: CoreCount, entropy: BsOutput,
     remaining[position] = remaining[int(count)-ordinal-1]
   AuditValidationResult[InitialAuditSelection](status: AuditValidationError.None,
       completed: selected)
+
 proc initialAuditor(context: AuditContext, ordinal: JudgeIndex): AuditValidationResult[BsPublicKey] =
   ## Resolve the active key at the claimed original prior-roster position.
   let source = context.contextInfo.value
@@ -154,6 +172,7 @@ proc initialAuditor(context: AuditContext, ordinal: JudgeIndex): AuditValidation
     return refused[BsPublicKey](AuditValidationError.InvalidAuditor)
   AuditValidationResult[BsPublicKey](status: AuditValidationError.None,
     completed: BsPublicKey(array[32, byte](member.bandersnatch)))
+
 proc qualifyInitialAudit*(context: AuditContext, claim: AuditAnnouncement,
     limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
   ## Canonical source, original prior C8 member and exact initial transcript are checked before any obligation is returned.
@@ -199,6 +218,7 @@ proc qualifyInitialAudit*(context: AuditContext, claim: AuditAnnouncement,
     completed: CheckedAuditAnnouncement(ready: true, context: context, claim: claim,
       info: AuditAnnouncementInfo(blockHash: source.blockHash, epoch: source.epoch,
         validator: claim.validator, tranche: 0, selected: count), selected: selected))
+
 proc produceInitialAudit*(context: AuditContext, ordinal: JudgeIndex, key: BsKey,
     limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
   ## Bind the local Thin proof to a validated block and the matching original roster position.

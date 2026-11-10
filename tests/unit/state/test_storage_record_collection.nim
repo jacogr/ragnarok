@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Record collections preserve shared physical encoding with independent multi-root aggregate ceilings.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie

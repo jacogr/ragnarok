@@ -3,6 +3,7 @@
 
 ## Pinned JAM fuzzer-v1 messages own bounded immutable wire and structurally validated children.
 ## Wire capture proves neither protocol negotiation nor genesis trust, STF success or logical completeness.
+
 import std/assertions
 import ../store
 import ../trace/state as trace_state
@@ -289,7 +290,6 @@ proc copyFuzzMessage*(source: FuzzMessage, maximum: ByteLimit): FuzzResult[seq[b
   if data == nil: return fail[seq[byte]](FuzzError.InvalidOwner)
   if uint64(data.wire.len) > uint64(maximum): return fail[seq[byte]](FuzzError.LimitExceeded)
   FuzzResult[seq[byte]](status: FuzzError.None, completed: copied(data.wire))
-
 
 proc addNatural(output: var seq[byte], value: uint64) =
   ## Append a canonical bounded natural supplied by already validated local sizes.

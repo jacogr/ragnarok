@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## An oversized journal refuses before buffering under a one-MiB heap and preserves its valid prefix.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples

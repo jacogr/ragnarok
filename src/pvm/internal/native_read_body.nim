@@ -1,16 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Private copied read-body IR and invocation-only extent ABI for both native lowerers.
 
 import std/assertions
 import ./[jit_rules, native_ir]
 
+export native_ir.NativeCheckedReadEnabled
+
 const
-  NativeCheckedReadEnabled* =
-    (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
-    (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
-      defined(arm64) and (defined(linux) or defined(macosx)))
-    ## Checked read admission requires a supported native lowerer.
   NativeReadSuccess* = 1'u32          ## Every staged register write committed.
   NativeReadRefusal* = high(uint32)   ## No guest write occurred.
   NativeReadFactLimit* = 32'u32       ## Includes the folded leading noop and checked terminal.
@@ -31,6 +29,10 @@ type
     operations: array[NativeReadFactLimit.int-2, NativeOperation]
     count, reads: int
     continuation: NativeReadContinuation
+  NativeReadWindow* = object ## Five original U64 loads within a contiguous 40-byte Read window.
+    operations*: uint32      ## Bit positions in original execution order, zero when no proof exists.
+    baseLane*: range[0..12]
+    first*: uint32           ## Lowest modulo-32 displacement from the invariant base.
   NativeReadRegion* = object ## One clipped private allocation. Empty records have no usable pointer.
     first, length: uint64
     data: nil pointer
@@ -52,6 +54,10 @@ func nativeReadOpcode*(opcode: byte): bool =
   ## Every GP relative scalar load shares the same clipped extent and staged-register ABI.
   opcode in {124'u8..130'u8}
 
+func nativeReadEncodingOpcode*(opcode: byte): byte =
+  ## Absolute scalar loads share relative load widths and signedness, but have no base operand.
+  if opcode in {52'u8..58'u8}: opcode+72'u8 else: opcode
+
 proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
     operation: NativeOperation): bool =
   ## Reject an unsupported or discontinuous operation before updating the copied request.
@@ -60,7 +66,7 @@ proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
       body.count >= int(info.terminal-info.header-1): return false
   let next = 1'u32+uint32(body.count)
   if node != info.header+next or ordinal != info.first+next: return false
-  if nativeReadOpcode(operation.opcode):
+  if nativeReadOpcode(nativeReadEncodingOpcode(operation.opcode)):
     if body.reads == NativeReadLoadLimit: return false
     inc body.reads
   elif not supportedScalarOpcode(operation.opcode): return false
@@ -108,6 +114,44 @@ func operation*(body: NativeReadBody, index: int): NativeOperation {.requires:
     index >= 0 and index < body.count.} =
   ## Return one copied operation within the populated extent.
   body.operations[index]
+
+func nativeReadWindow*(body: NativeReadBody): NativeReadWindow =
+  ## Derive a shared address proof from the copied Read only, excluding the separate Setup.
+  ## A lowerer must prove the full window in the first descriptor at each Read entry.
+  result = default(NativeReadWindow)
+  if not body.complete: return
+  let count = int(body.geometry.terminal-body.geometry.header-1)
+  var offsets = default(array[5, uint32])
+  var loads = 0
+  var mask = 0'u32
+  var written = 0'u32
+  var baseLane: range[0..12] = 0
+  var first = high(uint32)
+  var last = 0'u32
+  for index in 0..<count:
+    let op = body.operation(index)
+    let destination = if nativeReadOpcode(op.opcode): op.slots.aIndex else: op.slots.destinationIndex
+    written = written or (1'u32 shl int(destination))
+    if op.opcode == 130:
+      if loads == offsets.len: return
+      if loads == 0: baseLane = op.slots.bIndex
+      elif op.slots.bIndex != baseLane: return
+      let offset = uint32(op.immediate and 0xffffffff'u64)
+      offsets[loads] = offset
+      if offset < first: first = offset
+      if offset > last: last = offset
+      mask = mask or (1'u32 shl index)
+      inc loads
+  if loads != offsets.len or (written and (1'u32 shl int(baseLane))) != 0 or last-first != 32:
+    return
+  var positions = 0'u32
+  for offset in offsets:
+    # Prove the five distinct qwords fill the window without reordering their operations.
+    let delta = offset-first
+    if delta mod 8 != 0: return
+    positions = positions or (1'u32 shl int(delta div 8))
+  if positions == 0x1f:
+    result = NativeReadWindow(operations: mask, baseLane: baseLane, first: first)
 
 func sameReadBody*(a, b: NativeReadBody): bool =
   ## Compare the exact geometry and the admitted prefix, with no pointer identity in the request.

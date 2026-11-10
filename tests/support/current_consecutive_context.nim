@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded genuine current chains retain independently authored wires and explicit phase-composed expected maps.
+
 import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

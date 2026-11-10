@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Closed engine identities bind prepared owners and completed observations; no CLI policy lives here.
+
 type PvmBackend* {.pure.} = enum
   ## The independent engine and explicit upstream engines never silently substitute for one another.
   Jit = "jit", Interpreted = "interpreted", PolkaInterpreted = "polkavm-interpreted",

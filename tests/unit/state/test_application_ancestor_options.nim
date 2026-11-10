@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Repeatable ancestry paths remain bounded, download-only, ordered and atomic on every refusal.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
+
 proc main() =
   ## Parser tests need no files or native services; invalid paths cannot trigger IO during parsing.
   var selected = default(Options)

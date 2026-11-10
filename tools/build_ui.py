@@ -10,6 +10,7 @@ the pinned Nimony JS backend compiles src/ui/client.nim alongside src/ui/static/
 from pathlib import Path
 import argparse
 import gzip
+import hashlib
 import io
 import os
 import subprocess
@@ -126,14 +127,17 @@ def build(source, stage, manifest, generated=None, minifier=None):
 
 # The application is compiled by Nimony; bootstrap Nim is used only to build jorogumo itself.
 def compile_client(source=None, folder=None):
-    """Compile the browser-only UI and retain diagnostics; backend identity separates compiler caches."""
+    """Compile browser UI with caches owned by the compiler, backend and project/cache locations."""
     compiler, _ = native_tools()
     backend, identity = web_tools()
     source = ROOT/'src/ui/client.nim' if source is None else Path(source)
     folder = ROOT/'build/ui-client' if folder is None else Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     output = folder/'app.js'
-    cache = cache_directory(compiler, folder, 'browser-'+identity[:16])
+    # NIF dependency indexes retain absolute project and cache paths; copied outputs need a new owner.
+    owner = str(ROOT.resolve())+'\0'+str(folder.resolve())
+    location = hashlib.sha256(owner.encode()).hexdigest()[:16]
+    cache = cache_directory(compiler, folder, 'browser-'+identity[:16]+'-'+location)
     command = [str(compiler), 'j', '--browser', '-d:release', '--mm:arc', '-d:ragnarokBrowser',
                '--nimcache:'+str(cache), '--out:'+str(output), str(source)]
     environment = {**os.environ, 'PATH': str(backend.parent)+os.pathsep+os.environ['PATH']}

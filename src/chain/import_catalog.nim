@@ -3,6 +3,7 @@
 
 ## Source-bound availability descriptors retain the original registration roster for bounded import recovery.
 ## Capture only selected-chain C(10) registration snapshots; absent history never authorizes a guessed assurer set.
+
 import ./[provider, genesis]
 import ../codec/[bounded, guarantees, report_owned, owned, assurances, natural]
 import ../codec/work/report as work_report
@@ -39,22 +40,27 @@ type
     rows: seq[ImportRecord]
   ImportCatalog* = object ## Defaults supply no independently trusted availability descriptor.
     data: nil CatalogData
+
 func error*[T](outcome: ImportCatalogResult[T]): ImportCatalogError =
   ## Inspect a failure without permitting discriminator mutation.
   outcome.status
+
 func value*[T](outcome: ImportCatalogResult[T]): T {.requires: outcome.status ==
     ImportCatalogError.None.} =
   ## Extract only a completely selected catalog, source or detached value.
   outcome.completed
+
 func failure[T](reason: ImportCatalogError): ImportCatalogResult[T] {.requires: reason !=
     ImportCatalogError.None.} =
   ## Refusal retains no accepted prefix or inferred default source.
   ImportCatalogResult[T](status: reason)
+
 proc reportedImportInfo*(source: ReportedImport): ImportCatalogResult[ReportedImportInfo] =
   ## Copy fixed report facts only while the caller owns canonical graph access.
   let data = source.data
   if data == nil: return failure[ReportedImportInfo](ImportCatalogError.Uninitialized)
   ImportCatalogResult[ReportedImportInfo](status: ImportCatalogError.None, completed: data.info)
+
 proc importAssurer*(source: ReportedImport, index: StateValidatorIndex): ImportCatalogResult[
     ImportAssurer] =
   ## Apply pinned NP i=(cR+v) mod V to the original registration roster, even after that set retires.
@@ -72,6 +78,7 @@ proc importAssurer*(source: ReportedImport, index: StateValidatorIndex): ImportC
   ImportCatalogResult[ImportAssurer](status: ImportCatalogError.None,
     completed: ImportAssurer(identity: validator.value.ed25519, metadata: validator.value.metadata,
       shard: ErasureShardIndex(ordinal)))
+
 proc findImport(catalog: ImportCatalog, root: SegmentRoot, packageBound: bool,
     package: PackageHash): ImportCatalogResult[ReportedImport] =
   ## Deterministically choose an independently canonical source; identical exported content can legitimately have multiple source reports.
@@ -85,19 +92,23 @@ proc findImport(catalog: ImportCatalog, root: SegmentRoot, packageBound: bool,
     return ImportCatalogResult[ReportedImport](status: ImportCatalogError.None,
         completed: ReportedImport(data: row))
   failure[ReportedImport](ImportCatalogError.Missing)
+
 proc catalogImport*(catalog: ImportCatalog, root: SegmentRoot): ImportCatalogResult[
     ReportedImport] =
   ## Direct-root references select the oldest retained non-expired original registration source with that exact export root.
   findImport(catalog, root, false, default(PackageHash))
+
 proc catalogPackageImport*(catalog: ImportCatalog, package: PackageHash,
     root: SegmentRoot): ImportCatalogResult[ReportedImport] =
   ## Package-relative references cannot substitute another package that happens to export identical bytes.
   findImport(catalog, root, true, package)
+
 proc catalogHead*(catalog: ImportCatalog): ImportCatalogResult[genesis.BlockHash] =
   ## Copy the selected-chain head identity without exporting its retained map or child owners.
   let data = catalog.data
   if data == nil: return failure[genesis.BlockHash](ImportCatalogError.Uninitialized)
   ImportCatalogResult[genesis.BlockHash](status: ImportCatalogError.None, completed: data.head)
+
 proc captureImportCatalog*(view: ChainView, limits: ImportCatalogLimits): ImportCatalogResult[
     ImportCatalog] =
   ## Preflight all selected chapter bytes before any decoder allocation; read only complete registration-block snapshots.

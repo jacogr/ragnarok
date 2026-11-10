@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked frame/source histories and independent direct legacy ARM emitter/ABI/arena controls.
+
 import std/[assertions, syncio]
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
@@ -80,7 +82,6 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
   let decoded = captureOwner(parts, jumps)
   assert decoded.error == ProgramError.None
   decoded.value
-
 
 when defined(pvmArm64Jit):
   var guardedLoadCases = 0
@@ -2262,7 +2263,6 @@ when defined(pvmArm64Jit):
   assert kept == default(array[5, uint64]), "host memory reentry preserves checked frame execution"
 echo "ARM_MAPPING_REENTRY,1"
 
-
 # Rejected single-block admission must preserve both ordinary and specialized checked loop behavior.
 var selfRegionCases = 0
 for specialized in [false, true]:
@@ -2292,7 +2292,6 @@ for specialized in [false, true]:
           verifyControl(frame, source, bounded, budget)
           inc selfRegionCases
 echo "ARM_SELF_REGION_CASES,", selfRegionCases
-
 
 var storeControls = 0
 for layout in 0..<8:
@@ -2654,7 +2653,6 @@ when defined(pvmArm64Jit):
     assert armDirtyLoopArenaDestroyed() == wordOwnerBefore,
         "checked word-owner teardown has no legacy arena to retire"
 
-
   var wordAliases = 0
   for destination in [0, 1, 3, 4]:
     # Prefix/store dependence is intact, but an overwritten live role must prohibit the native word projection.
@@ -2692,7 +2690,6 @@ when defined(pvmArm64Jit):
     assert flatArmDirtyWordGroups(frame) == 0
   assert wordAliases == 110
   echo "ARM_WORD_ALIAS_CASES,", wordAliases
-
 
 var secondStoreControls = 0
 let twoStores = owner([@[120'u8, 0x10, 0], @[149'u8, 0, 1], @[149'u8, 0, 1],
@@ -3354,7 +3351,6 @@ else:
   # Plain interpreter builds still provide an explicit unavailable coverage record.
   echo "ARM_MEMORY_CYCLE_FRAME_CASES,0"
 
-
 # Private resident-specific boundaries. This is unqualified until the new emitter is proven active.
 when defined(pvmArm64Jit):
   block residentMemoryCycleFrame:
@@ -3474,7 +3470,6 @@ when defined(pvmArm64Jit):
 else:
   echo "ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,0"
 
-
 block boundedContinuationLong:
   # An 8,194-source block must keep bounded stack use even when sibling-call optimization is disabled.
   var parts: seq[seq[byte]] = @[@[51'u8, 0, 0]]
@@ -3501,7 +3496,6 @@ block boundedContinuationLong:
   verifyControl(frame, program, initial, 8194)
   assert uint64(frame.info.registers[0]) == 8192
   echo "BOUNDED_CONTINUATION_LONG_CASES,", controls
-
 
 block boundedMixedContinuationLong:
   # Alternating add/move avoids the existing add/add fusion and exercises real four-worker chains.
@@ -3531,7 +3525,6 @@ block boundedMixedContinuationLong:
   verifyControl(frame, program, initial, 8194)
   assert uint64(frame.info.registers[0]) == 4096
   echo "BOUNDED_MIXED_CONTINUATION_LONG_CASES,", controls
-
 
 block boundedNativeFallbackLong:
   # Native-enabled plans must retain bounded checked execution when no source leaf can run.

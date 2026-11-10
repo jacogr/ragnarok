@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual paired node owners exercise preferred replacement, mapped routes and epoch retirement.
+
 import std/[assertions, envvars, monotimes, times]
 import ./jamnp_topology_fixture
 import ../../src/jamnp-s/[connections, identity, admission]
@@ -22,10 +23,13 @@ type
     retryAt: MonoTime
     ready, closed, retired, completed, streamCloses: int
     exchanges: array[8, Exchange]
+
 proc `=copy`(destination: var Fixture, source: Fixture) {.error.}
   ## Native callbacks cannot follow copied enclosing test storage.
+
 proc `=dup`(source: Fixture): Fixture {.error.}
   ## Duplicated ownership cannot retire another fixture's live native contexts.
+
 proc peerEvent(user: pointer, peer: NodePeer, event: NodePeerEvent) {.raises: [].} =
   ## Ready callbacks safely queue work; Closed/Retired cancels every outstanding local open for that generation.
   let fixture = cast[ptr Fixture](user)
@@ -42,6 +46,7 @@ proc peerEvent(user: pointer, peer: NodePeer, event: NodePeerEvent) {.raises: []
     if fixture.peer == peer:
       fixture.known = false
       fixture.retry = false
+
 proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cint) {.raises: [].} =
   ## A finite opaque byte/FIN echo validates raw routing without claiming a JAM message backend.
   let fixture = cast[ptr Fixture](user)
@@ -95,6 +100,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     fixture.exchanges[position].done = true
     fixture.completedPeer = peer
     inc fixture.completed
+
 proc connectionRoster*(left, right: StateEdKey, leftPort, rightPort: uint16,
     address: NetworkAddress, removeRight = false): array[3, seq[StateValidator]] =
   ## Every alias has exact metadata; absent remote membership becomes the pinned null validator.
@@ -112,6 +118,7 @@ proc connectionRoster*(left, right: StateEdKey, leftPort, rightPort: uint16,
         metadata[16] = byte(port and 255)
         metadata[17] = byte(port shr 8)
         result[epoch][index] = StateValidator(ed25519: key, metadata: StateValidatorMetadata(metadata))
+
 proc step(fixture: var Fixture, clock: MonoTime) =
   ## Retry an explicitly rejected finite request with bounded backoff, retaining no success claim.
   assert fixture.node.poll(clock, 0), "paired node event loop"
@@ -119,12 +126,14 @@ proc step(fixture: var Fixture, clock: MonoTime) =
   if fixture.retry and getMonoTime() >= fixture.retryAt and fixture.known and fixture.node.active(fixture.peer):
     fixture.retry = false
     assert fixture.node.queueStream(fixture.peer), "bounded retry queue"
+
 proc held(fixture: Fixture): bool =
   ## A live current-generation local stream deliberately retains its borrowed pointer until shutdown.
   for exchange in fixture.exchanges:
     if exchange.stream != default(NativeStream) and exchange.local and exchange.peer ==
         fixture.peer: return true
   false
+
 proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false, idle = false) =
   ## Both sides become fallback-eligible at once, deterministically exercising concurrent cross-dials.
   let leftIdentity = certificateIdentity(getEnv("RAGNAROK_TEST_CERT"))
@@ -241,6 +250,7 @@ proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false, idle = f
   assert not first.known and not second.known, "role-expired physical peers must actually retire"
   assert first.node.peerCount == 0 and second.node.peerCount == 0
   assert not first.node.disconnect(oldFirst) and not second.node.queueStream(oldSecond), "stale NodePeer cannot control a replacement"
+
 proc headUpdateFairness*() =
   ## Repeated head updates and early route refusals cannot starve a later useful target.
   let selected = certificateIdentity(getEnv("RAGNAROK_TEST_CERT"))

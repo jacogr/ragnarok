@@ -35,15 +35,18 @@ proc policy(): DownloadLoopLimits =
     candidate: preparationLimits(), composition: completionLimits().composition,
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
       timeout: DownloadTimeout(5000)), attemptTimeout: DownloadAttemptTimeout(8000))
+
 proc arguments(port: uint16, peer: string, timeout = "10000"): seq[string] =
   ## The same explicit positional/options shape is accepted by the actual application entry point.
   @["download", $port, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"), peer,
     "jamnp-s/1/00000000", timeout, "download-startup-policy.conf", "--with-state", "--chain",
     "download-startup-chain.json", "--state-writes", "1000", "--state-write-bytes", "1000000"]
+
 proc options(port: uint16, peer: string, timeout = "10000"): Options =
   ## Failed/default command parsing cannot retain a previous valid configuration.
   result = default(Options)
   assert parseCanonicalOptions(arguments(port, peer, timeout), result), "valid startup options"
+
 proc peerOptions(port: uint16, peer: string, extra: openArray[string]): Options =
   ## Additional positional pairs precede service controls, exactly as in the public CLI.
   let base = arguments(port, peer, "10000")

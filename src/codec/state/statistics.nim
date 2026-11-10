@@ -72,6 +72,18 @@ type
     starts: array[StatisticsEpoch, int]
     coreStart, serviceStart, services, consumed: int
 
+func `==`*(left, right: ValidatorCounter): bool {.inline.} =
+  ## Compare validator activity counters without accepting natural activity or gas values.
+  uint64(left) == uint64(right)
+
+func `==`*(left, right: ActivityNatural): bool {.inline.} =
+  ## Compare natural activity counts without accepting gas or validator counters.
+  uint64(left) == uint64(right)
+
+func `==`*(left, right: ActivityGas): bool {.inline.} =
+  ## Compare activity gas within its own nominal domain, including complete activity records.
+  uint64(left) == uint64(right)
+
 func error*[T](value: ActivityResult[T]): ActivityError =
   ## Failure reasons remain read-only and never authorize values or partial parser progress.
   value.status

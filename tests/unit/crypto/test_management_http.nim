@@ -2,13 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent registry, strict HTTP boundaries and real private local-socket lifecycle checks.
+
 import std/[assertions, syncio]
 import ../../../src/rpc/protocol as public_protocol
 include ../../../src/management/server
 
+let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
+
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## The test connects a real AF_UNIX consumer rather than bypassing listener admission.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound native scheduling waits without an unbounded blocking receive.
 
@@ -52,17 +56,34 @@ for head in ["GET / HTTP/1.1\r\nHost: x\r\n\r\n",
     "POST / HTTP/1.1\r\nHost: x\r\n Content-Length: 0\r\n\r\n",
     packet(request) & packet(request)]:
   var slot = Connection(input: head)
-  slot.process(admin)
+  slot.process(requestTags, admin)
   assert "200 OK" notin slot.output and "\"result\"" notin slot.output
 var partial = Connection(input: packet(request).substr(0, packet(request).len - 2))
-partial.process(admin)
+partial.process(requestTags, admin)
 assert partial.output.len == 0 # Partial bodies cannot dispatch.
 partial.input.add('}')
-partial.process(admin)
+partial.process(requestTags, admin)
 assert "200 OK" in partial.output
 var capped = Connection(input: "POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 8193\r\n\r\n")
-capped.process(admin)
+capped.process(requestTags, admin)
 assert "413" in capped.output
+# The stock parser rejects unsupported whitespace before application dispatch.
+for extra in ["X-Client: a\tb\r\n"]:
+  var refused = Connection(input: packet(request).replace("Content-Length:", extra &
+      "Content-Length:"))
+  refused.process(requestTags, admin)
+  assert "400 Bad Request" in refused.output
+var normalized = Connection(input: packet(request).replace("Content-Length: " & $request.len,
+  "Content-Length: 000000" & $request.len))
+normalized.process(requestTags, admin)
+assert "200 OK" in normalized.output
+for wire in [packet(request).replace("\r\n", "\n"),
+    packet(request).replace("HTTP/1.1", "HTTP/1.0"),
+    packet(request).replace("Content-Length:", "X-Client: a\r\nx-client: b\r\nContent-Length:")]:
+  # Stock grammar owns framing and ordinary repeated fields; management authorization stays separate.
+  var accepted = Connection(input: wire)
+  accepted.process(requestTags, admin)
+  assert "200 OK" in accepted.output
 
 var directory = "/tmp/ragnarok-management-" & $processId()
 var path = directory & "/admin.sock"

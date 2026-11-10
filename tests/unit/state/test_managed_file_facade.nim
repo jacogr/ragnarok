@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The explicit managed facade preserves physical publication semantics and scalar lifecycle polling.
+
 # @@Verification={"arc":"managed_file_facade_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -12,6 +13,7 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/[database_identity, durability]
 import ../../../src/codec/bounded
+
 proc cycle(path: string, limits: ManagedLimits) =
   ## Composite native ownership retires completely after each independent facade acquisition.
   var file = default(FileRepository)
@@ -19,6 +21,7 @@ proc cycle(path: string, limits: ManagedLimits) =
     StorageSchema.FullStateV1) == FileError.None
   assert uint64(file.snapshot.value.generation) == 2 and file.snapshotContext.value == @[2'u8]
   assert file.close == FileError.None
+
 proc main() {.raises.} =
   ## Ordinary legacy creation remains distinct from explicit managed seed/reopen and unsupported maintenance.
   let limits = managedStorageLimits()

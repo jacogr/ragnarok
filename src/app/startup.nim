@@ -52,7 +52,9 @@ proc regular(path: string, secret = false): bool =
   not secret or (uint32(metadata.st_mode) and 0o077) == 0
 
 proc ensureIdentity*(directory: string, diagnostic: var string): bool =
-  ## Serialize first-use publication; any partial bundle refuses instead of rotating an existing identity.
+  ## Serialize first-use identity publication under the private directory lock.
+  ## Reuse a complete bundle and refuse a partial one, so an interrupted publish
+  ## cannot silently rotate the network identity. Key scratch is erased after use.
   diagnostic = "Cannot prepare private identity directory: " & directory
   if not privateDirectory(directory): return false
   var writer = default(AtomicFileWriter)

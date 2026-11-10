@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit bounded account inventory and creation/retirement budgets for dynamic-roster lifecycle histories.
+
 import ./current_stf_rotation_designation_context
 import ../../src/app/candidate
 import ../../src/codec/bounded

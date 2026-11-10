@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
+
 import std/[assertions, monotimes, times]
 import std/posix/posix
 import ../../src/state/account/review/plan as account_review_plan
@@ -41,6 +42,7 @@ import ../../src/state/store
 type LogicalPreparation = object ## Only scalar receiver/ticket identities cross native wait/cancel/collection boundaries.
   ticket: PreparationTicket
   input: CurrentBlockInputId
+
 proc beginLogicalChild(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
     policies: CurrentCandidateLimits): LogicalPreparation {.raises.} =
   ## Bind the actual canonical parent and capture raw wire before granting the worker an exclusive graph lease.
@@ -54,6 +56,7 @@ proc beginLogicalChild(owner: var Services, input: var CurrentBlockInput, child:
   let ticket = owner.beginPreparation(input, received.value)
   assert ticket.error == PreparationError.None
   LogicalPreparation(ticket: ticket.value, input: received.value)
+
 proc waitLogicalPreparation(owner: var Services) =
   ## Native completion is observed through synchronized scalars; Done does not release the canonical graph or RPC exclusion.
   let started = getMonoTime()
@@ -64,6 +67,7 @@ proc waitLogicalPreparation(owner: var Services) =
     var remaining = default(Timespec)
     discard nanosleep(delay, remaining) # No retained graph owner is accessed, copied or retired during native borrowing.
   assert owner.preparationActive and owner.rpc.chainPaused
+
 proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
     policies: CurrentCandidateLimits): PreparedCurrentChainUpdate {.raises.} =
   ## Only matching collection exposes a genuine update; all raw/canonical owners remain untouched while the worker can borrow them.
@@ -78,6 +82,7 @@ proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, chi
   assert not owner.preparationActive and not owner.rpc.chainPaused
   assert owner.preparationAvailable and owner.stateProofAvailable
   completed.currentValue.value
+
 proc cancelLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
     policies: CurrentCandidateLimits, afterDone: bool) {.raises.} =
   ## Immediate and completed genuine jobs return only Cancelled; stale collection cannot release capacity or any graph alias.
@@ -94,6 +99,7 @@ proc cancelLogicalChild*(owner: var Services, input: var CurrentBlockInput, chil
   discard input.cancel(job.input) # A skipped job can leave Ready raw input; only the now-open host gate can retire it.
   assert input.stage == CurrentBlockInputStage.Idle
   assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc joinLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
     policies: CurrentCandidateLimits, afterDone: bool) {.raises.} =
   ## Joined shutdown is the sole lease release for this uncollected genuine preparation; every outer logical/canonical alias stays untouched until close returns.
@@ -104,6 +110,7 @@ proc joinLogicalChild*(owner: var Services, input: var CurrentBlockInput, child:
   assert owner.collectPreparation(job.ticket).kind == PreparationCompletionKind.Uninitialized
   discard input.cancel(job.input) # Raw receiver retirement occurs strictly after joined worker shutdown.
   assert input.stage == CurrentBlockInputStage.Idle
+
 proc refreshCollectedIdentities*(source: PreservedCurrentIdentities): CurrentLogicalState =
   ## Every actual opaque predecessor is checked under explicit independent namespace policies before extraction; no enqueue or installation occurs here.
   let keys = captureCurrentRequestKeys(source, namespaceRequestLimits)
@@ -115,6 +122,7 @@ proc refreshCollectedIdentities*(source: PreservedCurrentIdentities): CurrentLog
   let logical = executeCurrentLogicalRefresh(plan.value)
   assert logical.error == LogicalRefreshError.None
   logical.value
+
 proc proveLogicalCurrent*(owner: var Services, logical: CurrentLogicalState) {.raises.} =
   ## Independently select the installed logical producer's root and exact proof plan before native borrowing; no retained logical/canonical owner is touched until matching collection.
   let update = logical.logicalProducer
@@ -155,6 +163,7 @@ proc proveLogicalCurrent*(owner: var Services, logical: CurrentLogicalState) {.r
   assert not view.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(123456))).value.present
   assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
   assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc retireLogicalProof*(owner: var Services, logical: CurrentLogicalState,
     afterDone: bool, joined = false) {.raises.} =
   ## Real Services proof work borrows the canonical graph shared with this retained logical source; cancellation and joined stop grant no successful response prefix.
@@ -189,6 +198,7 @@ proc retireLogicalProof*(owner: var Services, logical: CurrentLogicalState,
   assert not owner.stateProofActive and not owner.rpc.chainPaused
   assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
   assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc checkRepricedLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
     declarations: openArray[StateService]) =
   ## A structurally recaptured source with the same physical map and cardinalities but another economic parameter tuple cannot authorize the actual collected successor.
@@ -218,6 +228,7 @@ proc checkRepricedLogicalSeed*(owner: Services, update: PreparedCurrentChainUpda
   assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
   assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
       CurrentIdentityError.ViewMismatch
+
 proc checkShortLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
     declarations: openArray[StateService]) =
   ## A successful complete source on the exact same physical best head cannot substitute for the original whole selected history.
@@ -232,6 +243,7 @@ proc checkShortLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
   assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
   assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
       CurrentIdentityError.ViewMismatch
+
 proc checkCollectedReview*(logical: CurrentLogicalState) =
   ## Existing targeted review consumes only the actual logical producer's original compact capture and full Parameters; temporary review owners retire before enqueue.
   let pair = composeLogicalReview(logical)

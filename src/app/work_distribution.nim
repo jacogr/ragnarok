@@ -3,6 +3,7 @@
 
 ## Optional CE135 receipt and delivery require fresh managed verification, bounded detached retention and exact native ownership.
 ## Native callbacks retain raw bytes; this source-free controller owns only exact tickets, policy and pending candidates.
+
 import std/[monotimes, times]
 import ./services
 import ./work_guarantee_pool
@@ -49,6 +50,7 @@ type
     cursor: int
     refreshDelivery, preferIncoming: bool
     attempted, acknowledgedCount, refused, rounds: uint64
+
 func workDistributionPolicy*(limits: WorkDistributionLimits,
     entries: range[1..MaxPendingGuarantees], bytes: ByteLimit,
     timeoutMs: range[1..120000] = 30000, peerTimeoutMs: range[1..120000] = 5000,
@@ -60,47 +62,61 @@ func workDistributionPolicy*(limits: WorkDistributionLimits,
   if uint64(limits.targets) == 0 or uint64(limits.targets) > 2046: return default(WorkDistributionPolicy)
   WorkDistributionPolicy(ready: true, limits: limits, entries: entries, bytes: bytes,
       timeout: timeoutMs, peerTimeout: peerTimeoutMs, parallel: parallel, deliver: deliver)
+
 func valid*(policy: WorkDistributionPolicy): bool =
   ## Default policy does not activate native receipt or allocate retention capacity.
   policy.ready
+
 func received*(owner: WorkDistributionDispatcher): uint64 =
   ## Count only fresh, retained incoming guarantees whose live transport accepted the bare FIN.
   owner.received
+
 func pendingCount*(owner: WorkDistributionDispatcher): int =
   ## Detached candidate occupancy is observable during any foreign canonical lease.
   owner.pool.len
+
 func pendingBytes*(owner: WorkDistributionDispatcher): int =
   ## Exact canonical payload bytes exclude native input and report-cache framing.
   owner.pool.byteLength
+
 proc pendingPayload*(owner: WorkDistributionDispatcher, ordinal: int): seq[byte] {.requires:
     ordinal >= 0 and ordinal < owner.pool.len.} =
   ## A later block/assurer consumer must freshly qualify this independently copied candidate.
   owner.pool.payloadAt(ordinal)
+
 func deliveryPhase*(owner: WorkDistributionDispatcher): WorkDeliveryPhase =
   ## Fixed outgoing state remains observable while a foreign job owns canonical graphs.
   owner.deliveryPhase
+
 func attempted*(owner: WorkDistributionDispatcher): uint64 =
   ## Count actual admitted native CE135 requests, including later refusal or cancellation.
   owner.attempted
+
 func acknowledged*(owner: WorkDistributionDispatcher): uint64 =
   ## Count only complete remote bare-FIN responses; self-retention never increments this metric.
   owner.acknowledgedCount
+
 func refused*(owner: WorkDistributionDispatcher): uint64 =
   ## Endpoint, connection and request refusals are distinct from transport acknowledgment.
   owner.refused
+
 func rounds*(owner: WorkDistributionDispatcher): uint64 =
   ## Finished bounded rounds may include unavailable recipients; this is not an all-delivered counter.
   owner.rounds
+
 func demandConnections*(owner: WorkDistributionDispatcher): int =
   ## Controller-owned dial reservations include busy/closing connections until exact native retirement is observed.
   result = 0
   for peer in owner.peers:
     if peer.dialing: inc result
+
 proc `=copy`*(destination: var WorkDistributionDispatcher,
     source: WorkDistributionDispatcher) {.error.}
   ## Duplicate control would allow competing cancellation and claim retirement.
+
 proc `=dup`*(source: WorkDistributionDispatcher): WorkDistributionDispatcher {.error.}
   ## Initialization cannot duplicate worker/stream authority either.
+
 proc `=wasMoved`*(owner: var WorkDistributionDispatcher) {.nodestroy, requires:
     not owner.held and not owner.active and owner.deliveryPhase == WorkDeliveryPhase.Idle.} =
   ## Every retained child transfers only after explicit retirement of exact native/CPU controls.
@@ -115,10 +131,12 @@ proc `=wasMoved`*(owner: var WorkDistributionDispatcher) {.nodestroy, requires:
   `=wasMoved`(owner.acknowledged)
   owner.held = false
   owner.active = false
+
 proc requireClosed(owner: WorkDistributionDispatcher) {.requires:
     not owner.held and not owner.active and owner.deliveryPhase == WorkDeliveryPhase.Idle.} =
   ## A destructor cannot silently abandon or join a canonical borrower.
   discard
+
 proc `=destroy`*(owner: WorkDistributionDispatcher) =
   ## Only source-free owners retire after the required explicit controller close.
   requireClosed(owner)
@@ -131,6 +149,7 @@ proc `=destroy`*(owner: WorkDistributionDispatcher) =
   `=destroy`(owner.lastSession)
   `=destroy`(owner.peers)
   `=destroy`(owner.acknowledged)
+
 proc configure*(owner: var WorkDistributionDispatcher, streams: var NodeService,
     policy: WorkDistributionPolicy): bool =
   ## Configure storage before opening native admission; no private signing key is required to receive a guarantee.
@@ -143,6 +162,7 @@ proc configure*(owner: var WorkDistributionDispatcher, streams: var NodeService,
   owner.policy = policy
   owner.preferIncoming = true
   true
+
 proc clearClaim(owner: var WorkDistributionDispatcher) =
   ## Matching collection or joined revocation precedes host-only raw/token retirement.
   owner.held = false
@@ -151,10 +171,12 @@ proc clearClaim(owner: var WorkDistributionDispatcher) =
   owner.ticket = default(NodeReadTicket)
   owner.request = default(ReadRequest)
   owner.token = default(WorkDistributionToken)
+
 proc reject(owner: var WorkDistributionDispatcher, streams: var NodeService) =
   ## Refusal closes only the claimed native stream and never manufactures a successful empty response.
   discard streams.reject(owner.ticket)
   owner.clearClaim()
+
 proc pollIncoming(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, reports: var ReportCache, clock: MonoTime, now: StateTime) =
   ## Collection and source-free retirement precede CPU arbitration; this activation never submits a new job.
@@ -202,6 +224,7 @@ proc pollIncoming(owner: var WorkDistributionDispatcher, services: var Services,
     owner.clearClaim()
   else:
     owner.reject(streams) # Retained candidate may remain locally useful despite a native reset or output refusal.
+
 proc submitIncoming(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime, now: StateTime): bool {.raises.} =
   ## One complete filtered request waits under its original deadline; all source capture aliases retire inside Services before publication.
@@ -227,6 +250,7 @@ proc submitIncoming(owner: var WorkDistributionDispatcher, services: var Service
   owner.active = true
   owner.cancelled = false
   true
+
 proc beginLocal*(owner: var WorkDistributionDispatcher, services: Services,
     session: WorkSessionToken, clock: MonoTime): bool =
   ## Offer an exact retained primary completion once; byte caches contain no worker-shared source/signer graph.
@@ -244,6 +268,7 @@ proc beginLocal*(owner: var WorkDistributionDispatcher, services: Services,
   owner.acknowledged = @[]
   owner.deliveryPhase = WorkDeliveryPhase.Waiting
   true
+
 proc retireDeliveryDial(owner: var WorkDistributionDispatcher, streams: var NodeService,
     index: int, force: bool) =
   ## A close request is not physical retirement: retain the exact token and concurrency charge until the native owner releases it.
@@ -255,18 +280,21 @@ proc retireDeliveryDial(owner: var WorkDistributionDispatcher, streams: var Node
   let idle = not streams.peerBusy(owner.peers[index].record.ed25519)
   if not owner.peers[index].closingDial and (force or idle):
     owner.peers[index].closingDial = streams.cancelPeerConnection(owner.peers[index].dial)
+
 proc cancelDeliveryPeers(owner: var WorkDistributionDispatcher, streams: var NodeService,
     force = false) =
   ## Only exact owned native requests/dials may be cancelled; pre-existing authenticated connections retain their original owner.
   for index in 0..<owner.peers.len:
     discard streams.cancelRequest(owner.peers[index].request)
     owner.retireDeliveryDial(streams, index, force)
+
 proc retireDelivery(owner: var WorkDistributionDispatcher, streams: var NodeService,
     refresh: bool) =
   ## Refresh never re-signs or changes the original slot; acknowledgment history remains until the whole round finishes.
   owner.cancelDeliveryPeers(streams)
   owner.refreshDelivery = refresh
   owner.deliveryPhase = WorkDeliveryPhase.Retiring
+
 proc clearDelivery(owner: var WorkDistributionDispatcher) =
   ## Exact collection/retirement precedes dropping independently owned wire/record/history storage.
   owner.deliveryRequest = default(ReadRequest)
@@ -277,6 +305,7 @@ proc clearDelivery(owner: var WorkDistributionDispatcher) =
   owner.refreshDelivery = false
   owner.cursor = 0
   owner.deliveryPhase = WorkDeliveryPhase.Idle
+
 proc beforePoll*(owner: var WorkDistributionDispatcher, services: Services,
     streams: var NodeService, now: StateTime) =
   ## Revoke stale queued sends before native callbacks can flush them; foreign source leases permit only fixed clock checks.
@@ -288,15 +317,18 @@ proc beforePoll*(owner: var WorkDistributionDispatcher, services: Services,
     owner.retireDelivery(streams, true)
   elif services.stateProofAvailable:
     if not services.workDistributionCurrent(owner.deliveryInfo, now): owner.retireDelivery(streams, true)
+
 func knownAcknowledgment(owner: WorkDistributionDispatcher, key: StateEdKey): bool =
   ## Bounded distinct identities survive fresh roster plans without resetting delivery at the first recipient.
   for prior in owner.acknowledged:
     if array[32, byte](prior) == array[32, byte](key): return true
   false
+
 proc refusePeer(owner: var WorkDistributionDispatcher, index: int) =
   ## One terminal peer refusal never manufactures an acknowledgment or mutates another peer's native controls.
   owner.peers[index].phase = DeliveryPeerPhase.Refused
   if owner.refused < high(uint64): inc owner.refused
+
 proc pollDelivery(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, reports: var ReportCache, clock: MonoTime, now: StateTime) =
   ## Matching collection and bounded source-free I/O retirement never admit another CPU job here.
@@ -379,6 +411,7 @@ proc pollDelivery(owner: var WorkDistributionDispatcher, services: var Services,
     if owner.peers[index].phase in [DeliveryPeerPhase.Waiting, DeliveryPeerPhase.Connecting,
         DeliveryPeerPhase.Requested]: pending = true
   if not pending: owner.retireDelivery(streams, false)
+
 proc requestDeliveryPeer(owner: var WorkDistributionDispatcher, streams: var NodeService,
     index: int, clock: MonoTime) =
   ## Only the managed verifier's fixed record selects authenticated key and metadata endpoint.
@@ -409,6 +442,7 @@ proc requestDeliveryPeer(owner: var WorkDistributionDispatcher, streams: var Nod
   owner.peers[index].dialing = true
   owner.peers[index].started = clock
   owner.peers[index].phase = DeliveryPeerPhase.Connecting
+
 proc submitDelivery(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime, now: StateTime): bool {.raises.} =
   ## One local CPU turn alternates with incoming work; new native queues require an available fresh canonical stamp.
@@ -444,12 +478,14 @@ proc submitDelivery(owner: var WorkDistributionDispatcher, services: var Service
             DeliveryPeerPhase.Requested]: inc active
   else: discard # Checking/retiring/idle phases cannot submit or flush another round's controls.
   false
+
 proc poll*(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, reports: var ReportCache, clock: MonoTime, now: StateTime) =
   ## Source-free receipt and delivery collection share one exact managed namespace without stealing another lease.
   if not owner.policy.ready: return
   owner.pollIncoming(services, streams, reports, clock, now)
   owner.pollDelivery(services, streams, reports, clock, now)
+
 proc submit*(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime, now: StateTime): bool {.raises.} =
   ## A continuously ready local/incoming pair alternates closed worker admission within the outer application arbiter.
@@ -464,6 +500,7 @@ proc submit*(owner: var WorkDistributionDispatcher, services: var Services,
     owner.preferIncoming = false
     return true
   false
+
 proc close*(owner: var WorkDistributionDispatcher, services: var Services,
     streams: var NodeService) =
   ## Joining requires successful exact cancellation; stale/default controls never interrupt a foreign lease.

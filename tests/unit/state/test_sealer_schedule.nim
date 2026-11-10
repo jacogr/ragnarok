@@ -17,8 +17,10 @@ import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Observer-linked primitives expose exact call counts and controlled first/late hash refusal only in tests.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit a known prefix of Blake2b calls before refusing the next call.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count primitive attempts so ticket/same-epoch/preflight paths prove they do no fallback work.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

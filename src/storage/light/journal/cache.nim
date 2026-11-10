@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit locked light journal owners publish immutable evidence only after confirmed sparse append durability.
+
 import std/assertions
 import ../[snapshot as light_snapshot, state_cache as light_state_cache, delta as light_delta]
 import ./[manifest as light_journal_manifest, replay as light_journal_replay]

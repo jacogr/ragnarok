@@ -14,6 +14,7 @@ import ../../../src/codec/bounded
 import ../../support/published_state
 
 const Prefix = "state-worker-replay"
+
 proc waitDone(worker: var CheckpointWorker) =
   ## Test-only scheduling waits use scalar reads and a finite monotonic deadline.
   let started = getMonoTime()
@@ -22,10 +23,12 @@ proc waitDone(worker: var CheckpointWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # No production polling or latency guarantee is introduced.
+
 proc detached(expected: Mapping): PreparedCheckpoint =
   ## Source graph and all construction aliases retire here before native publication receives sole encoded bytes.
   let source = newStateStore(expected.entries, policy(expected, expected)).value.snapshot.value
   prepareFullCheckpoint(source, ByteLimit(high(uint64)))
+
 proc replay(worker: var CheckpointWorker, head: var CheckpointHead, expected: Mapping, index: int) =
   ## Independently published roots authorize verification; generated head values never supply their own trust.
   var prepared = detached(expected)
@@ -51,6 +54,7 @@ proc replay(worker: var CheckpointWorker, head: var CheckpointHead, expected: Ma
   assert worker.begin(observed)
   worker.waitDone()
   assert uint64(worker.collect(observed).value.value.generation) == uint64(index)
+
 proc main() {.raises.} =
   ## One reusable native owner publishes every mapping, then fresh locked restoration checks all final bytes and counts.
   for suffix in [".head", ".0", ".1"]:

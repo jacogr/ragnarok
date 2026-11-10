@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The same transaction scenario runs against memory and real disk through overloaded storage operations.
+
 # @@Verification={"arc": "storage_backend_contract_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -16,12 +17,15 @@ import ../../../src/codec/bounded
 proc successful[T](outcome: RepositoryResult[T]): bool =
   ## Memory results expose the shared success contract with backend-specific diagnostics intact.
   outcome.error == RepositoryError.None
+
 proc successful[T](outcome: FileResult[T]): bool =
   ## File results preserve explicit IO uncertainty rather than flattening it to a memory error.
   outcome.error == FileError.None
+
 proc refused(outcome: RepositoryResult[RepositoryView], reason: RepositoryError): bool =
   ## Compare logical admission failures selected by the memory backend.
   outcome.error == reason
+
 proc refused(outcome: FileResult[RepositoryView], reason: RepositoryError): bool =
   ## Disk preparation carries the same actual logical failure in its guarded alternative.
   outcome.error == FileError.InvalidBatch and outcome.batchFailure.error == reason

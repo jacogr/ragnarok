@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Synthetic larger workloads use the same public backend admission and synchronization contracts.
+
 import std/assertions
 import ./storage_deployment_samples
 import ../../src/storage/node/repository as node_repository

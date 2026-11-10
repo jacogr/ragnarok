@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Broad persistent batches preserve independent complete-map roots, final-only quotas and owned historical values.
+
 import std/[assertions, syncio]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]

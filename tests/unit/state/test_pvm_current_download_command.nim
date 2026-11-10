@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The explicit current command performs real authenticated current execution and durable/RPC adoption with atomic option/policy preflight.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -15,6 +16,7 @@ import ../../support/[accumulation_current_chain_context, current_download_comma
   current_services_disk_samples, managed_storage_samples, block_download_transport, rpc_socket]
 const ChainPath = "pvm-current-download-command-chain"
 const PolicyPath = "pvm-current-download-command-policy"
+
 proc optionsTests() {.raises.} =
   ## Both command pipelines accept the shared shape; current mode still requires state, rejects telemetry and owns discovery intent.
   var options = default(Options)
@@ -31,6 +33,7 @@ proc optionsTests() {.raises.} =
     "--download-remote-ancestors", "1",
     "--download-discover-ancestors", "1"], options)
   assert runCurrentDownloads(default(Options)).error == CurrentDownloadCommandResult.InvalidOptions
+
 proc check(context: CurrentChainFixture, disk, managed, rpc: bool) {.raises.} =
   ## API entry uses actual TLS/current worker execution; strict restart proves every selected durable state entry.
   var database = "pvm-current-download-command-state"
@@ -63,6 +66,7 @@ proc check(context: CurrentChainFixture, disk, managed, rpc: bool) {.raises.} =
     equalCurrentDiskMap(owner.stateSnapshot.value, context.source.currentConsensusState.value)
     assert owner.chainView.retainedCount == 2
     owner.close()
+
 proc preflight(context: CurrentChainFixture) {.raises.} =
   ## Version/mode/endpoint refusals occur before any Services listener/database or native outgoing endpoint can open.
   var options = default(Options)
@@ -76,6 +80,7 @@ proc preflight(context: CurrentChainFixture) {.raises.} =
   policy.schedule.peers = ElementLimit(0)
   writeFile(PolicyPath, encodeCurrentDownloadPolicy(policy))
   assert runCurrentDownloads(options).error == CurrentDownloadCommandResult.InvalidPolicy
+
 proc main() {.raises.} =
   ## Independent signed current fixtures qualify production command selection without legacy certificate conversion.
   defer:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One exact canonical admission gate for genuine current preparation collection consumers.
+
 import ../[chain, preparation_worker]
 import "../current/block/input" as current_block_input
 import ../candidate

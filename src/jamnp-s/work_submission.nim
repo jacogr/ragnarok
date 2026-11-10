@@ -3,6 +3,7 @@
 
 ## Authorize bounded CE133/146 headers before authenticating original package-bound body inputs.
 ## Synchronous complete-state owners belong behind the application's managed graph gate, never in callbacks.
+
 import ../codec/[bounded, natural, composite, assurances]
 import ../codec/work/[package as work_package, report as work_report]
 import ../codec/state/[authorization as state_authorization, history as state_history,
@@ -70,36 +71,44 @@ type
 func error*[T](outcome: WorkSubmissionResult[T]): WorkSubmissionError =
   ## Inspect a result without exposing a writable discriminator.
   outcome.status
+
 func value*[T](outcome: WorkSubmissionResult[T]): T {.requires: outcome.status ==
     WorkSubmissionError.None.} =
   ## Extract only completely selected success.
   outcome.completed
+
 func packageError*[T](outcome: WorkSubmissionResult[T]): PackageError {.requires: outcome.status ==
     WorkSubmissionError.PackageFailure.} =
   ## Preserve the original canonical package decoder's refusal.
   outcome.packageReason
+
 func authorizationError*[T](outcome: WorkSubmissionResult[T]): AuthorizationInvocationResult[
     AuthorizationInvocation] {.requires: outcome.status ==
     WorkSubmissionError.AuthorizationFailure.} =
   ## Retain the genuine failed child, including its guarded nested cause.
   outcome.authorizationReason
+
 func authorizationKind*[T](outcome: WorkSubmissionResult[T]): WorkKind {.requires: outcome.status ==
     WorkSubmissionError.AuthorizationRejected.} =
   ## Expose the actual completed guest work error only on rejection.
   outcome.rejectedKind
+
 func extrinsicError*[T](outcome: WorkSubmissionResult[
     T]): ExtrinsicInputsError {.requires: outcome.status == WorkSubmissionError.ExtrinsicFailure.} =
   ## Hash/length/backend failures remain distinct from framing failures.
   outcome.extrinsicReason
+
 func importError*[T](outcome: WorkSubmissionResult[
     T]): ImportJustificationError {.requires: outcome.status ==
     WorkSubmissionError.ImportFailure.} =
   ## Preserve the selected segment proof verifier's cause.
   outcome.importReason
+
 func bindingError*[T](outcome: WorkSubmissionResult[
     T]): ImportInputsError {.requires: outcome.status == WorkSubmissionError.BindingFailure.} =
   ## A complete table mismatch never exposes its earlier verified rows.
   outcome.bindingReason
+
 proc submissionContext*(header: WorkSubmissionHeader): WorkSubmissionResult[RefinementContext] =
   ## Copy fixed original context facts without exposing mutable package storage or a signing capability.
   let data = header.data
@@ -107,10 +116,12 @@ proc submissionContext*(header: WorkSubmissionHeader): WorkSubmissionResult[Refi
       status: WorkSubmissionError.Uninitialized)
   WorkSubmissionResult[RefinementContext](status: WorkSubmissionError.None,
     completed: data.package.workPackageInfo.value.context)
+
 proc sameSubmissionHeader*(left, right: WorkSubmissionHeader): bool =
   ## Exact owner identity, rather than byte equality, binds later private source capabilities to the original decoded header.
   let data = left.data
   data != nil and data == right.data
+
 proc submissionMatchesAuthorization*(header: WorkSubmissionHeader,
     invocation: AuthorizationInvocation, state: StateStoreSnapshot): bool =
   ## Bind execution to this original decoded package, selected core and exact complete execution map.
@@ -123,12 +134,14 @@ proc submissionMatchesAuthorization*(header: WorkSubmissionHeader,
   let package = invocation.authorizationPackage.value
   let source = invocation.authorizationState.value
   data.package.sameWorkPackage(package) and sameStateSnapshot(source, state)
+
 proc submissionInfo*(header: WorkSubmissionHeader): WorkSubmissionResult[WorkSubmissionInfo] =
   ## Copy bounded geometry without granting authority to read a body.
   let data = header.data
   if data == nil: return WorkSubmissionResult[WorkSubmissionInfo](
       status: WorkSubmissionError.Uninitialized)
   WorkSubmissionResult[WorkSubmissionInfo](status: WorkSubmissionError.None, completed: data.info)
+
 proc submissionInfo*(grant: AuthorizedWorkSubmission): WorkSubmissionResult[WorkSubmissionInfo] =
   ## Only a genuine grant exposes authorized reader geometry.
   let data = grant.data
@@ -136,11 +149,13 @@ proc submissionInfo*(grant: AuthorizedWorkSubmission): WorkSubmissionResult[Work
       status: WorkSubmissionError.Uninitialized)
   WorkSubmissionResult[WorkSubmissionInfo](status: WorkSubmissionError.None,
       completed: data.header.info)
+
 func less(a, b: PackageHash): bool =
   ## Canonical dictionary order compares full wire octets, independently of host endianness.
   for index in 0..<32:
     if a.bytes[index] != b.bytes[index]: return a.bytes[index] < b.bytes[index]
   false
+
 proc dictionary(payload: openArray[byte]): WorkSubmissionResult[seq[SegmentLookup]] =
   ## Preflight the complete count/extent before allocating at most eight fixed records.
   let count = decode(payload)
@@ -162,6 +177,7 @@ proc dictionary(payload: openArray[byte]): WorkSubmissionResult[seq[SegmentLooku
       if not less(rows[index-1].packageHash, rows[index].packageHash):
         return WorkSubmissionResult[seq[SegmentLookup]](status: WorkSubmissionError.InvalidMappings)
   WorkSubmissionResult[seq[SegmentLookup]](status: WorkSubmissionError.None, completed: rows)
+
 proc decodeWorkSubmission*(kind: WorkSubmissionKind, first, packageMessage: openArray[byte],
     config: PackageConfig): WorkSubmissionResult[WorkSubmissionHeader] =
   ## Decode exact CE133/146 header payloads; outer E4 framing belongs to the staged transport reader.
@@ -229,6 +245,7 @@ proc decodeWorkSubmission*(kind: WorkSubmissionKind, first, packageMessage: open
     fail(WorkSubmissionError.LimitExceeded) # Even empty proof paths require one canonical count byte per imported leaf.
   WorkSubmissionResult[WorkSubmissionHeader](status: WorkSubmissionError.None,
     completed: WorkSubmissionHeader(data: HeaderData(package: package, info: info, lookup: lookup)))
+
 proc checkMappings(state: StateStoreSnapshot, lookup: openArray[SegmentLookup],
     config: HistoryConfig): WorkSubmissionError =
   ## Accept only mappings visible in this exact source's bounded recent history; never trust peer-supplied roots.
@@ -250,6 +267,7 @@ proc checkMappings(state: StateStoreSnapshot, lookup: openArray[SegmentLookup],
             pair.segmentRoot.bytes: found = true
     if not found: return WorkSubmissionError.UnavailableMapping
   WorkSubmissionError.None
+
 proc authorizeWorkSubmission*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits): WorkSubmissionResult[
         AuthorizedWorkSubmission] =
@@ -303,6 +321,7 @@ proc authorizeWorkSubmission*(header: WorkSubmissionHeader, state: StateStoreSna
   WorkSubmissionResult[AuthorizedWorkSubmission](status: WorkSubmissionError.None,
     completed: AuthorizedWorkSubmission(data: GrantData(header: data,
         authorization: authorized.value)))
+
 proc importRoot(reference: ImportReference, lookup: openArray[SegmentLookup]): WorkSubmissionResult[SegmentRoot] =
   ## Resolve the original nominal reference without accepting a root chosen by the responding peer.
   if reference.kind == ImportKind.Root:
@@ -314,6 +333,7 @@ proc importRoot(reference: ImportReference, lookup: openArray[SegmentLookup]): W
       return WorkSubmissionResult[SegmentRoot](status: WorkSubmissionError.None,
           completed: pair.segmentRoot)
   WorkSubmissionResult[SegmentRoot](status: WorkSubmissionError.UnavailableMapping)
+
 proc prepareWorkImportPlan*(grant: AuthorizedWorkSubmission,
     limits: WorkSubmissionLimits): WorkSubmissionResult[WorkImportPlan] =
   ## Derive CE148 occurrence order and canonical package mappings from the exact authorized state, before any fetch.
@@ -397,6 +417,7 @@ proc prepareWorkImportPlan*(grant: AuthorizedWorkSubmission,
   WorkSubmissionResult[WorkImportPlan](status: WorkSubmissionError.None,
     completed: WorkImportPlan(data: ImportPlanData(grant: granted, lookup: lookup,
         request: request)))
+
 proc workImportRequest*(plan: WorkImportPlan): WorkSubmissionResult[seq[byte]] =
   ## Copy bounded raw CE148 payload bytes while the host owns graph access; the returned buffer retains no plan alias.
   let data = plan.data
@@ -404,17 +425,20 @@ proc workImportRequest*(plan: WorkImportPlan): WorkSubmissionResult[seq[byte]] =
   var wire = newSeq[byte](data.request.len)
   for index in 0..<wire.len: wire[index] = data.request[index]
   WorkSubmissionResult[seq[byte]](status: WorkSubmissionError.None, completed: wire)
+
 proc importPlanMatches*(plan: WorkImportPlan, grant: AuthorizedWorkSubmission): bool =
   ## Exact grant identity prevents another authorization from substituting even byte-identical package inputs.
   let data = plan.data
   let granted = grant.data
   if data == nil or granted == nil: return false
   data.grant == granted
+
 proc importPlanStateMatches*(plan: WorkImportPlan, state: StateStoreSnapshot): bool =
   ## A recovery catalog must describe the exact immutable state used by this original grant.
   let data = plan.data
   if data == nil: return false
   sameStateSnapshot(data.grant.authorization.authorizationState.value, state)
+
 proc importPlanShape*(plan: WorkImportPlan): WorkSubmissionResult[WorkImportShape] =
   ## Copy bounded original geometry without retaining any private package or grant alias in the result.
   let data = plan.data
@@ -424,6 +448,7 @@ proc importPlanShape*(plan: WorkImportPlan): WorkSubmissionResult[WorkImportShap
     completed: WorkImportShape(
     items: data.grant.header.package.workPackageInfo.value.items,
     entries: data.grant.header.info.importCount))
+
 proc importPlanEntries*(plan: WorkImportPlan): WorkSubmissionResult[seq[WorkImportEntry]] =
   ## Copy every bounded original occurrence and resolved root in manifest order, without exposing package storage.
   let data = plan.data
@@ -444,6 +469,7 @@ proc importPlanEntries*(plan: WorkImportPlan): WorkSubmissionResult[seq[WorkImpo
           occurrence: occurrence)
       inc position
   WorkSubmissionResult[seq[WorkImportEntry]](status: WorkSubmissionError.None, completed: entries)
+
 proc importPlanLookup*(plan: WorkImportPlan): WorkSubmissionResult[seq[SegmentLookup]] =
   ## Detach the complete bounded canonical dictionary, never a borrowed sequence descriptor.
   let data = plan.data
@@ -452,6 +478,7 @@ proc importPlanLookup*(plan: WorkImportPlan): WorkSubmissionResult[seq[SegmentLo
   var lookup = newSeq[SegmentLookup](data.lookup.len)
   for index in 0..<lookup.len: lookup[index] = data.lookup[index]
   WorkSubmissionResult[seq[SegmentLookup]](status: WorkSubmissionError.None, completed: lookup)
+
 proc verifiedExtrinsics(grant: AuthorizedWorkSubmission, payload: openArray[byte],
     limits: ExtrinsicInputsLimits): WorkSubmissionResult[VerifiedExtrinsics] =
   ## Exact expected length and policy checks precede nested table allocations and hashing.
@@ -484,6 +511,7 @@ proc verifiedExtrinsics(grant: AuthorizedWorkSubmission, payload: openArray[byte
       status: WorkSubmissionError.ExtrinsicFailure, extrinsicReason: checked.error)
   WorkSubmissionResult[VerifiedExtrinsics](status: WorkSubmissionError.None,
       completed: checked.value)
+
 proc completePackageSubmission*(grant: AuthorizedWorkSubmission, extrinsics: openArray[byte],
     imports: openArray[seq[VerifiedImport]], lookup: openArray[SegmentLookup],
     limits: WorkSubmissionLimits): WorkSubmissionResult[VerifiedImportInputs] =
@@ -510,6 +538,7 @@ proc completePackageSubmission*(grant: AuthorizedWorkSubmission, extrinsics: ope
       status: WorkSubmissionError.BindingFailure, bindingReason: bound.error)
   WorkSubmissionResult[VerifiedImportInputs](status: WorkSubmissionError.None,
       completed: bound.value)
+
 proc completeSegmentInputs(grant: AuthorizedWorkSubmission, extrinsics, segments,
     proofs: openArray[byte], lookup: openArray[SegmentLookup],
         limits: WorkSubmissionLimits): WorkSubmissionResult[VerifiedImportInputs] =
@@ -608,11 +637,13 @@ proc completeBundleSubmission*(grant: AuthorizedWorkSubmission, extrinsics, segm
       proofs, [], limits)
   completeSegmentInputs(grant, extrinsics, segments, proofs,
     header.lookup.toOpenArray(0, header.info.mappingCount-1), limits)
+
 proc framedLength(wire: openArray[byte], position: int): uint64 {.requires: position >= 0 and
     position <= wire.len-4.} =
   ## Read a proven four-byte little-endian outer length without narrowing untrusted values.
   uint64(wire[position]) or (uint64(wire[position+1]) shl 8) or
     (uint64(wire[position+2]) shl 16) or (uint64(wire[position+3]) shl 24)
+
 proc completeFetchedPackageSubmission*(grant: AuthorizedWorkSubmission, plan: WorkImportPlan,
     extrinsics, reply: openArray[byte], limits: WorkSubmissionLimits): WorkSubmissionResult[
         VerifiedImportInputs] =

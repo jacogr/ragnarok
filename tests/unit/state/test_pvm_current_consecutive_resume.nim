@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual disk restart resumes from the persisted current child, then retains every exact successor without replaying the first.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/current/download/command as current_download_command

@@ -32,6 +32,7 @@ proc peerKey(): DownloadPeerKey {.raises.} =
   var key = default(array[32, byte])
   for index in 0..<32: key[index] = byte(raw[index]) # Copy the complete fixture SPKI payload.
   DownloadPeerKey(key)
+
 proc limits(attempts: uint64 = 2): DownloadLoopLimits =
   ## Every network, state-stage and adoption policy is explicitly supplied, independent of CLI defaults.
   DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: attempts,
@@ -39,6 +40,7 @@ proc limits(attempts: uint64 = 2): DownloadLoopLimits =
     candidate: preparationLimits(), composition: completionLimits().composition,
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
       timeout: DownloadTimeout(50)), attemptTimeout: DownloadAttemptTimeout(100))
+
 proc start(owner: var Services) {.raises.} =
   ## Each scenario owns an independent complete-map seed and the real Services handoff.
   var options = default(Options)
@@ -46,6 +48,7 @@ proc start(owner: var Services) {.raises.} =
     "application-download-loop-chain.json",
     "--state-writes", "1000", "--state-write-bytes", "1000000"], options), "start witness 1"
   assert owner.start(options, "test"), "start witness 2"
+
 proc expected(owner: Services): array[42, byte] =
   ## Independently use the existing wire request owner to describe the responder's exact expected bytes.
   var download = default(BlockDownload)
@@ -53,16 +56,19 @@ proc expected(owner: Services): array[42, byte] =
   assert admitted.error == BlockDownloadError.None, "expected witness 1"
   result = download.request(admitted.value).value
   assert download.cancel(admitted.value), "expected witness 2"
+
 proc open(dispatcher: var BlockDownloadLoop, key: DownloadPeerKey,
     port: uint16): DownloadPeerError =
   ## Use the production identity callback and current explicit loopback endpoint API.
   dispatcher.openPeer(DownloadPeerId(22), key, port, getEnv("RAGNAROK_TEST_CERT"),
     getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000")
+
 proc configured(dispatcher: var BlockDownloadLoop, owner: var Services,
     policy: DownloadLoopLimits, now: uint64 = 0) =
   ## Retain stable stack owners for all following callbacks and handoff consumption.
   assert dispatcher.configure(owner, [DownloadPeerId(22)], [], policy, DownloadLoopTick(now)) ==
       DownloadLoopError.None, "configured witness 1"
+
 proc advance(dispatcher: var BlockDownloadLoop, servers: var DownloadResponders,
     target: DownloadLoopStage, now: uint64 = 0) =
   ## Bounded polling never silently advances deadlines or substitutes a fake terminal status.

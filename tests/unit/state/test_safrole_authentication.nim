@@ -19,8 +19,10 @@ import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Reset test-only ordinary-verification counters without changing production ABI behavior.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Refuse the next ordinary verification after a selected successful prefix.
 proc refuseAfter(successful: cint) {.importc: "bo_ietf_after", cdecl.}
+
 ## Count attempts to prove both signatures verify and malformed/preflight inputs avoid native work.
 proc verifications(): cint {.importc: "bo_ietf_calls", cdecl.}
 

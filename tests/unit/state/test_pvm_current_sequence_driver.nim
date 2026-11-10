@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_sequence_driver_arc_release"}
 
 ## Bounded current driving proves actual termination, exact history capacity and root/manual state parity without exposing successful prefixes on refusal.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/trie as state_trie
@@ -14,11 +16,15 @@ import ../../../src/state/accumulation/[round as accumulation_round,
 import ../../../src/state/store
 import ../../support/[accumulation_current_round_context, accumulation_current_sequence_context,
     accumulation_current_driver_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(): CurrentSequenceDriverLimits =
   ## Keep local call sites short while sharing the maintained tiny-chain driver configuration.
   currentSequenceDriverLimits()
+
 proc main() {.raises.} =
   ## Retain real signed admission and current proof constructors, including the initially excluded available report.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

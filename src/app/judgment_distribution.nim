@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional CE145 receipt holds exact TLS/worker claims while complete negative support is acquired by hash and qualified. Only whole successful private retention releases source-free records, serving copies and forced-audit obligations.
+
 import std/[monotimes, times]
 import ./[services, audit_state]
 import ../jamnp-s/audit_publication
@@ -45,6 +46,7 @@ type
     wire: seq[byte]
     ordinal, primaryRetries, alternateRetries: int
     received: uint64
+
 func judgmentReceiptPolicy*(claims: JudgmentClaimLimits, receipt: JudgmentReceiptLimits,
     verification: ReadVerificationLimits, store: JudgmentStoreLimits, bytes: ByteLimit,
     timeoutMs: range[1..120000] = 30000, sourceAttempts: range[1..64] = 4,
@@ -63,17 +65,22 @@ func judgmentReceiptPolicy*(claims: JudgmentClaimLimits, receipt: JudgmentReceip
     return default(JudgmentReceiptPolicy)
   JudgmentReceiptPolicy(ready: true, claims: claims, receipt: receipt, verification: verification,
     store: store, local: localLimits, bytes: bytes, timeout: timeoutMs, attempts: sourceAttempts)
+
 func valid*(policy: JudgmentReceiptPolicy): bool =
   ## Omission cannot enable native CE145 or retain any judgment.
   policy.ready
+
 proc `=copy`*(destination: var JudgmentDispatcher, source: JudgmentDispatcher) {.error.}
   ## Duplicate token ownership could cancel another controller's native stream or worker.
+
 proc `=dup`*(source: JudgmentDispatcher): JudgmentDispatcher {.error.}
   ## Construction cannot duplicate a live exact-token controller.
+
 proc requireClosed(owner: JudgmentDispatcher) {.requires: not owner.held and not owner.active and
     not owner.requested.} =
   ## Explicit exact cancellation/join and native retirement precede owner destruction.
   discard
+
 proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owner.held and
     not owner.active and not owner.requested.} =
   ## Delegate every owned child only after all physical borrowers have retired.
@@ -94,6 +101,7 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   `=wasMoved`(owner.failedSources)
   `=wasMoved`(owner.sourceSlots)
   `=wasMoved`(owner.wire)
+
 proc `=destroy`*(owner: JudgmentDispatcher) =
   ## Explicit foreground close joins this owner's exact lease before report/source aliases retire.
   requireClosed(owner)
@@ -114,27 +122,34 @@ proc `=destroy`*(owner: JudgmentDispatcher) =
   `=destroy`(owner.failedSources)
   `=destroy`(owner.sourceSlots)
   `=destroy`(owner.wire)
+
 func received*(owner: JudgmentDispatcher): uint64 =
   ## Count complete native acknowledgments after full qualification and retention.
   owner.received
+
 func pendingCount*(owner: JudgmentDispatcher): int =
   ## A qualified negative publication creates a forced-audit obligation without a CE144 announcement or fabricated available block.
   owner.pending.len
+
 proc pendingAt*(owner: JudgmentDispatcher, ordinal: int): RetainedJudgment {.requires: ordinal >=
     0 and ordinal < owner.pending.len.} =
   ## Detached original record and exact host selector reveal no private full state or signing key.
   owner.pending[ordinal]
+
 func retainedReportCount*(owner: JudgmentDispatcher): int =
   ## Detached immutable raw serving rows can remain available while private report inputs are leased elsewhere.
   owner.reports.len+owner.localReports.len
+
 func judgmentCount*(owner: JudgmentDispatcher): int =
   ## Scalar source-free ledger occupancy is independent of private worker phases.
   owner.store.len+owner.localStore.len
+
 proc judgmentAt*(owner: JudgmentDispatcher, ordinal: int): QualifiedJudgment {.requires: ordinal >=
     0 and ordinal < owner.judgmentCount.} =
   ## Preserve both original opposite signed claims rather than replacing either side of an accountable conflict.
   if ordinal < owner.store.len: owner.store.judgmentAt(ordinal).value
   else: owner.localStore.judgmentAt(ordinal-owner.store.len).value
+
 func configured*(owner: JudgmentDispatcher): bool =
   ## Optional receipt must be configured before enabling automatic participation.
   owner.policy.ready
@@ -142,6 +157,7 @@ func configured*(owner: JudgmentDispatcher): bool =
 func canExpire*(owner: JudgmentDispatcher): bool =
   ## No held receipt may have reserved ledger or raw-reply capacity.
   not owner.held
+
 proc expireBefore*(owner: var JudgmentDispatcher, floor: uint64): array[256, bool] {.requires:
     owner.canExpire.} =
   ## Compact only after whole receipt retirement and report the old positions of surviving duties.
@@ -170,6 +186,7 @@ proc expireBefore*(owner: var JudgmentDispatcher, floor: uint64): array[256, boo
       if kept != row: owner.localReports[kept] = move(owner.localReports[row])
       inc kept
   owner.localReports.setLen(kept)
+
 proc rememberPublication*(owner: var JudgmentDispatcher, publication: AuditPublication): bool =
   ## Commit a genuine local signature and its detached serving reply together.
   if not owner.policy.ready or not publication.valid: return false
@@ -199,6 +216,7 @@ proc configure*(owner: var JudgmentDispatcher, streams: var NodeService,
   owner.policy = policy
   owner.received = 0
   true
+
 proc clearClaim(owner: var JudgmentDispatcher) =
   ## Only exact worker retirement or joined shutdown permits releasing source-bearing report inputs.
   owner.held = false
@@ -220,11 +238,13 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.ordinal = 0
   owner.primaryRetries = 0
   owner.alternateRetries = 0
+
 proc reject(owner: var JudgmentDispatcher, streams: var NodeService) =
   ## Reject only this exact request and outgoing child; complete detached earlier obligations remain intact.
   if owner.requested: discard streams.cancelRequest(owner.network)
   discard streams.reject(owner.ticket)
   owner.clearClaim()
+
 proc findReport*(owner: JudgmentDispatcher, request: ReadRequest): ReadResult[ReadReply] =
   ## Serving copies share only detached raw framing, never the OwnedReport input graph frozen on the private worker.
   if not request.valid or request.kind != ReadKind.Report: return readFailure[ReadReply](
@@ -235,6 +255,7 @@ proc findReport*(owner: JudgmentDispatcher, request: ReadRequest): ReadResult[Re
     # Each retained reply was hash-verified under this exact full report request before whole negative receipt succeeded.
     if report.matches(request): return report.forRequest(request)
   readFailure[ReadReply](ReadError.Unavailable)
+
 proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
   ## Skip positive records and reuse only exact earlier full-hash report bytes; report verification and original guarantee qualification remain separate.
   while owner.ordinal < owner.claims.len:
@@ -256,6 +277,7 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     return true
   owner.phase = ReceiptPhase.ReceiptReady
   true
+
 proc releaseUnused(owner: JudgmentDispatcher, services: var Services,
     completed: ManagedAuditCompletion) =
   ## Duplicate or rejected receipt outcomes must not strand a newly pinned private origin.
@@ -268,6 +290,7 @@ proc releaseUnused(owner: JudgmentDispatcher, services: var Services,
     for row in owner.pending:
       if row.originId == id: used = true
     if not used: discard services.releaseDisputedAudit(id)
+
 proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletion): bool =
   ## Whole ledger and distinct report/obligation capacity is proven before mutation; an unacknowledged transport retry cannot erase qualified evidence.
   if completed.kind != ManagedAuditKind.JudgmentsRetained or completed.retainedJudgmentCount !=
@@ -299,6 +322,7 @@ proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletio
   for record in pending: owner.pending.add(record) # All bounded source-free additions are already reserved.
   for report in reports: owner.reports.add(report) # Retained original publishers remain able to serve CE136 after the transient request retires.
   true
+
 proc poll*(owner: var JudgmentDispatcher, services: var Services,
     streams: var NodeService, cache: var ReportCache, clock: MonoTime) =
   ## Poll exact completion/deadline state without submitting another job; expensive parsing/signatures remain on the shared bounded worker.
@@ -421,6 +445,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
     inc owner.ordinal
     if not owner.nextReport(services): owner.reject(streams)
   else: owner.reject(streams) # Foreign or impossible completions never advance an incoming request.
+
 proc submit*(owner: var JudgmentDispatcher, services: var Services,
     streams: var NodeService, cache: var ReportCache, clock: MonoTime): bool {.raises.} =
   ## Admit one bounded action per foreground turn; Busy keeps the original native claim/deadline and exact source-free staging intact.
@@ -493,6 +518,7 @@ proc submit*(owner: var JudgmentDispatcher, services: var Services,
   owner.active = true
   owner.cancelled = false
   true
+
 proc close*(owner: var JudgmentDispatcher, services: var Services, streams: var NodeService) =
   ## Join only after this exact cancellation succeeds; another actor's worker generation remains untouched.
   if owner.active and services.stateProofActive(owner.proof):

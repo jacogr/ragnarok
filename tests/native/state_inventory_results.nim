@@ -2,17 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic compact-inventory payload/reason contracts retain a genuine source-bound positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
 import ../../src/state/[inventory, manifest]
 import ../../src/codec/state/service_values as state_service_values
 include ./composition_fixture
+
 proc extract(outcome: StateInventoryResult[StateInventory]): StateInventory {.noinline.} =
   ## Preserve actual linked success assertions for default and refused owners.
   outcome.value
+
 proc keyReason(outcome: StateInventoryResult[StateInventory]): ServiceValueError {.noinline.} =
   ## Key reasons are available only after actual key derivation failure.
   outcome.keyError
+
 proc manifestReason(outcome: StateInventoryResult[
     StateInventory]): StateManifestError {.noinline.} =
   ## Exact-map refusal reasons remain distinct from defaults and key failures.

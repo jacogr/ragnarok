@@ -15,9 +15,15 @@ Memory uses4096-byte pages,65536-byte guard/alignment regions and the pinned
 32-bit ABI; initial RA is0xffff0000 and SP is0xfffe0000. Memory snapshots and
 symbol observations never expose mutable loader storage.
 
+Section parsing retains only checked integer extents for RO data, RW data and program wire.
+After complete framing, program decoding borrows its wire section and captures its final owned
+encoding. Initial memory capture reads the RO/RW offsets directly from the same borrowed container
+into private page/chunk owners. No temporary section byte arrays are allocated, and no caller-owned
+view or whole container owner survives decoding. Empty data prefixes still select zero-filled pages.
+
 Initial memory uses the same checked prefix-region capture as standard JAM initialization.
-Three sorted descriptors map RO, RW and stack; explicit source selectors bind RO to its
-data input and RW to its independent data input. Stack and missing suffixes share an
+Three sorted descriptors map RO, RW and stack; their offsets bind RO and RW to independently
+validated container sections. Stack and missing suffixes share an
 operation-local immutable zero chunk, with fresh page headers. Geometry, source extents
 and the complete page budget are checked before allocation. No temporary full page-image
 vector or concatenation of the two data sections is needed; input mutation and later guest

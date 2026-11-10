@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_solicit_arc_release"}
 
 ## Authored solicit programs verify exact funding, immutable request/footprint publication and current query/provide consumers.
@@ -24,8 +25,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject maintained-primitive refusal after genuine fixture preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Observe charge-before-work and exact injected failure position.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Reject after a bounded number of successful namespace/trie hashes.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -122,7 +125,6 @@ proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 196608'
   assert uint64(cpu.registers[7]) == code and uint64(cpu.registers[8]) == second,
     "expected verdict/word " & $code & "/" & $second & " got " & $uint64(cpu.registers[7]) & "/" &
         $uint64(cpu.registers[8])
-
 
 # An existing unsupervised foreign account is HUH; full-width out-of-domain selection is WHO.
 resultCode(run(source(selector = 99)), high(uint64)-8)
@@ -341,6 +343,7 @@ for checkpoint in [false, true]:
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.None else: AccumulationEffectError.NotRequested), "OOG selects matching request/footprint checkpoint"
+
 # Foreign request fixtures use the same hash but independent account, history and preimage namespaces.
 proc foreignRows(present = false, history = requestedHistory(), supervisor = 42'u32,
     incarnation = 0'u32, balance = 1000'u64, protected = 17'u64): seq[StateEntry] =

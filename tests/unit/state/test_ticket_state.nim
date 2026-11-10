@@ -19,14 +19,19 @@ import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Refuse only test-library Blake hashes; maintained production primitives are unchanged.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse a selected private candidate-root hash after a successful prefix.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count hashes to prove early refusal/no-op paths perform no store commitment work.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
+
 ## Refuse setup or proof verification through the existing test-only Rust observer.
 proc failRing(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Live native setup counts cannot be reset away by the observer.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
+
 ## Inspect setup work independently of successful verification.
 proc setups(): cint {.importc: "bo_setup_news", cdecl.}
 

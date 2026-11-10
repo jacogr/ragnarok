@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual ApplicationNode bundle dispatch verifies PVM execution and exact source/worker retirement over authenticated TLS.
+
 import std/[assertions, envvars, syncio, monotimes, times, strutils]
 import ../../../src/app/[node as application_node, services, options, work_dispatch, work_policy]
 import ../../../src/app/proof/[worker, work_submission]
@@ -32,6 +33,7 @@ type Variant {.pure.} = enum ## Each case has a real positive source and changes
             BatchUnknownRoot, BatchTruncated, BatchOverCount, PackageFetch, PackageEmpty,
               PackageBadProof, PackageReadLimit, PackageTimeout, PackageReset, PackageClose,
                 PackageForeign, PackageGridRead
+
 proc publicKey(name = "RAGNAROK_TEST_PEER_A"): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv(name))
@@ -39,11 +41,13 @@ proc publicKey(name = "RAGNAROK_TEST_PEER_A"): StateEdKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   StateEdKey(bytes)
+
 proc frame(payload: openArray[byte]): seq[byte] =
   ## Independent literal E4 encoding avoids the production route encoder.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(payload.len) shr (index*8)) and 255))
   for octet in payload: result.add(octet)
+
 proc wire(f: WorkFixture, variant: Variant): seq[byte] =
   ## Literal messages include original committed inputs and a real imported-segment proof.
   result = @[if variant == Variant.Package or variant in
@@ -63,6 +67,7 @@ proc wire(f: WorkFixture, variant: Variant): seq[byte] =
     var proofs = f.proofs
     if variant == Variant.CorruptProof: proofs[1] = proofs[1] xor 1
     for octet in frame(proofs): result.add(octet)
+
 proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     milliseconds = 1, now = StateTime(20), clockOffsetMs = 0) {.raises.} =
   ## Ordinary host polling, not a hand-written work dispatcher, drives every network and CPU transition.
@@ -71,6 +76,7 @@ proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProb
     assert host.poll(getMonoTime()+initDuration(milliseconds = clockOffsetMs), now, 0)
     probe.poll()
     services.tick(uint32(host.peerCount))
+
 proc waitPhase(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     phase: WorkDispatchPhase, label = "") {.raises.} =
   ## Bounded waits observe scalar host state without borrowing any selected graph owner.
@@ -81,11 +87,13 @@ proc waitPhase(host: var ApplicationNode, services: var Services, probe: var Nod
     assert host.poll(getMonoTime(), StateTime(20), 0)
     probe.poll()
     services.tick(uint32(host.peerCount)) # Exactly one host turn keeps transient admitted phases observable without scheduler timing assumptions.
+
 proc waitDone(services: var Services) =
   ## Hold the host at a deterministic uncollected Done boundary; this loop touches only native worker scalar status.
   let deadline = getMonoTime()+initDuration(seconds = 8)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "work dispatch CPU completion"
+
 proc waitReset(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     flow: int, now = StateTime(20), clockOffsetMs = 0) {.raises.} =
   ## A refused stream may never acquire response FIN; actual native reset precedes the verdict.
@@ -95,14 +103,17 @@ proc waitReset(host: var ApplicationNode, services: var Services, probe: var Nod
     assert not probe.flows[flow].receivedFin
     pump(host, services, probe, now = now, clockOffsetMs = clockOffsetMs)
   assert not probe.flows[flow].receivedFin
+
 proc availabilityLimits(): AvailabilityReadLimits =
   ## Explicit separate serving policy has no implied relationship to authorization/refinement ceilings.
   AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
     hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)), wireBytes: ByteLimit(16000000))
+
 proc originalBundle(services: Services, token: WorkSessionToken): seq[byte] =
   ## Return only copied original bytes; every source-bearing alias retires before network CPU admission.
   let report = services.workSubmissionOutcome(token).reportTranscript.computedGuaranteeReport.value
   report.computedReportSource.value.availabilitySource.value.exportErasureSource.value.bundleErasureSource.value.layoutSource.value.bundleBytes.value
+
 proc responseMessages(wire: seq[byte]): seq[seq[byte]] =
   ## Independent literal E4 parsing checks complete response framing before cryptographic verification.
   result = @[]
@@ -117,6 +128,7 @@ proc responseMessages(wire: seq[byte]): seq[seq[byte]] =
     for index in 0..<message.len: message[index] = wire[offset+index]
     result.add(message)
     offset += message.len
+
 proc batchScenario(variant: Variant, host: var ApplicationNode, services: var Services,
     probe: var NodeProbe, expected: AvailabilitySpecifier, token: WorkSessionToken,
     distribution: seq[seq[byte]], hash: BlockHash) {.raises.} =
@@ -208,6 +220,7 @@ proc batchScenario(variant: Variant, host: var ApplicationNode, services: var Se
     assert verifyAvailabilityTransfer(expected, selected, [], parts[0].toOpenArray(ordinal*1368, (
         ordinal+1)*1368-1),
       parts[ordinal+1], limits.computation).error == AvailabilityTransferError.None
+
 proc scenario(variant: Variant) {.raises.} =
   ## Every case starts from actual Tiny PVM code, committed imports, a complete source and matching server identity.
   let fixture = workFixture(external = variant != Variant.PackageEmpty, exported = variant in
@@ -609,6 +622,7 @@ proc scenario(variant: Variant) {.raises.} =
     assert host.releaseWork() and not host.releaseWork()
   assert services.workSessionPhase(token) == WorkSessionPhase.Empty
   assert host.workPhase == WorkDispatchPhase.Idle
+
 proc main() {.raises.} =
   ## Run live lifecycle witnesses serially so native sockets, workers and bridge libraries never share mutable ownership.
   for variant in Variant.Success..Variant.PackageGridRead:

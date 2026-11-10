@@ -2,29 +2,37 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic phase guards retain a genuine expected-root restored certificate as their positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, account_checkpoint_context]
 import ../../src/state/account/[checkpoint as account_checkpoint, invariants as account_invariants]
 import ../../src/state/[checkpoint, manifest, store]
 include ./composition_fixture
+
 proc extract(outcome: AccountCheckpointResult): CheckedAccountInvariants {.noinline.} =
   ## Default restoration has no completed source-bearing certificate.
   outcome.value
+
 proc guardSerialization(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the serialization reason.
   discard outcome.serializationFailure
+
 proc guardInventory(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the inventory reason.
   discard outcome.inventoryFailure
+
 proc guardFootprint(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the footprint reason.
   discard outcome.footprintFailure
+
 proc guardLinkage(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the linkage reason.
   discard outcome.linkageFailure
+
 proc guardContent(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the content reason.
   discard outcome.contentFailure
+
 proc guardJoin(outcome: AccountCheckpointResult) {.noinline.} =
   ## A different phase cannot expose the join reason.
   discard outcome.joinFailure

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit whole-global policies accompany independent view/C9 admission for selected parent consumers.
+
 import ../../src/state/global_snapshot
 import ../../src/codec/bounded
 import ../../src/codec/state/composition as state_composition

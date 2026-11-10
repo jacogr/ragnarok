@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent multi-stream TLS probe observes byte transcripts, FIN and reset without production encoders.
+
 import std/[assertions, envvars, syncio]
 import ../../src/quic/transport
 import ../../src/jamnp-s/protocol
@@ -28,14 +29,18 @@ type
     expectedRead, readReply: seq[byte]
     reads: seq[ProbeRead]
     expected: array[32, byte]
+
 proc `=copy`(destination: var NodeProbe, source: NodeProbe) {.error.}
   ## Native callbacks borrow exactly one stable probe address.
+
 proc `=dup`(source: NodeProbe): NodeProbe {.error.}
   ## Initialization must not duplicate an owning transport aggregate.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Independently read raw fixture key pins the node identity before opening streams.
   let probe = cast[ptr NodeProbe](user)
   cint(validPeer(cast[ptr byte](der), length, probe.expected))
+
 proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].} =
   ## Each callback performs one bounded chunk and never accesses canonical state.
   let probe = cast[ptr NodeProbe](user)
@@ -128,6 +133,7 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
     wantWrite(stream, 0)
     if not alreadyReset: streamAbort(stream) # Retire our directions as well as observing the peer's directional reset.
   else: discard # Other native events do not establish protocol success.
+
 proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000",
     certificate = "", keyPath = "") {.raises.} =
   ## A fresh engine presents the second certificate while pinning the node's first certificate.
@@ -140,6 +146,7 @@ proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000",
     verify, event,
     idleSeconds = 30, keepalive = true)
   assert probe.transport.connectTransport(port)
+
 proc listen*(probe: var NodeProbe, protocol = "jamnp-s/1/00000000") {.raises.} =
   ## The same bounded raw responder can accept a node's demanded connection without joining its validator topology.
   probe.allowAnnouncements = true
@@ -149,21 +156,27 @@ proc listen*(probe: var NodeProbe, protocol = "jamnp-s/1/00000000") {.raises.} =
   assert openTransport(probe.transport, true, false, 0, getEnv("RAGNAROK_TEST_CERT_B"),
     getEnv("RAGNAROK_TEST_KEY_B"), protocol, addr probe, verify, event,
     idleSeconds = 30, keepalive = true)
+
 proc localPort*(probe: NodeProbe): uint16 =
   ## A copied bound port is routing data, never identity or peer admission authority.
   probe.transport.localPort
+
 proc close*(probe: var NodeProbe) =
   ## Final transport callbacks run while every fixed transcript slot remains alive.
   closeTransport(probe.transport)
+
 proc disconnect*(probe: var NodeProbe) =
   ## Queue a real QUIC connection close while the UDP socket can still send it; poll before engine retirement.
   probe.transport.disconnectTransport()
+
 proc poll*(probe: var NodeProbe) =
   ## Host polling never overlaps another native executable or mutates shared native libraries.
   assert probe.transport.pollTransport(0)
+
 proc authenticated*(probe: NodeProbe): bool =
   ## TLS completion is a prerequisite, not proof of application framing or FIN.
   probe.transport.authenticatedConnections > 0
+
 proc expectRead*(probe: var NodeProbe, request, reply: seq[byte], holdFin = false) =
   ## Configure an independent raw response before a node initiates a CE stream on this same connection.
   probe.ticketReads = false
@@ -171,12 +184,14 @@ proc expectRead*(probe: var NodeProbe, request, reply: seq[byte], holdFin = fals
   probe.serveReads = true
   probe.expectedRead = request
   probe.readReply = reply
+
 proc expectReads*(probe: var NodeProbe, reads: seq[ProbeRead]) =
   ## Install a finite script before opening native streams; callbacks compare literal bytes and perform no protocol hashing.
   assert reads.len > 0 and reads.len < probe.flows.len
   probe.ticketReads = false
   probe.serveReads = true
   probe.reads = reads
+
 proc expectTickets*(probe: var NodeProbe, epoch: uint32, selector = 0'u8,
     reply: seq[byte] = @[], holdFin = false) =
   ## Independently bound the literal ticket envelope; returned proof bytes are checked by the test outside Native callbacks.
@@ -187,6 +202,7 @@ proc expectTickets*(probe: var NodeProbe, epoch: uint32, selector = 0'u8,
   probe.holdReplyFin = holdFin
   probe.serveReads = true
   probe.readReply = reply
+
 proc issue*(probe: var NodeProbe, wire: seq[byte], persistent = false, enabled = true): int =
   ## Intent data is installed before the native engine may synchronously report its new stream.
   assert probe.issued < probe.flows.len
@@ -196,15 +212,18 @@ proc issue*(probe: var NodeProbe, wire: seq[byte], persistent = false, enabled =
   probe.flows[result].enabled = enabled
   inc probe.issued
   probe.transport.openStream()
+
 proc enable*(probe: var NodeProbe, index: int, finish = false) =
   ## A separate host gate releases delayed selector bytes or a request FIN.
   assert index >= 0 and index < probe.issued and probe.flows[index].opened
   if finish: probe.flows[index].persistent = false
   probe.flows[index].enabled = true
   wantWrite(probe.flows[index].handle, 1)
+
 proc abort*(probe: var NodeProbe, index: int) =
   ## Cancellation retains transcript storage through the eventual native close callback.
   if probe.flows[index].handle != NativeStream(nil): streamAbort(probe.flows[index].handle)
+
 proc bytes*(probe: NodeProbe, index: int): seq[byte] =
   ## Copy the observed transcript to keep test mutations independent of callback-owned buffers.
   result = @[]

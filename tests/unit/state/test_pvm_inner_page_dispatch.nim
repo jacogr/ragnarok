@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_page_dispatch_arc_release"}
 
 ## Genuine refinement bootstraps drive host-13 gas, protocol return codes and atomic normalized results.
@@ -17,16 +18,19 @@ proc limits(pages = 4'u32): RefinementInvocationLimits =
   result = refinementLimits()
   result.inner = innerLimits()
   result.inner.pages = PageLimit(pages)
+
 proc fixture(mode: uint64, count = 1'u64, first = 16'u64, id = 0'u64,
     credit = 10000'u64): PreparedRefinementBootstrap =
   ## A literal embedded inner blob is created before the real guest's requested page operation.
   refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[refinementImmediate(7, id),
     refinementImmediate(8, first), refinementImmediate(9, count), refinementImmediate(10, mode),
     @[10'u8, 13], @[50'u8, 0]]), credit = credit, writable = innerBlob())
+
 proc run(source: PreparedRefinementBootstrap, cap = limits()): RefinementInvocationResult[
     RefinementInvocation] =
   ## Use the original authenticated bootstrap; no terminal machine or gas tuple can be substituted.
   runRefinementInvocation(source, [], refinementInputs(), ExportOffset(7), cap)
+
 proc raw(source: PreparedRefinementBootstrap, cap = limits()): RefinementDispatchResult[
     RefinementOutcome] =
   ## Read actual response registers using only the bootstrap's own captured host environment.
@@ -74,6 +78,7 @@ for replay in 0..<2:
   let done = run(composed).value
   assert done.refinementInfo.value.kind == WorkKind.Success
   assert done.refinementOutput.value == innerBlob() # Caller program bytes survive every host response.
+
 # Fresh complete source/host/map/output generations and local-refusal scratch owners release together.
 proc cycle() =
   ## Each iteration constructs its own genuine bootstrap and drops all retained owners on return.

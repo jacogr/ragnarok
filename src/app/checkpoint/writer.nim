@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exclusive host-thread application checkpoint owner shares existing raw locks, durable replacement and bounded reads.
+
 import ../chain
 import ./[identity as checkpoint_identity, transfer as checkpoint_transfer, file as checkpoint_file]
 import ../../state/store

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact owning full/delta/inverse exports preserve canonical records, source isolation, strict admission and release.
+
 # @@Verification={"arc": "full_state_trie_exports_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -10,10 +11,13 @@ import ../../../src/storage/node/[records as node_records, repository as node_re
 import ../../../src/storage/record_codec
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Admitted immutable graph export needs no new hash, including typed preflight refusals.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive attempts across full/delta/inverse ownership extraction.
+
 proc policy(): RepositoryLimits =
   ## Complete maps, copied batch transport and aggregate physical history keep separate fixed ceilings.
   let trie = StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(256),
@@ -21,12 +25,14 @@ proc policy(): RepositoryLimits =
   RepositoryLimits(codec: RecordLimits(trie: trie, records: TrieExportLimits(records: TrieNodeLimit(200000),
     valueBytes: ByteLimit(2097152)), encoded: ByteLimit(67108864)), records: ElementLimit(400000),
         valueBytes: ByteLimit(8388608))
+
 proc key(number: int): StateKey =
   ## Bounded ordinal bytes produce real shared-prefix branches and both bitmap/descriptor size boundaries.
   var raw = default(array[31, byte])
   raw[0] = byte(number shr 8)
   raw[1] = byte(number and 255)
   StateKey(raw)
+
 proc fixture(count, size: int): FullStateTrie =
   ## Independently checked complete roots and source retirement precede all transport memory observations.
   var entries = newSeq[StateEntry](count)
@@ -43,6 +49,7 @@ proc fixture(count, size: int): FullStateTrie =
   assert array[32, byte](trie.commitment.root) == array[32, byte](reference.root)
   assert trie.commitment.entries == count and trie.commitment.nodes == reference.nodes
   trie
+
 proc allocation(records: seq[TrieRecord]): int =
   ## Separate exact descriptor/value allocations calibrate real allocator classes without inspecting seq capacity.
   let before = getOccupiedMem()
@@ -60,6 +67,7 @@ proc allocation(records: seq[TrieRecord]): int =
     # Each calibration value retires before measuring another; no scratch becomes returned transport storage.
   assert getOccupiedMem() == before
   total
+
 proc exported(base, target: FullStateTrie): TrieExport =
   ## Calibrate the still-held result, preserve copying access, then transfer the exact owned transport once.
   let limits = policy().codec.records
@@ -96,6 +104,7 @@ proc exported(base, target: FullStateTrie): TrieExport =
       assert exportTrieChanges(base, target, short).error == TrieError.LimitExceeded
   assert calls() == 0
   reset(0)
+
 proc exercise(count, size: int) =
   ## Independent complete repository admission validates every exported full/delta/inverse graph and historical reader.
   let empty = fixture(0, 0)

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_worker_code_arc_release"}
 
 ## Literal initialization and guest expectations verify exact-source worker reuse, replacement and invocation isolation.
@@ -108,7 +109,6 @@ proc retainedLifecycle() =
   assert jitPolicy.error == PreparationError.None
   assert preparedInfo(jitPolicy.value).value.backend == PvmBackend.Jit
   assert preparedInfo(jitPolicy.value).value.streamNodes == 0
-
 
 retainedLifecycle()
 let before = getOccupiedMem()

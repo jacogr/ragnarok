@@ -12,8 +12,10 @@ import ./src/crypto/primitives
 
 # Opaque non-LTO observation keeps complete operation results visible without altering their bytes.
 proc observe(data: pointer, size: csize_t) {.importc: "rb_observe", cdecl.}
+
 # OS monotonic timing and trusted controls are identical across both compiler runtimes.
 proc now(): uint64 {.importc: "rb_now_ns", cdecl.}
+
 # The harness supplies bounded case/iteration controls; native timing excludes process setup and output.
 proc control(which: cint): cint {.importc: "rb_control", cdecl.}
 

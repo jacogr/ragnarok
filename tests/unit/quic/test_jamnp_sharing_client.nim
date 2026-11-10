@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_sharing_client_arc_release"}
 
 ## Actual TLS framing and six simultaneous three-node CE134 directions retain independent quotas, exact peer tickets and genuine signatures.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/jamnp-s/[node, connections, sharing_client, sharing_wire, work_sharing,
   work_guarantee, work_signer, work_eligibility, read_stream, network]
@@ -11,16 +13,19 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/safrole
 import ../../support/[jamnp_read_client_exchange, jamnp_guarantee_fixture, jamnp_topology_fixture, arc_evidence]
+
 proc frame(bytes: openArray[byte]): seq[byte] =
   ## Independent literal E4 framing is intentionally separate from the production request serializer.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(bytes.len) shr (8*index)) and 255))
   for octet in bytes: result.add(octet)
+
 proc packet(first, body: seq[byte]): seq[byte] =
   ## CE134 has exactly two E4 messages before request FIN.
   result = @[134'u8]
   for octet in frame(first): result.add(octet)
   for octet in frame(body): result.add(octet)
+
 proc framing() {.raises.} =
   ## Every truncated response extent, wrong prefix, suffix, quota and withheld FIN uses the existing independent TLS harness.
   var route = default(SharingClientRoute)
@@ -55,11 +60,13 @@ proc framing() {.raises.} =
   exchangeSharingClient(large, packet(first, largeBody), response, holdFin = true)
   assert route.configureSharing(request) == ReadError.None
   assert route.configureSharing(request) == ReadError.Busy
+
 proc pump(a, b, c: var NodeService, milliseconds = 1) =
   ## Native owners contain only raw framing; canonical/signing aliases never enter their callbacks.
   let deadline = getMonoTime()+initDuration(milliseconds = milliseconds)
   while getMonoTime() < deadline:
     assert a.poll(getMonoTime(), 0) and b.poll(getMonoTime(), 0) and c.poll(getMonoTime(), 0)
+
 proc startPair(owner: var NodeService, peers: array[2, NodePeer], request: SharedWorkRequest,
     tickets: var array[2, NodeSharingRequestTicket], started: var array[2, bool]) =
   ## UP0/open-intent backpressure spends no extra sharing reservation; each actual success is recorded once.
@@ -70,9 +77,11 @@ proc startPair(owner: var NodeService, peers: array[2, NodePeer], request: Share
     assert admitted.error == NodeError.None
     tickets[index] = admitted.value
     started[index] = true
+
 func complete(flags: array[2, bool]): bool =
   ## Two independent directions must both reach their exact milestone.
   flags[0] and flags[1]
+
 proc takeIncoming(owner: var NodeService, tasks: var array[2, NodeSharingTask], count: var int) =
   ## Complete exact-FIN requests remain claimed while every node's two outgoing slots are still occupied.
   while count < 2:
@@ -81,6 +90,7 @@ proc takeIncoming(owner: var NodeService, tasks: var array[2, NodeSharingTask], 
     assert taken.error == NodeError.None
     tasks[count] = taken.value
     inc count
+
 proc answer(owner: var NodeService, tasks: array[2, NodeSharingTask], request: SharedWorkRequest,
     response: array[96, byte]) =
   ## Only byte-identical original bundles receive the independently computed genuine recipient signature.
@@ -88,6 +98,7 @@ proc answer(owner: var NodeService, tasks: array[2, NodeSharingTask], request: S
     assert task.request.firstMessage == request.firstMessage
     assert task.request.bundleMessage == request.bundleMessage
     assert owner.respondSharing(task.ticket, response) == ReadError.None
+
 proc takeResponses(owner: var NodeService, tickets: array[2, NodeSharingRequestTicket],
     replies: var array[2, UntrustedSharingReply], received: var array[2, bool]) =
   ## Exact host collection works even after native close; foreign or already consumed tickets expose no prefix.
@@ -99,6 +110,7 @@ proc takeResponses(owner: var NodeService, tickets: array[2, NodeSharingRequestT
     replies[index] = taken.value
     received[index] = true
     assert not owner.sharingRequestLive(tickets[index])
+
 proc assembled(local: SignedWorkContribution, positions: array[2, int],
     tickets: array[2, NodeSharingRequestTicket], replies: array[2, UntrustedSharingReply]) =
   ## Actual reservation TLS identities, sealed source targets and genuine fixed responses produce a three-credential guarantee.
@@ -112,6 +124,7 @@ proc assembled(local: SignedWorkContribution, positions: array[2, int],
   assert round.credentialCount == 3
   let collected = collectWorkGuarantee(round, ByteLimit(20000))
   assert collected.error == WorkGuaranteeError.None
+
 proc signed(fixture: GuaranteeFixture, signer: WorkSigner): SignedWorkContribution =
   ## Genuine source-qualified computation precedes all native callbacks; no packet selects a private signing message.
   let key = signer.signerIdentity.value
@@ -121,6 +134,7 @@ proc signed(fixture: GuaranteeFixture, signer: WorkSigner): SignedWorkContributi
   let contributed = signer.signWorkContribution(qualified.value, guarantorLimits())
   assert contributed.error == WorkSignerError.None
   contributed.value
+
 proc simultaneous() {.raises.} =
   ## All three real authenticated nodes reserve two outgoing and two incoming routes at the same time, then verify one another's replies.
   let signerA = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")).value
@@ -261,11 +275,13 @@ proc simultaneous() {.raises.} =
     assert a.poll(current+initDuration(seconds = 121, milliseconds = sweep), 0)
   assert not a.sharingRequestLive(expiring.value) and a.sharingRequestCount == 0
   assert a.peerForIdentity(keyB).error == NodeError.None
+
 proc cycle(request: SharedWorkRequest) =
   ## Independent native-free output snapshots release full request storage without a fake successful reply.
   var route = default(SharingClientRoute)
   assert route.configureSharing(request) == ReadError.None
   assert route.take().error == ReadError.Unavailable
+
 proc main() {.raises.} =
   ## Real callback lifetimes retire before allocator evidence, including complete, malformed and cancelled client paths.
   framing()

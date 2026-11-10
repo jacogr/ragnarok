@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Historical selection is explicit, aliases agree and failed/partial/light configurations grant no full-state policy.
+
 import std/[assertions, syncio, strutils]
 import ../../../src/app/options
 import ../../../src/app/cli/help as cli_help
 import ../../../src/storage/history/index as history_index
+
 proc withControls(base, suffix: seq[string]): seq[string] =
   ## Keep test argument ownership independent without relying on unsupported sequence concatenation.
   result = base
   for value in suffix: result.add(value)
+
 proc main() =
   ## Canonical and process normalization share exactly the same checked retention policy.
   let base = @["server", "--with-state", "--chain", "chain.json"]

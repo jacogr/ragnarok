@@ -3,6 +3,7 @@
 
 ## Bounded CE 128 descending-inclusive requests and complete response validation.
 ## Captured headers provide parent-linked context only; no execution, trust or canonical publication occurs.
+
 import std/assertions
 import ../../codec/[bounded, header, block_codec]
 import ../../crypto/primitives

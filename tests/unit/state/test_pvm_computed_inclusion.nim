@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_inclusion_arc_release"}
 
 ## Actual signed guarantee-bearing candidates prove exact inclusion, refusal, provenance and lifetime behavior.
@@ -14,8 +15,10 @@ import ../../support/[pvm_computed_inclusion, pvm_computed_batch, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force any unexpected new hash call to refuse after original signing/admission completes.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe copied backend counters without faking a successful result.
+
 proc expect[T](outcome: ComputedInclusionResult[T], reason: ComputedInclusionError) =
   ## Check exact selected reasons before successful extraction.
   assert outcome.error == reason, "computed inclusion reason"
@@ -55,12 +58,14 @@ expect(bindComputedInclusion(source, exact), ComputedInclusionError.None)
 expect(bindComputedInclusion(wrong, ByteLimit(100000)), ComputedInclusionError.GuaranteeMismatch)
 assert hashes() == 0, "exact inclusion performs no crypto"
 reset(0)
+
 proc detached(): IncludedComputedGuarantees =
   ## Retain genuine batch, signed candidate and posterior after caller handles retire.
   let batch = inclusionFixture()
   bindComputedInclusion(batch, ByteLimit(100000)).value
 let retained = detached()
 assert retained.computedInclusionComponent.value.componentInfo.value.records == 2
+
 proc cycle(source, wrong: ComputedGuaranteeBatch, bytes: ByteLimit) =
   ## Release full comparison copies and completed owners; late mismatch retains no prefix.
   let included = bindComputedInclusion(source, bytes).value

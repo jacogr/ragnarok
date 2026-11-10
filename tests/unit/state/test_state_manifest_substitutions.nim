@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent rooted sources reject substituted logical declarations in every complete service namespace.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/state_complete_serialization_context
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
@@ -21,17 +22,20 @@ const
         maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(4), serialized: mapLimits,
         storageKeyBytes: ByteLimit(65)))
+
 proc changed(input: seq[byte]): seq[byte] =
   ## Own a fresh same-extent mutation when possible; an empty value becomes a one-byte value.
   if input.len == 0: return @[byte(1)]
   result = newSeq[byte](input.len)
   for i in 0..<input.len: result[i] = input[i]
   result[0] = result[0] xor 1
+
 proc other(hash: ServicePreimageHash): ServicePreimageHash =
   ## Copy the fixed identity before flipping one bit, independently of content or expected roots.
   var raw = array[32, byte](hash)
   raw[0] = raw[0] xor 1
   ServicePreimageHash(raw)
+
 proc check(globals: ValidatedGlobalState, caseId, mode: int) =
   ## Change one logical fact while retaining an independently authenticated immutable complete source.
   var item = serializationService(caseId)
@@ -71,6 +75,7 @@ proc check(globals: ValidatedGlobalState, caseId, mode: int) =
     assert refused.error == StateManifestError.OpaqueValues
   else:
     assert refused.error == StateManifestError.MappingMismatch
+
 proc main() {.raises.} =
   ## Cover eight source shapes, full-width fields, every history mode and all namespace substitutions.
   var row = 0

@@ -193,6 +193,7 @@ proc configure*(reader: var AnnouncementReader, maximum: ByteLimit): Announcemen
 func bufferedBytes*(reader: AnnouncementReader): int =
   ## Account only owned payload bytes; the fixed E4 prefix is part of the parent's fixed frame budget.
   reader.body.len
+
 proc setMaximum*(reader: var AnnouncementReader, maximum: ByteLimit): AnnouncementError =
   ## Change the next-message ceiling only at an empty acknowledged boundary.
   if not reader.configured: return AnnouncementError.Uninitialized

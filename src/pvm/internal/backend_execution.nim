@@ -269,7 +269,6 @@ when declared(ExecutionCursor):
         let synced = syncBackend(cursor)
         if synced != StepError.None: return StepResult(status: synced)
 
-
   func preparationFailure(reason: PreparationError): StepError =
     ## Preserve optional capability refusals through ordinary execution convenience overloads.
     case reason

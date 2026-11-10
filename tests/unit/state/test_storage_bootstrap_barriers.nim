@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every actual bootstrap sync boundary resumes EINTR and refuses unconfirmed ownership on EIO.
+
 import std/[assertions, syncio]
 import ../../support/storage_bootstrap_faults
+
 proc main() {.raises.} =
   ## Discover bounded native barriers independently for both physical layouts.
   for managed in [false, true]:

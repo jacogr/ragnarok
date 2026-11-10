@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_accumulation_statistics_arc_release"}
 
 ## Current terminal providers prove S(s) counts across real execution, unavailable work, annulment and deleted recipients.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/bounded
 import ../../../src/codec/work/digest as work_digest
@@ -14,8 +16,11 @@ import ../../../src/state/accumulation/[coverage as accumulation_coverage,
     annulment as accumulation_annulment]
 import ../../../src/state/store
 import ../../support/[accumulation_current_statistics_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc main() {.raises.} =
   ## Static reports still pass actual signature/admission and guest proof constructors before aggregation.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

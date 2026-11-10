@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal independent shuffle expectations and actual prior-roster Bandersnatch proofs qualify initial CE144 evidence without adopting the unresolved later-tranche scheme.
+
 import std/assertions
 import ../../src/jamnp-s/[audit_context, audit_validation, audit_receipt, audits]
 import ../../src/chain/provider
@@ -9,10 +10,12 @@ import ../../src/app/audit_pool
 import ../../src/bandersnatch/bandersnatch
 import ../../src/codec/[bounded, assurances, disputes]
 import ../../src/codec/work/report
+
 proc proofLimits(): AuditProofLimits =
   ## One actual Thin proof and two BLAKE2b groups have separate literal finite resource reservations.
   AuditProofLimits(proofs: ElementLimit(1), hashes: ElementLimit(2), bytes: ByteLimit(4096),
       hashBytes: ByteLimit(72))
+
 proc shuffleVectors() =
   ## Python hashlib's independent seed0..31 vectors preserve shrinking-swap and group-counter/LE32 semantics at full active-core population.
   var seed = default(array[32, byte])
@@ -47,6 +50,7 @@ proc shuffleVectors() =
   limited.bytes = ByteLimit(4095)
   assert initialAuditSelection(CoreCount(341), BsOutput(seed), limited).error ==
       AuditValidationError.LimitExceeded, "transient work reservation before crypto"
+
 proc receiptLimits*(context: AuditContextLimits): AuditReceiptLimits =
   ## Two complete context/proof occurrences have explicit aggregate input, output and crypto reservations.
   AuditReceiptLimits(message: AuditLimits(validators: ValidatorCount(9), cores: CoreCount(3),
@@ -54,6 +58,7 @@ proc receiptLimits*(context: AuditContextLimits): AuditReceiptLimits =
     context: context, proof: AuditProofLimits(proofs: ElementLimit(2), hashes: ElementLimit(4),
         bytes: ByteLimit(4096), hashBytes: ByteLimit(144)),
     retainedBytes: ByteLimit(17000000))
+
 proc auditValidationChecks*(context: AuditContext, source: ChainView,
     contextLimits: AuditContextLimits): seq[byte] =
   ## A genuine complete context and real prior-C8 private test scalar produce the original proof; independent literal wire then passes the maintained message decoder.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent literal UP0/CE128 TLS server for continuous synchronization witnesses.
+
 import std/[assertions, envvars]
 import ../../src/quic/[transport, address]
 import "../../src/jamnp-s/protocol"
@@ -31,20 +32,25 @@ type
 
 proc `=copy`(destination: var SyncResponder, source: SyncResponder) {.error.}
   ## The native callback points to this exact stable fixture address.
+
 proc `=dup`(source: SyncResponder): SyncResponder {.error.}
   ## No implicit sequence retention may duplicate the native server owner.
+
 proc frame(body: seq[byte]): seq[byte] =
   ## Test-only framing uses literal little-endian E4, independently of production encoders.
   result = @[]
   for index in 0..<4: result.add(byte((uint64(body.len) shr (8 * index)) and 255))
   for octet in body: result.add(octet)
+
 proc append(body: var seq[byte], claim: AnnouncedBlock) =
   ## Fixed hash/slot fields have independent literal byte expectations.
   for octet in array[32, byte](claim.hash): body.add(octet)
   for index in 0..<4: body.add(byte((uint32(claim.slot) shr (8 * index)) and 255))
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Real certificate/SAN verification remains enabled for test-generated TLS identities.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## One bounded read/write per callback; this responder never decodes or executes a block.
   let server = cast[ptr SyncResponder](user)
@@ -166,9 +172,11 @@ proc open*(server: var SyncResponder, anchor: AnnouncedBlock,
     getEnv("RAGNAROK_TEST_KEY_B"), alpn, addr server, verify, event, multi = true,
         localAddress = binding)
   server.transport.localPort
+
 proc poll*(server: var SyncResponder) =
   ## The test explicitly interleaves native server work with ordinary host ticks.
   assert server.transport.pollTransport(0)
+
 proc announce*(server: var SyncResponder, header: OwnedHeader, anchor: AnnouncedBlock) =
   ## Append an independently framed complete header update after all earlier output was sent.
   var body = newSeq[byte](header.headerInfo.value.consumed)
@@ -183,11 +191,13 @@ proc announce*(server: var SyncResponder, header: OwnedHeader, anchor: Announced
       response.offset = 0
       response.writing = true
       wantWrite(response.stream, 1)
+
 proc disconnect*(server: var SyncResponder) =
   ## Reset only actual persistent sources; readiness must revoke on the next client poll.
   for index in 0..<16:
     if server.responses[index].up0:
       streamAbort(server.responses[index].stream)
+
 proc close*(server: var SyncResponder) =
   ## Synchronous engine retirement precedes release of response storage.
   server.transport.closeTransport()

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_reusable_selected_phases_arc_release"}
 
 ## Explicit-input current coverage reuses complete selected algorithms without gaining authenticated initial-block ownership.
+
 import std/[assertions, syncio]
 import ../../../src/codec/[bounded, composite, header]
 import ../../../src/codec/state/[safrole as state_safrole, trie as state_trie]
@@ -15,11 +17,13 @@ import ../../../src/state/accumulation/provisions as accumulation_provisions
 import ../../../src/state/store
 import ../../support/[accumulation_batch_context, accumulation_current_guests_context,
     pvm_accumulation_program, arc_evidence]
+
 proc provisions(): AccumulationProvisionUnionLimits =
   ## Two genuine original contexts are traversed even when both provide sets are empty.
   AccumulationProvisionUnionLimits(contexts: ElementLimit(2),
     values: PreimageLimits(items: ElementLimit(0), perBlob: ByteLimit(0), totalBlobBytes: ByteLimit(
         0)), encodedBytes: ByteLimit(8))
+
 proc coverage(): PreparedAccumulationCoverage =
   ## Explicit frame/state choices are genuine guest inputs, but intentionally carry no block admission certificate.
   let envelope = guestEnvelope([@[50'u8, 0]])

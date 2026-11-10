@@ -78,6 +78,7 @@ assert encodeBits(backing, BitLimit(0), empty).error == BitError.LimitExceeded
 input = @[9'u8, 0x81, 1]
 let independent = checked(decodeBits(input, limit)).owner
 assert checked(encodeOwnedBits(independent, limit, input)) == 3
+
 # A returned handle retains bytes from a callee-local buffer after that source leaves scope.
 proc escapedBits(): OwnedBits =
   var bytes = @[9'u8, 0x81, 1]

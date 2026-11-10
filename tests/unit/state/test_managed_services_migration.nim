@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit Services migration preserves a validated local legacy head and leaves both source bytes and existing targets untouched.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../support/managed_storage_samples
@@ -9,6 +10,7 @@ import ../../../src/app/[services, options]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
 import ../../../src/storage/managed/manifest as managed_manifest
+
 proc configured(path, layout, source: string): Options =
   ## Source selection is an explicit local migration intention, independent of normal restart and external import.
   var arguments = @["server", "--with-state", "--chain", getEnv("RAGNAROK_APPLICATION_CHECKPOINT"),
@@ -17,6 +19,7 @@ proc configured(path, layout, source: string): Options =
     arguments.add("--state-migrate-from"); arguments.add(source)
   result = default(Options)
   assert parseCanonicalOptions(arguments, result)
+
 proc main() {.raises.} =
   ## Copy creates a fresh managed directory; subsequent ordinary restart uses its own admitted local head.
   var sourcePath = "managed-services-migration-source.wal"

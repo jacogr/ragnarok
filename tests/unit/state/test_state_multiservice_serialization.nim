@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete bytes anchor all service permutations across four disjoint logical namespaces.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/state_complete_serialization_context
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
@@ -20,6 +21,7 @@ const
         maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(4), serialized: mapLimits,
         storageKeyBytes: ByteLimit(65)))
+
 proc order(rank: int): array[4, int] =
   ## Factoradic enumeration covers all 24 orders without aliased in-place sequence mutation.
   result = default(array[4, int])
@@ -36,6 +38,7 @@ proc order(rank: int): array[4, int] =
           used[candidate] = true
           break # Choose each original service identity exactly once.
         choice -= 1
+
 proc check(chapters: StateChapters, expected: seq[byte], group, rank: int) =
   ## Compare complete canonical bytes and expected-root restoration for each declaration order.
   var services: seq[StateService] = @[]
@@ -50,6 +53,7 @@ proc check(chapters: StateChapters, expected: seq[byte], group, rank: int) =
   let restored = decodeValidatedCheckpoint(expected, StateRoot(root), services, profile, limits)
   assert restored.error == ValidatedCheckpointError.None
   assert encodeFullCheckpoint(restored.value.manifestSource.value, limits.checkpointBytes).value == expected
+
 proc main() {.raises.} =
   ## Eight complete sources exercise metadata and raw child maps under every unique service order.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

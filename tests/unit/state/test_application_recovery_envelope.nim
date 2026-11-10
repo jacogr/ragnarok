@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_envelope_arc_release"}
 
 ## Complete envelope restoration and trusted header binding remain one all-or-nothing canonical construction.
+
 import std/[assertions, syncio]
 import ../../../src/app/chain
 import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
@@ -12,6 +13,7 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc cycle(bytes, wire: seq[byte], expected: ApplicationCheckpointIdentity,
     original: StateStoreSnapshot) =
   ## Complete restored map/header owners retire on the allocating host thread.
@@ -25,6 +27,7 @@ proc cycle(bytes, wire: seq[byte], expected: ApplicationCheckpointIdentity,
     let key = original.keyAt(StateEntryIndex(index)).value
     assert state.lookup(key).value.bytes == original.lookup(
         key).value.bytes # Count plus exact original entries rules out additions and omissions.
+
 proc main() {.raises.} =
   ## Restore only from independent trust and exact caller-selected map/byte limits.
   let source = checkpointFixture()

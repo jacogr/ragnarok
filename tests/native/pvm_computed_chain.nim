@@ -11,6 +11,7 @@ import ../support/[pvm_computed_chain, pvm_computed_state_publication]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Cause actual late child capture failure after private publication.
+
 proc expect[T](outcome: ComputedChainResult[T], reason: ComputedChainError) =
   ## Confirm selection opaquely so intentional runtime misuse is not folded into static contradictions.
   assert outcome.error == reason, "computed chain runtime control"

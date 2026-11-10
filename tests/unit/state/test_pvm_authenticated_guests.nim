@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_authenticated_guests_arc_release"}
 
 ## Genuine signed rounds bind current guest coverage to admitted state, posterior entropy and profile.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, header]
@@ -25,6 +27,7 @@ import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/store
 import ../../support/[accumulation_runner_context, accumulation_execution_context,
   report_admission_context, accumulation_current_guests_context, arc_evidence]
+
 proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =
   ## A separately composed explicit run is an oracle for provider rows; only the block adapter supplies authority.
   let before = fixture.state.snapshot.value
@@ -56,6 +59,7 @@ proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =
       assert uint32(invocation.slot) == uint32(slot) # Every actual bootstrap uses posterior authority.
   assert sameStateSnapshot(fixture.state.snapshot.value, before)
   executed.value
+
 proc absentCase(base: OwnedReport): BlockAccumulationGuests =
   ## A real unknown always-service cannot become a service lookup failure or a synthetic unavailable-code skip.
   var options = signedBlockFixtureConfig()
@@ -77,6 +81,7 @@ proc absentCase(base: OwnedReport): BlockAccumulationGuests =
   assert uint32(missing.absentInfo.value.service) == 123
   assert sameStateSnapshot(missing.absentState.value, context.original.snapshot.value)
   executed.value
+
 proc main() {.raises.} =
   ## Prepared reports still pass production signatures/admission; local limits never replace protocol validity.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

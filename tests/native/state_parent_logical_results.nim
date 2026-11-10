@@ -2,26 +2,33 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict selected logical-parent result/source guards retain real signed complete-parent positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_logical_context, supplied_logical_context]
 import ../../src/state/parent/[logical as parent_logical, globals as parent_globals]
 import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
 import ../../src/codec/report_owned
+
 proc extract(outcome: ParentLogicalResult[SelectedLogicalParent]) {.noinline.} =
   ## Failed/default seed grants no logical parent.
   discard outcome.value
+
 proc manifest(outcome: ParentLogicalResult[SelectedLogicalParent]) {.noinline.} =
   ## Only failed exact-map matching grants this reason.
   discard outcome.manifestFailure
+
 proc logical(outcome: ParentLogicalResult[SelectedLogicalParent]) {.noinline.} =
   ## Only failed raw-key capture grants this reason.
   discard outcome.logicalFailure
+
 proc source(owner: SelectedLogicalParent) {.noinline.} =
   ## Default seed grants no original selected view/profile/global evidence.
   discard owner.logicalParentGlobals.value
+
 proc inventory(owner: SelectedLogicalParent) {.noinline.} =
   ## Default seed grants no complete supplied identities/raw keys.
   discard owner.logicalParentInventory.value
+
 proc main() {.raises.} =
   ## Actual signed parent construction is confined to genuine initialized extraction control.
   case paramStr(1)

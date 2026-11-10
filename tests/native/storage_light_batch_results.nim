@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic default/failed batch authority guards have complete independent successful native controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/storage/light/journal/[cache as light_journal_cache,
@@ -11,8 +12,10 @@ import ../../src/storage/managed/[manifest as managed_manifest, io as managed_io
 import ../../src/storage/file/errors as file_errors
 import ../../src/storage/durability
 import ../../src/codec/bounded
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each positive control owns only one process-specific fixture namespace.
+
 proc main() {.raises.} =
   ## Runtime arguments choose genuinely failed/default results before any successful fixture is constructed.
   let member = paramStr(1)

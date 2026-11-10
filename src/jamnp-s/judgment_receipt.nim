@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole CE145 receipt preparation qualifies negative support and private execution sources before publishing any source-free judgment record. Private origins remain under the managed Services lease until atomic registry installation.
+
 import ./[judgment_claim, judgment_support, audit_origin, assurance_store, audits, work_signer]
 import ../chain/[genesis, provider]
 import ../codec/[bounded, report_owned]
@@ -38,17 +39,21 @@ type
       originReason: AuditOriginResult[AuditDisputeOrigin]
       originOrdinal: int
     else: discard # Ordinary refusals expose no unrelated child or successful prefix.
+
 func error*[T](outcome: JudgmentReceiptResult[T]): JudgmentReceiptError =
   ## Inspect the selected reason before extracting complete ownership.
   outcome.status
+
 func value*[T](outcome: JudgmentReceiptResult[T]): T {.requires: outcome.status ==
     JudgmentReceiptError.None.} =
   ## Source-bearing output is accessed only under its original exclusive Services lease.
   outcome.completed
+
 func supportError*[T](outcome: JudgmentReceiptResult[T]): JudgmentSupportResult[
     VerifiedJudgmentSupport] {.requires: outcome.status == JudgmentReceiptError.SupportFailure.} =
   ## Preserve actual original guarantor qualification failure without inventing a successful subset.
   outcome.supportReason
+
 func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int =
   ## Only context-dependent refusals permit retry with another retained source.
   case outcome.status
@@ -59,10 +64,12 @@ func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int =
       outcome.originOrdinal
     else: -1
   else: -1
+
 func originError*[T](outcome: JudgmentReceiptResult[T]): AuditOriginResult[
     AuditDisputeOrigin] {.requires: outcome.status == JudgmentReceiptError.OriginFailure.} =
   ## Missing historical execution and full-map retention remain typed unavailable-source failures.
   outcome.originReason
+
 func valid*(limits: JudgmentReceiptLimits): bool =
   ## Missing aggregate bounds cannot activate receipt processing; at most sixteen negative records can perform these child operations.
   limits.support.valid and limits.origin.valid and
@@ -71,22 +78,28 @@ func valid*(limits: JudgmentReceiptLimits): bool =
     uint64(limits.hashBytes) in 1'u64..256'u64*1024*1024 and
     uint64(limits.retainedBytes) in 1'u64..64'u64*1024*1024 and
     uint64(limits.hashes) in 1'u64..1048576'u64 and uint64(limits.signatures) in 1'u64..48'u64
+
 func valid*(record: QualifiedJudgment): bool =
   ## No raw boolean or signed-but-unsupported negative claim can initialize a publishable judgment.
   record.ready
+
 func judgmentRecord*(record: QualifiedJudgment): AuditJudgment {.requires: record.ready.} =
   ## Original signer, epoch, validity and inline support remain fixed; forwarding does not re-sign them.
   record.record
+
 func judgmentAuditor*(record: QualifiedJudgment): StateEdKey {.requires: record.ready.} =
   ## Identify the independently authenticated original signer across admitted branch rosters.
   record.auditor
+
 func sameJudgmentKey*(left, right: AuditJudgment, leftAuditor, rightAuditor: StateEdKey): bool =
   uint32(left.epoch) == uint32(right.epoch) and uint16(left.validator) == uint16(
       right.validator) and
     array[32, byte](left.report) == array[32, byte](right.report) and
     array[32, byte](leftAuditor) == array[32, byte](rightAuditor)
+
 func sameJudgmentKey*(left, right: QualifiedJudgment): bool =
   left.valid and right.valid and sameJudgmentKey(left.record, right.record, left.auditor, right.auditor)
+
 proc qualifyLocalJudgment*(signed: SignedAuditJudgment): JudgmentReceiptResult[QualifiedJudgment] =
   ## Only an actual completed private evaluation and original-key signature constructs SignedAuditJudgment; no caller validity bit becomes a publishable local judgment.
   if not signed.valid: return JudgmentReceiptResult[QualifiedJudgment](
@@ -94,14 +107,17 @@ proc qualifyLocalJudgment*(signed: SignedAuditJudgment): JudgmentReceiptResult[Q
   JudgmentReceiptResult[QualifiedJudgment](status: JudgmentReceiptError.None,
     completed: QualifiedJudgment(ready: true, record: signed.judgmentRecord,
         auditor: signed.judgmentAuditor))
+
 func valid*(batch: PreparedJudgmentBatch): bool =
   ## Default output is not an initialized empty successful receipt.
   batch.data != nil
+
 proc len*(batch: PreparedJudgmentBatch): int =
   ## Fixed occupancy inspection does not export the private sequence.
   let data = batch.data
   if data == nil: return 0
   data.records.len
+
 proc judgmentAt*(batch: PreparedJudgmentBatch, ordinal: int): JudgmentReceiptResult[
     QualifiedJudgment] =
   ## Return a fixed detached record, never an execution source alias.
@@ -112,11 +128,13 @@ proc judgmentAt*(batch: PreparedJudgmentBatch, ordinal: int): JudgmentReceiptRes
     return JudgmentReceiptResult[QualifiedJudgment](status: JudgmentReceiptError.InvalidIndex)
   JudgmentReceiptResult[QualifiedJudgment](status: JudgmentReceiptError.None,
       completed: data.records[ordinal])
+
 proc negativeCount*(batch: PreparedJudgmentBatch): int =
   ## Each negative record has exactly one fully qualified private origin in original relative order.
   let data = batch.data
   if data == nil: return 0
   data.origins.len
+
 proc negativeOriginAt*(batch: PreparedJudgmentBatch, ordinal: int): JudgmentReceiptResult[
     AuditDisputeOrigin] =
   ## Services alone follows these source-bearing aliases after exact worker retirement and before RPC resumes.
@@ -127,6 +145,7 @@ proc negativeOriginAt*(batch: PreparedJudgmentBatch, ordinal: int): JudgmentRece
     return JudgmentReceiptResult[AuditDisputeOrigin](status: JudgmentReceiptError.InvalidIndex)
   JudgmentReceiptResult[AuditDisputeOrigin](status: JudgmentReceiptError.None,
       completed: data.origins[ordinal])
+
 proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits,
     control: AssuranceScanControl = default(AssuranceScanControl),

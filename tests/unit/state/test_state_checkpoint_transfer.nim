@@ -17,17 +17,20 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const FileName = "state-checkpoint-transfer.bin"
+
 proc policy(): StateStoreLimits =
   ## Present-empty and binary records fit small independently enforced restoration limits.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(): PreparedCheckpoint =
   ## Source store and snapshots disappear before any caller can publish this independent buffer owner.
   var key = default(array[31, byte])
   key[0] = 1
   let store = newStateStore([StateEntry(key: StateKey(key), value: @[0'u8, 255])], policy()).value
   prepareFullCheckpoint(store.snapshot.value, ByteLimit(1000))
+
 proc cycle() =
   ## Prepared success/refusal and explicit move retire their sole buffers before observing ARC occupancy.
   var source = detached()
@@ -36,6 +39,7 @@ proc cycle() =
   assert source.error == CheckpointError.Uninitialized, "moved source tag is disarmed"
   let invalid = prepareFullCheckpoint(default(StateStoreSnapshot), ByteLimit(0))
   assert invalid.error == CheckpointError.Uninitialized
+
 proc main() =
   ## Bytes remain private across exact/short publication and repeated moves; caller root authority is still separate.
   var path = FileName

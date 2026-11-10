@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed startup preserves external checkpoint trust, exclusive import and independent local restart semantics.
+
 import std/[assertions, syncio, envvars]
 import ../../support/[application_checkpoint_context, managed_storage_samples]
 import ../../../src/app/[services, options, chain]
@@ -12,6 +13,7 @@ import ../../../src/state/store
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/[bounded, header]
 import ../../../src/codec/state/layout as state_layout
+
 proc recovered(): ApplicationRecoveryResult {.raises.} =
   ## The fixture supplies a separate expected identity and exact sealed bytes; no execution-authentication claim is made.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)
@@ -21,6 +23,7 @@ proc recovered(): ApplicationRecoveryResult {.raises.} =
   var wire = newSeq[byte](header.headerInfo.value.consumed)
   assert encodeOwnedHeader(header, wire).error == HeaderError.None
   decodeRecoveryCheckpoint(envelope, wire, expected, genesisStoreLimits(), ByteLimit(high(uint64)))
+
 proc main() {.raises.} =
   ## An explicit import never resumes or overwrites an existing destination, even when the imported head agrees.
   let restored = recovered()

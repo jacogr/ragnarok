@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restored review evidence survives caller-buffer destruction, component handle drops and independent mutable forks.
+
 # @@Verification={"arc": "state_account_review_lifetime_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_checkpoint_context,
@@ -14,6 +15,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     service_values as state_service_values, trie as state_trie]
 include ../../native/composition_fixture
+
 proc retainedSource(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile): StateStoreSnapshot =
   ## Drop every review/component owner and caller byte buffer before returning only the independently retained immutable source.
@@ -41,6 +43,7 @@ proc retainedSource(wire: seq[byte], root: StateRoot, services: seq[StateService
   payload[0] = 0
   assert source.lookup(key).value.bytes == @[byte(97), 98, 99]
   source
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile) =
   ## A private mutable fork may publish a successor without changing the retained original after all review handles retired.
@@ -55,6 +58,7 @@ proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService],
   assert array[32, byte](successor.commitment.root) != array[32, byte](root)
   assert source.lookup(changed.key).value.bytes != changed.value
   assert encodeFullCheckpoint(source, accountReviewCheckpointTestLimits.checkpoint.serialization.checkpointBytes).value == wire
+
 proc main() {.raises.} =
   ## Keep fixed source fixture inputs while every cycle creates/retires independent restored review and fork graphs.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

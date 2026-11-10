@@ -3,6 +3,7 @@
 
 ## Complete full-state graph admission and authenticated reads use fixed traversal state and disk scratch.
 ## Synchronous callbacks are borrowed; checked metadata owns no file, producer, graph or scratch buffer.
+
 import std/assertions
 import ./codec as full_paged_codec
 import ../../paged/[codec as paged_codec, stream as paged_stream]

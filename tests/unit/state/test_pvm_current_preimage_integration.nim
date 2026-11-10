@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_preimage_integration_arc_release"}
 
 ## Signed lookup integration freezes exact request/value bytes, complete-map roots and inherited source ownership.
@@ -21,7 +22,9 @@ import ../../support/[accumulation_current_activity_context, accumulation_provis
 
 # Failure injection starts after authenticated blocks and every earlier private stage have been built.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # All authority remains in the retained source; these policies only bound actual work.

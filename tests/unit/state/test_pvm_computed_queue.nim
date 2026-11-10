@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_queue_arc_release"}
 
 ## Actual computed reports remain pending; only authenticated historical ready reports enter accumulation priority.
@@ -21,8 +22,10 @@ import ../../support/[pvm_computed_publication, pvm_computed_admission, arc_evid
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Any unexpected planning hash must refuse after the full signed computed pipeline is prepared.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Inspect real hashing observations without replacing protocol assertions.
+
 proc config(): AccumulationQueueConfig =
   ## Use the source's three-core/twelve-slot domain with independent bounded queue scratch/serialization policies.
   AccumulationQueueConfig(queues: WorkQueueConfig(cores: CoreCount(3), epochSlots: EpochSlots(12),
@@ -30,9 +33,11 @@ proc config(): AccumulationQueueConfig =
     totalDependencies: ElementLimit(256), reportBytes: ByteLimit(100000), maxBytes: ByteLimit(
         1000000)),
     items: ElementLimit(32), dependencies: ElementLimit(256))
+
 proc expect[T](outcome: AccumulationQueueResult[T], reason: AccumulationQueueError) =
   ## Preserve exact local profile/limit/default reasons from the maintained queue implementation.
   assert outcome.error == reason, "computed queue reason"
+
 proc reportWire(report: OwnedReport): seq[byte] =
   ## Capture independent complete canonical report bytes for historical identity and mutation tests.
   result = newSeq[byte](ownedReportInfo(report).value.consumed)
@@ -91,6 +96,7 @@ reset(1)
 expect(planBlockAccumulationQueue(reports, config()), AccumulationQueueError.None)
 assert hashes() == 0, "queue planning performs no new hashing"
 reset(0)
+
 proc detached(): BlockAccumulationQueue =
   ## Retain original parent queue/admission after every caller-owned computed successor handle retires.
   let source = publicationFixture(withReady = true)
@@ -99,6 +105,7 @@ proc detached(): BlockAccumulationQueue =
       config()).value
 let retained = detached()
 assert retained.accumulationProjection.value.accumulationCount.value == 1
+
 proc cycle(reports: AdmittedReports) =
   ## Release real queue projection scratch and retained historical report handles independently each time.
   let queue = planBlockAccumulationQueue(reports, config()).value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Ordered record delivery preflights all structure, preserves owned values and exposes provisional refusals.
+
 import std/[algorithm, assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie
@@ -13,10 +14,13 @@ import ../../../src/codec/bounded
 type Delivery = object ## Explicit caller-owned state never retains a borrow into the source buffer.
   records: seq[TrieRecord]
   calls, stopAfter: int
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Clear observed hash calls while keeping real primitive implementations enabled.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual local integrity work separately from callback execution.
+
 proc compareRecord(a, b: TrieRecord): int =
   ## Author a canonical physical order without trusting decoder sort behavior.
   let left = array[32, byte](a.digest)
@@ -25,6 +29,7 @@ proc compareRecord(a, b: TrieRecord): int =
     if left[index] < right[index]: return -1 # The first distinct byte determines physical order.
     if left[index] > right[index]: return 1
   0
+
 proc sameRecords(a, b: seq[TrieRecord]): bool =
   ## Compare nominal address/key representations explicitly; no implicit raw-object equality is assumed.
   if a.len != b.len: return false
@@ -38,12 +43,14 @@ proc sameRecords(a, b: seq[TrieRecord]): bool =
         array[32, byte](left.right) != array[32, byte](right.right):
       return false # Every physical field, including unused canonical fields, remains exact.
   true
+
 proc accept(state: var Delivery, record: var TrieRecord): bool =
   ## Stop explicitly at the selected prefix; otherwise consume the sole detached record owner.
   inc state.calls
   if state.stopAfter >= 0 and state.records.len >= state.stopAfter: return false
   state.records.add(move(record))
   true
+
 proc cycle() =
   ## Compare exact records, all prefixes, malformed tails, late hashes, consumer refusal and source retirement.
   let policy = storageLimits().codec
@@ -150,20 +157,24 @@ type PreparedDelivery = object ## Preparation summary has no integrity authority
   delivery: Delivery
   starts: int
   declaredRecords, declaredBytes: uint64
+
 proc prepared(stopAfter = -1): PreparedDelivery =
   ## Explicitly initialize every observed counter and the consumer's optional refusal point.
   PreparedDelivery(delivery: Delivery(records: @[], calls: 0, stopAfter: stopAfter),
     starts: 0, declaredRecords: 0, declaredBytes: 0)
+
 proc prepare(state: var PreparedDelivery, info: RecordCollectionInfo) =
   ## Preparation occurs once, after whole-input shape/duplicate checks and before the first hash.
   assert state.starts == 0 and int(calls()) == 0
   state.starts = 1
   state.declaredRecords = info.records
   state.declaredBytes = info.valueBytes
+
 proc acceptPrepared(state: var PreparedDelivery, record: var TrieRecord): bool =
   ## Every real local record follows its provisional preparation phase.
   assert state.starts == 1
   accept(state.delivery, record)
+
 proc preparedCycle() =
   ## Check both overloads, zero-work malformed/duplicate refusal, empty preparation and provisional late failures.
   let policy = storageLimits().codec

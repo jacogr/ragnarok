@@ -5,6 +5,7 @@
 ## Immutable results retain provenance; authorization, availability and state publication are separate.
 
 import ../../pvm/worker
+from ../../pvm/step import NativeRuntime
 
 import ../../codec/[bounded, composite]
 import ../../codec/work/[package as work_package, digest as work_digest, report as work_report]
@@ -161,8 +162,10 @@ proc refinedSegment*(item: RefinedWorkItem, index: ExportCount): RefinementRepor
 
 proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: CoreIndex,
     parameters: Parameters, trace: openArray[byte], inputs: RefinementInputs,
-    limits: RefinementReportLimits): RefinementReportResult[RefinedPackage] =
-  ## Borrow trace/input descriptions synchronously; publish only after every original item completes locally.
+    limits: RefinementReportLimits, nativeRuntime: NativeRuntime = default(
+        NativeRuntime)): RefinementReportResult[RefinedPackage] =
+  ## Borrow trace and inputs synchronously. An optional runtime serves only this package worker.
+  ## Publish only after every original item completes locally.
   template fail(reason: RefinementReportError) =
     return RefinementReportResult[RefinedPackage](status: reason)
   let described = package.workPackageInfo
@@ -180,7 +183,7 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
   var savedTrace = newSeq[byte](trace.len)
   for index in 0..<trace.len: savedTrace[index] = trace[
       index] # Isolate future extraction from borrowed caller storage.
-  let worker = newExecutionWorker() # One package worker retains code across its independently initialized items.
+  let worker = newExecutionWorker(nativeRuntime) # One package worker retains code across its independently initialized items.
   var items = newSeqOfCap[RefinedWorkItem](count)
   var offset = 0'u64
   var blobs = uint64(trace.len)

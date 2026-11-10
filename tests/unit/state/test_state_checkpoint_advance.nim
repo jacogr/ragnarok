@@ -15,16 +15,19 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-advance"
+
 proc policy(): StateStoreLimits =
   ## Explicit complete-map ceilings are independent of local generation count.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc snapshot(value: byte): StateStoreSnapshot =
   ## Distinct full-map roots make stale-root and selected-data preservation independently observable.
   var key = default(array[31, byte])
   key[0] = 1
   newStateStore([StateEntry(key: StateKey(key), value: @[value])], policy()).value.snapshot.value
+
 proc cycle(bank: var CheckpointBank, source: StateStoreSnapshot) =
   ## Repeated advancement, stale-token refusal and anchored restoration drop every temporary candidate/head.
   let previous = bank.selectedHead().value
@@ -33,6 +36,7 @@ proc cycle(bank: var CheckpointBank, source: StateStoreSnapshot) =
   assert bank.advance(previous, source, ByteLimit(1000)).error == CheckpointBankError.StaleHead
   assert bank.restore(source.commitment.root, policy(), ByteLimit(1000)).error ==
       CheckpointBankError.None
+
 proc main() =
   ## Both alternations, every stale field, no-write refusals and real inactive rename failure preserve the selected map.
   for suffix in [".head", ".0", ".1"]:

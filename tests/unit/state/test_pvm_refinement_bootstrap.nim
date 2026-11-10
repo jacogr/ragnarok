@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_refinement_bootstrap_arc_release"}
 
 ## Literal code/package hashes and argument bytes verify historical code binding and entry-zero bootstrap.
@@ -22,6 +23,7 @@ import ../../../src/codec/state/[accounts as state_accounts, layout as state_lay
 import ../../support/arc_evidence
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # Frozen Python hashlib.blake2b(digest_size=32) oracles over independently laid-out literal GP bytes.
@@ -35,6 +37,7 @@ proc parameters(): Parameters =
   var wire = default(array[122, byte])
   for index in 0..<122: wire[index] = 255
   decodeParameters(wire).value
+
 proc code(exporting = false): seq[byte] =
   ## E(var metadata=[201,202]) followed by a literal standard envelope and halt/export raw program.
   result = @[2'u8, 201, 202]
@@ -43,6 +46,7 @@ proc code(exporting = false): seq[byte] =
   result.add(byte(raw.len))
   for index in 0..<3: result.add(0) # E4 raw-program length.
   for octet in raw: result.add(octet)
+
 proc package(hash: array[32, byte], anchor = 20'u32, payload = @[81'u8, 82, 83]): OwnedWorkPackage =
   ## A two-item package makes service, gas and payload selection independently visible.
   let source = WorkPackage(context: RefinementContext(lookupSlot: LookupSlot(anchor)),
@@ -55,6 +59,7 @@ proc package(hash: array[32, byte], anchor = 20'u32, payload = @[81'u8, 82, 83])
   let config = fullPackageConfig(ByteLimit(2048))
   let size = encodeWorkPackage(source, config, wire).value
   decodeWorkPackage(wire.toOpenArray(0, size-1), config).value.owner
+
 proc state(raw: seq[byte], hash: array[32, byte], damage = 0): StateStoreSnapshot =
   ## Deliberately unrelated current account code hashes prove Psi_R selects the work item's historical code.
   var entries: seq[StateEntry] = @[]
@@ -73,12 +78,14 @@ proc state(raw: seq[byte], hash: array[32, byte], damage = 0): StateStoreSnapsho
   newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(8),
     perValue: ByteLimit(5000000), totalValueBytes: ByteLimit(10000000), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(8), writeValueBytes: ByteLimit(10000000))).value.snapshot.value
+
 proc limits(): RefinementBootstrapLimits =
   ## Capture all small fixture data with independent exact CPU/page bounds.
   RefinementBootstrapLimits(preimage: ByteLimit(4000000), package: ByteLimit(2048),
     arguments: ByteLimit(512), initialization: InitializationLimits(
         envelope: InitializationByteLimit(64),
       program: ProgramByteLimit(32), jumps: JumpCountLimit(0), pages: PageLimit(1)))
+
 proc prepare(raw = code(), anchor = 20'u32, damage = 0, item = 0'u64, core = 5'u64,
     cap = limits(), payload = @[81'u8, 82, 83]): RefinementBootstrapResult[
         PreparedRefinementBootstrap] =
@@ -87,16 +94,19 @@ proc prepare(raw = code(), anchor = 20'u32, damage = 0, item = 0'u64, core = 5'u
   prepareRefinementBootstrap(state(raw, hash, damage), package(hash, anchor, payload),
       FetchItemIndex(item),
     CoreIndex(core), parameters(), cap)
+
 proc hostLimits(): RefinementCaptureLimits =
   ## Present empty input tables still carry both package item rows.
   RefinementCaptureLimits(trace: FetchTraceLimit(0), package: FetchPackageLimit(16),
     encoding: FetchEncodingLimit(2048), inputs: FetchInputLimit(0))
+
 proc hosts(prepared: PreparedRefinementBootstrap): RefinementBootstrapResult[
     PreparedRefinementExecution] =
   ## Bind the ready owner's private original CPU and provenance without replacement arguments.
   prepared.bootstrapHosts([], RefinementInputs(extrinsics: @[newSeq[seq[byte]](), newSeq[seq[byte]](
     )], imports: @[newSeq[FetchSegment](), newSeq[FetchSegment]()]),
     ExportOffset(7), hostLimits())
+
 proc run(prepared: PreparedRefinementExecution): RefinementDispatchResult[RefinementOutcome] =
   ## Bound the raw run independently of capture, code and argument policies.
   executeRefinement(prepared, MemoryByteLimit(64), ExportLimits(items: ElementLimit(1),
@@ -273,6 +283,7 @@ let geometryRun = run(hosts(geometryBootstrap).value).value
 assert geometryRun.outcome.exit == StepExit.Halt
 assert uint64(geometryRun.outcome.machine.machineInfo.value.registers[7]) == 50,
   "RO selects heap page 48; RW plus extra page return 50; a request above zone-rounded stack ceiling cannot grow"
+
 # Fresh source maps, ready owners, temporary captures and failed scratch allocations all retire at each cycle.
 proc cycle() =
   ## Construct real fresh provenance, then exercise both complete execution and a refused argument budget.

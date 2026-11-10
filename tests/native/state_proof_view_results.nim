@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict runtime partial-view guards preserve missing evidence, failed roots and typed-reader refusal.
+
 import std/[assertions, cmdline]
 import ../../src/state/trie_proof
 import ../../src/state/proof/view as proof_view
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc extract[T](outcome: ProofViewResult[T]) =
   ## Default and failed alternatives cannot yield a partial view, lookup, time or byte envelope.
   discard outcome.value
+
 proc main() =
   ## Build genuinely verified presence and absence before choosing any negative extraction path.
   let key = chapterKey(StateChapter(1))

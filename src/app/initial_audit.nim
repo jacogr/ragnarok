@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional initial declarations traverse retained selected history under the shared proof-worker lease.
+
 import std/[monotimes, times]
 import ./[services, audit_announcement_send, audit_state, audit_branches]
 import ./proof/[worker, work_submission]
@@ -45,19 +46,24 @@ func initialAuditPolicy*(context: AuditContextLimits, proof: AuditProofLimits,
     return default(InitialAuditPolicy)
   InitialAuditPolicy(ready: true, context: context, proof: proof, origin: origin,
       attempts: attempts, timeout: timeoutMs, retry: retryMs, maxDeclarations: declarations)
+
 proc `=copy`*(destination: var InitialAudits, source: InitialAudits) {.error.}
   ## An exact worker and its dependent transport owner cannot be copied.
+
 proc `=dup`*(source: InitialAudits): InitialAudits {.error.}
   ## Duplicate ownership would bypass exact collection and cancellation.
+
 proc `=wasMoved`*(owner: var InitialAudits) {.nodestroy, requires: not owner.working.} =
   ## The broadcast actor independently checks that all requests have retired.
   `=wasMoved`(owner.broadcast)
   `=wasMoved`(owner.ticket)
   `=wasMoved`(owner.declarations)
   `=wasMoved`(owner.prepared)
+
 proc requireIdle(owner: InitialAudits) {.requires: not owner.working.} =
   ## An exact live worker must be collected or joined before dropping the actor.
   discard
+
 proc `=destroy`*(owner: InitialAudits) =
   ## Stable node shutdown releases the worker before owned declarations.
   requireIdle(owner)
@@ -65,6 +71,7 @@ proc `=destroy`*(owner: InitialAudits) =
   `=destroy`(owner.ticket)
   `=destroy`(owner.declarations)
   `=destroy`(owner.prepared)
+
 proc configure*(owner: var InitialAudits, services: Services, streams: NodeService,
     policy: InitialAuditPolicy): bool =
   ## Both the actual node role and an explicitly installed signer are required.
@@ -73,22 +80,27 @@ proc configure*(owner: var InitialAudits, services: Services, streams: NodeServi
     return false
   owner.policy = policy
   true
+
 func declarationCount*(owner: InitialAudits): int =
   ## Count actual local declarations with nonempty selected obligations.
   owner.declarations.len
+
 func readyDeclarationCount*(owner: InitialAudits): int =
   ## The newest declaration becomes actionable after bounded broadcast has completed.
   if owner.broadcast.sending: owner.declarations.len-1 else: owner.declarations.len
+
 func declarationAt*(owner: InitialAudits, index: int): InitialAuditDeclaration {.requires:
     index >= 0 and index < owner.declarations.len.} =
   ## Return a fixed detached copy without exposing mutable queue storage.
   owner.declarations[index]
+
 proc releaseDeclarationOrigin*(owner: var InitialAudits, services: var Services,
     index: int) {.requires: index >= 0 and index < owner.declarations.len.} =
   ## Keep the exact announcement for deduplication after releasing its execution state.
   let origin = owner.declarations[index].origin
   if origin.valid and services.releaseInitialAudit(origin):
     owner.declarations[index].origin = default(AuditOriginId)
+
 proc advanceBlock(owner: var InitialAudits) =
   ## All original local positions on this block have been visited.
   if owner.side:
@@ -96,9 +108,11 @@ proc advanceBlock(owner: var InitialAudits) =
     owner.side = false
   else: owner.afterSlot = owner.slot
   owner.ordinal = 0
+
 func canExpire*(owner: InitialAudits): bool =
   ## Keep published and in-flight delivery stable until native fan-out retires.
   not owner.working and not owner.broadcast.sending
+
 proc expireBefore*(owner: var InitialAudits, floor: uint64): seq[bool] {.requires:
     owner.canExpire.} =
   ## Return the exact old positions of survivors so execution retry state compacts with them.
@@ -115,6 +129,7 @@ proc expireBefore*(owner: var InitialAudits, floor: uint64): seq[bool] {.require
       if kept != row: owner.declarations[kept] = move(owner.declarations[row])
       inc kept
   owner.declarations.setLen(kept)
+
 proc selectCanonical(owner: var InitialAudits, services: Services): bool =
   ## Select the next retained block by ascending slot without borrowing a graph across admission.
   let view = services.chainView
@@ -133,6 +148,7 @@ proc selectCanonical(owner: var InitialAudits, services: Services): bool =
     owner.blockHash = next.blockHash
     owner.ordinal = 0
   true
+
 proc selectNext(owner: var InitialAudits, services: Services): bool =
   ## Alternate selected and side work, while retaining a started block's original ordinal cursor.
   if owner.side: return true
@@ -146,6 +162,7 @@ proc selectNext(owner: var InitialAudits, services: Services): bool =
     return true
   owner.preferSide = true
   owner.selectCanonical(services)
+
 proc submit*(owner: var InitialAudits, services: var Services, streams: NodeService,
     clock: MonoTime): bool {.raises.} =
   ## The node arbitrates this optional work alongside incoming proof jobs.
@@ -172,6 +189,7 @@ proc submit*(owner: var InitialAudits, services: var Services, streams: NodeServ
   owner.pinning = pinning
   owner.ticket = started.value
   true
+
 func alreadyDeclared(owner: InitialAudits, record: AuditAnnouncement): bool =
   ## An independently retained side child may later become selected without creating a second declaration.
   for declaration in owner.declarations:
@@ -179,6 +197,7 @@ func alreadyDeclared(owner: InitialAudits, record: AuditAnnouncement): bool =
     if array[32, byte](old.header) == array[32, byte](record.header) and
         uint16(old.validator) == uint16(record.validator): return true
   false
+
 proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Retain declared intent before sending so a completed or failed native attempt cannot erase it.
@@ -236,6 +255,7 @@ proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeSe
       owner.retry = clock+initDuration(milliseconds = owner.policy.retry)
   else:
     owner.retry = clock+initDuration(milliseconds = owner.policy.retry)
+
 proc close*(owner: var InitialAudits, services: var Services, streams: var NodeService) =
   ## Only the matching worker ticket grants permission to join a borrowed native source.
   if owner.working:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Published JIP-5 development/random-seed goldens, ownership and exact-width refusals.
+
 import std/[assertions, syncio]
 import ../../native/batch_support
 import ../../../src/crypto/[primitives, validator_keys]

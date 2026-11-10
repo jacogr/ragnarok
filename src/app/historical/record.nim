@@ -3,6 +3,7 @@
 
 ## Self-contained historical records bind an index row to exact block bytes and independently checked complete state.
 ## Each read owns one bounded record/map, never an archive-sized resident history list or partial light state.
+
 import ../chain
 import ../disk/head as disk_head
 import ../../chain/[genesis, provider, parameters]

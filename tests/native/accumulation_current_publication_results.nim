@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current publication cannot expose an adopted map or inactive store cause.
+
 import std/cmdline
 import ../../src/state/accumulation/current/[publication as accumulation_current_publication,
     consensus as accumulation_current_consensus]

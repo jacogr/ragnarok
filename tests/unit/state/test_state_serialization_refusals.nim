@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently recommitted maps isolate precise typed chapter refusals from checkpoint/root failures.
+
 import std/[assertions, envvars, strutils, syncio, parseutils]
 import ../../../src/state/[checkpoint, store, global_snapshot, manifest, validated_checkpoint]
 import ../../../src/codec/[bounded, assurances]
@@ -19,6 +20,7 @@ const
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(0), serialized: mapLimits,
       storageKeyBytes: ByteLimit(0)))
+
 proc octets(text: string): seq[byte] =
   ## Decode exact pinned hex; fixture errors are setup failures rather than passing negative tests.
   assert text.len mod 2 == 0
@@ -27,6 +29,7 @@ proc octets(text: string): seq[byte] =
     var octet: byte = 0
     assert parseHex(text[2*i..2*i+1], octet) == 2
     result[i] = octet
+
 proc check(mode: string, chapter: int, input: seq[byte]) =
   ## Validate the independently recomputed root first, then test the exact selected typed stage.
   assert input.len >= 57
@@ -69,6 +72,7 @@ proc check(mode: string, chapter: int, input: seq[byte]) =
   let untrusted = decodeValidatedCheckpoint(input, StateRoot(root), [], profile, limits)
   assert untrusted.error == ValidatedCheckpointError.CheckpointFailure
   assert untrusted.checkpointError == CheckpointError.RootMismatch
+
 proc main() {.raises.} =
   ## Require every chapter omission and exact-consumption witness plus a genuine fully valid control.
   var count = 0

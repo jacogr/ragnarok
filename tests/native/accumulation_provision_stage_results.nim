@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## No inactive provision phase payload may escape default or refused preparation.
+
 import std/cmdline
 import ../../src/state/accumulation/provision/stage as accumulation_provision_stage
 import ../../src/state/accumulation/provisions as accumulation_provisions

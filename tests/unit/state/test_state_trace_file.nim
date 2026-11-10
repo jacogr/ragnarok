@@ -2,16 +2,19 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict regular-file EOF, bounded reads and atomic exact TraceStep publication preserve existing targets on refusal.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/trace_step_context
 import ../../../src/state/trace/[file as trace_file, step as trace_step, state as trace_state]
 import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
+
 proc text(bytes: openArray[byte]): string =
   ## Test-only exact byte materialization preserves binary zeros and all UTF-8-independent payload octets.
   result = newString(bytes.len)
   for index in 0..<bytes.len: result[index] = char(bytes[index])
+
 proc main() {.raises.} =
   ## Every path is test-owned in the native runner's private working directory; no canonical application state is adopted here.
   let fixture = getEnv("RAGNAROK_STATE_TRACE_STEP")

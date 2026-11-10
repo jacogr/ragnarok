@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Disabled-by-default Services wiring, independent HTTP operation and partial startup rollback.
+
 import std/[assertions, syncio, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -10,6 +11,7 @@ import ../../support/[management_socket, rpc_socket]
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Fixture paths belong to this test process only.
+
 proc main() {.raises.} =
   ## Independent management startup needs neither canonical state nor a public WS listener.
   var directory = "/tmp/ragnarok-management-services-" & $processId()

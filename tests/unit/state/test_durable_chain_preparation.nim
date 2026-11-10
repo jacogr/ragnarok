@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fallible preparation cannot publish; assignment-only installation requires exact original state and history.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[durable_chain_context, accumulation_completion_context]
 import ../../../src/state/store
@@ -9,10 +10,13 @@ import ../../../src/state/accumulation/[publication as accumulation_publication,
     chain as accumulation_chain]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/report_owned
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashing after preparation to prove installation cannot repeat fallible work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe both preflight and assignment-only publication independently.
+
 proc main() {.raises.} =
   ## Genuine signed execution certificates retain exact original parent ownership through preparation.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

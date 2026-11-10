@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_later_runner_arc_release"}
 
 ## Genuine later-round runners agree with manual guest composition and preserve exact posterior provenance.
@@ -29,6 +30,7 @@ import ../../support/[accumulation_runner_context, accumulation_execution_contex
 
 # Inject faults only after real signed source certificates exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc limits(): AccumulationRunnerLimits =
@@ -95,8 +97,6 @@ proc compare(compared, expectedResult: CompletedAccumulationContinuation,
   assert array[32, byte](candidate.snapshot.value.commitment.root) == array[32, byte](
       oracle.snapshot.value.commitment.root)
 
-
-
 proc compare(compared, expectedResult: CompletedAccumulationReentry,
     priorState: StateStoreSnapshot) =
   ## Compare gas/coverage and complete applied-map roots, preserving the original immutable prior.
@@ -115,8 +115,6 @@ proc compare(compared, expectedResult: CompletedAccumulationReentry,
   discard applyAccumulationBatch(oracle, expectedResult.executionBatch.value).value
   assert array[32, byte](candidate.snapshot.value.commitment.root) == array[32, byte](
       oracle.snapshot.value.commitment.root)
-
-
 
 template failures(source, run: untyped) =
   block:

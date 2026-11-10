@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical corpus inputs shared by single/multi-service tests; expected bytes come only from Python fixtures.
+
 import std/[assertions, parseutils]
 import ../../src/crypto/primitives
 import ../../src/codec/state/[composition as state_composition, accounts as state_accounts,
     service_values as state_service_values, requests as state_requests]
 const sizes = [0, 1, 31, 32, 33, 63, 64, 65]
+
 proc serializationWord*(caseId, field, bits: int): uint64 =
   ## Fingerprint logical inputs without encoding them; zero/all-ones exercise unsigned domains.
   if caseId mod 8 == 0: return 0
@@ -14,6 +16,7 @@ proc serializationWord*(caseId, field, bits: int): uint64 =
     if bits == 32: return uint64(high(uint32))
     return high(uint64)
   (uint64(caseId) shl (bits-8)) or (uint64(field) shl (bits-16)) or 0x0102'u64
+
 proc serializationOctets*(text: string): seq[byte] =
   ## Decode only the pinned fixture's complete hex octets; malformed setup cannot qualify a case.
   assert text.len mod 2 == 0
@@ -22,10 +25,12 @@ proc serializationOctets*(text: string): seq[byte] =
     var octet: byte = 0
     assert parseHex(text[2*i..2*i+1], octet) == 2
     result[i] = octet
+
 proc serializationPattern(size, seed: int): seq[byte] =
   ## Author raw storage and preimage inputs across inline/hash and block-size boundaries.
   result = newSeq[byte](size)
   for i in 0..<size: result[i] = byte((seed+i) mod 256)
+
 proc serializationService*(caseId: int): StateService =
   ## Construct every logical field independently of the expected serialized metadata/map bytes.
   let rawKey = serializationPattern(sizes[caseId mod 8], caseId)

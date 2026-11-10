@@ -8,6 +8,7 @@ import std/[cmdline, assertions, syncio]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/step
+
 proc requirePremise(accepted: bool) =
   ## Refuse a wrong setup/state with status 2; expose no compiler postcondition that folds the negative access.
   if not accepted: quit 2

@@ -3,6 +3,7 @@
 
 ## Single-writer per-shard durable storage keeps constant resident metadata; exact records and synchronized publication precede any stored-data receipt.
 ## Call only on a serialized managed I/O lease, preserve the private directory namespace and explicitly close before moving or destroying this native owner.
+
 import std/[assertions, strutils]
 import std/posix/posix
 import ./[assurance_record, availability_proof]
@@ -54,13 +55,17 @@ type
   ScanInfo = object ## Startup accumulates only scalar accounting and the largest already promised time.
     count, bytes, steps: uint64
     observed: AssuranceTime
+
 proc `=copy`*(destination: var AssuranceStore, source: AssuranceStore) {.error.}
   ## Copies could unlock another owner or invalidate a managed borrow of this fixed address.
+
 proc `=dup`*(source: AssuranceStore): AssuranceStore {.error.}
   ## Composite duplication is forbidden independently of the child writer's own ownership rules.
+
 proc requireClosed(owner: AssuranceStore) {.requires: not owner.ready and not owner.gate.opened.} =
   ## Native exclusion must retire explicitly while Services and every managed borrower still exist.
   discard
+
 proc `=wasMoved`*(owner: var AssuranceStore) {.nodestroy, inline, requires: not owner.ready and
     not owner.gate.opened.} =
   ## Only a closed owner may move; delegate every managed/native child move hook.
@@ -68,58 +73,72 @@ proc `=wasMoved`*(owner: var AssuranceStore) {.nodestroy, inline, requires: not 
   owner.failed = false
   `=wasMoved`(owner.gate)
   `=wasMoved`(owner.folder)
+
 proc `=destroy`*(owner: AssuranceStore) =
   ## Explicit close owns native retirement; then child-managed strings may be destroyed normally.
   requireClosed(owner)
   `=destroy`(owner.gate)
   `=destroy`(owner.folder)
+
 proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## Non-creation opens use the SDK's actual variadic ABI.
+
 proc readDescriptor(descriptor: cint, buffer: pointer, length: csize_t): int {.importc: "read",
     cdecl, header: "<unistd.h>", sideEffect.}
   ## The public SDK preserves the native ssize_t ABI and exposes actual header reads to fault/short-read observation.
+
 proc synchronizeDescriptor(descriptor: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Maintained OS file/directory synchronization has an explicit result, never implicit success.
 let noFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
   ## The private namespace refuses symlink records, directories and identity paths.
+
 func error*[T](outcome: AssuranceStoreResult[T]): AssuranceStoreError =
   ## Read a status before selecting stored data or its actual failed child.
   outcome.status
+
 func value*[T](outcome: AssuranceStoreResult[T]): T {.requires: outcome.status ==
     AssuranceStoreError.None.} =
   ## Defaults and refusals cannot expose a partially opened owner or successful receipt.
   outcome.completed
+
 func fileError*[T](outcome: AssuranceStoreResult[T]): AtomicFileError {.requires: outcome.status ==
     AssuranceStoreError.FileFailure.} =
   ## Preserve visibility uncertainty separately from an ordinary prepublication refusal.
   outcome.fileReason
+
 func headerError*[T](outcome: AssuranceStoreResult[T]): AssuranceRecordResult[
     AssuranceRecordInfo] {.requires: outcome.status == AssuranceStoreError.HeaderFailure.} =
   ## Preserve a genuine fixed-header verification failure without a payload claim.
   outcome.headerReason
+
 func recordError*[T](outcome: AssuranceStoreResult[T]): AssuranceRecordResult[
     AssuranceRecord] {.requires: outcome.status == AssuranceStoreError.RecordFailure.} =
   ## Preserve an actual complete record preparation/verification failure.
   outcome.recordReason
+
 func encodingError*[T](outcome: AssuranceStoreResult[T]): AssuranceRecordResult[seq[
     byte]] {.requires: outcome.status == AssuranceStoreError.EncodingFailure.} =
   ## A refused encoder contains no partially publishable bytes.
   outcome.encodingReason
+
 func cryptoError*[T](outcome: AssuranceStoreResult[T]): CryptoError {.requires: outcome.status ==
     AssuranceStoreError.BackendFailure.} =
   ## Only identity checksum failure uses this primitive alternative.
   outcome.cryptoReason
+
 func refused[T](reason: AssuranceStoreError): AssuranceStoreResult[T] {.requires: reason notin {
     AssuranceStoreError.None, AssuranceStoreError.FileFailure, AssuranceStoreError.HeaderFailure,
     AssuranceStoreError.RecordFailure, AssuranceStoreError.EncodingFailure,
     AssuranceStoreError.BackendFailure}.} =
   ## Simple refusals carry only a reason and no accepted prefix.
   AssuranceStoreResult[T](status: reason)
+
 func fileFailure[T](reason: AtomicFileError): AssuranceStoreResult[T] {.requires: reason !=
     AtomicFileError.None.} =
   ## Only the actual failed filesystem boundary supplies this diagnostic.
   AssuranceStoreResult[T](status: AssuranceStoreError.FileFailure, fileReason: reason)
+
 func propagated[T, U](outcome: AssuranceStoreResult[U]): AssuranceStoreResult[
     T] {.requires: outcome.status != AssuranceStoreError.None.} =
   ## Convert a genuine selected failure without retaining success data from another stage.
@@ -135,14 +154,17 @@ func propagated[T, U](outcome: AssuranceStoreResult[U]): AssuranceStoreResult[
       status: AssuranceStoreError.BackendFailure, cryptoReason: outcome.cryptoReason)
   of AssuranceStoreError.None: refused[T](AssuranceStoreError.Uninitialized) # Excluded by the checked precondition.
   else: refused[T](outcome.status)
+
 func assuranceScanControl*(stop: AssuranceScanStop, context: nil pointer): AssuranceScanControl =
   ## The host owns this stable callback/context through the current synchronous execution only.
   AssuranceScanControl(stop: stop, context: context)
+
 proc stopped*(control: AssuranceScanControl): bool =
   ## No control leaves the ordinary standalone API unchanged; an actual callback can only stop admission.
   let stop = control.stop
   if stop == nil: return false
   stop(control.context)
+
 func valid*(limits: AssuranceStoreLimits): bool =
   ## The whole configured archive, 258 fixed namespace entries and one interrupted writer sibling must fit the independent scan ceiling; the preceding uint32 record bound proves addition safe.
   uint64(limits.entries) >= 1 and uint64(limits.entries) <= uint64(high(uint32)) and uint64(
@@ -150,40 +172,50 @@ func valid*(limits: AssuranceStoreLimits): bool =
           high(uint32)) and uint64(
       limits.bytes) >= uint64(AssuranceRecordHeaderBytes) and limits.record.valid and uint64(
       limits.record.verification.hashBytes) >= 174
+
 func opened*(owner: AssuranceStore): bool =
   ## An opened namespace has completed identity and bounded accounting admission, not proof verification of every archived payload.
   owner.ready
+
 func matchesChain*(owner: AssuranceStore, chain: AssuranceChainId): bool =
   ## Only an idle/exclusively borrowed live namespace can match independently configured chain identity; this observation grants no possession authority.
   owner.ready and array[32, byte](owner.chain) == array[32, byte](chain)
+
 func faulted*(owner: AssuranceStore): bool =
   ## Uncertain publication or failed recovery bars further stored-data receipts until close/reopen.
   owner.failed
+
 func len*(owner: AssuranceStore): uint64 =
   ## Read scalar accounting only after the mutable managed store lease retires; Services may cache earlier values separately.
   owner.count
+
 func byteLength*(owner: AssuranceStore): uint64 =
   ## Logical serialized-record bytes exclude directory/lock filesystem overhead.
   owner.bytes
+
 func valid*(stored: StoredAssuranceShard): bool =
   ## A default result contains neither a durability boundary nor verified data.
   stored.ready
+
 proc storedInfo*(stored: StoredAssuranceShard): AssuranceStoreResult[AssuranceRecordInfo] =
   ## Return copied metadata only; a receipt is not an assurance signing capability.
   if not stored.ready: return refused[AssuranceRecordInfo](AssuranceStoreError.Uninitialized)
   AssuranceStoreResult[AssuranceRecordInfo](status: AssuranceStoreError.None,
       completed: stored.record.recordInfo.value)
+
 proc storedTransfer*(stored: StoredAssuranceShard, maximum: ByteLimit): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] =
   ## Serving gets an independent verified copy, not an alias into any store or prior worker lifetime.
   if not stored.ready: return detachVerifiedAvailability(default(VerifiedAvailabilityTransfer), maximum)
   stored.record.recordTransfer(maximum)
+
 func parent(path: string): string =
   ## Preserve exact path selection while locating the directory whose new child name must become durable.
   var slash = -1
   for index, character in path:
     if character == '/': slash = index
   if slash < 0: "." elif slash == 0: "/" else: path.substr(0, slash-1)
+
 proc syncDirectory(path: string): AtomicFileError =
   ## One checked directory descriptor is closed exactly once on success and every refusal path.
   var name = path
@@ -194,6 +226,7 @@ proc syncDirectory(path: string): AtomicFileError =
   let synced = correct and synchronizeDescriptor(descriptor) == 0
   let closed = posix.close(descriptor) == 0
   if synced and closed: AtomicFileError.None else: AtomicFileError.PublishedUnsynced
+
 func bucket(index: int): string =
   ## Exactly 256 lower-case hexadecimal buckets bound the root namespace independently of retained record count.
   const digits = "0123456789abcdef"
@@ -201,6 +234,7 @@ func bucket(index: int): string =
   result = ""
   result.add(digits[index div 16])
   result.add(digits[index mod 16])
+
 func recordName(info: AssuranceRecordInfo): string =
   ## Complete root and original E2 shard coordinates become fixed safe ASCII, never an input-derived path component.
   const digits = "0123456789abcdef"
@@ -213,11 +247,13 @@ func recordName(info: AssuranceRecordInfo): string =
   assert shard < 1023
   for index in 0..<4: result[65+index] = digits[int((shard shr ((3-index)*4)) and 15)]
   for index, character in ".shard": result[69+index] = character
+
 func pathFor(owner: AssuranceStore, expected: AvailabilitySpecifier,
     shard: ErasureShardIndex): string =
   ## Public callers validate the shard bound before this fixed coordinate conversion.
   let name = recordName(AssuranceRecordInfo(specifier: expected, shard: shard))
   owner.folder & "/" & name.substr(0, 1) & "/" & name
+
 proc regular(path: string): AssuranceStoreResult[uint64] =
   ## Only actual ENOENT is absence; symlinks, special files and permission/read failures cannot supply capacity or a record.
   var name = path
@@ -229,6 +265,7 @@ proc regular(path: string): AssuranceStoreResult[uint64] =
       AssuranceStoreError.InvalidNamespace)
   AssuranceStoreResult[uint64](status: AssuranceStoreError.None, completed: uint64(
       metadata.st_size))
+
 proc readHeader(path: string, chain: AssuranceChainId,
     limits: AssuranceRecordLimits): AssuranceStoreResult[AssuranceRecordInfo] =
   ## Startup reads only a fixed header, requires a regular exact-sized record and retains no payload or directory entry pointer.
@@ -260,6 +297,7 @@ proc readHeader(path: string, chain: AssuranceChainId,
       AssuranceStoreError.InvalidNamespace)
   AssuranceStoreResult[AssuranceRecordInfo](status: AssuranceStoreError.None,
       completed: inspected.value)
+
 proc identity(chain: AssuranceChainId): AssuranceStoreResult[array[72, byte]] =
   ## The physical namespace version and independently selected chain are checksummed before creation.
   var wire = default(array[72, byte])
@@ -270,6 +308,7 @@ proc identity(chain: AssuranceChainId): AssuranceStoreResult[array[72, byte]] =
       status: AssuranceStoreError.BackendFailure, cryptoReason: checksum.error)
   for index in 0..<32: wire[40+index] = array[32, byte](checksum.value)[index]
   AssuranceStoreResult[array[72, byte]](status: AssuranceStoreError.None, completed: wire)
+
 proc checkIdentity(wire: seq[byte], chain: AssuranceChainId): AssuranceStoreResult[bool] =
   ## Opening never creates missing identity or adopts another chain or physical schema.
   if wire.len != 72: return refused[bool](AssuranceStoreError.InvalidNamespace)
@@ -280,6 +319,7 @@ proc checkIdentity(wire: seq[byte], chain: AssuranceChainId): AssuranceStoreResu
     if wire[index] != expected.value[index]: return refused[bool](
         AssuranceStoreError.InvalidNamespace)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
+
 func temporary(name: string, identityFile: bool): bool =
   ## Only the exact sibling pattern emitted by our atomic primitive is reclaimable after acquiring the global writer lease.
   let length = if identityFile: 8 else: 75
@@ -289,6 +329,7 @@ func temporary(name: string, identityFile: bool): bool =
   for index in length+5..<name.len:
     if name[index] notin {'a'..'z', 'A'..'Z', '0'..'9'}: return false
   true
+
 func recordSpelling(name: string): bool =
   ## Data names have one complete root, E2 shard ordinal and exact suffix; no traversal or hidden field is accepted.
   if name.len != 75 or name[64] != '-' or name.substr(69) != ".shard": return false
@@ -300,6 +341,7 @@ func recordSpelling(name: string): bool =
     let digit = if name[index] in {'0'..'9'}: ord(name[index])-ord('0') else: ord(name[index])-ord('a')+10
     shard = shard*16+digit
   shard < 1023
+
 proc removeTemporary(path: string): AssuranceStoreResult[bool] =
   ## Crash leftovers have never been canonical published record names; only regular sibling files may be removed.
   let selected = regular(path)
@@ -307,6 +349,7 @@ proc removeTemporary(path: string): AssuranceStoreResult[bool] =
   var name = path
   if posix.unlink(name.toCString()) != 0: return fileFailure[bool](AtomicFileError.IoFailure)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
+
 proc scanDirectory(owner: AssuranceStore, folder: string, root: bool,
     info: var ScanInfo, control: AssuranceScanControl): AssuranceStoreResult[bool] =
   ## Public POSIX iteration preserves EOF versus failure and keeps only one copied entry/header in memory.
@@ -378,6 +421,7 @@ proc scanDirectory(owner: AssuranceStore, folder: string, root: bool,
     let synced = syncDirectory(folder)
     if synced != AtomicFileError.None: return fileFailure[bool](synced)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
+
 proc close*(owner: var AssuranceStore): AssuranceStoreResult[bool] =
   ## Drop logical admission before retiring the exact writer lease; close remains idempotent after any failed setup or fault.
   owner.ready = false
@@ -389,6 +433,7 @@ proc close*(owner: var AssuranceStore): AssuranceStoreResult[bool] =
   owner.observed = AssuranceTime(0)
   if closed != AtomicFileError.None: return fileFailure[bool](closed)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
+
 proc acquire(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
     limits: AssuranceStoreLimits, create: bool, control: AssuranceScanControl): AssuranceStoreResult[bool] =
   ## One explicit startup transaction establishes private namespace shape, chain identity, synchronization and bounded scalar accounting.
@@ -451,14 +496,17 @@ proc acquire(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
   owner.observed = info.observed
   owner.ready = true
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
+
 proc createAssuranceStore*(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
     limits: AssuranceStoreLimits, control = default(AssuranceScanControl)): AssuranceStoreResult[bool] =
   ## Only an explicitly requested fresh directory may initialize this independent availability database.
   owner.acquire(folder, chain, limits, true, control)
+
 proc openAssuranceStore*(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
     limits: AssuranceStoreLimits, control = default(AssuranceScanControl)): AssuranceStoreResult[bool] =
   ## Existing storage must pass exact identity and complete bounded accounting before admission; missing identity is never recreated.
   owner.acquire(folder, chain, limits, false, control)
+
 proc readRecord(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceStoreResult[AssuranceRecord] =
   ## Restore exact independently selected data without creating a durability receipt; a caller must synchronize or republish before granting stored possession.
@@ -482,6 +530,7 @@ proc readRecord(owner: var AssuranceStore, path: string, expected: AvailabilityS
     return AssuranceStoreResult[AssuranceRecord](status: AssuranceStoreError.RecordFailure,
         recordReason: decoded)
   AssuranceStoreResult[AssuranceRecord](status: AssuranceStoreError.None, completed: decoded.value)
+
 proc loadPath(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
   ## A verified record becomes a stored-data receipt only after actual file/parent synchronization.
@@ -494,6 +543,7 @@ proc loadPath(owner: var AssuranceStore, path: string, expected: AvailabilitySpe
     return fileFailure[StoredAssuranceShard](confirmed)
   AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.None,
     completed: StoredAssuranceShard(ready: true, record: restored.value))
+
 proc loadAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
   ## Only this live healthy namespace can grant a newly verified synchronized data receipt for exact independently selected metadata.
@@ -504,6 +554,7 @@ proc loadAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecif
       request.shard) >= count or count > 1023 or request.root.bytes != expected.erasureRoot.bytes:
     return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
   owner.loadPath(owner.pathFor(expected, request.shard), expected, request)
+
 func valid*(limits: AssuranceRestoreLimits): bool =
   ## These finite per-lookup limits do not change the installed namespace policy or supply canonical report authority.
   let verification = limits.verification
@@ -515,6 +566,7 @@ func valid*(limits: AssuranceRestoreLimits): bool =
     uint64(limits.ioBytes) <= 1024'u64*1024*1024 and
     uint64(limits.workspaceBytes) >= uint64(AssuranceRecordHeaderBytes) and
     uint64(limits.workspaceBytes) <= 256'u64*1024*1024
+
 proc restoreAssuranceShard*(owner: var AssuranceStore, request: AvailabilityRequest,
     limits: AssuranceRestoreLimits): AssuranceStoreResult[StoredAssuranceShard] =
   ## Root-only serving recovery authenticates fixed metadata and complete persisted proofs; current-duty/signing callers must retain their independent full-specifier load path.
@@ -556,6 +608,7 @@ proc restoreAssuranceShard*(owner: var AssuranceStore, request: AvailabilityRequ
     return refused[StoredAssuranceShard](AssuranceStoreError.LimitExceeded)
   # A second exact context check during full decode closes header/payload replacement races; only complete proof plus real sync constructs a stored-data receipt.
   owner.loadPath(path, info.specifier, request)
+
 proc renewAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecifier,
     request: AvailabilityRequest, now: AssuranceTime): AssuranceStoreResult[StoredAssuranceShard] =
   ## Reverify original complete bytes and atomically extend a full promise before any assurance signature; no unverified record or pre-publication receipt escapes.
@@ -587,6 +640,7 @@ proc renewAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpeci
   owner.observed = now
   AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.None,
     completed: StoredAssuranceShard(ready: true, record: renewed.value))
+
 proc rememberAssuranceShard*(owner: var AssuranceStore, transfer: VerifiedAvailabilityTransfer,
     now: AssuranceTime): AssuranceStoreResult[StoredAssuranceShard] =
   ## Preserve old promises and refuse capacity before cloning/encoding; only successful file+directory sync publishes new counters and a receipt.

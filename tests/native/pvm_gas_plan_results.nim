@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed/default plan and child/price queries carry no selectable payload; valid mode owns genuine complete prices.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/pvm/program
 import ../../src/pvm/gas/[gas, plan as gas_plan]

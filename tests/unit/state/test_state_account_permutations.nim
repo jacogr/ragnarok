@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Declaration permutations preserve complete mapping/root/checkpoint bytes while never substituting logical owner identity.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_account_checkpoint_context]
 import ../../../src/state/[inventory, manifest, store, checkpoint]
@@ -20,6 +21,7 @@ const auditLimits = AccountAuditLimits(planning: ElementLimit(64),
       perValue: ByteLimit(3), totalBytes: ByteLimit(12)),
   linkage: PreimageLinkageLimits(services: ElementLimit(4), preimages: ElementLimit(4),
       comparisons: ElementLimit(8)))
+
 proc declarations(): seq[StateService] =
   ## Lower fixture facts use two storage keys and two request lengths with independently authored 6-item/238-octet metadata.
   let base = inventoryServices()[0]
@@ -34,6 +36,7 @@ proc declarations(): seq[StateService] =
       preimages: base.preimages, requests: @[base.requests[0], StateRequestItem(
           hash: base.preimages[0].hash,
         length: RequestLength(1), history: requestedHistory())]))
+
 proc permutation(rank: int): array[4, int] =
   ## Factoradic selection enumerates every unique order without in-place aliased swaps.
   result = default(array[4, int])
@@ -50,6 +53,7 @@ proc permutation(rank: int): array[4, int] =
           used[candidate] = true
           break # Every remaining identity is chosen once at this sorted rank.
         choice -= 1
+
 proc check(fixture: seq[seq[byte]], original: StateInventory, wire: seq[byte], rank: int) =
   ## Vary service, storage and request declaration order while preserving every exact logical byte/value.
   let base = declarations()
@@ -79,6 +83,7 @@ proc check(fixture: seq[seq[byte]], original: StateInventory, wire: seq[byte], r
   let restored = decodePlannedAccountCheckpoint(wire, expected, services, inventoryProfile, limits)
   assert restored.error == PlannedAccountCheckpointError.None
   assert restored.value.accountInvariantInfo.value.content.preimages == 4
+
 proc main() {.raises.} =
   ## Twenty-four service permutations also vary child orders under one canonical complete root and transport envelope.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

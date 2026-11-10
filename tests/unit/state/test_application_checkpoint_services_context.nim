@@ -4,12 +4,14 @@
 # @@Verification={"arc": "application_checkpoint_services_context_arc_release"}
 
 ## Services capture one canonical pair only outside execution leases; prepared output retains no canonical graph.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[services, options]
 import ../../../src/app/checkpoint/[identity as checkpoint_identity,
     transfer as checkpoint_transfer, codec as checkpoint_codec]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc cycle(owner: Services, expected: ApplicationCheckpointIdentity) =
   ## Temporary prepared bytes and fixed identity captures retire before each observation.
   let captured = owner.checkpointIdentity
@@ -18,6 +20,7 @@ proc cycle(owner: Services, expected: ApplicationCheckpointIdentity) =
   var prepared = owner.prepareCheckpoint(ByteLimit(100000))
   assert prepared.error == ApplicationCheckpointError.None
   assert sameApplicationCheckpoint(prepared.identity, expected) and prepared.byteLength > 238
+
 proc main() {.raises.} =
   ## Missing, configured, closed and restarted canonical service lifetimes preserve typed capture and explicit extent policy.
   var owner = default(Services)

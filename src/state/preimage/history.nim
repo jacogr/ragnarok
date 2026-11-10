@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared pinned historical preimage availability equation for complete and authenticated partial state readers.
+
 import ../../codec/state/requests as state_requests
 
 func requestAvailableAt*(history: RequestHistory, slot: RequestSlot): bool =

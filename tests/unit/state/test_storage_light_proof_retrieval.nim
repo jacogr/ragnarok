@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded retained proof extraction preserves evidence identity, detached ownership and file recovery rules.
+
 # @@Verification={"arc":"storage_light_proof_retrieval_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,28 +15,35 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Retained evidence extraction must work even when every provider hash would refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Prove retrieval performs no authentication or checksum hashing.
+
 proc key(first: byte): StateKey =
   ## Ordered identities separate retained presence, retained absence and locally unknown keys.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## Fixture ceilings admit complete evidence while keeping every encoded image bounded.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(4),
     writes: ElementLimit(4), valueBytes: ByteLimit(66),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc budget(entries = 4): LightProofReadLimits =
   ## Per-call traversal and output limits may be narrower than the image's preparation policy.
   LightProofReadLimits(entries: ElementLimit(entries), proof: policy().cache.proof)
+
 proc same(actual, expected: StateProof) =
   ## Compare exact producer transport, including terminal evidence for authenticated absence.
   assert actual.value == expected.value and actual.nodes.len == expected.nodes.len
   for index in 0..<actual.nodes.len:
     assert array[64, byte](actual.nodes[index]) == array[64, byte](expected.nodes[index])
+
 proc detached(image: PreparedLightSnapshot) =
   ## Independently mutable output cannot corrupt the image, other extractions or verified lookup readers.
   var extracted = image.prove(key(0), budget()).value
@@ -45,22 +53,26 @@ proc detached(image: PreparedLightSnapshot) =
   assert again.value[0] == 0
   assert image.cache.lookup(key(0)).value.bytes[0] == 0
   assert array[64, byte](again.nodes[0]) != default(array[64, byte])
+
 proc owned(image: PreparedLightSnapshot): PreparedLightSnapshot =
   ## Transfer a temporary image, drop its mutable source and retain only validated immutable ownership.
   var encoded = image.bytes
   let restored = takeLightSnapshot(encoded, image.chainId, image.root, image.limits)
   assert restored.error == LightSnapshotError.None and encoded.len == 0
   restored.value
+
 proc independentProof(image: PreparedLightSnapshot): StateProof =
   ## A detached proof outlives the transferred image from which it was extracted.
   let temporary = owned(image)
   temporary.prove(key(0), budget()).value
+
 proc cycle(image: PreparedLightSnapshot) =
   ## Retire detached proof buffers, successful transferred images and failed reads before measuring ARC.
   let restored = owned(image)
   detached(restored)
   assert restored.prove(key(255), budget(2)).error == LightSnapshotError.LimitExceeded
   assert restored.prove(key(64), budget()).proofError == LightCacheError.UnknownKey
+
 proc prepared(trie: FullStateTrie, image: PreparedLightSnapshot) =
   ## Exact scan/output bounds and canonical proofs distinguish unobserved keys from authenticated absence.
   let identities = [key(0), key(128), key(255)]
@@ -131,6 +143,7 @@ proc prepared(trie: FullStateTrie, image: PreparedLightSnapshot) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_proof_retrieval", 1000, before, after)
+
 proc retainedFile(image: PreparedLightSnapshot): PreparedLightSnapshot {.raises.} =
   ## A selected image owns no native lease and survives writer poisoning, close, reopen and file removal.
   let path = "storage-light-proof-retrieval"
@@ -171,6 +184,7 @@ proc retainedFile(image: PreparedLightSnapshot): PreparedLightSnapshot {.raises.
   assert posix.unlink(lock.toCString()) == 0
   assert posix.rmdir(directory.toCString()) == 0
   held
+
 proc main() {.raises.} =
   ## Independent complete-map hashing fixes the trusted root; only selected query evidence enters the image.
   resetHash(0)

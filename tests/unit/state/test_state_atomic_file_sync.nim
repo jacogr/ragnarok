@@ -16,10 +16,12 @@ proc makeFifo(path: cstring, mode: Mode): cint {.importc: "mkfifo", cdecl, heade
   ## Real FIFO creation uses the SDK API absent from the pinned public POSIX wrapper.
 
 const FileName = "state-atomic-file-sync.bin"
+
 proc cycle(writer: var AtomicFileWriter) =
   ## Repeated file/parent synchronization and real missing-file refusals retire all transient native paths/descriptors.
   assert writer.synchronize() == AtomicFileError.None
   assert syncAtomicFile("state-atomic-file-sync-missing.bin") == AtomicFileError.IoFailure
+
 proc main() =
   ## Binary and empty regular files are preserved; no failure can fabricate a completed durability boundary.
   var path = FileName

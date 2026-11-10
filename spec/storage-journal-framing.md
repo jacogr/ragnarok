@@ -7,28 +7,9 @@ publication/recovery authority changes.
 
 ## API, bounds and ownership
 
-`encodeFramedTrieExport(batch, recordLimits, prefixBytes, suffixBytes, outputLimit)` returns
-`RecordResult[seq[byte]]`. The batch remains a stable borrowed mutable transport during this
-synchronous call. Requested extents are full-width nonnegative byte counts; the independent
-nominal output ceiling bounds the entire allocation. The existing exact body preflight still
-checks metadata, count/host descriptor limits, canonical unused fields, per-value/aggregate
-budgets and encoded extent. Subtraction proves prefix/suffix/body fit beneath both the host
-maximum and whole-output ceiling before narrowing, allocation or hashing.
-
-Duplicate rejection and every local integrity hash remain mandatory before output allocation.
-Success writes canonical batch bytes between exact zero-filled reservations into one final
-owned sequence. The writer must end immediately before the reserved suffix. Reservations grant
-no record, graph, root or chain authority. Mutation of returned bytes cannot change the borrowed
-source or another encoding. Existing success-only extraction/once-only transfer and precise
-record errors remain. Unframed batch and collection encoders use the same strict private writer
-with zero reservations and preserve their public APIs and domains.
-
-Both journal encoders preserve generation/context/body/whole-frame preflight and error mapping.
-They reserve their existing exact header/context prefix and 32-byte checksum trailer, fill
-metadata/context around the already serialized body, hash the same prefix once and fill the
-checksum. There is no separate body sequence or body-to-frame copy. Raw hash refusal remains
-`InvalidRecords(BackendFailure)`; refusal of the new outer checksum remains `BackendFailure`.
-Quota refusals remain `LimitExceeded` before integrity work. Decoding/replay stay fully strict.
+The [record codec](../src/storage/record_codec.nim) owns strict preflight and final-buffer
+reservations. The [journal codec](../src/storage/journal_codec.nim) owns metadata, checksum
+coverage and journal error mapping.
 
 ## Verification
 

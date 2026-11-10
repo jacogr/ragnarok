@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A real adopted prefix survives later uncollected-Done cancellation, joined preparation and a cancelled pending handoff.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -22,6 +23,7 @@ import ../../support/[current_application_context, current_services_disk_samples
   current_download_command_context, managed_storage_samples]
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   CancelDone, Joined, LostHandoff
+
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   ## Authenticated host identities come from the two independent local fixture certificates.
   let raw = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -29,6 +31,7 @@ proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   CurrentDownloadPeerKey(bytes)
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now = 0'u64) =
   ## Bounded native polling preserves the authored monotonic deadline until this exact stage is observed.
@@ -38,9 +41,11 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     assert servers.poll()
     assert dispatcher.tick(CurrentDownloadLoopTick(now)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread() # Independent scheduler yield touches no leased canonical/input aliases.
+
 proc assertPreparationLease(owner: Services) =
   ## Observe the actual managed lease without teaching the compiler stale facts about pointer-owned dispatcher mutations.
   assert owner.preparationActive and owner.rpc.chainPaused
+
 proc transfer(fixture: CurrentConsecutiveFixture, witness: LoopWitness, disk,
     managed: bool) {.raises.} =
   ## A second real TLS/current execution reaches the retirement stage after the first child is confirmed.

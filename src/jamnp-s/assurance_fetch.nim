@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded source-free CE137 plans preserve canonical descriptors, original assurer coordinates and actual current/prior-epoch guarantor identities without allocating the Cartesian request product.
+
 import std/assertions
 import ./[assurance_duty, availability_proof]
 import ../chain/genesis
@@ -49,45 +50,55 @@ type
     of DutyFailure: dutyReason: AssuranceDutyResult[AssuranceDuty]
     of TargetFailure: targetReason: AssuranceDutyResult[StateValidator]
     else: discard # Simple/default refusals cannot leak partially allocated plan storage.
+
 func error*[T](outcome: AssuranceFetchResult[T]): AssuranceFetchError =
   ## Inspect the private status before extracting complete data or the actual child failure.
   outcome.status
+
 func value*[T](outcome: AssuranceFetchResult[T]): T {.requires: outcome.status ==
     AssuranceFetchError.None.} =
   ## Only complete source qualification exposes a plan or fixed copied metadata.
   outcome.completed
+
 func dutyError*[T](outcome: AssuranceFetchResult[T]): AssuranceDutyResult[
     AssuranceDuty] {.requires: outcome.status == AssuranceFetchError.DutyFailure.} =
   ## Preserve actual source, whole-chapter, identity and geometry refusals.
   outcome.dutyReason
+
 func targetError*[T](outcome: AssuranceFetchResult[T]): AssuranceDutyResult[
     StateValidator] {.requires: outcome.status == AssuranceFetchError.TargetFailure.} =
   ## Unavailable historical epochs and invalid actual credential positions cannot manufacture a target.
   outcome.targetReason
+
 func refused[T](reason: AssuranceFetchError): AssuranceFetchResult[T] {.requires: reason notin {
     AssuranceFetchError.None, AssuranceFetchError.DutyFailure,
     AssuranceFetchError.TargetFailure}.} =
   ## No simple refusal owns a successful child or partially accepted output.
   AssuranceFetchResult[T](status: reason)
+
 func valid*(limits: AssuranceFetchLimits): bool =
   ## Default policy cannot guess source or output budgets; the maximum comfortably covers every fixed GP core row.
   uint64(limits.plannedBytes) > 0 and uint64(limits.plannedBytes) <= 4'u64*1024*1024 and
     uint64(limits.duty.chapterBytes) > 0 and uint64(limits.duty.readBytes) > 0 and
     uint64(limits.duty.reports) > 0 and uint64(limits.duty.requests) > 0
+
 func valid*(plan: AssuranceFetchPlan): bool =
   ## A default cannot authorize a request or expose even empty successful metadata.
   plan.data != nil
+
 proc fetchInfo*(plan: AssuranceFetchPlan): AssuranceFetchResult[AssuranceFetchInfo] =
   ## Read fixed copied source facts without borrowing any private sequences.
   let data = plan.data
   if data == nil: return refused[AssuranceFetchInfo](AssuranceFetchError.Uninitialized)
   AssuranceFetchResult[AssuranceFetchInfo](status: AssuranceFetchError.None, completed: data.info)
+
 proc matches*(plan: AssuranceFetchPlan, source: BlockSnapshotResult): bool =
   ## An identical sealed header with a different complete map still revokes this request plan.
   let data = plan.data
   if data == nil or source.error != GenesisError.None: return false
   array[32, byte](data.info.duty.anchor) == array[32, byte](source.value.blockHash) and
     array[32, byte](data.info.duty.root) == array[32, byte](source.value.stateRoot)
+
 proc coreAt*(plan: AssuranceFetchPlan, ordinal: int): AssuranceFetchResult[AssuranceFetchCore] =
   ## Return a fixed original core/descriptor copy, never a mutable row or compressed core coordinate.
   let data = plan.data
@@ -95,6 +106,7 @@ proc coreAt*(plan: AssuranceFetchPlan, ordinal: int): AssuranceFetchResult[Assur
   if ordinal < 0 or ordinal >= data.cores.len: return refused[AssuranceFetchCore](
       AssuranceFetchError.InvalidIndex)
   AssuranceFetchResult[AssuranceFetchCore](status: AssuranceFetchError.None, completed: data.cores[ordinal].info)
+
 proc targetAt*(plan: AssuranceFetchPlan, coreOrdinal, ordinal: int): AssuranceFetchResult[
     AssuranceFetchTarget] =
   ## Original credential positions remain attached to independently copied routing records, including repeated keys with different metadata.
@@ -106,6 +118,7 @@ proc targetAt*(plan: AssuranceFetchPlan, coreOrdinal, ordinal: int): AssuranceFe
       AssuranceFetchTarget](AssuranceFetchError.InvalidIndex)
   AssuranceFetchResult[AssuranceFetchTarget](status: AssuranceFetchError.None,
       completed: data.cores[coreOrdinal].targets[ordinal])
+
 proc requestAt*(plan: AssuranceFetchPlan, coreOrdinal, localOrdinal: int): AssuranceFetchResult[
     AssuranceFetchRequest] =
   ## Derive one O(1) original-index coordinate on demand; no request-product graph or mutable expected descriptor escapes.
@@ -122,6 +135,7 @@ proc requestAt*(plan: AssuranceFetchPlan, coreOrdinal, localOrdinal: int): Assur
       validator: local,
       request: AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
         root: row.info.specifier.erasureRoot, shard: ErasureShardIndex(shard))))
+
 proc captureAssuranceFetch*(source: BlockSnapshotResult, local: StateEdKey,
     limits: AssuranceFetchLimits): AssuranceFetchResult[AssuranceFetchPlan] =
   ## Complete canonical input qualification and whole owned-output admission precede plan allocation; no successful prefix survives a later target refusal.

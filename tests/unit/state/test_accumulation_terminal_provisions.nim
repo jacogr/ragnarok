@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_terminal_provisions_arc_release"}
 
 ## Actual terminal selection binds bounded provision union and timestamps to invocation provenance.
@@ -21,6 +22,7 @@ import ../../support/[accumulation_terminal_provisions, accumulation_provision_i
 
 # Disable hashing only after all genuine execution and posterior fixtures exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Count backend invocations to prove terminal preflight and cached replay perform no hashes.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

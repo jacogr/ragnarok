@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
+
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
 import ../../src/state/logical_continuation
@@ -45,8 +46,10 @@ import ../../src/codec/composite
 import ../../src/chain/[provider, genesis]
 import ../support/[current_repeated_logical_context, collected_logical_context,
     collected_logical_services_context, accumulation_current_candidate_context, current_logical_proof_context]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar-only native deadline polling cannot touch a leased canonical graph.
+
 proc main() {.raises.} =
   ## Every probe starts real managed native work; setup or ordinary exceptions never count as contract failure.
   let mode = paramStr(1)

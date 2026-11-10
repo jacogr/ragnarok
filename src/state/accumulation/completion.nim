@@ -173,7 +173,6 @@ proc prepareAccumulationComposition*(source: PreparedFinalAccumulation,
       consensusReason: consensus) # Earlier successful phases remain private and are released.
   AccumulationCompletionResult(status: AccumulationCompletionError.None, completed: consensus.value)
 
-
 proc prepareStoppedAccumulation*(source: StoppedAccumulation,
     limits: AccumulationCompletionLimits): AccumulationCompletionResult =
   ## Convenience orchestration finalizes execution once, then uses the sole state composition entry.

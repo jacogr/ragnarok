@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Injected native fsync refusal must poison publication without revoking old readers or guessing repair authority.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io]
@@ -12,10 +13,12 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc check(view: RepositoryView, expected: byte) =
   ## Independently compare every complete value after uncertain IO and native owner retirement.
   let entries = restoreStateEntries(view, view.commitment.root, storageLimits().codec.trie).value
   assert entries.len == 2 and entries[0].value == @[expected] and entries[1].value == @[9'u8]
+
 proc scenario(managed: bool) {.raises.} =
   ## Real writes precede one injected refused barrier; strict reopen may admit the complete visible successor.
   resetIo()

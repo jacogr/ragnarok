@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Included neutral complete-original prelude and one ordered no-op-aware source/site traversal.
 ## Interval-only consumers keep their weaker contract; header policies and execution stay local.
 ## Standalone source audits import an empty fragment; the owning include supplies private frame types.
+
 when declared(FlatFrame):
   type FlatSourceSummary = object
     ## General complete-header consumers retain only the terminal coordinate and physical count.

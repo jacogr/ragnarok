@@ -3,6 +3,7 @@
 
 ## CE134 receiving executes the exact whole bundle on one managed lease, checking both guarantors before PVM work.
 ## No network callback may invoke this state/crypto/PVM pipeline. One returned signature is not a fully guaranteed report.
+
 import ./[sharing_wire, work_submission, work_duty, work_anchors, work_population, work_report,
     work_eligibility, work_signer]
 import ./availability_proof
@@ -51,62 +52,77 @@ type
     of EligibilityFailure: eligibilityReason: WorkEligibilityResult[EligibleWorkGuarantee]
     of SigningFailure: signingReason: WorkSignerResult[SignedWorkContribution]
     else: discard # Local/default refusals expose no accepted prefix or fabricated child.
+
 func error*[T](outcome: WorkSharingResult[T]): WorkSharingError =
   ## Observe failure without retagging ownership.
   outcome.status
+
 func value*[T](outcome: WorkSharingResult[T]): T {.requires: outcome.status ==
     WorkSharingError.None.} =
   ## Only complete receiving/response encoding has an extractable result.
   outcome.completed
+
 func packageError*[T](outcome: WorkSharingResult[T]): PackageError {.requires: outcome.status ==
     WorkSharingError.PackageFailure.} =
   ## Preserve the original package-prefix decoder refusal.
   outcome.packageReason
+
 func headerError*[T](outcome: WorkSharingResult[T]): WorkSubmissionResult[
     WorkSubmissionHeader] {.requires: outcome.status == WorkSharingError.HeaderFailure.} =
   ## Preserve exact structural mapping/header failures without a decoded prefix.
   outcome.headerReason
+
 func dutyError*[T](outcome: WorkSharingResult[T]): WorkDutyResult[
     WorkDuty] {.requires: outcome.status == WorkSharingError.DutyFailure.} =
   ## Expose only the genuine failed assignment check.
   outcome.dutyReason
+
 func side*[T](outcome: WorkSharingResult[T]): SharingDutySide {.requires: outcome.status ==
     WorkSharingError.DutyFailure.} =
   ## Identify which actual authenticated party failed its own obligation.
   outcome.dutySide
+
 func anchorError*[T](outcome: WorkSharingResult[T]): WorkAnchorResult[
     AnchoredWorkContext] {.requires: outcome.status == WorkSharingError.AnchorFailure.} =
   ## Preserve complete recent/lookup context refusal.
   outcome.anchorReason
+
 func populationError*[T](outcome: WorkSharingResult[T]): WorkPopulationResult[
     WorkShardWindow] {.requires: outcome.status == WorkSharingError.PopulationFailure.} =
   ## Preserve genuinely unavailable or uncertain anchor-window state.
   outcome.populationReason
+
 func authorizationError*[T](outcome: WorkSharingResult[T]): WorkSubmissionResult[
     AuthorizedWorkSubmission] {.requires: outcome.status ==
     WorkSharingError.AuthorizationFailure.} =
   ## No body or signature is granted by failed pool/guest authorization.
   outcome.authorizationReason
+
 func bodyError*[T](outcome: WorkSharingResult[T]): WorkSubmissionResult[
     VerifiedImportInputs] {.requires: outcome.status == WorkSharingError.BodyFailure.} =
   ## Preserve actual extrinsic/import/mapping/proof refusal.
   outcome.bodyReason
+
 func refinementError*[T](outcome: WorkSharingResult[T]): InputRefinementResult[
     InputRefinement] {.requires: outcome.status == WorkSharingError.RefinementFailure.} =
   ## Failed computation cannot expose partial item outputs.
   outcome.refinementReason
+
 func reportError*[T](outcome: WorkSharingResult[T]): WorkReportResult {.requires: outcome.status ==
     WorkSharingError.ReportFailure.} =
   ## Preserve actual availability/report/transcript preparation failure.
   outcome.reportReason
+
 func eligibilityError*[T](outcome: WorkSharingResult[T]): WorkEligibilityResult[
     EligibleWorkGuarantee] {.requires: outcome.status == WorkSharingError.EligibilityFailure.} =
   ## Preserve full pre-signing report eligibility failure.
   outcome.eligibilityReason
+
 func signingError*[T](outcome: WorkSharingResult[T]): WorkSignerResult[
     SignedWorkContribution] {.requires: outcome.status == WorkSharingError.SigningFailure.} =
   ## A key mismatch/backend error never exposes a signature.
   outcome.signingReason
+
 proc decodeShared(first, bundle: openArray[byte], config: PackageConfig): WorkSharingResult[
     DecodedSharedWork] =
   ## The caller has preflighted complete input sizes; package and body extents are proved before any offset addition.
@@ -136,6 +152,7 @@ proc decodeShared(first, bundle: openArray[byte], config: PackageConfig): WorkSh
   WorkSharingResult[DecodedSharedWork](status: WorkSharingError.None,
     completed: DecodedSharedWork(header: header.value, extrinsics: size, segments: segments,
         proofs: proofs))
+
 proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer: StateEdKey,
     now: StateTime, signer: WorkSigner, limits: WorkSharingLimits,
     retained: openArray[GuarantorAvailability] = []): WorkSharingResult[
@@ -221,6 +238,7 @@ proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer
     return WorkSharingResult[SignedWorkContribution](status: WorkSharingError.SigningFailure,
         signingReason: signed)
   WorkSharingResult[SignedWorkContribution](status: WorkSharingError.None, completed: signed.value)
+
 proc sharingResponse*(contribution: SignedWorkContribution): WorkSharingResult[array[
     SharingResponseBytes, byte]] =
   ## Encode only a genuine original contribution; neither a caller-supplied hash nor signature can replace its checked transcript.

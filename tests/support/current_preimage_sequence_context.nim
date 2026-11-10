@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current preimage bodies follow an empty predecessor, with a separately sealed already-delivered repetition.
+
 import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

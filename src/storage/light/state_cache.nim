@@ -3,6 +3,7 @@
 
 ## Immutable bounded partial lookup retention at one caller-trusted complete root, with explicit unknown keys.
 ## Admission verifies whole batches before publication; forgetting never claims protocol absence.
+
 import std/[algorithm, assertions]
 import ../state_proof
 import ../../codec/state/[layout as state_layout, trie as state_trie]

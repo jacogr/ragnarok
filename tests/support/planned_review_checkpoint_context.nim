@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit restoration/capture/report limits avoid unsupported nested-constant field folding.
+
 import ./[state_inventory_context, account_review_plan_context]
 import ../../src/state/planned/review_checkpoint as planned_review_checkpoint
 import ../../src/state/[validated_checkpoint, store, global_snapshot]

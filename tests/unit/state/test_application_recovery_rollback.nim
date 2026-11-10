@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Late native refusal and inherited composition ceilings cannot partially replace a recovered canonical pair.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, chain, candidate, handoff]
@@ -13,12 +14,16 @@ import ../../../src/state/accumulation/[chain as accumulation_chain, state as ac
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer injects an actual maintained primitive refusal without changing production state logic.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse only after the measured positive path has completed all earlier hashes.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual Blake2b calls, including the selected failing invocation.
+
 proc main() {.raises.} =
   ## Fresh source authority is prepared once against the recovered map, then exercised through private branches and late failure.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently known old manifests recover pinned full readers and fresh exact cleanup receipts after owner retirement.
+
 # @@Verification={"arc":"storage_full_paged_epoch_reopen_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -10,9 +11,11 @@ import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as ful
 import ../../../src/storage/paged/io as paged_io
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/file/errors as file_errors
+
 proc path(label: string): string =
   ## New namespaces isolate genuine pins and fault schedules without namespace-wide recovery scans.
   "full-epoch-reopen-" & $storageProcessId() & "-" & label
+
 proc seed(directory: string, old, target: FullPagedFixture): FullPagedManifest =
   ## Retire all original owners; only the independent passive manifest survives the simulated restart boundary.
   var writer = default(FullPagedWriter)
@@ -22,6 +25,7 @@ proc seed(directory: string, old, target: FullPagedFixture): FullPagedManifest =
   writer.prepare(candidate, target)
   assert writer.publish(candidate).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc normal(old, target: FullPagedFixture) =
   ## Fresh exact epoch readers remain independent of CURRENT and exclude physical reclamation until explicit retirement.
   let directory = path("normal")
@@ -48,6 +52,7 @@ proc normal(old, target: FullPagedFixture) =
   assert openFullPagedReader(reader, directory, target.config).error == FullPagedNativeError.None
   assert reader.lookup(old.header.root, key(0)).value.bytes[0] == 5
   assert reader.close == FileError.None
+
 proc faults(old, target: FullPagedFixture) =
   ## Every observed native admission/retirement refusal exposes no reader and leaves both immutable epochs readable.
   let directory = path("faults")
@@ -77,6 +82,7 @@ proc faults(old, target: FullPagedFixture) =
   assert openFullPagedEpochReader(reader, directory, old.config, default(
       FullPagedManifest)).error != FullPagedNativeError.None
   assert not reader.opened
+
 proc main() =
   ## Fresh passive manifests recover old authority without trusting any new root or retaining original writer state.
   let old = sample(5)

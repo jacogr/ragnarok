@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Source-free CE141 timing and author plans retain exact complete-parent identity, original C8 assurer duties and current/pending-C4 author routing without signing or possession authority.
+
 import ./[assurance_duty, assurance_record, topology]
 import ../chain/[genesis, parameters]
 import ../codec/[assurances, bounded]
@@ -37,29 +38,36 @@ type
     of DutyFailure: dutyReason: AssuranceDutyResult[AssuranceDuty]
     of TopologyFailure: topologyReason: TopologyError
     else: discard # Simple refusal contains no source, signature or unrelated child result.
+
 func error*[T](outcome: AssuranceScheduleResult[T]): AssuranceScheduleError =
   ## Inspect the selected branch before any guarded payload or child access.
   outcome.status
+
 func value*[T](outcome: AssuranceScheduleResult[T]): T {.requires: outcome.status ==
     AssuranceScheduleError.None.} =
   ## Only whole success grants detached timing, public routing or selection observations.
   outcome.completed
+
 func dutyError*[T](outcome: AssuranceScheduleResult[T]): AssuranceDutyResult[
     AssuranceDuty] {.requires: outcome.status == AssuranceScheduleError.DutyFailure.} =
   ## Preserve the actual original-parent duty refusal.
   outcome.dutyReason
+
 func topologyError*[T](outcome: AssuranceScheduleResult[
     T]): TopologyError {.requires: outcome.status == AssuranceScheduleError.TopologyFailure.} =
   ## Preserve the exact bounded public-roster decoder refusal.
   outcome.topologyReason
+
 func refused[T](reason: AssuranceScheduleError): AssuranceScheduleResult[T] {.requires: reason notin
     [AssuranceScheduleError.None, AssuranceScheduleError.DutyFailure,
     AssuranceScheduleError.TopologyFailure].} =
   ## Failed/simple constructors cannot manufacture accepted plan storage or a missing typed child.
   AssuranceScheduleResult[T](status: reason)
+
 func valid*(plan: AssuranceSchedule): bool =
   ## Defaults contain no temporal or source authority.
   plan.data != nil
+
 func valid*(limits: AssuranceScheduleLimits): bool =
   ## Finite independent defaults never activate public roster copying or infer a chain profile.
   uint64(limits.plannedBytes) >= 4096 and uint64(limits.plannedBytes) <= 4'u64*1024*1024 and
@@ -70,6 +78,7 @@ func valid*(limits: AssuranceScheduleLimits): bool =
         limits.topology.validators.maxBytes) <= 4'u64*1024*1024 and
     uint64(limits.duty.chapterBytes) > 0 and uint64(limits.duty.readBytes) > 0 and
     uint64(limits.duty.reports) > 0 and uint64(limits.duty.requests) > 0
+
 func assuranceWindow*(now: AssuranceTime, slotSeconds: uint64): AssuranceScheduleResult[
     AssuranceWindow] =
   ## The upcoming slot has a finite preparation interval; uint32 slot and multiplication bounds precede all time arithmetic.
@@ -85,18 +94,21 @@ func assuranceWindow*(now: AssuranceTime, slotSeconds: uint64): AssuranceSchedul
     completed: AssuranceWindow(targetSlot: StateTime(uint32(target)), prepareAt: AssuranceTime(
         prepare),
       sendAt: AssuranceTime(close-2), closeAt: AssuranceTime(close), slotSeconds: slotSeconds))
+
 proc scheduleInfo*(plan: AssuranceSchedule): AssuranceScheduleResult[AssuranceScheduleInfo] =
   ## Return only fixed copied facts; no mutable roster or canonical source escapes.
   let data = plan.data
   if data == nil: return refused[AssuranceScheduleInfo](AssuranceScheduleError.Uninitialized)
   AssuranceScheduleResult[AssuranceScheduleInfo](status: AssuranceScheduleError.None,
       completed: data.info)
+
 proc scheduleSelection*(plan: AssuranceSchedule): AssuranceScheduleResult[AssuranceBits] =
   ## Requested pending-core bits are hints only; the private signer must independently restore every selected original local coordinate.
   let data = plan.data
   if data == nil: return refused[AssuranceBits](AssuranceScheduleError.Uninitialized)
   AssuranceScheduleResult[AssuranceBits](status: AssuranceScheduleError.None,
       completed: data.selection)
+
 proc scheduleTarget*(plan: AssuranceSchedule, ordinal: int): AssuranceScheduleResult[Membership] =
   ## Preserve original author ordinals and routing, including null/unreachable positions for bounded host refusal.
   let data = plan.data
@@ -107,12 +119,14 @@ proc scheduleTarget*(plan: AssuranceSchedule, ordinal: int): AssuranceScheduleRe
   if found.error != TopologyError.None: return refused[Membership](
       AssuranceScheduleError.InvalidIndex)
   AssuranceScheduleResult[Membership](status: AssuranceScheduleError.None, completed: found.value)
+
 proc matches*(plan: AssuranceSchedule, source: BlockSnapshotResult): bool =
   ## Same-header/different-map parents cannot revive an old routing or signing selection.
   let data = plan.data
   if data == nil or source.error != GenesisError.None: return false
   array[32, byte](data.info.duty.anchor) == array[32, byte](source.value.blockHash) and
     array[32, byte](data.info.duty.root) == array[32, byte](source.value.stateRoot)
+
 proc captureAssuranceSchedule*(source: BlockSnapshotResult, local: StateEdKey,
     window: AssuranceWindow, limits: AssuranceScheduleLimits): AssuranceScheduleResult[
         AssuranceSchedule] =

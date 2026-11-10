@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual child fixed facts preserve full profile/state/Parameters without RPC index copies before resource refusal.
+
 # @@Verification={"arc":"state_current_child_context_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_checkpoint_context, arc_evidence]
@@ -11,10 +12,13 @@ import ../../../src/state/store
 import ../../../src/chain/[genesis, parameters]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/composition as state_composition
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine signed/current preparation precedes every fixed-only observation.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Reading original child context and refusing C9 policy cannot hash.
+
 proc verify(update: PreparedCurrentChainUpdate) =
   ## Copy-out fixed fields remain observations; changing them cannot mutate the retained real child or derived profile.
   let child = update.currentUpdateChild
@@ -31,11 +35,13 @@ proc verify(update: PreparedCurrentChainUpdate) =
   let refused = captureCurrentProfile(update, CurrentProfileLimits(validators: ElementLimit(6),
       bytes: ByteLimit(0)))
   assert refused.error == CurrentProfileError.LimitExceeded
+
 proc cycle(update: PreparedCurrentChainUpdate) =
   ## Fixed facts and immediate C9 extent refusal allocate no copied child indexes or payload arrays.
   assert update.currentUpdateChildContext.slot > 0
   assert captureCurrentProfile(update, CurrentProfileLimits(validators: ElementLimit(6),
       bytes: ByteLimit(0))).error == CurrentProfileError.LimitExceeded
+
 proc main() {.raises.} =
   ## Ordinary and epoch selected children retain their exact original source context.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

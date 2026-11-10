@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic manifest guards and a genuine complete-map positive control share the linked implementation.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[manifest, global_snapshot, store]
 import ../../src/codec/[bounded, assurances]
 import ../../src/codec/state/[consensus as state_consensus, layout as state_layout,
     trie as state_trie, composition as state_composition]
 include ./composition_fixture
+
 proc extract(outcome: StateManifestResult[ValidatedStateManifest]): ValidatedStateManifest {.noinline.} =
   ## Preserve the dynamic success assertion instead of constant-folding an inactive default variant.
   outcome.value
+
 proc reason(outcome: StateManifestResult[ValidatedStateManifest]): StateCompositionError {.noinline.} =
   ## Only actual composition refusal can expose a nested decoder/backend reason.
   outcome.compositionError

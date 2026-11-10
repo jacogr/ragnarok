@@ -18,16 +18,19 @@ proc credentialFixture*(shrink = false, core = 0'u64, offender = false,
   ## Run real original computation and authenticated posterior planning before any credential signing.
   let source = guarantorFixture(shrink = shrink, core = core, offender = offender, target = target)
   prepareComputedGuarantors(source, guarantorLimits()).value
+
 proc credentialMessage*(source: ComputedGuarantors): array[45, byte] =
   ## Copy exact retained original message for test signing; production verification accepts no caller message.
   let transcript = source.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value.computedProfileSource.value.computedLookupSource.value.computedRecentSource.value.computedStateSource.value.computedLinkSource.value
   array[45, byte](transcript.computedGuaranteeMessage.value)
+
 proc credentialSignature*(seedByte: byte, message: openArray[byte]): GuaranteeSignature =
   ## Real deterministic ordinary Ed25519 signs only explicitly supplied test messages.
   var bytes = default(array[32, byte])
   bytes[0] = seedByte
   let seed = importSeed(bytes).value
   GuaranteeSignature(array[64, byte](sign(seed, message).value))
+
 proc signedCredentials*(source: ComputedGuarantors, slot: GuaranteeSlot,
     indices: openArray[uint16], message: openArray[byte]): seq[GuaranteeCredential] =
   ## Match known authored test seed identities to each genuinely selected roster key; preserve caller order for hostile tests.

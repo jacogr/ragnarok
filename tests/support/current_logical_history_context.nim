@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real complete-namespace forget/restore guests and literal history observations for collected Services successors.
+
 import std/assertions
 import ./[current_namespace_context, current_namespace_execution_context, pvm_accumulation_program,
     current_logical_proof_context]
@@ -14,6 +15,7 @@ import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
 import ../../src/state/inventory
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/state/store
+
 proc logicalHistoryCode(hash: ServicePreimageHash, restore: bool): seq[byte] =
   ## Maintained host26 forget and funded host25 restore consume initialized self/hash/length registers at the actual native invocation slot.
   let raw = array[32, byte](hash)
@@ -28,11 +30,13 @@ proc logicalHistoryCode(hash: ServicePreimageHash, restore: bool): seq[byte] =
   instructions.add(@[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(octet)
+
 proc logicalHistoryFixture*(base: OwnedReport, restore: bool): NamespaceExecutionFixture =
   ## Full original code/request/storage declarations enter the parent commitment and signatures before actual Services execution.
   let seeds = namespaceSeeds()
   namespaceExecutionFixture(base, namespaceHaltCode(), logicalHistoryCode(seeds[1].preimages[
       1].hash, restore))
+
 proc checkCollectedHistory*(logical: CurrentLogicalState, hash: ServicePreimageHash,
     restore: bool) =
   ## The original identity stays fixed while literal history slots/bytes come from the actual current logical successor, with retained preimage payload.

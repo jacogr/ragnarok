@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_authorized_refinement_arc_release"}
 
 ## Genuine combined source fixtures verify authorization gating, trace propagation, atomic children and immutable provenance.
@@ -153,12 +154,14 @@ assert default(AuthorizedRefinement).authorizedSource.error ==
     AuthorizedRefinementError.Uninitialized
 assert default(AuthorizedRefinement).authorizedDigests.error ==
     AuthorizedRefinementError.Uninitialized
+
 proc detached(): AuthorizedRefinement =
   ## Return only the bound result after original caller fixture/input handles retire.
   let source = authorizedFixture(authCode, [reportGuest(fetchTrace)])
   prepareAuthorizedRefinement(source.authorization, source.inputs, authorizedLimits()).value
 assert detached().authorizedDigests.value.digestAt(FetchItemIndex(0)).value.digestOutput.value == @[
     11'u8, 12, 13]
+
 proc cycle() =
   ## Fresh auth/state/package/report/digest owners and late-refused private candidates release completely each time.
   let source = authorizedFixture(authCode, [reportGuest(fetchTrace), reportGuest(exporting, 1)])

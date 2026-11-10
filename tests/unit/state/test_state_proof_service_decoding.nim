@@ -8,6 +8,7 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie]
+
 proc main() =
   ## A serialized proof carries no authority until the receiving root and exact query plan both agree.
   let service = ServiceIndex(7)

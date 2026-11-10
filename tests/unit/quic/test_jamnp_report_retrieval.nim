@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_report_retrieval_arc_release"}
 
 ## Canonical CE136 framing and complete hash-bound report ownership over real authenticated TLS and Services leases.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
@@ -18,10 +19,12 @@ import ../../../src/crypto/primitives
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_report_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -32,23 +35,28 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc requestFor(hash: WorkReportHash): ReadRequest =
   ## Complete fixed query bytes remain distinct from state/block identities.
   decodeReadRequest(ReadKind.Report, array[32, byte](hash)).value
+
 proc framed(body: seq[byte]): seq[byte] =
   ## One independently framed E4 message contains bare report bytes only.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(body.len) shr (8*index)) and 255))
   for octet in body: result.add(octet)
+
 proc bytes(report: OwnedReport): seq[byte] =
   ## Mutable extraction copies cannot change the report's private immutable wire owner.
   result = newSeq[byte](ownedReportInfo(report).value.consumed)
   assert encodeOwnedReport(report, result).error == OwnershipError.None
+
 proc cycle(request: ReadRequest, wire: seq[byte], source: ReadSource) =
   ## Every complete verification activation retires all report/result owners before ARC observation.
   let checked = verifyReadReply(request, wire, source, readVerificationLimits())
   assert checked.error == ReadVerificationError.None
   assert ownedReportInfo(checked.value.workReport).value.consumed == 393
+
 proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     milliseconds: int) {.raises.} =
   ## Host polling owns CPU admission outside callbacks; Services keeps exact graph/RPC gates.
@@ -57,6 +65,7 @@ proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProb
     assert host.poll(getMonoTime(), StateTime(7), 0)
     probe.poll()
     services.tick(uint32(host.peerCount))
+
 proc live(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
   ## Both C10 and C14 canonical sources are exercised through actual application/native ownership.
   writeFile("report-retrieval-chain.json", chainText(saved.value))
@@ -150,6 +159,7 @@ proc live(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
   services.stopStateProofs()
   assert not services.stateProofActive
   assert bytes(completed.value.value.workReport) == body, "complete report evidence survives joined host/worker retirement"
+
 proc main() {.raises.} =
   ## Exact source, wire and owner checks precede both independently authenticated runtime exchanges.
   let body = reportBody()

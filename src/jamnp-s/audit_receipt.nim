@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole bounded CE144 batches derive every source from the actual retained chain on the managed worker; no authenticated prefix escapes a late refusal or cancellation.
+
 import ./[audits, audit_context, audit_validation, assurance_store]
 import ../chain/[genesis, provider]
 import ../codec/bounded
@@ -26,25 +27,31 @@ type
     of ContextFailure: contextReason: AuditContextResult[AuditContext]
     of ProofFailure: proofReason: AuditValidationResult[CheckedAuditAnnouncement]
     else: discard # Defaults and ordinary resource/cancellation refusals have no success payload.
+
 func error*[T](outcome: AuditReceiptResult[T]): AuditReceiptError =
   ## Observe a selected reason before extracting its payload.
   outcome.status
+
 func value*[T](outcome: AuditReceiptResult[T]): T {.requires: outcome.status ==
     AuditReceiptError.None.} =
   ## Only complete successful batches or record lookups expose retained ownership.
   outcome.completed
+
 func decodeError*[T](outcome: AuditReceiptResult[T]): AuditError {.requires: outcome.status ==
     AuditReceiptError.DecodeFailure.} =
   ## Preserve the actual whole-message structural refusal.
   outcome.decodeReason
+
 func contextError*[T](outcome: AuditReceiptResult[T]): AuditContextResult[
     AuditContext] {.requires: outcome.status == AuditReceiptError.ContextFailure.} =
   ## Unknown/pruned/header-only sources retain their exact cause without fabricated available work.
   outcome.contextReason
+
 func proofError*[T](outcome: AuditReceiptResult[T]): AuditValidationResult[
     CheckedAuditAnnouncement] {.requires: outcome.status == AuditReceiptError.ProofFailure.} =
   ## Preserve the actual original-key proof refusal or unapproved later-tranche gate.
   outcome.proofReason
+
 func valid*(limits: AuditReceiptLimits): bool =
   ## At most sixteen bounded private consensus-prefix executions occur per job; omission activates no receipt.
   limits.context.valid and limits.proof.valid and limits.message.valid and
@@ -54,14 +61,17 @@ func valid*(limits: AuditReceiptLimits): bool =
       1'u64..16'u64 and
     uint64(limits.message.bytes) > 0 and uint64(limits.message.bytes) <= 16'u64*133 and
     uint64(limits.retainedBytes) > 0 and uint64(limits.retainedBytes) <= 256'u64*1024*1024
+
 proc len*(batch: CheckedAuditBatch): int =
   ## A default handle has no accepted records or initialized empty-batch authority.
   let data = batch.data
   if data == nil: return 0
   data.records.len
+
 func valid*(batch: CheckedAuditBatch): bool =
   ## Successful empty input remains distinguishable from a default handle.
   batch.data != nil
+
 proc announcementAt*(batch: CheckedAuditBatch, ordinal: int): AuditReceiptResult[
     CheckedAuditAnnouncement] =
   ## Return an immutable checked record without exporting the mutable backing sequence.
@@ -72,6 +82,7 @@ proc announcementAt*(batch: CheckedAuditBatch, ordinal: int): AuditReceiptResult
     return AuditReceiptResult[CheckedAuditAnnouncement](status: AuditReceiptError.InvalidIndex)
   AuditReceiptResult[CheckedAuditAnnouncement](status: AuditReceiptError.None,
       completed: data.records[ordinal])
+
 proc qualifyAuditAnnouncements*(source: ChainView, wire: openArray[byte],
     limits: AuditReceiptLimits, control: AssuranceScanControl = default(
         AssuranceScanControl), alternatives: openArray[ChainView] = []): AuditReceiptResult[

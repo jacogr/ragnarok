@@ -1,10 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Immutable bounded linear RPC history: best block, exact block/parent lookup and retained reports.
-## advanceView appends a structurally captured direct child after linkage checks. It does not verify
-## execution, signatures, wall-clock validity, fork choice or finality. finalizeView records caller-certified
-## finality only; old readers retain their view. An explicit positive window excludes the finalized anchor.
+## Immutable selected-chain views for readers and dispatcher publication.
+##
+## Exact block and parent lookups require retained identities. A finalized anchor
+## can remain queryable after rolling-window eviction. Retained report queries use
+## the selected head so a larger history cannot multiply report decoding work.
+##
+## Each published view retains immutable snapshot handles. Eviction in a new view
+## leaves prior readers valid, so caller-held views count toward total retention.
+## An explicit finality selection comes from the caller's authority.
 
 import ./[genesis, reports, memory_history]
 import ../storage/history/index as history_index
@@ -201,8 +206,10 @@ func sameChainView*(left, right: ChainView): bool =
   true
 
 proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResult =
-  ## Append a structurally checked direct child; preserve old views and evict only the oldest on success.
-  ## The caller must supply execution-validated state before using this as a live node chain source.
+  ## Append a direct child after checking its parent, increasing slot and prior state root.
+  ## Matching the full parameter tuple keeps a view coherent across the rolling window.
+  ## This structural check accepts slot gaps. The caller supplies execution-validated
+  ## state and chooses which chain to publish.
   let head = view.bestBlock
   if head.error != GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.Uninitialized) # Explicit seeding is required.
@@ -250,7 +257,6 @@ proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportR
   if head.error != GenesisError.None:
     return default(ReportReadResult) # The existing result marks default owners uninitialized.
   reports.workReport(head.value, hash, limit)
-
 
 proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
   ## Select a caller-certified finalized block on this retained linear chain; no consensus proof is checked.
@@ -303,6 +309,7 @@ proc retainedPrefix*(view: ChainView, hash: BlockHash): ViewAdvanceResult =
     validation.add(headerContext(saved[index].value))
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: view.capacity,
       validation: validation, snapshot: saved, finalized: view.finalized))
+
 proc restoreLocalChainView*(history: openArray[BlockSnapshotResult],
     finalized = unavailableGenesis(), limit = ElementLimit(MaxRetainedBlocks)): ViewAdvanceResult =
   ## Restore a previously validated local bounded history; this is not a consensus or import verifier.

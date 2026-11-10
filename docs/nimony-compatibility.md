@@ -22,6 +22,10 @@ copy propagation and range-proof changes. Distinct ordinal comparisons now requi
 same-domain implementations; policy range validation must prove the original fields rather than
 validated tuple copies. Keep runtime checks and supported concrete integer overloads. See the
 [November 7 qualification](../spec/nimony-nightly-2026-11-07.md) for scope and retained issues.
+The November 8 candidate `ad334fb80` fixes module-qualified `declared()` and the non-inlined
+var-write miscompile. Explicit same-domain equality covers native verification consumers; qualified
+performance-driver guards can be restored. See the [November 8 qualification](../spec/nimony-nightly-2026-11-08.md).
+The omitted variant-default and HTTP-retirement alternatives remain necessary.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |

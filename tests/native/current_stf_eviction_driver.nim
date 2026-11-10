@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real ticket contest replacement and non-retention execute through complete current candidate publication.
+
 import std/[assertions, cmdline, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[chain, candidate]

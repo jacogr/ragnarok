@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real download collection qualifies explicit logical sources before enqueue, preserving typed refusal and managed worker lifetimes.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[current_namespace_execution_context, current_application_context,
@@ -39,6 +40,7 @@ import ../../../src/storage/managed/manifest as managed_manifest
 type Refusal {.pure.} = enum ## Each real collected update reaches its own explicit source/policy boundary before any enqueue.
   DefaultPolicy, InvalidParent, ForeignParent, IdentityBudget, RequestBudget, ProjectionBudget,
     LogicalBudget, NewIdentity, MissingIdentity
+
 proc storageCode(key: byte, value: seq[byte]): seq[byte] =
   ## The genuine write host overwrites key5, creates key7 or removes key5 according to the authored input.
   var payload = @[key]
@@ -49,18 +51,21 @@ proc storageCode(key: byte, value: seq[byte]): seq[byte] =
       @[10'u8, 5], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, payload): result.add(octet)
+
 proc limits(): CurrentLogicalDownloadLimits =
   ## Policies are fixed independently of the received successor's claimed sizes or contents.
   CurrentLogicalDownloadLimits(identities: currentIdentityTestLimits,
       requests: namespaceRequestLimits,
 
 reconstruction: namespaceRefreshLimits, logical: namespaceLogicalLimits())
+
 proc namespaceLimits(): LogicalContinuationLimits =
   ## Explicit application opt-in freezes every namespace planning and full qualification budget before native collection.
   let logical = namespaceLogicalLimits()
   LogicalContinuationLimits(identity: currentIdentityTestLimits, checks: ElementLimit(16384),
     scratchBytes: ByteLimit(262144), projection: namespaceRefreshLimits.projection,
     profile: logical.profile, globals: logical.globals, logical: logical.logical)
+
 proc namespaceCandidates(): CurrentCandidateLimits =
   ## Producer host identity capture and final selected histories have independent original input ceilings.
   result = currentCandidateLimits()
@@ -73,6 +78,7 @@ proc namespaceCandidates(): CurrentCandidateLimits =
   result.completion.execution.execution.round.guests.storageFacts = result.completion.execution.initial.guests.storageFacts
   result.completion.execution.initial.guests.requestFacts = ElementLimit(4)
   result.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
+
 proc wire(child: OwnedBlock): seq[byte] =
   ## Authored CE128 E4 response framing contains exactly the canonical signed block bytes.
   let size = child.blockInfo.value.consumed
@@ -80,21 +86,25 @@ proc wire(child: OwnedBlock): seq[byte] =
   result = newSeq[byte](size+4)
   for i in 0..<4: result[i] = byte((uint64(size) shr (8*i)) and 255)
   assert child.encodeOwnedBlock(result.toOpenArray(4, result.high)).error == FrameError.None
+
 proc child(fixture: NamespaceExecutionFixture): OwnedBlock =
   ## Read the genuine admitted signed fixture block before any native graph lease.
   fixture.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedBlock
+
 proc parent(owner: Services, fixture: NamespaceExecutionFixture): SelectedLogicalParent =
   ## Match complete explicit namespaces against the actual startup owner and full configured view.
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   let declarations = fixture.executableNamespaceServices(owner.stateSnapshot.value)
   captureLogicalParent(globals, declarations, suppliedLogicalTestLimits).value
+
 proc foreign(fixture: NamespaceExecutionFixture): SelectedLogicalParent =
   ## Equal-root fixture ownership cannot replace the configured Services physical parent.
   let profile = captureParentProfile(fixture.parent, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   captureLogicalParent(globals, fixture.executableNamespaceServices(
       fixture.parent.bestBlock.value.stateSnapshot), suppliedLogicalTestLimits).value
+
 proc ready(download: var CurrentBlockDownload, owner: Services, bytes: seq[byte],
     policy: CurrentLogicalDownloadPolicy, policies = currentCandidateLimits()): CurrentBlockDownloadId =
   ## Retain source/policies before actual byte reception and before the managed worker may borrow any graph.
@@ -108,6 +118,7 @@ proc ready(download: var CurrentBlockDownload, owner: Services, bytes: seq[byte]
   assert download.append(admitted.value, bytes, true) == CurrentBlockDownloadError.None
   assert download.stage == CurrentBlockDownloadStage.Ready
   admitted.value
+
 proc waitDone(owner: var Services) =
   ## Scalar observations and dispatcher ticks leave all retained logical/canonical aliases untouched through Done.
   let started = getMonoTime()
@@ -115,6 +126,7 @@ proc waitDone(owner: var Services) =
     assert (getMonoTime()-started).inSeconds < 20
     owner.tick(0)
     yieldCurrentDiskThread()
+
 proc collect(download: var CurrentBlockDownload, id: CurrentBlockDownloadId,
     owner: var Services): CurrentBlockDownloadResult[PreparedCurrentChainUpdate] =
   ## A stale generation cannot collect Done or release its RPC/canonical lease.
@@ -126,6 +138,7 @@ proc collect(download: var CurrentBlockDownload, id: CurrentBlockDownloadId,
   assert owner.preparationActive and owner.rpc.chainPaused
   result = download.collectPreparation(id, owner)
   assert not owner.preparationActive and not owner.rpc.chainPaused
+
 proc refuse(download: var CurrentBlockDownload, owner: var Services, bytes: seq[byte],
     source, other: SelectedLogicalParent, mode: Refusal) =
   ## Every failed logical stage retires the captured policy without queueing a successful certificate or output prefix.
@@ -173,6 +186,7 @@ proc refuse(download: var CurrentBlockDownload, owner: var Services, bytes: seq[
   assert download.cancel(id)
   assert download.logicalCompletion.error == CurrentLogicalDownloadError.Uninitialized
   assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc refuseNamespace(download: var CurrentBlockDownload, owner: var Services,
     bytes: seq[byte], source: SelectedLogicalParent) =
   ## Missing producer capture and an explicit continuation limit fail after collection, without enqueue, adoption or a lingering lease.
@@ -194,6 +208,7 @@ proc refuseNamespace(download: var CurrentBlockDownload, owner: var Services,
     assert download.cancel(id)
     assert download.logicalCompletion.error == CurrentLogicalDownloadError.Uninitialized
     assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc retire(download: var CurrentBlockDownload, owner: var Services, bytes: seq[byte],
     policy: CurrentLogicalDownloadPolicy) =
   ## Both immediate and Done cancellation/join retire the same pre-retained logical policy without touching it during the lease.
@@ -215,6 +230,7 @@ proc retire(download: var CurrentBlockDownload, owner: var Services, bytes: seq[
       assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
       assert sameStateSnapshot(before, owner.stateSnapshot.value)
       assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc scenario(fixture: NamespaceExecutionFixture, layout: int, mutation = false,
     create = false, namespaces = false) {.raises.} =
   ## Each physical backend qualifies actual adapter publication and strict reopen of only the successfully adopted prefix.
@@ -301,6 +317,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, mutation = false,
     assert owner.chainView.retainedCount == retained
     equalCurrentDiskMap(owner.stateSnapshot.value, finalState)
     owner.close()
+
 proc main() {.raises.} =
   ## Actual host writes and original complete namespaces make producer identity changes observable without fabricated State certificates.
   let blank = default(CurrentLogicalDownloadResult)

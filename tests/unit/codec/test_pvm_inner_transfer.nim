@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_transfer_arc_release"}
 
 ## Literal transfer bytes, host ordering, exact gas and immutable memory/map forks verify Omega_P/Omega_O.
@@ -13,6 +14,7 @@ proc transfer(peek: bool, map: InnerMachines, regs: RegisterFile, credit = 10000
   ## Keep protocol gas and local copying policy separate for both public endpoint-specific APIs.
   if peek: innerPeekResponse(map, MachineGas(credit), regs, memory, MemoryByteLimit(cap))
   else: innerPokeResponse(map, MachineGas(credit), regs, memory, MemoryByteLimit(cap))
+
 proc ram(map: InnerMachines, id = 0'u64): Memory =
   ## Retain only the selected immutable RAM child; copied metadata cannot update the map.
   map.innerMachine(InnerMachineId(id)).value.memory
@@ -121,6 +123,7 @@ assert caller.readableRange(MemoryAddress(high(uint64)), MemoryLength(1)).error 
     MachineError.InvalidRange
 assert default(Memory).readableRange(MemoryAddress(0), MemoryLength(0)).error ==
     MachineError.InvalidOwner
+
 # Fresh owners cover successful copies, immutable forks, local copy refusals and protocol OOB/panic/OOG release.
 proc cycle() =
   ## Drop every response, copied byte buffer, page/map generation and input owner at the end of each iteration.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual custom HALT metadata refresh retains complete code/request namespaces and source-bound account predicate evidence.
+
 # @@Verification={"arc":"state_current_refresh_executed_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -22,10 +23,13 @@ import ../../../src/state/footprint_audit
 import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual signed/current execution and request-key capture precede hash-free plans and independently counted audit execution.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Only full matching and explicit content execution hash; cached planning/projection cannot.
+
 proc auditPolicy(codeBytes: int): AccountAuditLimits =
   ## Exact independent work for two accounts, four storage rows, six requests and six preimages including both whole code blobs.
   assert codeBytes >= 3 and codeBytes <= 65536 # Tiny actual code extent proves byte total and native limit conversion.
@@ -34,6 +38,7 @@ proc auditPolicy(codeBytes: int): AccountAuditLimits =
       services: ElementLimit(2), preimages: ElementLimit(6), perValue: ByteLimit(uint64(codeBytes)),
       totalBytes: ByteLimit(4+2*uint64(codeBytes))), linkage: PreimageLinkageLimits(
       services: ElementLimit(2), preimages: ElementLimit(6), comparisons: ElementLimit(18)))
+
 proc cycle(plan: CurrentLogicalRefreshPlan, codeBytes: int) =
   ## Retire real refreshed payloads, both compact/raw-key captures, detached code copies and joined account predicate evidence.
   let logical = executeCurrentLogicalRefresh(plan).value
@@ -42,6 +47,7 @@ proc cycle(plan: CurrentLogicalRefreshPlan, codeBytes: int) =
       suppliedServicesTestLimits).value.len == 2
   assert executeAccountAudit(planAccountAudit(inventory, auditPolicy(codeBytes)).value).error ==
       AccountAuditError.None
+
 proc main() {.raises.} =
   ## Both original programs and all complete namespaces/code requests enter actual parent roots/signatures before guest execution.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

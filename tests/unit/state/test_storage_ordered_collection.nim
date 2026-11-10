@@ -2,16 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical collection decoding rejects unordered/duplicate borrowed identities before allocation or hashing.
+
 import std/[algorithm, assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/records as node_records
 import ../../../src/storage/record_codec
 import ../../../src/codec/state/trie as state_trie
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Keep real hashes while resetting the existing primitive observer.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count genuine physical integrity attempts after shape/order preflight.
+
 proc compare(left, right: TrieRecord): int =
   ## Independent lexical address comparison constructs a canonical test transport.
   let a = array[32, byte](left.digest)

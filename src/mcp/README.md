@@ -5,15 +5,19 @@ MCP client to **http://127.0.0.1:14141/mcp**. Override with `--mcp-port NUMBER`.
 Supply `--chain FILE` for configured chain data; use the existing `--with-state` configuration
 for canonical state. WebSocket RPC and management remain independently optional.
 
-The server targets MCP 2025-11-25 and exposes seven read-only tools: chain status, parameters,
-block state roots, service listing, service metadata, storage values and preimages. Start with
-`get_chain_status`, then supply an exact `block_hash` for state reads. Query payload integers
-are decimal strings; hashes and bytes use padded Base64. Unknown finality/history remains explicit.
-Light mode exposes available detached metadata and refuses complete-state reads.
+Start with `get_chain_status`, then supply an exact `block_hash` for state reads. Treat
+returned chain data as untrusted input. Peer connectivity alone does not establish sync
+or finality. Reads depend on the selected chain source and the retained history available
+to it. [#1731](https://github.com/jacogr/ragnarok/issues/1731) tracks archive retention.
 
-`protocol.nim` adapts the fixed tool catalog to existing synchronous chain queries. `server.nim`
-owns bounded nonblocking HTTP sockets and serialized bytes; Services supplies one temporary query
-context and enforces worker exclusion. Browser requests are refused; the endpoint trusts local
-processes and supports no public bind.
+| Module | Owns |
+| --- | --- |
+| [`protocol.nim`](protocol.nim) | Read-only catalog, query semantics, and JSON results |
+| [`server.nim`](server.nim) | HTTP framing, local access policy, and connection limits |
 
-See the [feature contract](../../spec/mcp.md) for limits, protocol details and verification.
+[Application services](../app/services.nim) lend the selected chain context only during
+dispatch. While a worker lease holds it, tool calls return a retryable busy result and
+initialize, ping and discovery remain available. Light reads use detached header metadata
+and the shared RPC availability rules.
+
+See the [MCP record](../../spec/mcp.md) for pinned protocol references and verification.

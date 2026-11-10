@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_services_arc_release"}
 
 ## Explicit recovered startup installs the exact map/header pair before listener setup and retains no false finality.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[services, options, chain]
 import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
@@ -13,6 +14,7 @@ import ../../../src/codec/[bounded, header]
 import ../../../src/codec/state/layout as state_layout
 import ../../../src/state/store
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc recovered(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.raises.} =
   ## Original producer graph and input bytes retire before Services receives the restored owner.
   let source = checkpointFixture(variant)
@@ -22,6 +24,7 @@ proc recovered(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.r
   var wire = newSeq[byte](header.headerInfo.value.consumed)
   assert encodeOwnedHeader(header, wire).error == HeaderError.None
   decodeRecoveryCheckpoint(envelope, wire, expected, genesisStoreLimits(), ByteLimit(high(uint64)))
+
 proc cycle(options: Options, restored: ApplicationRecoveryResult) {.raises.} =
   ## Closed aggregate lifetimes release their canonical/input owners without starting threads or listeners.
   var owner = default(Services)
@@ -31,6 +34,7 @@ proc cycle(options: Options, restored: ApplicationRecoveryResult) {.raises.} =
   assert owner.chainView.retainedCount == 1
   assert owner.chainView.finalizedBlock.error != GenesisError.None
   assert not owner.startRecovered(options, "repeat", restored) # Live aggregates cannot be replaced.
+
 proc main() {.raises.} =
   ## Recovery never falls back to genesis when supplied trust, context or startup options refuse.
   var options = default(Options)

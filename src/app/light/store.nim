@@ -3,6 +3,7 @@
 
 ## Distinct light paged ownership publishes trusted header metadata and partial proofs together.
 ## Startup requires independent current trust; passive snapshots never perform native IO.
+
 import std/assertions
 import ./head as light_head
 import ../checkpoint/[trust as checkpoint_trust, identity as checkpoint_identity]

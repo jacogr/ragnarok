@@ -16,16 +16,19 @@ proc key(number: byte): StateKey =
   var bytes = default(array[31, byte])
   bytes[0] = number
   StateKey(bytes)
+
 proc policy(): StateStoreLimits =
   ## Small exact policies permit empty/nonempty complete mappings without unrelated state semantics.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(4), writeValueBytes: ByteLimit(200))
+
 proc cycle(snapshot: StateStoreSnapshot) =
   ## Returned successful bytes and refused alternatives retire before allocator observation.
   let encoded = encodeFullCheckpoint(snapshot, ByteLimit(1000))
   assert encoded.error == CheckpointError.None
   assert encodeFullCheckpoint(snapshot, ByteLimit(0)).error == CheckpointError.LimitExceeded
+
 proc main() =
   ## Verify canonical order, exact envelope bytes, every short ceiling and independent historical ownership.
   let absent = default(CheckpointResult[seq[byte]])

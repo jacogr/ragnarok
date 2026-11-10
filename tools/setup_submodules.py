@@ -196,15 +196,30 @@ def source_records(selected):
         url=git('config','--file',str(ROOT/'.gitmodules'),'--get',key.removesuffix('.path')+'.url',output=True)
         assert url.startswith('https://github.com/')
         path=ROOT/relative
+        metadata = Path(git('rev-parse', '--git-path',
+                            'modules/'+key[len('submodule.'):-len('.path')], output=True))
+        if not metadata.is_absolute():
+            # Linked parent worktrees can report an absolute shared metadata directory instead.
+            metadata = ROOT/metadata
+        first_checkout = not (path/'.git').exists() and not metadata.exists()
         if (path/'.git').exists():
             # A clean old revision is expected after a parent update; real edits, including nested edits, remain a refusal.
             require_pristine(path, relative)
-        records.append((relative,revision,url))
+        else:
+            # Only an absent or empty source directory belongs to this first initialization.
+            assert not path.is_symlink(), f'Symlink source checkout: {relative}'
+            assert not path.exists() or (path.is_dir() and not any(path.iterdir())), \
+                f'Nonempty uninitialized source checkout: {relative}'
+            if metadata.exists():
+                # Deinitialization can retain staged user bytes; an empty path does not make that repository new.
+                staged = git('--git-dir', str(metadata), 'diff', '--cached', '--name-only', output=True)
+                assert not staged, f'Modified source checkout: {relative}'
+        records.append((relative,revision,url,first_checkout))
     assert selected <= known, f'Unknown source paths: {sorted(selected-known)}'
     return records
 
 
-# Align static read-only sources to indexed pins; no remote branch, merge, reset, force or push is used.
+# Align static read-only sources to indexed pins without following remote branches or changing local edits.
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prefetch-blobs', action='store_true',
@@ -212,7 +227,7 @@ def main(arguments=None):
     parser.add_argument('paths', nargs='*', help='Optional submodule paths to check out at recorded pins')
     arguments = parser.parse_args(arguments)
     records=source_records(set(arguments.paths))
-    for relative,revision,url in records:
+    for relative,revision,url,first_checkout in records:
         path=ROOT/relative
         if relative=='vendor/jamtestvectors':
             initialize_vectors(path,revision,url) # Preserve focused sparse/partial checkout during initial and later pin updates.
@@ -220,10 +235,14 @@ def main(arguments=None):
             initialize_conformance(path, revision, url)
         # Conformance's nested vectors are historical upstream data, not a replacement for our separately pinned vectors.
         recursive = () if relative=='vendor/jam-conformance' else ('--recursive',)
+        # A failed first checkout can leave HEAD at the pin with an empty index; an ordinary retry then skips it.
+        # Only a just-preflighted empty path with no retained Git metadata is owned here; existing sources never use force.
+        complete_first_checkout = ('--force',) if first_checkout else ()
         # Explicit checkout overrides configured merge/rebase/custom update strategies, including nested sources.
-        git('submodule','update','--init',*recursive,'--checkout','--depth=1',
+        git('submodule','update','--init',*recursive,'--checkout',*complete_first_checkout,'--depth=1',
             '--filter=blob:none','--',relative)
         assert git('rev-parse','HEAD',cwd=path,output=True)==revision, f'Wrong checkout: {relative}'
+        require_pristine(path, relative) # A correct HEAD alone cannot certify a completed source checkout.
         if relative=='vendor/jamtestvectors':
             initialize_vector_preview(path)
         if relative=='vendor/polkavm':

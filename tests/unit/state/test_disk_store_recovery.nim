@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real kernel-limited durable StateStore updates preserve retained views and require explicit recovery.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -21,15 +22,19 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
@@ -127,6 +132,7 @@ proc attempt(extra: uint64, succeeds: bool) {.raises.} =
   assert recoverDiskStateStore(disk, path, chain, initial.commitment.root,
     RepositoryGeneration(1), policy, limits).fileError == FileError.InvalidJournal
   assert not disk.opened and readFile(path) == corrupt
+
 proc main() {.raises.} =
   ## Zero/partial writes exercise refusals; exact/ample limits exercise genuine successful controls.
   let initial = storageTrie()

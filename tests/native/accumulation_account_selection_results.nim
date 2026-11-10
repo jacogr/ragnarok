@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused account-source plans cannot reveal complete maps, copied metadata or producer outcomes.
+
 import std/cmdline
 import ../../src/state/accumulation/account/selection as accumulation_account_selection
 import ../../src/state/accumulation/annulment as accumulation_annulment

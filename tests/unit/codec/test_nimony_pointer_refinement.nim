@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guarded nullable pointers retain presence across mutations of their pointees after upstream #2809.
+
 import std/[assertions, syncio]
 
 proc touch(value: var int) =

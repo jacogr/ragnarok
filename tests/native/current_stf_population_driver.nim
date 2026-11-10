@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete three-core original maps and real culprit/resize candidates expose population-ceiling and offender semantics.
+
 import std/[assertions, cmdline, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[chain, candidate]

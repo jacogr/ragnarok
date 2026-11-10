@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sole-owner application envelope bytes detach all canonical graphs before any publication or I/O offload.
+
 import ../chain
 import ./[codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../state/checkpoint

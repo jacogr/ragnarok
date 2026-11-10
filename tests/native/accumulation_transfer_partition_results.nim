@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic strict extraction probes distinguish default/refused plans and invalid initialized output ordinals.
+
 import std/[cmdline, syncio]
 import ../../src/state/accumulation/transfer_partition as accumulation_transfer_partition
 import ../../src/state/store

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Maintained tiny-chain current round configuration and real deferred-transfer/yield programs.
+
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, composite]
 import ../../src/codec/state/outputs as state_outputs
@@ -12,6 +13,7 @@ import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
     provisions as accumulation_provisions, annulled_outputs as accumulation_annulled_outputs,
     transfers as accumulation_transfers, pending_transfers as accumulation_pending_transfers]
 import ./[accumulation_current_guests_context, pvm_accumulation_program]
+
 proc currentRoundLimits*(): CurrentAccumulationRoundLimits =
   ## Independent phase policies make every actual parent refusal observable without weakening later completeness.
   var guests = currentGuestLimits()
@@ -32,16 +34,19 @@ proc currentRoundLimits*(): CurrentAccumulationRoundLimits =
         transfers: ElementLimit(2), memoBytes: ByteLimit(256)),
     pending: PendingTransferLimits(sources: ElementLimit(2), transfers: ElementLimit(2),
         memoBytes: ByteLimit(256)))
+
 proc currentRoundParameters*(): Parameters =
   ## Match the genuine tiny chain and current fixed128-byte transfer memo independently of local copy limits.
   var wire = encodeParameters(currentGuestParameters())
   for index in 110..<114: wire[index] = 0 # Entire Appendix B memo extent, not a truncated override.
   wire[110] = 128
   decodeParameters(wire).value
+
 proc currentRoundServiceCode*(instructions: seq[seq[byte]]): seq[byte] =
   ## Real deferred transfer and yield instructions share one canonical service preimage/envelope.
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
+
 proc currentTransferProgram*(destination: uint64, gas = 3'u64): seq[byte] =
   ## A genuine nonzero memo pointer selects deferred transfer even with zero token value.
   currentRoundServiceCode(@[registerImmediate(7, high(uint64)), registerImmediate(8, destination),

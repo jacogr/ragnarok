@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every explicit-repair durability boundary must complete after interruption without widening prefix authority.
+
 import std/[assertions, syncio]
 import ../../support/storage_repair_faults
+
 proc main() {.raises.} =
   ## Count each backend's genuine barriers, then interrupt them independently after a real torn append.
   for managed in [false, true]:

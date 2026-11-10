@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze public StateStore observations before adopting a new commitment implementation.
+
 import std/[assertions, syncio]
 import ../../../src/state/store
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
@@ -13,11 +14,13 @@ proc key(index: byte): StateKey =
   if index < 3: raw[30] = index
   else: raw[0] = 128
   StateKey(raw)
+
 proc limits(): StateStoreLimits =
   ## Finite budgets cover every value boundary and permit at most four complete keys.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(33),
     totalValueBytes: ByteLimit(132), nodes: TrieNodeLimit(1000)),
     writes: ElementLimit(4), writeValueBytes: ByteLimit(132))
+
 proc check(snapshot: StateStoreSnapshot, entries: seq[StateEntry]) =
   ## Sorted public enumeration plus an independent whole-map root excludes stale/extra map data.
   let expected = stateTrieRoot(entries, limits().trie).value

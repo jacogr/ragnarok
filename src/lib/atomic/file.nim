@@ -74,13 +74,16 @@ type BoundedReadCountResult* = object ## Caller-owned scratch may contain partia
   case status: AtomicFileError
   of None: completed: int
   else: discard # A failed read never reports a successful prefix.
+
 func error*(outcome: BoundedReadCountResult): AtomicFileError =
   ## Observe complete EOF or the exact bounded-read refusal.
   outcome.status
+
 func value*(outcome: BoundedReadCountResult): int {.requires: outcome.status ==
     AtomicFileError.None.} =
   ## Extract only a complete byte count into caller-owned storage.
   outcome.completed
+
 proc readFileInto*(path: string, output: var openArray[byte]): BoundedReadCountResult =
   ## Read directly into caller scratch, avoiding unwipeable intermediate secret copies. Caller must clear scratch on every path.
   ## Capacity is exclusive: reserve one detection byte beyond the largest accepted file; a full span is refused.

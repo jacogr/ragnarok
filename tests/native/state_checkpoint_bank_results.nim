@@ -17,10 +17,12 @@ proc policy(): StateStoreLimits =
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(0), perValue: ByteLimit(0),
     totalValueBytes: ByteLimit(0), nodes: TrieNodeLimit(0)), writes: ElementLimit(0),
         writeValueBytes: ByteLimit(0))
+
 proc forgotten() =
   ## Composite destruction must enforce the live child's explicit retirement obligation.
   var bank = default(CheckpointBank)
   assert bank.openCheckpointBank("build/state-bank-forgotten") == CheckpointBankError.None
+
 proc main() =
   ## A genuine on-disk head and complete-map control prove the same APIs used by each rejected extraction.
   let mode = paramStr(1)

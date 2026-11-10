@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded strict JSON tokens shared by independent method registries. Callers bound input bytes
-## and validate raw UTF-8 before parsing; decoded strings are checked again after unescaping.
+## Bounded strict JSON tokens shared by independent method registries.
+##
+## Streaming numeric lexemes preserve request IDs beyond host integer or float
+## precision. The adapter rejects permissive JSON extensions before handing
+## tokens to dispatch. Callers bound raw bytes and validate UTF-8. The reader
+## checks decoded strings again after unescaping.
 
 import std/[parsejson, streams]
 import ../utf8
@@ -65,7 +69,8 @@ proc strictNumber(token: string): bool =
   i == token.len
 
 proc parseValues*(text: string, values: var seq[JsonToken], maxValues = 2048, maxDepth = 16): bool =
-  ## Adapt standard streaming events to owned dispatch values; failure discards all partial output.
+  ## Adapt standard streaming events to owned dispatch values.
+  ## A false return may leave a partial token sequence. Callers must discard it.
   ## The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
   ## between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
   if not strictLexemes(text): return false

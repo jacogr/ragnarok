@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent retained report bytes and complete-map test chapters for canonical CE136 retrieval.
+
 import std/[assertions, envvars, syncio]
 import ./jamnp_topology_fixture
 import ../../src/chain/[genesis, reports]
@@ -15,10 +16,12 @@ proc reportBody*(): seq[byte] {.raises.} =
   assert text.len == 393
   result = @[]
   for character in text: result.add(byte(character))
+
 proc reportIdentity*(): WorkReportHash =
   ## Independent Blake2b256 identity for the exact393-byte fixture, excluding guarantee/registration data.
   WorkReportHash([40'u8, 59, 192, 219, 185, 16, 157, 10, 42, 122, 227, 127, 246, 97, 197, 136,
     159, 77, 198, 50, 23, 14, 158, 42, 203, 243, 17, 61, 81, 54, 95, 202])
+
 proc reportAvailability*(body: seq[byte]): StateEntry =
   ## Emit independent presence tags, guarantee slot/credentials and registration, with all other cores absent.
   let owner = decodeOwnedReport(body, 4)
@@ -38,6 +41,7 @@ proc reportAvailability*(body: seq[byte]): StateEntry =
       for index in 0..<3: wire.add(0) # Additional C10 registration time E4.
     else: wire.add(0)
   StateEntry(key: chapterKey(StateChapter(10)), value: wire)
+
 proc reportReady*(body: seq[byte]): StateEntry =
   ## Twelve fixed epoch rows contain one bare report and its empty dependency set in the final row.
   var wire: seq[byte] = @[]
@@ -46,6 +50,7 @@ proc reportReady*(body: seq[byte]): StateEntry =
   for octet in body: wire.add(octet)
   wire.add(0)
   StateEntry(key: chapterKey(StateChapter(14)), value: wire)
+
 proc reportSnapshot*(chapters: openArray[StateEntry]): BlockSnapshotResult =
   ## Capture a fresh complete map; no source state is shared with a Services graph loaded from its JSON.
   let base = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])

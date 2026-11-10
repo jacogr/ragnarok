@@ -23,8 +23,10 @@ import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Fail the maintained crypto observer only after constructing genuine state fixtures.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Reject a later hash to distinguish namespace-key and preimage-content backend failures.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count attempts to prove local byte preflight precedes complete preimage hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

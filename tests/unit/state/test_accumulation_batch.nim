@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_batch_arc_release"}
 
 ## Common-source executed subsets merge credited metadata before selected provisions with atomic publication.
@@ -20,8 +21,10 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Inject backend refusal only after genuine source and execution owners exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Permit a complete account-root phase before refusing the next provision-root hash.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 # Count actual backend work to prove early provenance/stale gates precede hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

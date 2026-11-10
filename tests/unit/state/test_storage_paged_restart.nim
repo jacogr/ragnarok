@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole-index capture, restart-safe retirement and real durability barriers retain partial-state authority.
+
 # @@Verification={"arc":"storage_paged_restart_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, paged_reference, paged_native_fixture]
@@ -21,6 +22,7 @@ import ../../../src/state/proof/view as partial
 type Memory = ref object ## Independent test transport owns bytes and deterministic callback refusal.
   bytes: seq[byte]
   calls, failAt: int
+
 proc input(memory: Memory): PagedInput =
   ## Exact callbacks never retain the mutable destination.
   proc read(offset: PagedOffset, output: var openArray[byte]): bool {.closure.} =
@@ -38,23 +40,28 @@ proc input(memory: Memory): PagedInput =
     output = uint64(memory.bytes.len)
     memory.calls != memory.failAt
   PagedInput(read: read, extent: extent)
+
 proc path(label: string): string =
   ## Every trial owns a fresh ignored namespace.
   "paged-restart-" & $storageProcessId() & "-" & label
+
 proc config(source: PagedNativeFixture, v2: bool): PagedNativeConfig =
   ## V1/V2 selection remains explicit and independent of proof retention.
   result = source.config
   if v2: result.limits.contextBytes = ByteLimit(1024) # V2 has mandatory nonempty opaque context.
+
 proc context(v2: bool): seq[byte] =
   ## V1 never receives an inferred application context.
   if v2: @[7'u8, 8, 9, 10]
   else: @[] # Absence is an explicitly selected V1 contract.
+
 proc initialize(writer: var PagedWriter, directory: string, source: PagedNativeFixture, v2: bool) =
   ## Both publication barriers precede all lifecycle tests.
   let made = initializePagedWriter(writer, directory, config(source, v2),
     source.records.nativeProducer, uint64(source.records.len), source.payload, context(v2))
   assert made.error == PagedNativeError.None
   assert made.value.durability == StorageDurability.FileAndDirectorySynced
+
 proc many(): PagedNativeFixture =
   ## One complete two-leaf oracle generates 130 independent queries, never 130 complete-map entries.
   result = nativeFixture(7)
@@ -73,6 +80,7 @@ proc many(): PagedNativeFixture =
     let proof = trie.prove(key, result.config.limits.proof).value
     result.payload += 41+uint64(proof.nodes.len)*64+uint64(proof.value.len)
     result.records.add(LightStateProof(key: key, proof: proof))
+
 proc lowLevel() =
   ## Authentication shares a cumulative budget across every descriptor, with all-or-none ownership.
   let source = many()
@@ -138,6 +146,7 @@ proc lowLevel() =
     memory.bytes[4096] = memory.bytes[4096] xor 1
     assert readPagedQueries(memory.input, checked, ElementLimit(130), policy.work).error ==
         PagedStreamError.ChecksumMismatch
+
 proc viewLimits(selected: PagedNativeConfig): transport.PagedProofViewLimits =
   ## State-layer per-query verification and retained view limits remain independent of inventory work.
   result = default(transport.PagedProofViewLimits)
@@ -149,6 +158,7 @@ proc viewLimits(selected: PagedNativeConfig): transport.PagedProofViewLimits =
   result.view.items = ElementLimit(256)
   result.view.valueBytes = ByteLimit(10000)
   result.work = selected.limits.work
+
 proc capture(reader: var PagedReader, selected: PagedNativeConfig) =
   ## Missing evidence, authenticated absence and present-empty are observably distinct after materialization.
   let inventory = reader.queryInventory(ElementLimit(3), selected.limits.work).value
@@ -159,6 +169,7 @@ proc capture(reader: var PagedReader, selected: PagedNativeConfig) =
   assert view.lookup(pagedKey(128)).value.present and view.lookup(pagedKey(128)).value.bytes.len == 0
   assert not view.lookup(pagedKey(255)).value.present
   assert view.lookup(pagedKey(254)).error == partial.ProofViewError.MissingWitness
+
 proc nativeInventory(source: PagedNativeFixture) =
   ## Restart uses independent expected root; native read uncertainty latches until close/reopen.
   let directory = path("inventory")
@@ -200,6 +211,7 @@ proc nativeInventory(source: PagedNativeFixture) =
   recordArcRelease("storage_paged_restart", 1000, before, after)
   assert reader.close == FileError.None
   assert retained.len == 3 and retained.keys.len == 3
+
 proc advance(writer: var PagedWriter, fresh: PagedNativeFixture, v2: bool) =
   ## Different-root advancement preserves ordinary sequence, independently of physical epoch growth.
   var candidate = default(PagedCandidate)
@@ -207,6 +219,7 @@ proc advance(writer: var PagedWriter, fresh: PagedNativeFixture, v2: bool) =
     uint64(fresh.records.len), fresh.payload, context(v2)).error == PagedNativeError.None
   assert writer.publish(candidate).error == PagedNativeError.None
   assert uint64(writer.selected.value.sequence) == 0
+
 proc retirement(old, fresh: PagedNativeFixture) =
   ## Persisted exact content authority works across restart while the stronger live pin contract remains enforced.
   for v2 in [false, true]:
@@ -240,16 +253,20 @@ proc retirement(old, fresh: PagedNativeFixture) =
     assert writer.synchronize.value == StorageDurability.FileAndDirectorySynced
     assert ioCalls(syncIo) == 2
     assert writer.close == FileError.None
+
 proc read(path: string): string =
   ## Fixture transport cannot silently replace a failed native artifact read.
   try: result = readFile(path)
   except: assert false # Missing fixture bytes invalidate the control.
+
 proc write(path, bytes: string) =
   ## Only test-owned closed old artifacts are replaced or corrupted.
   try: writeFile(path, bytes)
   except: assert false # Fixture mutation must actually reach the filesystem.
+
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only equal-byte replacement changes the inode without changing expected content.
+
 proc identities(old, fresh: PagedNativeFixture) =
   ## Content expectations survive restart; captured receipts continue to reject equal-byte inode substitution.
   for corrupt in [false, true]:
@@ -289,6 +306,7 @@ proc identities(old, fresh: PagedNativeFixture) =
           FileError.RecoveryMismatch
       assert writer.reclaimExpectedEpoch(previous, current).error == PagedNativeError.None
     assert writer.close == FileError.None
+
 proc faults(old, fresh: PagedNativeFixture) =
   ## Every actually reached retirement syscall and each explicit durability barrier receives a fresh fault trial.
   for operation in [readIo, lockIo, closeIo, syncIo, unlinkIo]:
@@ -334,6 +352,7 @@ proc faults(old, fresh: PagedNativeFixture) =
     assert openPagedWriter(writer, directory, config(old, true)).error == PagedNativeError.None
     assert writer.synchronize.value == StorageDurability.FileAndDirectorySynced
     assert writer.close == FileError.None
+
 proc main() =
   ## Checked ARC and real syscall observers qualify lifecycle behavior without manufacturing complete state.
   let old = nativeFixture(7)

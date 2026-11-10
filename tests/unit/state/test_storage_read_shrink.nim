@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real post-stat truncation must return only observed bytes from a preallocated native read buffer.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_io, storage_samples]

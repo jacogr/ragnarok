@@ -35,6 +35,7 @@ type VerificationProbe = enum
 
 # Validate selection or list declarations before reading any runtime fixture.
 let selectedProbe = selectProbe[VerificationProbe](paramStr(1))
+
 # Constructor refusal affects only the test observer and never changes production ABI behavior.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
 let useDefault = paramStr(2) == "default"

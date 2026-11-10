@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit held-inode repair refuses stale transport/selection, synchronizes only authenticated prefixes and transfers one lease.
+
 # @@Verification={"arc":"storage_light_journal_repair_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,18 +15,23 @@ import ../../../src/storage/managed/[io as managed_io, manifest as managed_manif
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Revalidation provider refusal must never reach truncate or transfer writable authority.
+
 proc renameFile(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only deliberate selected-path substitution proves equal bytes cannot replace held inode identity.
+
 proc path(suffix: string): string =
   ## Hastur already supplies an ignored isolated work directory with an existing parent.
   "light-journal-repair-" & $storageProcessId() & "-" & suffix
+
 proc first(input: string, size: int): string =
   ## Copy a proved prefix for exact malformed/truncated fixture observations.
   assert size >= 0 and size <= input.len, "repair witness 21"
   result = newString(size)
   for index in 0..<size: result[index] = input[index]
+
 proc inspected(path: string, fixture: LightJournalFixture) =
   ## Retire all temporary recovery image/plan/lease ownership before ARC sampling.
   var recovery = default(LightJournalRecovery)
@@ -34,6 +40,7 @@ proc inspected(path: string, fixture: LightJournalFixture) =
   assert retained.prefix.snapshot.bytes == fixture.initial.bytes, "repair witness 29"
   assert recovery.close == FileError.None, "repair witness 30"
   assert retained.prefix.byteLength == LightJournalAnchorBytes, "repair witness 31"
+
 proc normal(fixture: LightJournalFixture) {.raises.} =
   ## One explicit repair truncates only the authenticated prefix, retains forensic siblings and transfers the exact native lease.
   let directory = path("normal")
@@ -93,6 +100,7 @@ proc normal(fixture: LightJournalFixture) {.raises.} =
   assert owner.close == FileError.None, "repair witness 78"
   assert retained.prefix.snapshot.bytes == fixture.initial.bytes, "repair witness 79"
   retireLightJournal(directory)
+
 proc changed(fixture: LightJournalFixture) {.raises.} =
   ## Every changed authority refuses before physical truncation, including equal-byte replacement of the selected inode.
   for mode in 0..<7:
@@ -139,6 +147,7 @@ proc changed(fixture: LightJournalFixture) {.raises.} =
     resetHash(0)
     assert recovery.close == FileError.None, "repair witness 123"
     retireLightJournal(directory)
+
 proc failures(fixture: LightJournalFixture) {.raises.} =
   ## Actual pre-sync/truncate/post-sync refusals preserve explicit uncertainty and require a fresh owner.
   for mode in 0..<5:
@@ -177,6 +186,7 @@ proc failures(fixture: LightJournalFixture) {.raises.} =
     assert owner.append(fixture.next).error == FileError.None, "repair witness 157"
     assert owner.close == FileError.None, "repair witness 158"
     retireLightJournal(directory)
+
 proc completeRefusals(fixture: LightJournalFixture) {.raises.} =
   ## Complete valid journals need no repair; complete corruption can never grant a salvage owner.
   let directory = path("complete-refusals")
@@ -201,6 +211,7 @@ proc completeRefusals(fixture: LightJournalFixture) {.raises.} =
   assert not recovery.opened and ioCalls(truncateIo) == 0, "corrupt suffix grants no destructive authority"
   assert readFile(journalPath) == corrupt, "corrupt complete bytes stay forensic"
   retireLightJournal(directory)
+
 proc crashed(fixture: LightJournalFixture, operation, skip: cint) {.raises.} =
   ## Exact stopped-child receipts qualify real truncate/sync boundaries while the parent observes the still-held lease.
   let directory = path("crash-" & $operation & "-" & $skip)
@@ -243,6 +254,7 @@ proc crashed(fixture: LightJournalFixture, operation, skip: cint) {.raises.} =
   assert owner.preparedSnapshot.value.bytes == fixture.initial.bytes, "repair witness 199"
   assert owner.close == FileError.None, "repair witness 200"
   retireLightJournal(directory)
+
 proc main() {.raises.} =
   ## Positive, stale, native-failure, process-death and ownership cases share an independently rooted fixture.
   let fixture = lightFixture()

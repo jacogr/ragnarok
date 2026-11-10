@@ -2,13 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only PKCS8 serialization and actual bundled TLS self-signing bind the genuine computed roster's known seed to a private WorkSigner without exposing a production seed constructor.
+
 import std/[assertions, base64, syncio]
 import ../../src/crypto/primitives
 import ../../src/jamnp-s/protocol
+
 proc certificate(key: ptr byte, length: csize_t, dns: cstring, days: cint,
     pem: ptr byte, capacity: csize_t, written: ptr csize_t): cint {.importc: "rq_identity_cert",
         cdecl, header: "cert_fields.h".}
   ## Bundled TLS creates a real Ed25519 certificate using the exact test-owned PEM key and NP DNS identity.
+
 proc assuranceSignerFiles*(keyPath, certificatePath: string, marker = 12'u8) {.raises.} =
   ## Independent literal DER framing wraps one fixed test seed; all private fixture material lives only under the runner's test-owned paths.
   var seed = default(array[32, byte])

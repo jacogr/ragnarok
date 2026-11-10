@@ -4,6 +4,7 @@
 ## Immutable per-ordinal records and hash/ordinal indexes stage before canonical cursor publication.
 ## The full-node database writer serializes callers and keeps this sibling namespace stable during IO.
 ## Checked selections retain constant metadata; completed record reads own their bytes across pruning.
+
 import std/posix/posix
 import ./index as history_index
 import ../database_identity

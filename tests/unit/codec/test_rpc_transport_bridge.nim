@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached handoff enforces byte bounds, one-frame credit and stale-generation isolation.
+
 import std/[assertions, syncio, strutils, atomics, threadpool]
 import ../../../src/rpc/transport_bridge as transport
 
@@ -70,8 +71,10 @@ type ProducerResult = object
   ## The done release publishes the producer-owned scalar result to the foreground.
   done, preserved: bool
   status: int
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## A finite foreground wait lets the bounded test pool race actual mailbox writers.
+
 proc produce(bridge: ptr transport.RpcTransportBridge, ticket: transport.BridgeTicket,
     text: sink string, observed: ptr ProducerResult) {.passive.} =
   ## Competing readers must transfer one request or retain their refused message intact.

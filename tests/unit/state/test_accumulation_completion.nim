@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_completion_arc_release"}
 
 ## Genuine stopped driver histories compose complete candidates with manual-root parity and reason-preserving atomic refusal.
@@ -33,7 +34,9 @@ import ../../support/[accumulation_completion_context, accumulation_activity_con
 
 # Refuse provider work only after real authenticated source/terminal construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc root(source: PreparedAccumulationValidators): CompletedBlockAccumulation =

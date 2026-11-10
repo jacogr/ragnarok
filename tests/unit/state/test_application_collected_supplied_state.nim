@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual collected supplied qualification supports caller-owned complete declarations and refuses stale, mutated, resource and backend inputs.
+
 # @@Verification={"arc":"application_collected_supplied_state_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context, arc_evidence]
@@ -13,12 +14,15 @@ import ../../../src/state/supplied/logical_inventory as supplied_logical_invento
 import ../../../src/state/[inventory, manifest, store]
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fail actual complete matching only after original plan and genuine worker collection are finished.
+
 proc cycle(fixture: CollectedNativeFixture, plan: CollectedSuppliedPlan) =
   ## Retire each new pair of compact inventories and raw-key owners without changing the canonical parent.
   let result = executeCollectedSupplied(fixture.chain, plan, fixture.declarations)
   assert result.error == CollectedSuppliedError.None
+
 proc main() {.raises.} =
   ## The genuine target and explicit known namespaces are independent inputs that must reproduce the whole actual map.
   let fixture = collectedNativeFixture()

@@ -21,8 +21,10 @@ import ../../support/arc_evidence
 
 ## Refuse immediate/transcript hashes or a later batch member, preserving successful production verification.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Allow a finite successful prefix before provider refusal to exercise rollback after complete credentials.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Observe only test-linked hash attempts to demonstrate malformed preflight precedes hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared exact receipt admission refuses stale and foreign physical chains without losing the original prepared owner.
+
 import std/[assertions, syncio]
 import ../../support/collected_native_context
 import ../../../src/app/collected/update as collected_update
@@ -10,6 +11,7 @@ import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/app/candidate
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/state/store
+
 proc main() {.raises.} =
   ## Real native collection supplies an admitted source; unchanged receipts cannot authorize another selected head.
   let fixture = collectedNativeFixture()

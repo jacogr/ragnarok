@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_preimage_announcements_arc_release"}
 
 ## Independent CE142/143 transcripts exercise role/request gates, empty acknowledgments and checked detached retention.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/preimage_followup
@@ -18,10 +19,12 @@ import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, rea
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_preimage_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -32,15 +35,18 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc frame(body: seq[byte]): seq[byte] =
   ## Independent E4 framing includes a zero length for an empty preimage, but not for CE142 acknowledgment.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(body.len) shr (8*index)) and 255))
   for octet in body: result.add(octet)
+
 proc wireRequest(request: ReadRequest): seq[byte] =
   ## Independent selector and fixed payload extent precede the unchanged claim/hash.
   result = @[byte(request.kind), byte(request.payload.len), 0, 0, 0]
   for octet in request.payload: result.add(octet)
+
 proc checked(body: seq[byte]): CheckedReadReply =
   ## Only the real full-hash verifier creates cache input authority.
   let hash = blake2b256(body).value
@@ -48,6 +54,7 @@ proc checked(body: seq[byte]): CheckedReadReply =
   let verified = verifyReadReply(query, frame(body), default(ReadSource), readVerificationLimits())
   assert verified.error == ReadVerificationError.None
   verified.value
+
 proc cycle(blob: CheckedReadReply) =
   ## One isolated value cache retires every ARC wire owner before memory sampling.
   var cache = default(PreimageCache)
@@ -56,6 +63,7 @@ proc cycle(blob: CheckedReadReply) =
   assert cache.find(blob.request).value.bytes == frame(blob.preimageBytes)
   cache.clear()
   assert cache.len == 0 and cache.byteLength == 0
+
 proc pure() {.raises.} =
   ## Exact framing, reserved namespaces, canonical request/account gates and bounded retention have independent witnesses.
   let blob = checked(@[1'u8, 2, 3])
@@ -118,11 +126,13 @@ proc pure() {.raises.} =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("jamnp_preimage_announcements", 1000, before, after)
+
 proc poll(host: var ApplicationNode, services: var Services, probe: var NodeProbe) {.raises.} =
   ## One host turn performs no canonical graph inspection in this test while a foreign worker owns its lease.
   assert host.poll(getMonoTime(), StateTime(7), 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
+
 proc connect(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     protocol: string, hash: genesis.BlockHash) {.raises.} =
   ## Ready means both authenticated transport and admitted host-side UP0, not first response bytes alone.
@@ -139,6 +149,7 @@ proc connect(host: var ApplicationNode, services: var Services, probe: var NodeP
   while host.peerCount == 0 or host.source(host.peerAt(0).value).error != NodeError.None:
     assert getMonoTime() < deadline
     poll(host, services, probe)
+
 proc live(body, returned: seq[byte], validator = true, expected = true) {.raises.} =
   ## A literal announcement causes same-connection acquisition; invalid content/role never populates retention.
   let blob = checked(body)
@@ -209,6 +220,7 @@ proc live(body, returned: seq[byte], validator = true, expected = true) {.raises
   host.close()
   assert services.stateProofActive and host.cachedPreimageCount == 0
   assert services.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
+
 proc queued() {.raises.} =
   ## Eight fixed intents deduplicate exact content and retire after source closure without reconnecting.
   let blob = checked(@[1'u8, 2, 3])
@@ -253,6 +265,7 @@ proc queued() {.raises.} =
   fetches.poll(services, streams, getMonoTime())
   assert fetches.pendingCount == 0, "queued intents retire after source closure"
   assert streams.peerCount == 0, "source reservation retires"
+
 proc publish(reply: seq[byte], holdFin = false) {.raises.} =
   ## A checked local introduction requires a real validator recipient and exact peer FIN before acknowledgment success.
   let blob = checked(@[7'u8, 8, 9])
@@ -311,6 +324,7 @@ proc publish(reply: seq[byte], holdFin = false) {.raises.} =
     assert probe.bytes(reading) == frame(blob.preimageBytes)
   else:
     assert completed.kind == CheckedCompletionKind.NetworkFailure # A fabricated E4 acknowledgment fails at the framing boundary.
+
 proc privateWorker(replacement: bool) {.raises.} =
   ## Close joins only a matching private verification; stale cancellation must preserve a later foreign Done lease.
   let blob = checked(@[4'u8, 5, 6])
@@ -379,6 +393,7 @@ proc privateWorker(replacement: bool) {.raises.} =
     fetches.close(services, streams)
     assert services.stateProofAvailable and not services.stateProofActive
   assert fetches.pendingCount == 0 and fetches.cachedCount == 0
+
 proc main() {.raises.} =
   ## Each fresh transport isolates independent success, zero-byte, cryptographic, exact-length and role witnesses.
   pure()

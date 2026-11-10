@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticate every detached entry against an independently qualified successor and retain physical/source ownership across input mutation and scope retirement.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
 import "../../src/app/logical/checkpoint/import" as logical_checkpoint_import
@@ -12,8 +13,10 @@ import ../../src/state/[checkpoint, store]
 import ../../src/codec/bounded
 import ../../src/codec/state/trie as state_trie
 import ../../src/chain/genesis
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Exercise genuine backend refusal independently of shape and root validation.
+
 proc escaped(): ImportedLogicalCheckpoint {.raises.} =
   ## Retain only the import while every fixture, capsule and wire alias retires.
   let fixture = collectedNativeFixture()
@@ -21,6 +24,7 @@ proc escaped(): ImportedLogicalCheckpoint {.raises.} =
   let wire = captureLogicalCheckpoint(logical, ByteLimit(1048576)).value.copyCurrentCheckpoint(
       ByteLimit(1048576)).value
   importLogicalCheckpoint(logical, wire, genesisStoreLimits(), ByteLimit(1048576)).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(LogicalCheckpointImportResult[ImportedLogicalCheckpoint])

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_extrinsic_inputs_arc_release"}
 
 ## Independent commitments, ordered geometry, immutable ownership, exact policies and ARC release.
@@ -17,8 +18,10 @@ proc input(verified: VerifiedExtrinsics, item, index: uint64): ExtrinsicInputsRe
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and select a controlled backend refusal.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after a successful prefix without changing production hashing.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact calls so preflight ordering has independent evidence.
 
@@ -143,10 +146,12 @@ assert complete.input(0, 0).value == abc
 assert complete.extrinsicInputsInfo.value.entries == 4
 let retainedHash = complete.extrinsicInputsPackage.value.workItemAt(2).value.extrinsicAt(0).value.hash
 assert array[32, byte](retainedHash) == array[32, byte](AbdExtrinsic.hash)
+
 proc detached(): VerifiedExtrinsics =
   ## Retire all original tables and package temporaries before exercising retained extraction.
   verifyExtrinsicInputs(extrinsicPackage([@[AbcExtrinsic]]), [@[@[97'u8, 98, 99]]], extrinsicLimits()).value
 assert detached().input(0, 0).value == abc
+
 proc cycle() =
   ## Release owned bytes, copied bytes and a late refused candidate on every iteration.
   let done = detached()

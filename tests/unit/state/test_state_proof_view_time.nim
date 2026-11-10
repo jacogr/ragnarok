@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A typed C(11) read keeps missing evidence, authenticated absence and invalid bytes separate.
+
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
 import ../../../src/state/proof/view as proof_view
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     safrole as state_safrole]
+
 proc view(entries: seq[StateEntry], query: StateKey): ProofView =
   ## Independently commit a complete authored map before preparing and verifying the selected witness.
   let maps = StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(5),
@@ -18,6 +20,7 @@ proc view(entries: seq[StateEntry], query: StateKey): ProofView =
   let batch = verifyStateProofs([StateProofQuery(key: query, proof: proof)], root, limits,
     StateProofBatchLimits(items: ElementLimit(1), nodes: ElementLimit(249), valueBytes: ByteLimit(5))).value
   captureProofView(batch, root, ProofViewLimits(items: ElementLimit(1), valueBytes: ByteLimit(5))).value
+
 proc main() =
   ## Exact E4 is required: the existing prefix decoder cannot make a suffixed value canonical.
   let key = chapterKey(StateChapter(11))

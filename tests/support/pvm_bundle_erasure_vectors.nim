@@ -3,7 +3,6 @@
 
 ## Independent complete encoded-buffer hashes and explicit parity chunks.
 
-
 const Ordinary6Hash* = [148'u8, 88, 202, 109, 174, 171, 139, 185, 99, 102, 119, 135, 18, 239, 218,
     119, 13, 178, 93, 32, 111, 88, 111, 81, 2, 39, 135, 92, 223, 3, 194, 145]
 

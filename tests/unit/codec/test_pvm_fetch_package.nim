@@ -169,7 +169,6 @@ block:
     sourceMemory, MemoryByteLimit(1)).value
   assert pageImage(prior.memory, PageIndex(0)).value.bytes[0] == 71
 
-
 # Dispatch only fetch and propagate local context/copy refusals without translating them into guest exits.
 proc dispatch(context: var FetchContext, stopped: StepOutcome): HostResult[FetchError] {.raises: [].} =
   assert uint64(stopped.hostCall) == 2

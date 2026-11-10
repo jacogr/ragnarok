@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_transfer_partition_arc_release"}
 
 ## Exact stable partition agrees with independent finite paper predicates across every small supervision graph.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/transfer_partition as accumulation_transfer_partition
 import ../../../src/state/store
@@ -14,6 +16,7 @@ import ../../support/arc_evidence
 
 # Partitioning only reads canonical metadata; it must perform no native hash work.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc account(service, supervisor: uint32, expected = high(uint32), created = high(
@@ -26,15 +29,18 @@ proc account(service, supervisor: uint32, expected = high(uint32), created = hig
   serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(supervisor: ServiceIndex(supervisor),
       supervisorCreated: AccountSlot(supervisorSlot), created: AccountSlot(ownSlot)), ByteLimit(
           ServiceMetadataBytes)).value
+
 proc snapshot(entries: openArray[StateEntry]): StateStoreSnapshot =
   ## Opaque complete-map values permit explicit malformed-metadata refusals without patching a decoder.
   newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(16),
       perValue: ByteLimit(256), totalValueBytes: ByteLimit(4096), nodes: TrieNodeLimit(1000)),
       writes: ElementLimit(4), writeValueBytes: ByteLimit(1024))).value.snapshot.value
+
 proc limits(transfers = 16'u64, services = 16'u64, checks = 1000'u64): TransferPartitionLimits =
   ## Input and work budgets are independent and deliberately finite.
   TransferPartitionLimits(transfers: ElementLimit(transfers), services: ElementLimit(services),
       checks: ElementLimit(checks))
+
 proc transfer(destination: uint32, ordinal = 0): DeferredTransfer =
   ## Distinguishable fixed fields prove copying and ordered duplicate delivery, not only destination membership.
   var bytes = default(array[128, byte])
@@ -44,6 +50,7 @@ proc transfer(destination: uint32, ordinal = 0): DeferredTransfer =
       destination), destinationSupervisor: ordinal mod 2 != 0, amount: TransferBalance(uint64(
           100+ordinal)),
       gas: Gas(uint64(9+ordinal)), memo: TransferMemo(bytes))
+
 proc checkRecord(actual, expected: DeferredTransfer) =
   ## All output fields are fixed copies, including raw memo octets and the protected-credit flag.
   assert uint32(actual.source) == uint32(expected.source), "source identity remains exact"
@@ -54,6 +61,7 @@ proc checkRecord(actual, expected: DeferredTransfer) =
   let actualMemo = array[128, byte](actual.memo)
   let expectedMemo = array[128, byte](expected.memo)
   assert actualMemo == expectedMemo, "every copied memo octet remains exact"
+
 proc check(plan: PreparedTransferPartition, source: openArray[DeferredTransfer], held: openArray[bool]) =
   ## Compare ordered subsequences against an independent per-source-row paper decision.
   assert source.len == held.len, "independent predicate covers every input row"

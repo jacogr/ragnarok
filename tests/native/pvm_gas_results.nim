@@ -7,6 +7,7 @@
 import std/[cmdline, assertions]
 import ../../src/pvm/program
 import ../../src/pvm/gas/gas
+
 proc runFailureProbe*(selection: string) =
   ## Execute exactly one argv-selected probe; the caller retains separate process isolation.
   var outcome = default(GasResult)

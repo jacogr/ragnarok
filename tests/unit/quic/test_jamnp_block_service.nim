@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical CE128 selections and independent actual TLS request/FIN/reset transcripts.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../support/jamnp_topology_fixture
 import ../../../src/jamnp-s/[block_service, protocol]
@@ -20,21 +21,28 @@ type
     offset: int
     finAllowed, sentFin, receivedFin, reset, opened: bool
     expected: array[32, byte]
+
 proc `=copy`(destination: var Server, source: Server) {.error.}
   ## Native contexts must never follow a copied stack address.
+
 proc `=dup`(source: Server): Server {.error.}
   ## Copy prevention applies to initialization lowering as well.
+
 proc `=copy`(destination: var Client, source: Client) {.error.}
   ## Client storage remains fixed until transport retirement.
+
 proc `=dup`(source: Client): Client {.error.}
   ## Duplication cannot acquire a second native callback context.
+
 proc serverVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Maintained certificate validation is independent of these read-only protocol assertions.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Pin the configured server identity, never its endpoint or a claimed request hash.
   let owner = cast[ptr Client](user)
   cint(validPeer(cast[ptr byte](der), length, owner.expected))
+
 proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Admit at most four borrowed routes; host enforces a deadline outside native callbacks.
   let owner = cast[ptr Server](user)
@@ -49,6 +57,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     if owner.routes[index].handle == stream:
       owner.routes[index].event(stream, event)
       return # Each event belongs to one exact still-live native handle.
+
 proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Independently assembled bytes and observed FIN test the production responder, not its encoder.
   let owner = cast[ptr Client](user)
@@ -92,6 +101,7 @@ proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     wantRead(stream, 0)
     wantWrite(stream, 0)
   else: discard # No other events imply protocol progress.
+
 proc source(atSlot: uint32, parent = unavailableGenesis(), body = true,
     blobBytes = 0): BlockSnapshotResult =
   ## Structural complete-map fixtures bind seven empty extrinsic counts to exact sealed headers.
@@ -114,29 +124,34 @@ proc source(atSlot: uint32, parent = unavailableGenesis(), body = true,
     for index in 0..<5: wire.add(0) # Guarantees, assurances, and three dispute subsequences.
   result = withBlockBody(captured.value, wire)
   assert result.error == GenesisError.None
+
 proc request(hash: BlockHash, direction: byte, maximum: uint32): seq[byte] =
   ## Literal wire layout independently pins the CE128 selector and one E4 message.
   result = @[128'u8, 37, 0, 0, 0]
   for octet in array[32, byte](hash): result.add(octet)
   result.add(direction)
   for index in 0..<4: result.add(byte((maximum shr (8*index)) and 255))
+
 proc query(wire: seq[byte]): BlockQuery =
   ## Tests explicitly check the decoder before extracting its admitted request.
   let decoded = decodeBlockQuery(wire.toOpenArray(5, 41))
   assert decoded.error == BlockServiceError.None
   decoded.value
+
 proc framed(blocks: openArray[BlockSnapshotResult]): seq[byte] =
   ## Independent expected transcript contains one E4 around bare concatenated complete blocks.
   result = @[0'u8, 0, 0, 0]
   for snapshot in blocks:
     for octet in snapshot.value.blockBody: result.add(octet)
   for index in 0..<4: result[index] = byte((uint32(result.len-4) shr (8*index)) and 255)
+
 proc rawKey(path: string): array[32, byte] {.raises.} =
   ## Raw fixture identities do not depend on production certificate extraction.
   let bytes = readFile(path)
   assert bytes.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(bytes[index])
+
 proc exchange(view: ChainView, wire, expected: seq[byte], refused = false,
     holdFin = false, recover = false) {.raises.} =
   ## Actual TLS engines retire on every exit; finite deadlines expose stalled or prematurely answered streams.
@@ -207,6 +222,7 @@ proc exchange(view: ChainView, wire, expected: seq[byte], refused = false,
   else:
     assert client.receivedFin and not client.reset and client.sentFin
     assert jobs == 1 and client.input == expected, "exact block order, framing and both FINs"
+
 proc main() {.raises.} =
   ## Both directions, retained suffixes, unknown anchors and malformed requests get independent witnesses.
   var unopened = default(BlockRequestRoute)

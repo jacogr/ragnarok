@@ -37,12 +37,15 @@ func handle*(route: AnnouncementRoute): NativeStream =
 func writtenBytes*(route: AnnouncementRoute): int =
   ## Scalar native-accepted progress is distinct from owned-buffer accounting.
   route.offset
+
 proc messageReady*(route: AnnouncementRoute): bool =
   ## Host parsing is scheduled only for a complete live detached message.
   route.stream != NativeStream(nil) and not route.failed and route.reader.ready
+
 func pendingInputBytes*(route: AnnouncementRoute): int =
   ## Parent accounts live body storage across all persistent peers, including incomplete messages.
   route.reader.bufferedBytes
+
 func pendingOutputBytes*(route: AnnouncementRoute): int =
   ## Charge the whole owned output until its final prefix is accepted and the route drops storage.
   route.output.len

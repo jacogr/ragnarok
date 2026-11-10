@@ -38,6 +38,7 @@ type
 
 proc `=copy`(destination: var DownloadClient, source: DownloadClient) {.error: "Test client owns transport".}
   ## Callback addresses stay stable while native streams borrow this owner.
+
 proc `=copy`(destination: var DownloadServer, source: DownloadServer) {.error: "Test server owns transport".}
   ## The responder's descriptor/engine cannot be duplicated.
 
@@ -255,7 +256,6 @@ proc exchangeBlock*(download: var BlockDownload, id: BlockDownloadId,
     assert download.stage == BlockDownloadStage.Idle, "cancelled stage " &
         $download.stage # Explicit no-FIN cancellation retires partial reception.
 
-
 type SessionClient = object ## Stable native fixture owner borrows only the joined production session.
   transport: Transport
   session: nil ptr BlockDownloadSession
@@ -357,16 +357,17 @@ proc exchangeSession*(session: var BlockDownloadSession, owner: var Services,
     assert session.resumeAncestors(token, owner, []).error ==
         DownloadSessionError.AwaitingClose # Context replacement observes the same native retirement barrier.
 
-
 type DownloadResponders* = object ## Two actual TLS identities distinguish target selection from merely naming a peer ID.
   first, second: DownloadServer
 
 proc `=copy`(destination: var DownloadResponders, source: DownloadResponders) {.error.}
   ## Each callback borrows its original fixed server address until explicit close.
+
 proc close*(servers: var DownloadResponders) =
   ## Teardown remains safe after complete, partial or refused startup.
   servers.first.transport.closeTransport()
   servers.second.transport.closeTransport()
+
 proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
     response: seq[byte], mode = Healthy, emptyFirst = false, alpn = "jamnp-s/1/00000000"): bool =
   ## Start independent a/b identities; optional empty first reply witnesses retry before a genuine child.
@@ -387,6 +388,7 @@ proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
     servers.close()
     return false # Failed second startup must close the already opened first listener.
   true
+
 proc openSequenceResponders*(servers: var DownloadResponders, expected: seq[array[42, byte]],
     responses: seq[seq[byte]], modes: seq[DownloadTransferMode], emptyFirst = false,
         alpn = "jamnp-s/1/00000000"): bool =
@@ -421,10 +423,12 @@ proc port*(servers: DownloadResponders, second: bool): uint16 =
   ## Return only the bound scalar endpoint selected by the test's explicit identity.
   if second: servers.second.transport.localPort
   else: servers.first.transport.localPort
+
 proc requestCount*(servers: DownloadResponders, second: bool): int =
   ## Count actual exact request+FIN observations, independently of the catalog's chosen token.
   if second: servers.second.requests
   else: servers.first.requests
+
 proc poll*(servers: var DownloadResponders): bool =
   ## Each host test tick polls both listeners once; no background worker or unbounded spin exists.
   servers.first.transport.pollTransport(0) and servers.second.transport.pollTransport(0)

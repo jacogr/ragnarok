@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exercise the public offline command with independent configured chains, Genesis and complete signed trace files.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../support/[trace_check_context, current_stf_population_reporting_context]
 import ../../src/app/options
@@ -22,6 +23,7 @@ proc path(text: string): string =
     var octet: byte = 0
     assert parseHex(text.substr(index*2, index*2+1), octet) == 2
     result[index] = char(octet)
+
 proc hex(bytes: openArray[byte]): string =
   ## Render copied verified roots without substituting an empty or failed result.
   const digits = "0123456789abcdef"
@@ -29,6 +31,7 @@ proc hex(bytes: openArray[byte]): string =
   for octet in bytes:
     result.add(digits[int(octet shr 4)])
     result.add(digits[int(octet and 15)])
+
 proc main() {.raises.} =
   ## The maintained native fixture supplies resource-policy input only; every expected block/map and file hash was calculated independently first.
   var resource = traceCheckTestPolicy()

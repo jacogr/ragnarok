@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture an existing generic proof query from exact complete logical producer provenance under independent selected-view retention admission.
+
 import ../proof/query as proof_query
 import ../../state/current/logical as current_logical
 import ../../state/accumulation/current/update as accumulation_current_update

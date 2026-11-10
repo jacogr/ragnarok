@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fused image decoding preserves untrusted integrity/topology refusal and independent owned lifetimes.
+
 # @@Verification={"arc": "storage_image_decode_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -11,15 +12,19 @@ import ../../../src/storage/record_codec
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters while keeping genuine primitive implementations enabled.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe the exact number of real record hash attempts.
+
 proc decode(image: RepositoryImage, limits: RepositoryLimits): RepositoryResult[NodeRepository] =
   ## Serialize only locally valid records; this does not grant graph authority to the receiver.
   let body = encodeRecordCollection(image.collection, limits.codec).value
   decodeRepositoryImage(body, image.generation, image.commitment, image.roots,
     limits, ElementLimit(3), ByteLimit(1000000))
+
 proc cycle() =
   ## Compare old and fused paths, then exercise corruption, graph, budget, ownership and publication boundaries.
   let limits = storageLimits()
@@ -121,6 +126,7 @@ proc cycle() =
   assert control.close == RepositoryError.None
   assert restored.close == RepositoryError.None
   assert restoreHistoricalStateEntries(view, a.commitment.root, limits.codec.trie).value.len == 2
+
 proc emptyCurrent() =
   ## Empty current roots may retain a complete nonempty historical graph.
   let limits = storageLimits()

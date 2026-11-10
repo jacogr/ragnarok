@@ -135,7 +135,6 @@ func enqueueError*(outcome: ApplicationCandidateResult): AccumulationEnqueueErro
   ## Inspect only the actual selected EnqueueFailure cause, without earlier successful owners.
   outcome.enqueueReason
 
-
 func valid*(prepared: PreparedCandidateReports): bool =
   ## Distinguish a successful opaque prefix from an uninitialized owner.
   prepared.data != nil

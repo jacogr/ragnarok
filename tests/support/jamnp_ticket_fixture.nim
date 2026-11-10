@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Six independently signed RingVRF fixture members produce an exact complete-map finalized-context witness.
+
 import std/assertions
 import ./jamnp_topology_fixture
 import ../../src/chain/[genesis, parameters]
@@ -18,6 +19,7 @@ type
     packet*: TicketPacket
     output*: WinningTicketId
     proxyIndex*: int
+
 proc ticketFixture*(local, peer: StateEdKey, distribution = false,
     entropyChanged = false, included = false, atSlot = 1'u32,
     neighbour = default(StateEdKey), hasNeighbour = false, useSigner = false,

@@ -3,6 +3,7 @@
 
 ## Immutable complete-source account audit plans preflight every predicate policy before copying or hashing payloads.
 ## Planning grants bounded execution authority only, never successful account invariants or trusted-root authority.
+
 import ../../../codec/bounded
 import ../../[inventory, footprint_audit]
 import ../../preimage/[content as preimage_content, linkage as preimage_linkage]

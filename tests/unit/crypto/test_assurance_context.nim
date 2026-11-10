@@ -16,8 +16,10 @@ import ../../../src/codec/assurances
 
 # Faults apply only to this test's observer-linked project bridge, with no upstream patches.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Refuse the next hash after the specified successful prefix, testing a later record's failure.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 # Count actual hash attempts to distinguish complete preflight from early cryptographic work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

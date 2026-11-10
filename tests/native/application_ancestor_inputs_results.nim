@@ -2,19 +2,24 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime extraction guards retain selected-success and genuine failed-file/header controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/app/ancestor/inputs as ancestor_inputs
 import ../../src/codec/[bounded, header]
+
 proc extract(outcome: AncestorInputResult) =
   ## Runtime inputs keep this a real extraction precondition check.
   discard outcome.headers
+
 proc fileReason(outcome: AncestorInputResult) =
   ## Only an actual file refusal carries this reason.
   discard outcome.fileError
+
 proc headerReason(outcome: AncestorInputResult) =
   ## Only an actual decoder refusal carries this reason.
   discard outcome.headerError
+
 proc main() {.raises.} =
   ## Defaults/refusals and positive controls pass through the same runtime helpers.
   let config = fullHeaderConfig(ByteLimit(1024))

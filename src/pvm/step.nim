@@ -3,6 +3,7 @@
 
 ## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
 ## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
+
 import std/assertions
 import ./[program, machine, registers]
 import ./gas/[gas, plan as gas_plan, memo as gas_memo]
@@ -38,6 +39,11 @@ type
       discard
   HostAction* {.pure.} = enum ## Host continuations and terminal requests are separate from guest fault/host suspension reasons.
     Uninitialized, Continue, Halt, Panic, OutOfGas
+  ScalarHostResponse* = object ## A copied CPU reply has no guest-memory or executable-state capability.
+    action*: HostAction
+    gas*: MachineGas
+    gasDeficit*: GasDeficit # Reserved zero, validated before any posterior state is applied.
+    registers*: RegisterFile
   HostResponse* = object ## A trusted host supplies posterior gas/registers/memory; it cannot choose PC, code or charged flag.
  ## Memory remains an immutable retained owner, while registers are copied by value.
     action*: HostAction
@@ -73,6 +79,17 @@ type
       reason: Reason
     else:
       # A default callback result is malformed, not an implicit continuation.
+      discard
+  ScalarHostResult*[Reason: enum] = object ## Typed scalar callbacks publish a CPU reply or a local refusal.
+    case selection: HostResultKind
+    of Response:
+      # This alternative owns only copied scalars; it cannot replace memory, code or PC.
+      response: ScalarHostResponse
+    of Failure:
+      # Callback effects follow the existing typed-failure contract; no partial machine escapes.
+      reason: Reason
+    else:
+      # Defaults remain malformed rather than implicitly authorizing a continuation.
       discard
   HostExecutionError* {.pure.} = enum ## Guest completion, engine refusal and callback refusal have separate guarded alternatives.
     Uninitialized, None, ExecutionFailure, HostFailure
@@ -111,6 +128,28 @@ func value*[Reason: enum](r: HostResult[Reason]): HostResponse
 func failure*[Reason: enum](r: HostResult[Reason]): Reason
     {.requires: r.selection == HostResultKind.Failure.} =
   ## Select the local reason only after choosing the callback failure branch.
+  r.reason
+
+func scalarHostSuccess*[Reason: enum](response: ScalarHostResponse): ScalarHostResult[Reason] =
+  ## Select a copied CPU reply; the engine still validates action and unsigned gas state.
+  ScalarHostResult[Reason](selection: HostResultKind.Response, response: response)
+
+func scalarHostFailure*[Reason: enum](reason: Reason): ScalarHostResult[Reason] =
+  ## Preserve the caller's exact enum reason without granting a response or snapshot.
+  ScalarHostResult[Reason](selection: HostResultKind.Failure, reason: reason)
+
+func kind*[Reason: enum](r: ScalarHostResult[Reason]): HostResultKind =
+  ## Inspect a scalar callback selection without exposing mutable variant fields.
+  r.selection
+
+func value*[Reason: enum](r: ScalarHostResult[Reason]): ScalarHostResponse
+    {.requires: r.selection == HostResultKind.Response.} =
+  ## Extract a reply only after selecting complete callback success.
+  r.response
+
+func failure*[Reason: enum](r: ScalarHostResult[Reason]): Reason
+    {.requires: r.selection == HostResultKind.Failure.} =
+  ## Extract only a selected scalar callback's local refusal.
   r.reason
 
 func error*[Reason: enum](r: HostExecutionResult[Reason]): HostExecutionError =
@@ -166,23 +205,31 @@ func validPreparedHostResponse(response: HostResponse, pages: PageLimit): bool =
   uint64(response.gasDeficit) == 0 and count.error == MachineError.None and
       uint32(count.value) <= uint32(pages)
 
+func hostResponseExit(action: HostAction, selected: var StepExit): bool =
+  ## Owned and scalar replies share the supported action domain; host Halt remains invalid.
+  case action
+  of HostAction.Continue:
+    selected = StepExit.Continued # Only the engine derives the genuine successor PC.
+  of HostAction.Panic:
+    selected = StepExit.Panic # Host terminals retain the causing PC.
+  of HostAction.OutOfGas:
+    selected = StepExit.OutOfGas # Unsigned posterior credit remains caller supplied.
+  of HostAction.Halt, HostAction.Uninitialized:
+    return false # An absent or excluded action cannot grant continuation authority.
+  true
+
 proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
     response: HostResponse, exit: var StepExit): StepError =
   ## A genuine causing host instruction is supplied privately; validate all posterior fields before changing the cursor.
   if uint64(response.gasDeficit) != 0: return StepError.InvalidHostResponse
   var next = cursor.info.pc
   var selected = StepExit.Continued
-  case response.action
-  of HostAction.Continue:
-    next = CodeAddress(uint64(next)+1+uint64(item.skip)) # Owned instruction bounds prove the successor addition.
+  if not hostResponseExit(response.action, selected): return StepError.InvalidHostResponse
+  if selected == StepExit.Continued:
+    # Owned instruction bounds prove the successor addition before executable membership is checked.
+    next = CodeAddress(uint64(next)+1+uint64(item.skip))
     if instructionOpcode(cursor.program, next).error != ProgramError.None:
       return StepError.InvalidHostResponse # Preserve public captureMachine's executable-successor requirement.
-  of HostAction.Panic:
-    selected = StepExit.Panic # Host terminal replies retain the causing PC and posterior state.
-  of HostAction.OutOfGas:
-    selected = StepExit.OutOfGas
-  of HostAction.Halt, HostAction.Uninitialized:
-    return StepError.InvalidHostResponse # GP PR533 excludes Halt; an unselected response never implies continuation.
   if readableRange(response.memory, MemoryAddress(0), MemoryLength(0)).error != MachineError.None:
     return StepError.InvalidHostResponse # Empty range validation checks genuine memory ownership without payload allocation.
   cursor.info = MachineInfo(pc: next, gas: response.gas, gasDeficit: response.gasDeficit,
@@ -192,8 +239,13 @@ proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
   StepError.None
 
 proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
-  ## Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
-  ## The host has already selected its action and gas; this function invokes no host or guest work.
+  ## Apply a trusted reply to a recursive execute suspension at its causing ecalli.
+  ## Continue uses the decoded successor. Panic and OutOfGas keep the causing PC.
+  ## A successful reply keeps the program and paid-block flag and publishes a fresh
+  ## immutable machine with the supplied unsigned gas, registers and memory.
+  ## No host callback, guest step or gas charge occurs here. The checks bind the
+  ## reply structurally to the suspension. The caller owns host trust and replay policy.
+
   # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
   if suspension.exit != StepExit.Host:
     return StepResult(status: StepError.InvalidHostSuspension)
@@ -323,7 +375,6 @@ type
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
     memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
-
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
@@ -692,6 +743,14 @@ func executionResult[Reason: enum](answer: StepResult): HostExecutionResult[Reas
         executionReason: answer.error)
 
 type
+  ScalarHostSelector* = proc(call: HostCallId): bool {.nimcall, raises: [], noSideEffect.}
+    ## Pure capability routing occurs before callback execution; false retains the owned fallback.
+  ScalarHostCallback*[Context] = proc(context: var Context, call: HostCallId,
+      cpu: MachineInfo): ScalarHostResponse {.nimcall, raises: [].}
+    ## Copied CPU values may be retained; no memory owner, frame borrow or pointer is supplied.
+  FallibleScalarHostCallback*[Context; Reason: enum] = proc(context: var Context,
+      call: HostCallId, cpu: MachineInfo): ScalarHostResult[Reason] {.nimcall, raises: [].}
+    ## A local callback failure preserves its enum and never publishes partial engine state.
   ResponseOnly = enum ## The response-only adapter has no callback-failure alternative.
     Reply
   ResponseCallback[Context] = proc(context: var Context,
@@ -701,17 +760,40 @@ type
       suspension: StepOutcome): HostResult[Reason] {.nimcall, raises: [].}
     ## Enum-valued failure remains separate from response selection.
   HostCallbacks[Context; Reason: enum] = object
-    ## Exactly one typed slot is selected at compile time; neither is retained in prepared state.
+    ## Ordinary callbacks retain exactly their original two invocation-local owned reply slots.
     response: nil ResponseCallback[Context]
     fallible: nil FallibleCallback[Context, Reason]
+  ScalarHostCallbacks[Context; Reason: enum] = object
+    ## Explicit scalar callers add three pointer slots; fixed fields avoid conditional record expansion.
+    response: nil ResponseCallback[Context]
+    fallible: nil FallibleCallback[Context, Reason]
+    scalarCalls: nil ScalarHostSelector
+    scalarResponse: nil ScalarHostCallback[Context]
+    scalarFallible: nil FallibleScalarHostCallback[Context, Reason]
 
 include ./internal/backend_execution
 
-proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
-    frame: var FlatFrame, owner: Program, context: var Context, callbacks: HostCallbacks[Context,
-        Reason],
-    steps: ExecutionStepLimit, calls: HostCallLimit, pages: PageLimit): HostExecutionResult[Reason] =
+proc publishScalarHostTerminal(frame: FlatFrame, owner: Program, response: ScalarHostResponse,
+    selected: StepExit, nativeBaseline: uint64): StepResult =
+  ## Final scalar replies still materialize every dirty byte and an immutable result at the causing PC.
+  assert selected in [StepExit.Panic, StepExit.OutOfGas]
+  var cpu = frame.info
+  cpu.gas = response.gas
+  cpu.gasDeficit = response.gasDeficit
+  cpu.registers = response.registers
+  let memory = flatMemorySnapshot(frame)
+  let captured = captureTerminalMachine(owner, memory, cpu)
+  if captured.error != MachineError.None: return StepResult(status: StepError.InvalidHostResponse)
+  StepResult(status: StepError.None, completed: StepOutcome(
+    engine: actualIndependentBackend(nativeOperations(frame) != nativeBaseline),
+    kind: selected, machine: captured.value))
+
+proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](
+    frame: var FlatFrame, owner: Program, context: var Context, callbacks: Callbacks,
+    steps: ExecutionStepLimit, calls: HostCallLimit, pages: PageLimit): HostExecutionResult[
+        Reason] {.untyped.} =
   ## Keep one private engine frame across genuine callbacks; every public observation is immutable.
+  ## Callbacks is the caller's concrete fixed record; ScalarCapable selects procedure code only.
   var remaining = uint64(steps)
   var available = uint64(calls)
   let nativeBaseline = nativeOperations(frame)
@@ -730,6 +812,47 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     if available == 0: return executionResult[Reason](StepResult(
         status: StepError.HostCallLimitExceeded))
     dec available
+    when ScalarCapable:
+      # Ordinary instantiations contain neither scalar routing nor scalar reply temporaries.
+      let selector = callbacks.scalarCalls
+      var scalar = false
+      if selector != nil:
+        # Routing reads only the host identifier and cannot replay an already-effectful callback.
+        scalar = selector(frame.hostCall)
+      if scalar:
+        let call = frame.hostCall
+        let cpu = observeFlatHostScalars(frame)
+        var response = default(ScalarHostResponse)
+        when Fallible:
+          # The selected scalar signature owns no memory and preserves the caller's typed refusal.
+          let selected = callbacks.scalarFallible
+          assert selected != nil
+          let reply = selected(context, call, cpu)
+          case reply.kind
+          of HostResultKind.Response: response = reply.value
+          of HostResultKind.Failure:
+            return HostExecutionResult[Reason](status: HostExecutionError.HostFailure,
+              hostReason: reply.failure)
+          else: return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
+        else:
+          # Response-only callers retain their original StepResult contract through the same driver.
+          let selected = callbacks.scalarResponse
+          assert selected != nil
+          response = selected(context, call, cpu)
+        var posteriorExit = StepExit.Continued
+        if uint64(response.gasDeficit) != 0 or not hostResponseExit(response.action, posteriorExit):
+          return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
+        if posteriorExit == StepExit.Continued:
+          # Leave the old immutable baseline and all dirty membership intact until a real publication.
+          let resumed = resumeFlatHostScalars(frame, response.gas, response.registers)
+          if resumed != StepError.None: return executionResult[Reason](StepResult(status: resumed))
+          # Successful scalar continuation returns to the same engine loop without owned publication.
+          continue
+        else:
+          # A scalar terminal reply still returns complete immutable bytes at this causing ecalli.
+          return executionResult[Reason](publishScalarHostTerminal(frame, owner, response,
+            posteriorExit, nativeBaseline))
+    # Existing callbacks keep their independent retainable snapshots and arbitrary owned posterior memory.
     let memory = observeFlatHostMemory(frame)
     let captured = captureMachine(owner, memory, frame.info)
     if captured.error != MachineError.None:
@@ -763,11 +886,10 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
       return executionResult[Reason](applyHostResponse(suspension, response))
   executionResult[Reason](StepResult(status: StepError.InvalidMachine))
 
-proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
-    source: Machine, prepared: PreparedProgram, context: var Context, callbacks: HostCallbacks[
-        Context, Reason],
+proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](
+    source: Machine, prepared: PreparedProgram, context: var Context, callbacks: Callbacks,
     steps: ExecutionStepLimit, calls: HostCallLimit, plan: GasPlan,
-        memo: GasMemo): HostExecutionResult[Reason] =
+        memo: GasMemo): HostExecutionResult[Reason] {.untyped.} =
   ## Validate and restore private input memory before moving the exclusively leased executable cache.
   let selectedData = prepared.data
   if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
@@ -806,17 +928,17 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   restoreFlatStream(frame, data.stream)
   when NativeCheckedReadEnabled:
     beginReadProbe(frame, uint64(steps))
-  let answer = driveHostFrame[Context, Reason, Fallible](frame, owner, context, callbacks, steps,
-      calls, data.limits.resources.pages)
+  let answer = driveHostFrame[Context, Reason, Fallible, ScalarCapable, Callbacks](frame, owner,
+      context, callbacks, steps, calls, data.limits.resources.pages)
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
-proc hostSelected[Context; Reason: enum; Fallible: static[bool]](source: Machine,
-    prepared: PreparedProgram, context: var Context, callbacks: HostCallbacks[Context, Reason],
-        steps: ExecutionStepLimit,
+proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,
+    prepared: PreparedProgram, context: var Context,
+    callbacks: Callbacks, steps: ExecutionStepLimit,
     calls: HostCallLimit, plan: GasPlan = default(GasPlan), memo: GasMemo = default(
         GasMemo)): HostExecutionResult[Reason] =
   ## A shared owner remains busy throughout callbacks; every return path retires invocation state and releases it.
@@ -826,16 +948,16 @@ proc hostSelected[Context; Reason: enum; Fallible: static[bool]](source: Machine
   if data.busy: return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
   data.busy = true
   beginNativeInvocation(data.native, uint64(steps))
-  let answer = runPreparedHost[Context, Reason, Fallible](source, prepared, context, callbacks,
-      steps, calls, plan, memo)
+  let answer = runPreparedHost[Context, Reason, Fallible, ScalarCapable, Callbacks](source,
+      prepared, context, callbacks, steps, calls, plan, memo)
   finishNativeInvocation(data.native, (if answer.error == HostExecutionError.None:
     observedNativeWork(data.native) else: 0'u64))
   data.busy = false
   answer
 
-proc hostPolicy[Context; Reason: enum; Fallible: static[bool]](source: Machine,
-    context: var Context, callbacks: HostCallbacks[Context, Reason], steps: ExecutionStepLimit,
-        calls: HostCallLimit,
+proc hostPolicy[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,
+    context: var Context, callbacks: Callbacks,
+    steps: ExecutionStepLimit, calls: HostCallLimit,
     cycles: GasCycleLimit, plan: GasPlan = default(GasPlan), memo: GasMemo = default(
         GasMemo)): HostExecutionResult[Reason] =
   ## Ordinary application callers enter the same engine with the explicit default finite resource profile.
@@ -849,8 +971,8 @@ proc hostPolicy[Context; Reason: enum; Fallible: static[bool]](source: Machine,
   let prepared = newPreparedProgram(owner, defaultPreparedLimits(cycles))
   if prepared.error != PreparationError.None:
     return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
-  hostSelected[Context, Reason, Fallible](source, prepared.value, context, callbacks, steps, calls,
-      plan, memo)
+  hostSelected[Context, Reason, Fallible, ScalarCapable, Callbacks](source, prepared.value, context,
+      callbacks, steps, calls, plan, memo)
 
 func responseResult(answer: HostExecutionResult[ResponseOnly]): StepResult =
   ## Response-only callers retain the existing guarded StepResult interface.
@@ -866,15 +988,16 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         gasLimit: GasCycleLimit): HostExecutionResult[Reason] =
   ## Fallible host dispatch retains typed callback failures and the shared source-attempt budget.
-  hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
-      fallible: handler), stepLimit, hostLimit, gasLimit)
+  hostPolicy[Context, Reason, true, false, HostCallbacks[Context, Reason]](source, context,
+      HostCallbacks[Context, Reason](fallible: handler), stepLimit, hostLimit, gasLimit)
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
   ## Ordinary callbacks use the same resident checked memory and only the new engine.
-  responseResult(hostPolicy[Context, ResponseOnly, false](source, context, HostCallbacks[Context,
-      ResponseOnly](response: handler), stepLimit, hostLimit, gasLimit))
+  responseResult(hostPolicy[Context, ResponseOnly, false, false, HostCallbacks[Context,
+      ResponseOnly]](source, context, HostCallbacks[Context, ResponseOnly](response: handler),
+          stepLimit, hostLimit, gasLimit))
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
@@ -882,16 +1005,40 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         prepared: PreparedProgram): HostExecutionResult[Reason] =
   ## Prepared callbacks share scalar executable facts while same-owner reentry remains refused.
-  hostSelected[Context, Reason, true](source, prepared, context, HostCallbacks[Context, Reason](
-      fallible: handler), stepLimit, hostLimit)
+  hostSelected[Context, Reason, true, false, HostCallbacks[Context, Reason]](source, prepared,
+      context, HostCallbacks[Context, Reason](fallible: handler), stepLimit, hostLimit)
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         prepared: PreparedProgram): StepResult =
   ## Active CPU and callbacks stay local; idle source/byte storage is bounded by the prepared policy.
-  responseResult(hostSelected[Context, ResponseOnly, false](source, prepared, context,
-      HostCallbacks[Context, ResponseOnly](response: handler), stepLimit, hostLimit))
+  responseResult(hostSelected[Context, ResponseOnly, false, false, HostCallbacks[Context,
+      ResponseOnly]](source, prepared, context,
+
+HostCallbacks[Context, ResponseOnly](response: handler), stepLimit, hostLimit))
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason]
+      {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, prepared: PreparedProgram,
+    scalarCalls: ScalarHostSelector,
+    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+  ## Explicitly select copied CPU callbacks; all other calls and foreign policies retain the owned handler.
+  hostSelected[Context, Reason, true, true, ScalarHostCallbacks[Context, Reason]](source, prepared, context,
+    ScalarHostCallbacks[Context, Reason](fallible: handler, scalarCalls: scalarCalls,
+      scalarFallible: scalarHandler), stepLimit, hostLimit)
+
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse
+      {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, prepared: PreparedProgram,
+    scalarCalls: ScalarHostSelector, scalarHandler: ScalarHostCallback[Context]): StepResult =
+  ## Response-only scalar callbacks use the same host driver and never receive a memory capability.
+  responseResult(hostSelected[Context, ResponseOnly, false, true, ScalarHostCallbacks[Context,
+      ResponseOnly]](source, prepared, context,
+    ScalarHostCallbacks[Context, ResponseOnly](response: handler, scalarCalls: scalarCalls,
+      scalarResponse: scalarHandler), stepLimit, hostLimit))
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
@@ -903,8 +1050,9 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if settings.error != GasPlanError.None or owner.error != MachineError.None or not matchesProgram(
       plan, owner.value):
     return executionResult[Reason](StepResult(status: StepError.InvalidGasPlan))
-  hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
-      fallible: handler), stepLimit, hostLimit, settings.value.cycleLimit, plan)
+  hostPolicy[Context, Reason, true, false, HostCallbacks[Context, Reason]](source, context,
+      HostCallbacks[Context, Reason](fallible: handler), stepLimit, hostLimit,
+      settings.value.cycleLimit, plan)
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
@@ -915,8 +1063,10 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if settings.error != GasPlanError.None or owner.error != MachineError.None or not matchesProgram(
       plan, owner.value):
     return StepResult(status: StepError.InvalidGasPlan)
-  responseResult(hostPolicy[Context, ResponseOnly, false](source, context, HostCallbacks[Context,
-      ResponseOnly](response: handler), stepLimit, hostLimit, settings.value.cycleLimit, plan))
+  responseResult(hostPolicy[Context, ResponseOnly, false, false, HostCallbacks[Context,
+      ResponseOnly]](source, context, HostCallbacks[Context, ResponseOnly](response: handler),
+          stepLimit, hostLimit,
+      settings.value.cycleLimit, plan))
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
@@ -928,8 +1078,9 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if settings.error != GasMemoError.None or owner.error != MachineError.None or not matchesProgram(
       memo, owner.value):
     return executionResult[Reason](StepResult(status: StepError.InvalidGasMemo))
-  hostPolicy[Context, Reason, true](source, context, HostCallbacks[Context, Reason](
-      fallible: handler), stepLimit, hostLimit, settings.value.cycleLimit, memo = memo)
+  hostPolicy[Context, Reason, true, false, HostCallbacks[Context, Reason]](source, context,
+      HostCallbacks[Context, Reason](fallible: handler), stepLimit, hostLimit,
+      settings.value.cycleLimit, memo = memo)
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
@@ -940,8 +1091,10 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if settings.error != GasMemoError.None or owner.error != MachineError.None or not matchesProgram(
       memo, owner.value):
     return StepResult(status: StepError.InvalidGasMemo)
-  responseResult(hostPolicy[Context, ResponseOnly, false](source, context, HostCallbacks[Context,
-      ResponseOnly](response: handler), stepLimit, hostLimit, settings.value.cycleLimit, memo = memo))
+  responseResult(hostPolicy[Context, ResponseOnly, false, false, HostCallbacks[Context,
+      ResponseOnly]](source, context, HostCallbacks[Context, ResponseOnly](response: handler),
+          stepLimit, hostLimit,
+      settings.value.cycleLimit, memo = memo))
 
 proc execute*(source: Machine, steps: ExecutionStepLimit, cycles: GasCycleLimit,
     selected: PvmBackend): StepResult =
@@ -978,6 +1131,22 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if prepared.error != PreparationError.None: return StepResult(status: preparationFailure(
       prepared.error))
   executeWithHost(source, context, handler, steps, calls, prepared.value)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason]
+      {.nimcall, raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend, scalarCalls: ScalarHostSelector,
+    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+  ## One-shot scalar-capable calls preserve the same complete owner admission and selected-backend policy.
+  let code = programOf(source)
+  if code.error != MachineError.None:
+    return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
+  let prepared = newPreparedProgram(code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error != PreparationError.None:
+    return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
+  executeWithHost(source, context, handler, steps, calls, prepared.value,
+    scalarCalls, scalarHandler)
 
 proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(
     NativeRuntime)): PreparedProgramCache =
@@ -1040,6 +1209,24 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if prepared.error != PreparationError.None:
     return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
   executeWithHost(source, context, handler, steps, calls, prepared.value)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason]
+      {.nimcall, raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend, cache: PreparedProgramCache, scalarCalls: ScalarHostSelector,
+    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+  ## Explicit capabilities follow the same full cache key and exclusive prepared-owner admission.
+  let code = programOf(source)
+  if code.error != MachineError.None:
+    return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
+  let prepared = cachedPreparedProgram(cache, code.value, defaultPreparedLimits(cycles), selected)
+  if prepared.error == PreparationError.Busy:
+    return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
+  if prepared.error != PreparationError.None:
+    return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
+  executeWithHost(source, context, handler, steps, calls, prepared.value,
+    scalarCalls, scalarHandler)
 
 proc backendAvailability*(selected: PvmBackend): StepError =
   ## Refuse unavailable explicit optional policies before any application resource, host or guest effect opens.

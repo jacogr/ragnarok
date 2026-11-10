@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_pending_transfers_arc_release"}
 
 ## Genuine terminal outputs and prior partitions preserve carry order and gas without a second refund.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
     transfer_partition as accumulation_transfer_partition, transfers as accumulation_transfers,
@@ -16,15 +18,19 @@ import ../../support/[accumulation_transfers, arc_evidence]
 
 # Queue preparation and partitioning perform no new state hashes or publication.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(sources = 4'u64, transfers = 8'u64, memo = 1024'u64): PendingTransferLimits =
   ## Producer, record and memo work ceilings remain independent.
   PendingTransferLimits(sources: ElementLimit(sources), transfers: ElementLimit(transfers),
       memoBytes: ByteLimit(memo))
+
 proc partitionPolicy(): TransferPartitionLimits =
   ## Small finite state/active/record work bounds every partition in this suite.
   TransferPartitionLimits(transfers: ElementLimit(8), services: ElementLimit(4),
       checks: ElementLimit(1000))
+
 proc prior(): StateStoreSnapshot =
   ## Current service1 supervises service42 by an actual matching creation slot.
   let entries = [serviceMetadataEntry(ServiceIndex(1), ServiceMetadata(supervisor: ServiceIndex(1),
@@ -36,6 +42,7 @@ proc prior(): StateStoreSnapshot =
   newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(8),
       perValue: ByteLimit(256), totalValueBytes: ByteLimit(2048), nodes: TrieNodeLimit(
           1000)))).value.snapshot.value
+
 proc carried(gas: uint64, ordinal: byte): DeferredTransfer =
   ## Full fixed fields distinguish old records from genuine newly emitted duplicates.
   var memo = default(array[128, byte])
@@ -43,6 +50,7 @@ proc carried(gas: uint64, ordinal: byte): DeferredTransfer =
   DeferredTransfer(source: ServiceIndex(70'u32+uint32(ordinal)), destination: ServiceIndex(42),
       destinationSupervisor: true, amount: TransferBalance(uint64(ordinal)), gas: Gas(gas),
           memo: TransferMemo(memo))
+
 proc checkRecord(actual, expected: DeferredTransfer) =
   ## Query copies preserve every fixed field while allowing independent caller mutation.
   assert uint32(actual.source) == uint32(expected.source), "pending source identity"

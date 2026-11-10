@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Single-buffer journal framing preserves strict mutable-record validation, exact bytes, replay and ownership.
+
 # @@Verification={"arc": "storage_journal_framing_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_snapshot_samples]
@@ -9,16 +10,20 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/[record_codec, journal_codec, snapshot_codec]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real hash refusal distinguishes preflight from mandatory raw integrity and the outer checksum.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact attempts instead of treating frame reservations as existing integrity authority.
+
 proc batch(source: SnapshotFixture): TrieExport =
   ## Detached mutable transport supplies no retained graph or validation privilege to its encoder.
   let metadata = source.selection.commitment
   TrieExport(root: metadata.root, entries: uint64(metadata.entries), nodes: metadata.nodes,
     records: exportRepositorySelection(source.selection,
         source.limits.repository.codec.records).value)
+
 proc exercise(source: TrieExport, limits: SnapshotLimits) =
   ## Compare reserved bodies with strict unframed bytes, then verify both actual frame domains through replay.
   let codec = limits.repository.codec

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime contract witnesses use the same extractors for invalid and actual successful owners.
+
 import std/[assertions, cmdline]
 import ../../src/app/ancestor/response as ancestor_response
 import ../../src/codec/[bounded, header, block_codec, tickets]
@@ -9,12 +10,15 @@ import ../../src/codec/[bounded, header, block_codec, tickets]
 proc extract(outcome: AncestorResponseResult[AncestorRequest]) =
   ## Failed/default tagged outcomes cannot supply a request owner.
   discard outcome.value
+
 proc reason(outcome: AncestorResponseResult[AncestorResponse]) =
   ## Only a selected block decoder failure carries its original reason.
   discard outcome.blockError
+
 proc request(owner: AncestorRequest) =
   ## An uninitialized opaque request has no serializable wire authority.
   discard owner.requestBytes
+
 proc main() =
   ## Genuine structural encoding supplies the positive request without forging private fields.
   case paramStr(1)

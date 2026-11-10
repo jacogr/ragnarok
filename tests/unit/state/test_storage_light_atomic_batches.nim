@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Atomic proof/forget batches replace evidence at exact capacity through one canonical image and one durable selection.
+
 # @@Verification={"arc":"storage_light_atomic_batches_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -15,29 +16,37 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Combined quotas and cross-list conflicts must refuse before proof or checksum hashes.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Each incoming proof node, long value and final checksum can independently refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Only the incoming proof and one checksum are hashed during a prepared combined edit.
+
 proc key(first: byte): StateKey =
   ## Fixed identities cover two long values, empty presence and authenticated absence at one complete root.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc limits(): LightSnapshotLimits =
   ## Both initial and replacement images exactly fill item/value/file allowances; one combined batch permits two keys.
   LightSnapshotLimits(bytes: ByteLimit(732), cache: LightCacheLimits(items: ElementLimit(3),
     writes: ElementLimit(2), valueBytes: ByteLimit(33),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc proof(trie: FullStateTrie, first: byte): LightStateProof =
   ## Only a complete trie produces transport; partial cache state never calculates root authority.
   LightStateProof(key: key(first), proof: trie.prove(key(first), limits().cache.proof).value)
+
 proc prepare(root: StateRoot, proofs: openArray[LightStateProof],
     policy: LightSnapshotLimits): PreparedLightSnapshot =
   ## Full preparation supplies an independent canonical-output reference for every incremental combined edit.
   prepareLightSnapshot(default(StorageChainId), root, proofs, policy).value
+
 proc cycle(initial: PreparedLightSnapshot, incoming: LightStateProof) =
   ## Private forgetting/admission prefixes retire together on success, later provider refusal and retry.
   resetHash(0)
@@ -49,6 +58,7 @@ proc cycle(initial: PreparedLightSnapshot, incoming: LightStateProof) =
   assert initial.cache.lookup(key(0)).value.bytes == newSeq[byte](33)
   resetHash(0)
   assert initial.update([incoming], [key(0)]).value.cache.lookup(key(64)).value.bytes[0] == 7
+
 proc prepared(trie: FullStateTrie) =
   ## Released final-set charges permit a swap that ordinary admission rejects, without exposing an evicted intermediate view.
   resetHash(0)
@@ -139,6 +149,7 @@ proc prepared(trie: FullStateTrie) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_atomic_batches", 1000, before, after)
+
 proc files(trie: FullStateTrie) {.raises.} =
   ## One real selection replaces evidence at capacity; preparation failures do no IO and uncertain writes require reopen.
   resetHash(0)
@@ -200,6 +211,7 @@ proc files(trie: FullStateTrie) {.raises.} =
   assert posix.unlink(currentPath.toCString()) == 0
   assert posix.unlink(lock.toCString()) == 0
   assert posix.rmdir(directory.toCString()) == 0
+
 proc main() {.raises.} =
   ## Independent complete-map hashing fixes authority while cache ceilings intentionally hold only one long value.
   resetHash(0)

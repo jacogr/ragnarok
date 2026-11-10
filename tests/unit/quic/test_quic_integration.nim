@@ -16,6 +16,7 @@ import ../../../src/codec/owned
 
 # Faults affect only this test-linked observer; production hashes still use the maintained primitive ABI.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Fail after a completed prefix to verify atomic publication of multi-entry fixture banks.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

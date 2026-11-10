@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Ordinary owner measurements retire prepared fixtures before observing complete repository retention.
+
 import std/[assertions, syncio]
 import ../../support/[storage_lifetime_samples, storage_allocations]
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Retained complete-root unions remain queryable after exact captured physical epoch reclamation.
+
 # @@Verification={"arc":"storage_full_paged_retention_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -14,9 +15,11 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc path(label: string): string =
   ## Every suite namespace is isolated beneath the ignored native runner working directory.
   "full-paged-retention-" & $storageProcessId() & "-" & label
+
 proc normal(old, union, fresh: FullPagedFixture) =
   ## Logical root retention is independent of physical epoch retention, reader pins and exact directory-sync receipts.
   let directory = path("normal")
@@ -63,6 +66,7 @@ proc normal(old, union, fresh: FullPagedFixture) =
   assert both.close == FileError.None
   assert writer.reclaim(two, writer.selected.value).error == FullPagedNativeError.None
   assert newest.lookup(fresh.header.root, key(0)).value.bytes == @[9'u8]
+
 proc maxRoots() =
   ## The fixed header's exact64-root inventory is a supported complete history, while a narrower caller policy refuses it.
   var records: seq[TrieRecord] = @[]
@@ -89,6 +93,7 @@ proc maxRoots() =
   let refused = openFullPagedReader(reader, directory, narrow)
   assert refused.error == FullPagedNativeError.GraphFailure and not reader.opened
   assert refused.graphError == FullPagedStreamError.LimitExceeded
+
 proc prepared(writer: var FullPagedWriter, directory: string,
     old: FullPagedFixture): FullPagedEpochReceipt =
   ## Capture epoch one under SH, advance independently to epoch two, then release old readers before cleanup tests.
@@ -101,6 +106,7 @@ proc prepared(writer: var FullPagedWriter, directory: string,
   assert writer.publish(candidate).error == FullPagedNativeError.None
   assert reader.close == FileError.None
   receipt
+
 proc faultSchedule(old: FullPagedFixture) =
   ## Every observed reclamation read/write/flock/truncate/unlink/sync/close boundary preserves exact source/old-inode safety.
   let operations = [readIo, writeIo, lockIo, truncateIo, unlinkIo, syncIo, closeIo]
@@ -138,6 +144,7 @@ proc faultSchedule(old: FullPagedFixture) =
       assert retry.error == FullPagedNativeError.None
       assert writer.reclaim(receipt, writer.selected.value).value.alreadyAbsent
       assert writer.close == FileError.None
+
 proc policyBinding(old: FullPagedFixture) =
   ## Every independent policy scalar binds the captured old-epoch receipt, including harmless increases in allowance.
   let directory = path("policy")
@@ -177,8 +184,10 @@ proc policyBinding(old: FullPagedFixture) =
   for receipt in receipts:
     assert writer.reclaim(receipt, writer.selected.value).error ==
         FullPagedNativeError.InvalidCandidate
+
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only namespace substitution uses the real SDK to replace an old path with an independently created inode.
+
 proc identities(old: FullPagedFixture) =
   ## Equal bytes and equal roots cannot authorize cleanup of a different inode or another database namespace.
   var writer = default(FullPagedWriter)
@@ -205,6 +214,7 @@ proc identities(old: FullPagedFixture) =
   let legitimate = prepared(other, second, old)
   assert other.reclaim(receipt, other.selected.value).error == FullPagedNativeError.InvalidCandidate
   assert other.reclaim(legitimate, other.selected.value).error == FullPagedNativeError.None
+
 proc main() =
   ## Native lifetime and exact-policy checks complement the shared publication/pin interleaving model.
   let old = sample(7)

@@ -3,6 +3,7 @@
 
 ## Optional main-thread CE134 orchestration retains only exact tokens, fixed targets and detached bytes; Services owns every credential/source graph.
 ## Report computation, signing, receiving, peer verification and collection run only through closed managed jobs.
+
 import std/[assertions, monotimes, times]
 import ./services
 import ./proof/work_submission
@@ -44,6 +45,7 @@ type
     incomingToken: WorkSharingToken
     incomingActive, incomingCancelled, preferIncoming: bool
     received, collected: uint64
+
 func workExchangePolicy*(limits: WorkSharingLimits, guaranteeBytes: ByteLimit,
     storage: GuarantorStorageLimits, serving: AvailabilityReadLimits,
     timeoutMs: range[2001..120000] = 120000, peerTimeoutMs: range[1..120000] = 10000,
@@ -57,31 +59,41 @@ func workExchangePolicy*(limits: WorkSharingLimits, guaranteeBytes: ByteLimit,
   WorkExchangePolicy(ready: true, limits: limits, guarantee: guaranteeBytes, storage: storage,
     serving: serving,
     timeout: timeoutMs, peerTimeout: peerTimeoutMs, grace: graceMs)
+
 func valid*(policy: WorkExchangePolicy): bool =
   ## Omission never enables signed exchange or incoming sharing handlers.
   policy.ready
+
 func storageLimits*(policy: WorkExchangePolicy): GuarantorStorageLimits {.requires: policy.ready.} =
   ## Startup installs this explicit whole-cache/capture policy together with the private signer.
   policy.storage
+
 func servingLimits*(policy: WorkExchangePolicy): AvailabilityReadLimits {.requires: policy.ready.} =
   ## Signed activation includes explicit CE137/147 response budgets for the retained serving data.
   policy.serving
+
 func phase*(owner: WorkExchangeDispatcher): WorkExchangePhase =
   ## Only fixed host state is observable through foreign CPU leases.
   owner.phase
+
 func configured*(owner: WorkExchangeDispatcher): bool =
   ## Native admission requires a real configured managed consumer.
   owner.policy.ready
+
 func received*(owner: WorkExchangeDispatcher): uint64 =
   ## Count only genuine collected incoming signatures whose fixed response was accepted by the live native route.
   owner.received
+
 func collected*(owner: WorkExchangeDispatcher): uint64 =
   ## Count actual two/three-credential collections, without claiming distribution or on-chain admission.
   owner.collected
+
 proc `=copy`*(destination: var WorkExchangeDispatcher, source: WorkExchangeDispatcher) {.error.}
   ## Duplicating a session/worker/dial controller would create competing retirement authority.
+
 proc `=dup`*(source: WorkExchangeDispatcher): WorkExchangeDispatcher {.error.}
   ## Initialization cannot duplicate the live controller either.
+
 proc `=wasMoved`*(owner: var WorkExchangeDispatcher) {.nodestroy, requires:
     owner.phase == WorkExchangePhase.Idle and not owner.incomingActive.} =
   ## Every owned child transfers only after all exact controls have retired.
@@ -92,10 +104,12 @@ proc `=wasMoved`*(owner: var WorkExchangeDispatcher) {.nodestroy, requires:
   `=wasMoved`(owner.incomingToken)
   owner.incomingActive = false
   owner.phase = WorkExchangePhase.Idle
+
 proc requireClosed(owner: WorkExchangeDispatcher) {.requires:
     owner.phase == WorkExchangePhase.Idle and not owner.incomingActive.} =
   ## Explicit close/release cannot be replaced by silently abandoning a canonical borrower.
   discard
+
 proc `=destroy`*(owner: WorkExchangeDispatcher) =
   ## Source-bearing state stays in Services; these child token owners retire only after explicit control teardown.
   requireClosed(owner)
@@ -104,6 +118,7 @@ proc `=destroy`*(owner: WorkExchangeDispatcher) =
   `=destroy`(owner.peers)
   `=destroy`(owner.incoming)
   `=destroy`(owner.incomingToken)
+
 proc configure*(owner: var WorkExchangeDispatcher, streams: var NodeService,
     policy: WorkExchangePolicy): bool =
   ## Install bounded consumers before native selectors are enabled; no partial/default policy is accepted.
@@ -112,6 +127,7 @@ proc configure*(owner: var WorkExchangeDispatcher, streams: var NodeService,
   owner.policy = policy
   owner.preferIncoming = true
   true
+
 proc beginCompleted*(owner: var WorkExchangeDispatcher, services: Services,
     token: WorkSessionToken, clock: MonoTime): bool =
   ## The exact retained builder completion supplies source authority; no caller-provided package/report is accepted here.
@@ -123,6 +139,7 @@ proc beginCompleted*(owner: var WorkExchangeDispatcher, services: Services,
   owner.peers = default(array[2, ExchangePeer])
   owner.phase = WorkExchangePhase.Reporting
   true
+
 proc cancelPeers(owner: var WorkExchangeDispatcher, streams: var NodeService, force = false) =
   ## Request cancellation never owns an unrelated peer connection; only dials created by this exact round may be retired.
   for index in 0..<2:
@@ -131,17 +148,20 @@ proc cancelPeers(owner: var WorkExchangeDispatcher, streams: var NodeService, fo
     if owner.peers[index].dialing and (force or idle):
       discard streams.cancelPeerConnection(owner.peers[index].dial)
       owner.peers[index].dialing = false
+
 proc retire(owner: var WorkExchangeDispatcher, services: var Services, streams: var NodeService) =
   ## Scalar retirement is immediate while Services defers all shared graph release through exact collection/join.
   owner.cancelPeers(streams)
   discard services.retireWorkSubmission(owner.session)
   owner.phase = WorkExchangePhase.Retiring
+
 proc release*(owner: var WorkExchangeDispatcher, services: var Services,
     streams: var NodeService): bool =
   ## A downstream consumer can release only this controller's own retained session.
   if owner.phase == WorkExchangePhase.Idle: return false
   owner.retire(services, streams)
   true
+
 proc pollIncoming(owner: var WorkExchangeDispatcher, services: var Services,
     streams: var NodeService) =
   ## Native reset or external joined stop cannot expose a signature prefix or retain an orphaned sharing namespace.
@@ -163,6 +183,7 @@ proc pollIncoming(owner: var WorkExchangeDispatcher, services: var Services,
     discard streams.rejectSharing(owner.incoming) # Refusal/cancellation produces no hash/signature response.
   owner.incomingActive = false
   owner.incomingCancelled = false
+
 proc pollPeers(owner: var WorkExchangeDispatcher, services: Services,
     streams: var NodeService, clock: MonoTime) =
   ## Two source-free native directions progress even when canonical/round graphs belong to a foreign worker.
@@ -186,6 +207,7 @@ proc pollPeers(owner: var WorkExchangeDispatcher, services: Services,
           discard streams.cancelPeerConnection(peer.dial)
           peer.dialing = false
         peer.phase = PeerPhase.Refused # A remote stream keeps an owned demand connection until safe round retirement.
+
 proc poll*(owner: var WorkExchangeDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Collection and raw I/O occur before application arbitration; this method never admits a new CPU job.
@@ -244,6 +266,7 @@ proc poll*(owner: var WorkExchangeDispatcher, services: var Services, streams: v
     if info.credentials == 3 or (expired and not responseReady): owner.phase = WorkExchangePhase.Collecting
   elif not possible:
     owner.retire(services, streams) # No remaining actual target can supply the missing second credential.
+
 proc submitIncoming(owner: var WorkExchangeDispatcher, services: var Services,
     streams: var NodeService, now: StateTime): bool {.raises.} =
   ## Claim at most one complete authenticated raw request only when the single managed CPU is available.
@@ -261,6 +284,7 @@ proc submitIncoming(owner: var WorkExchangeDispatcher, services: var Services,
   owner.incomingActive = true
   owner.incomingCancelled = false
   true
+
 proc requestPeer(owner: var WorkExchangeDispatcher, services: Services, streams: var NodeService,
     index: int, clock: MonoTime) =
   ## A sealed fixed validator record selects both key and endpoint; peer announcements cannot replace either.
@@ -293,6 +317,7 @@ proc requestPeer(owner: var WorkExchangeDispatcher, services: Services, streams:
   peer.dialing = true
   peer.started = clock
   peer.phase = PeerPhase.Connecting
+
 proc submitLocal(owner: var WorkExchangeDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime, now: StateTime): bool =
   ## Each arbiter turn admits at most one fixed closed job; no canonical alias survives the staging helper's return.
@@ -335,6 +360,7 @@ proc submitLocal(owner: var WorkExchangeDispatcher, services: var Services,
     owner.retire(services, streams)
     return false
   true
+
 proc submit*(owner: var WorkExchangeDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime, now: StateTime): bool {.raises.} =
   ## Incoming requests and local pipeline stages alternate when both are runnable; ordinary application arbitration remains outside.
@@ -349,6 +375,7 @@ proc submit*(owner: var WorkExchangeDispatcher, services: var Services, streams:
     owner.preferIncoming = false
     return true
   false
+
 proc close*(owner: var WorkExchangeDispatcher, services: var Services, streams: var NodeService) =
   ## Join only an exact owned CPU turn; foreign graph borrowers keep their normal lifetime and deferred Services retirement.
   if owner.incomingActive:

@@ -2,24 +2,30 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard current-global payloads and exact failed-global reasons with an actual prepared producer success control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
 import ../../src/state/current/[globals as current_globals, profile as current_profile]
 import ../../src/state/global_snapshot
 import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/composition as state_composition
+
 proc extract(outcome: CurrentGlobalsResult[CurrentGlobalSerialization]) {.noinline.} =
   ## No failed/default global qualification grants its owner.
   discard outcome.value
+
 proc reason(outcome: CurrentGlobalsResult[CurrentGlobalSerialization]) {.noinline.} =
   ## Unrelated alternatives invent no failed global cause.
   discard outcome.globalFailure
+
 proc globals(source: CurrentGlobalSerialization) {.noinline.} =
   ## Default owners grant no all-chapter certificate.
   discard source.qualifiedGlobals.value
+
 proc profile(source: CurrentGlobalSerialization) {.noinline.} =
   ## Default owners grant no producer/profile projection.
   discard source.qualifiedCurrentProfile.value
+
 proc main() {.raises.} =
   ## Fixture I/O belongs to the genuine positive control, outside intended negative verdicts.
   let limits = GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(10000),

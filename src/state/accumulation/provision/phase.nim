@@ -4,6 +4,7 @@
 ## Fulfill original terminal provisions after complete selected accounts, including requests belonging to new accounts.
 ## Annulment never filters original provide contributions; all work and Merkle changes remain on a private complete fork.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
+
 import ../account/phase as accumulation_account_phase
 import ../[coverage as accumulation_coverage, annulment as accumulation_annulment,
     outcome as accumulation_outcome, effects as accumulation_effects,

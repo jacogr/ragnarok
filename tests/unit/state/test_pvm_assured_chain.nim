@@ -18,6 +18,7 @@ import ../../support/[pvm_assured_chain, pvm_computed_chain, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force actual structural capture to fail after prepared state adoption succeeds privately.
+
 proc expect[T](outcome: AssuredChainResult[T], reason: AssuredChainError) =
   ## Print an originating selected cause on unexpected refusal before enforcing exact outcome selection.
   if outcome.error != reason:
@@ -25,10 +26,12 @@ proc expect[T](outcome: AssuredChainResult[T], reason: AssuredChainError) =
     if outcome.error == AssuredChainError.CaptureFailure: echo "capture ", outcome.captureError
     if outcome.error == AssuredChainError.ViewFailure: echo "view ", outcome.viewError
   assert outcome.error == reason, "assured chain reason"
+
 proc unchanged(state: StateStore, view: ChainView, before: StateStoreSnapshot, prior: ChainView) =
   ## Refusal preserves exact state identity, retained headers and explicit caller-certified finality.
   assert sameStateSnapshot(state.snapshot.value, before)
   assert sameChainView(view, prior)
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the actual adopted service record without substituting copied metadata observations.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
@@ -151,6 +154,7 @@ expect(default(AdvancedAssuredChain).assuredChainBlock, AssuredChainError.Uninit
 var copied = receipt.assuredChainSnapshot.value
 copied = default(StateStoreSnapshot)
 assert sameStateSnapshot(receipt.assuredChainSnapshot.value, candidate)
+
 proc detached(): AdvancedAssuredChain =
   ## Retain real slot3 state/header/source authority after all live preparation and predecessor handles retire.
   let source = assuredChainFixture()
@@ -161,6 +165,7 @@ proc detached(): AdvancedAssuredChain =
 let held = detached()
 assert held.assuredChainBlock.value.slot == 3
 assert uint32(metadata(held.assuredChainSnapshot.value).lastAccumulation) == 3
+
 proc cycle(source: ComposedAssuredState, seed: AssuredChainSeed) =
   ## Release actual successful publication/capture and a late capture refusal while both original handles stay stable.
   var state = seed.state

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Foreground controller for qualified negative-report obligations.
+
 import std/[monotimes, times]
 import ./[services, audit_state, audit_acquisition, judgment_distribution, initial_audit]
 from ../codec/state/safrole import StateValidatorIndex
@@ -71,7 +72,9 @@ publication: AuditPublicationLimits, gossip: JudgmentGossipPolicy,
     localRouteBytes: localRouteBytes)
 
 proc `=copy`*(destination: var ForcedAudits, source: ForcedAudits) {.error.}
+
 proc `=dup`*(source: ForcedAudits): ForcedAudits {.error.}
+
 proc `=wasMoved`*(owner: var ForcedAudits) {.nodestroy, requires: owner.phase == Phase.Idle.} =
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.source)
@@ -81,7 +84,9 @@ proc `=wasMoved`*(owner: var ForcedAudits) {.nodestroy, requires: owner.phase ==
   `=wasMoved`(owner.publication)
   `=wasMoved`(owner.refresh)
   `=wasMoved`(owner.declaredProgress)
+
 proc requireIdle(owner: ForcedAudits) {.requires: owner.phase == Phase.Idle.} = discard
+
 proc `=destroy`*(owner: ForcedAudits) =
   requireIdle(owner)
   `=destroy`(owner.gossip)
@@ -96,6 +101,7 @@ proc `=destroy`*(owner: ForcedAudits) =
 func canExpire*(owner: ForcedAudits): bool =
   ## A leased or scheduled report still depends on its original registry and queue positions.
   owner.phase == Phase.Idle
+
 proc releaseDeclaredOrigins*(owner: ForcedAudits, services: var Services,
     initial: var InitialAudits) =
   ## Release only fully published declarations after the graph lease has retired.
@@ -103,6 +109,7 @@ proc releaseDeclaredOrigins*(owner: ForcedAudits, services: var Services,
   for row in 0..<min(initial.readyDeclarationCount, owner.declaredProgress.len):
     if owner.declaredProgress[row].selected >= initial.declarationAt(row).selected.count:
       initial.releaseDeclarationOrigin(services, row)
+
 proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uint64,
     declarations: openArray[bool], pending: array[256, bool]) {.requires: owner.canExpire.} =
   ## Move progress in the same stable order as the underlying detached duty queues.
@@ -143,6 +150,7 @@ proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uin
   owner.refresh.setLen(kept)
   owner.refreshCursor = 0
   owner.gossip.expireBefore(streams, floor)
+
 func configured*(owner: ForcedAudits): bool =
   ## Local declarations require an enabled evaluation and publication pipeline.
   owner.policy.ready
@@ -217,6 +225,7 @@ proc rememberRoute(owner: var ForcedAudits, record: QualifiedJudgment,
   owner.refresh.add(RefreshRecord(record: record, basis: owner.plan.routingBasis,
       mode: mode, head: head, awaiting: awaiting, charge: charge))
   true
+
 proc pollRefresh(owner: var ForcedAudits, services: var Services, clock: MonoTime) =
   ## Refresh uses the exact original obligation and does not acquire, evaluate or sign again.
   if services.stateProofActive(owner.proof):
@@ -230,6 +239,7 @@ proc pollRefresh(owner: var ForcedAudits, services: var Services, clock: MonoTim
         owner.refresh[row].awaiting = false
   owner.refresh[owner.refreshing].retry = clock+initDuration(seconds = 1)
   owner.clear()
+
 proc startRefresh(owner: var ForcedAudits, services: var Services,
     clock: MonoTime): bool {.raises.} =
   ## Rotate through retained records whose checked topology stamp predates the trusted selected head.
@@ -255,6 +265,7 @@ proc startRefresh(owner: var ForcedAudits, services: var Services,
     owner.phase = Phase.Refreshing
     return true
   false
+
 proc releaseCompleted(owner: var ForcedAudits, services: var Services,
     receipt: JudgmentDispatcher) =
   ## Wait until every relay sharing this exact source has settled and all graph leases have ended.
@@ -265,6 +276,7 @@ proc releaseCompleted(owner: var ForcedAudits, services: var Services,
     # Any unfinished row can still need the private origin for its first plan.
     if not owner.completed[row] and receipt.pendingAt(row).originId == source: return
   discard services.releaseDisputedAudit(source)
+
 proc alreadyJudged(owner: ForcedAudits, plan: AuditParticipationPlan): bool =
   ## A later negative signature can reuse completed local judgments for each actual original position.
   let info = plan.participationInfo.value
@@ -282,6 +294,7 @@ proc alreadyJudged(owner: ForcedAudits, plan: AuditParticipationPlan): bool =
         break
     if not found: return false
   true
+
 proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeService,
     receipt: var JudgmentDispatcher, acquisition: AuditAcquisition, clock: MonoTime) =
   ## Collect the exact managed worker generation before advancing the obligation.

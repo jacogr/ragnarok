@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compare published RawState prefixes against independent exact bytes and complete checkpoint maps.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/state/trace/state as trace_state
 import ../../src/state/[store, checkpoint]
 import ../../src/codec/state/trie as state_trie
 import ../../src/codec/bounded
+
 proc unhex(text: string): seq[byte] =
   ## Decode only the maintained request transport; production codecs validate actual framing and roots.
   assert text.len mod 2 == 0
@@ -15,6 +17,7 @@ proc unhex(text: string): seq[byte] =
     var octet: byte = 0
     assert parseHex(text.substr(index*2, index*2+1), octet) == 2
     result[index] = octet # Only exact two-digit test transport fields are admitted.
+
 proc hex(bytes: openArray[byte]): string =
   ## Emit exact lowercase bytes without replacing an empty value with an absence marker.
   const digits = "0123456789abcdef"
@@ -22,6 +25,7 @@ proc hex(bytes: openArray[byte]): string =
   for octet in bytes:
     result.add(digits[int(octet shr 4)])
     result.add(digits[int(octet and 15)])
+
 proc main() {.raises.} =
   ## Every request carries its independent prefix budget; no observed successor supplies expected wire bytes.
   let policy = StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4096),

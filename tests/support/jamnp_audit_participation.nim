@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal original-grid coordinates and actual separately decoded pending successor keys test source-free participation planning without inventing future validator sets or current signing ordinals.
+
 import std/assertions
 import ../../src/jamnp-s/[audit_participation, audit_origin, audit_context, assurance_store]
 import ../../src/codec/bounded
@@ -9,10 +10,12 @@ import ../../src/codec/state/[safrole, layout]
 import ../../src/chain/[genesis, provider, parameters]
 import ../../src/state/store
 import ./[jamnp_audit_context, jamnp_topology_fixture]
+
 proc participationLimits*(): AuditParticipationLimits =
   ## All actual source chapters, maximum detached recipients and transient decoding have independent explicit ceilings.
   AuditParticipationLimits(topology: topologyLimits(3, 12), readBytes: ByteLimit(4000000),
     workspaceBytes: ByteLimit(64000000), outputBytes: ByteLimit(4000000))
+
 proc stopParticipation(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Cancellation cannot publish local indices or a neighbour prefix.
   true
@@ -20,6 +23,7 @@ type RolePosition = object ## Test-only pairwise reference keeps every actual ro
   epoch: uint64
   ordinal, population: int
   key: StateEdKey
+
 proc referenceNeighbours(fixture: AuditContextFixture, origin: AuditReportOrigin,
     local: StateEdKey): seq[int] =
   ## Independently enumerate original/C8/C4 positions and compare every matching identity pair using the literal NP grid rules, rather than production masks/topology-neighbour helpers.
@@ -67,6 +71,7 @@ proc referenceNeighbours(fixture: AuditContextFixture, origin: AuditReportOrigin
           if left.ordinal div width == right.ordinal div width or left.ordinal mod width ==
               right.ordinal mod width: adjacent = true
     if adjacent: result.add(ordinal)
+
 proc auditParticipationChecks*(fixture: AuditContextFixture) =
   ## Original N9 auditor ordinal one has literal three-by-three neighbours0/2/4/7; actual C4 supplies the only presently known successor epoch.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value.reportAt(0).value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete proof transport preserves real selected namespace mutations and rollback, while missing individual witnesses become absence only after checked whole-map reconstruction.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_mutation_context,
   current_namespace_context,
@@ -33,6 +34,7 @@ import ../../../src/codec/state/[layout as state_layout, accounts as state_accou
     requests as state_requests, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../../src/chain/genesis
+
 proc checkTransport(fixture: CollectedMutationFixture, present: bool, payload: seq[byte]) =
   ## Actual selected source, not an operation trace or equal-root substitute, determines the complete exported keys and independently selected expected commitment.
   let logical = qualifyMutation(fixture)

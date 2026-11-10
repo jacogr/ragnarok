@@ -24,10 +24,12 @@ import ../../support/[pvm_computed_storage_program, pvm_computed_execution, pvm_
     pvm_computed_state_publication, arc_evidence]
 
 let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode canonical self-account metadata from the exact state at each maintained stage.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 func expectedStorage(mode: ComputedStorageMode): seq[byte] =
   ## Independent literal oracle distinguishes the selected checkpoint from both later regular and unchanged initial states.
   case mode
@@ -38,6 +40,7 @@ func expectedStorage(mode: ComputedStorageMode): seq[byte] =
   of ComputedStorageMode.CheckpointCommit: @[22'u8,
       23] # Halt proves the second mutation actually executes and is publishable.
   else: @[] # Disabled, underfunded and uncheckpointed exceptional exits retain no storage.
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Assert exact guest-memory bytes and independently derived footprint; a missing row differs from present-empty storage.
   let row = state.lookup(key)
@@ -51,6 +54,7 @@ proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
     assert row.error == StateStoreError.MissingKey
     assert uint32(account.storageItems) == 0
     assert uint64(account.storageBytes) == 0
+
 proc witness(mode: ComputedStorageMode): ComposedComputedState =
   ## Run separately authored original programs, never inject a terminal observation or edit a completed source.
   let source = chainFixture(storage = mode)
@@ -168,6 +172,7 @@ let modes = [ComputedStorageMode.Commit, ComputedStorageMode.Panic, ComputedStor
   ComputedStorageMode.OutOfGas, ComputedStorageMode.CheckpointOutOfGas]
 var sources: seq[ComposedComputedState] = @[]
 for mode in modes: sources.add(witness(mode)) # Each distinct original code/funding combination executes and normalizes genuinely.
+
 proc detached(): AdvancedComputedChain =
   ## Keep an actual storage-bearing child alive after all local guest, source and live store/view handles retire.
   let source = chainFixture(storage = ComputedStorageMode.CheckpointOutOfGas)
@@ -178,6 +183,7 @@ proc detached(): AdvancedComputedChain =
 let held = detached()
 storage(held.computedChainBlock.value.stateSnapshot, expectedStorage(
     ComputedStorageMode.CheckpointPanic))
+
 proc cycle(sources: openArray[ComposedComputedState]) =
   ## Release private capture/header/index and view owners for all seven genuine selected guest outcomes per cycle.
   for index, source in sources:

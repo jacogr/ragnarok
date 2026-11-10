@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_writer_arc_release"}
 
 ## Cooperative whole-envelope ownership preserves path identity, contention and precise recovery across close/reopen.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -13,6 +14,7 @@ import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-writer"
+
 proc cycle(expected: ApplicationCheckpointIdentity) =
   ## Complete owner/lock/read/recovery lifetimes retire before each occupancy observation.
   var writer = default(ApplicationCheckpointWriter)
@@ -21,6 +23,7 @@ proc cycle(expected: ApplicationCheckpointIdentity) =
   assert writer.load(expected, genesisStoreLimits(), ByteLimit(100000)).error ==
       ApplicationCheckpointFileError.None
   assert writer.close() == ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Source path mutation, repeated open, simultaneous contender and closed calls cannot redirect or duplicate one namespace.
   var path = FileName

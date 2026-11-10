@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every reusable phase keeps inactive success and parent reason payloads guarded.
+
 import std/cmdline
 import ../../src/state/accumulation/account/phase as accumulation_account_phase
 import ../../src/state/accumulation/provision/phase as accumulation_provision_phase

@@ -3,6 +3,7 @@
 
 ## Restore unchanged checkpoint transport under an explicit root, then preflight whole-account policies before semantic execution.
 ## All phases are synchronous and source-bound; this adapter never installs state or discovers root/profile authority.
+
 import ../../codec/state/[trie as state_trie, composition as state_composition]
 import ../[validated_checkpoint, inventory]
 import ../account/audit/plan as account_audit_plan

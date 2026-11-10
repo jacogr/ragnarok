@@ -12,6 +12,7 @@ proc extrinsicLimits*(): ExtrinsicInputsLimits =
   ## Finite local policies independently bound occurrences, copying and hashing.
   ExtrinsicInputsLimits(entries: ElementLimit(128), payloadBytes: ByteLimit(4096),
       hashBytes: ByteLimit(4096))
+
 proc extrinsicPackage*(rows: openArray[seq[ExtrinsicCommitment]]): OwnedWorkPackage =
   ## Capture canonical bytes before verification; zero gas and empty payloads isolate external commitments.
   var source = WorkPackage()

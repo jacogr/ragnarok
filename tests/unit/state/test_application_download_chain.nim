@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_download_chain_arc_release"}
 
 ## Successive genuine signed blocks consume the previously composed map and preserve exact parent history.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]

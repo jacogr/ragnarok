@@ -3,6 +3,7 @@
 
 ## Stable authenticated node stream owner. Native callbacks retain only protocol bytes/facts;
 ## host code collects fixed read tasks and supplies frozen replies after managed CPU work.
+
 import std/[assertions, monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
 import ./network
@@ -105,8 +106,10 @@ const ClientBudget = 32'u64*1024*1024
 
 proc `=copy`*(destination: var NodeService, source: NodeService) {.error: "NodeService owns stable native callbacks".}
   ## A copied parent would leave native callbacks borrowing the original storage.
+
 proc `=dup`*(source: NodeService): NodeService {.error.}
   ## Initialization cannot duplicate this aggregate's native connection ownership.
+
 proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opened.} =
   ## Only a completely retired owner may move, including every child and byte buffer.
   `=wasMoved`(owner.node)
@@ -138,9 +141,11 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.clientUsed = 0
   owner.now = default(MonoTime)
   owner.limits = default(SafroleStateConfig)
+
 proc requireClosed(owner: NodeService) {.requires: not owner.opened.} =
   ## Native engines retire explicitly while all enclosing callback state is still alive.
   discard
+
 proc `=destroy`*(owner: NodeService) =
   ## Destruction never abandons live callbacks or silently cancels a foreign host's CPU lease.
   requireClosed(owner)
@@ -148,100 +153,127 @@ proc `=destroy`*(owner: NodeService) =
   `=destroy`(owner.peers)
   `=destroy`(owner.frames)
   `=destroy`(owner.local)
+
 func error*[T](outcome: NodeResult[T]): NodeError =
   ## Inspect the private operation tag.
   outcome.status
+
 func value*[T](outcome: NodeResult[T]): T {.requires: outcome.status == NodeError.None.} =
   ## Extract only a complete admitted result.
   outcome.completed
+
 func ticket*(task: NodeReadTask): NodeReadTicket =
   ## Worker retirement uses copied facts, never a native stream pointer.
   task.ticket
+
 func request*(task: NodeReadTask): ReadRequest =
   ## The request is fixed-size immutable transport data with no canonical graph.
   task.request
+
 func ticket*(task: NodeWorkTask): NodeWorkTicket =
   ## Only copied stream incarnation facts grant host control over this physical frame.
   task.ticket
+
 func header*(task: NodeWorkTask): UntrustedWorkHeader =
   ## Raw immutable bytes remain untrusted and contain neither native nor selected-state ownership.
   task.header
+
 func sourcePeer*(ticket: NodeWorkTicket): NodePeer =
   ## Preserve authenticated peer generation independently of the frame's later retirement.
   ticket.peer
+
 func ticket*(task: NodeSharingTask): NodeSharingTicket =
   ## Host control remains bound to the exact peer and physical generation.
   task.ticket
+
 func request*(task: NodeSharingTask): SharedWorkRequest =
   ## Complete immutable raw bytes confer no core assignment or signature authority.
   task.request
+
 func peerIdentity*(task: NodeSharingTask): StateEdKey =
   ## The native parent's authenticated key is independent from all packet-supplied fields.
   task.ticket.peer.identity
+
 func valid*(source: NodeClaims): bool =
   ## Default source snapshots carry no authenticated source identity.
   source.ready
+
 func peer*(source: NodeClaims): NodePeer {.requires: source.ready.} =
   ## Source identity remains tied to the original authenticated connection generation.
   source.peer
+
 func stream*(source: NodeClaims): NativeStreamId {.requires: source.ready.} =
   ## Combine this persistent stream ID with the peer token when comparing source incarnations.
   source.stream
+
 proc claims*(source: NodeClaims): PeerAnnouncements {.requires: source.ready.} =
   ## Claims remain detached untrusted metadata even after their original connection closes.
   source.claims
+
 func error*(owner: NodeService): NodeError =
   ## Observe scalar failure state without touching canonical or native storage.
   owner.failure
+
 func isOpen*(owner: NodeService): bool =
   ## Stopped/closed actors grant no new request or peer authority.
   owner.opened and not owner.stopping
+
 proc localPort*(owner: NodeService): uint16 =
   ## The owned listener retains its actual port through the active lifetime.
   if owner.opened: owner.node.localPort else: 0'u16
+
 proc peerCount*(owner: NodeService): int =
   ## Return current authenticated logical reservations, excluding pending replacement connections.
   if owner.opened: owner.node.peerCount else: 0
+
 func peerIndex(owner: NodeService, peer: NodePeer): int =
   ## Only an exact generation can find a current connection record.
   for index in 0..<owner.peers.len:
     if owner.peers[index].used and owner.peers[index].peer == peer: return index
   -1
+
 proc frameIndex(owner: NodeService, peer: NodePeer, stream: NativeStream): int =
   ## Borrowed handle equality is scoped to the authenticated peer's still-live callback mapping.
   for index in 0..<owner.frames.len:
     if owner.frames[index].kind != FrameKind.Empty and owner.frames[index].handle == stream and
         owner.frames[index].peer == peer: return index
   -1
+
 func frameCount(owner: NodeService, peer: NodePeer, kind: FrameKind): int =
   ## Closing frames retain their budget until native close, preventing rapid reset/reopen overcommit.
   result = 0
   for index in 0..<owner.frames.len:
     if owner.frames[index].kind == kind and owner.frames[index].peer == peer: inc result
+
 func reads(owner: NodeService): int =
   ## Global read slots are independent of each peer's selector and persistent reservations.
   result = 0
   for index in 0..<owner.frames.len:
     if owner.frames[index].kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work,
         FrameKind.Sharing, FrameKind.SharingClient]: inc result
+
 func ephemerals(owner: NodeService, peer: NodePeer): int =
   ## Closing/queued directions retain the same two-per-peer budget across every ephemeral method family.
   owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer, FrameKind.Client) +
     owner.frameCount(peer, FrameKind.Work)+owner.frameCount(peer, FrameKind.Sharing) +
     owner.frameCount(peer, FrameKind.SharingClient)
+
 func sharingClients(owner: NodeService): int =
   ## Two outgoing requests are independent of two incoming large-work reservations, preventing mutual sharing deadlock.
   result = 0
   for frame in owner.frames:
     if frame.kind == FrameKind.SharingClient: inc result
+
 func works(owner: NodeService): int =
   ## Two physical work routes bound partial headers and large bodies even during pending native resets.
   result = 0
   for frame in owner.frames:
     if frame.kind in [FrameKind.Work, FrameKind.Sharing]: inc result
+
 func localStream(peer: NodePeer, number: NativeStreamId): bool =
   ## IETF bit zero names client/server initiation independently of the connection's local direction.
   ((uint64(number) and 1) == 0) == peer.initiated
+
 proc releaseFrame(owner: var NodeService, index: int) =
   ## Final native retirement revokes tickets and refunds exactly the owned frame's byte charges.
   let frame = addr owner.frames[index]
@@ -258,6 +290,7 @@ proc releaseFrame(owner: var NodeService, index: int) =
   owner.outputUsed -= frame.outputBytes
   owner.replyUsed -= frame.replyBytes
   frame[] = default(Frame)
+
 proc closeFrame(owner: var NodeService, index: int) =
   ## Cancel only this stream; frame buffers and charged credit remain owned through native close.
   let frame = addr owner.frames[index]
@@ -275,6 +308,7 @@ proc closeFrame(owner: var NodeService, index: int) =
   wantRead(frame.handle, 0)
   wantWrite(frame.handle, 0)
   streamAbort(frame.handle)
+
 proc accountClient(owner: var NodeService, index: int) =
   ## Detached input wire is charged until host collection or actual failed/cancelled retirement.
   let frame = addr owner.frames[index]
@@ -287,6 +321,7 @@ proc accountClient(owner: var NodeService, index: int) =
   assert bytes <= ClientBudget-owner.clientUsed
   owner.clientUsed += bytes
   frame.inputBytes = bytes
+
 proc accountSharingClient(owner: var NodeService, index: int) =
   ## Fixed responses use shared client-input credit, independently from incoming bundle reservations.
   let frame = addr owner.frames[index]
@@ -299,6 +334,7 @@ proc accountSharingClient(owner: var NodeService, index: int) =
   assert bytes <= ClientBudget-owner.clientUsed
   owner.clientUsed += bytes
   frame.inputBytes = bytes
+
 proc accountWork(owner: var NodeService, index: int) =
   ## Every copied E4/payload byte shares the existing input budget through actual native close.
   let frame = addr owner.frames[index]
@@ -309,6 +345,7 @@ proc accountWork(owner: var NodeService, index: int) =
   assert bytes <= InputBudget-owner.inputUsed
   owner.inputUsed += bytes
   frame.inputBytes = bytes
+
 proc accountSharing(owner: var NodeService, index: int) =
   ## Full-bundle credit remains reserved until native close; output progress refreshes only scalar activity.
   let frame = addr owner.frames[index]
@@ -321,6 +358,7 @@ proc accountSharing(owner: var NodeService, index: int) =
   owner.inputUsed += bytes
   frame.inputBytes = bytes
   frame.offset = written
+
 proc accountRead(owner: var NodeService, index: int) =
   ## Heap-backed batch requests retain their physical input charge until the actual native close.
   let frame = addr owner.frames[index]
@@ -330,6 +368,7 @@ proc accountRead(owner: var NodeService, index: int) =
   assert bytes <= InputBudget-owner.inputUsed
   owner.inputUsed += bytes
   frame.inputBytes = bytes
+
 proc accountAnnouncement(owner: var NodeService, index: int) =
   ## One host thread updates buffer deltas after a bounded route event/processing activation.
   let frame = addr owner.frames[index]
@@ -356,6 +395,7 @@ proc accountAnnouncement(owner: var NodeService, index: int) =
   assert output <= OutputBudget-owner.outputUsed
   owner.outputUsed += output
   frame.outputBytes = output
+
 proc bindPersistent(owner: var NodeService, index: int, local: bool): bool =
   ## Record the highest observed UP0 ID before any parsing; a bad replacement never revives old claims.
   let frame = addr owner.frames[index]
@@ -386,6 +426,7 @@ proc bindPersistent(owner: var NodeService, index: int, local: bool): bool =
   info.queued = false
   owner.accountAnnouncement(index)
   true
+
 proc admissible(user: pointer, peer: NodePeer, stream: NativeStream): bool {.raises: [].} =
   ## Inspect only: the connection actor claims its raw route before the open callback owns buffers.
   let owner = cast[ptr NodeService](user)
@@ -403,6 +444,7 @@ proc admissible(user: pointer, peer: NodePeer, stream: NativeStream): bool {.rai
         owner[].frameCount(peer, FrameKind.Persistent) < 2
   owner[].frameCount(peer, FrameKind.Selecting) ==
       0 # Every peer retains a selector reservation even while read slots are saturated.
+
 proc peerEvent(user: pointer, peer: NodePeer, event: NodePeerEvent) {.raises: [].} =
   ## No canonical state or byte parser is touched by authenticated peer lifecycle observations.
   let owner = cast[ptr NodeService](user)
@@ -432,6 +474,7 @@ proc peerEvent(user: pointer, peer: NodePeer, event: NodePeerEvent) {.raises: []
           owner[].releaseFrame(index) # Queued/complete retired client slots receive no later application callback for this closed generation.
         else:
           owner.frames[index].closing = true # Physical native retirement remains responsible for active stream storage.
+
 proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cint) {.raises: [].} =
   ## Bounded selector/framing callbacks own no canonical graph or worker/source lease.
   let owner = cast[ptr NodeService](user)
@@ -610,9 +653,11 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     discard frame.announcement.event(stream, event, ByteLimit(budget))
     owner[].accountAnnouncement(position)
   of FrameKind.Empty: discard # Native close already revoked this physical route.
+
 func announced(snapshot: BlockSnapshot): AnnouncedBlock =
   ## Copy source facts; no canonical header/map owner survives through this value.
   AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](snapshot.blockHash)), slot: HeaderSlot(snapshot.slot))
+
 proc context(view: ChainView, limits: SafroleStateConfig): NodeResult[LocalContext] =
   ## Explicitly selected local finality is required; best head and peer claims imply none.
   let head = view.bestBlock
@@ -636,6 +681,7 @@ proc context(view: ChainView, limits: SafroleStateConfig): NodeResult[LocalConte
       AnnouncementError.None: return NodeResult[LocalContext](status: NodeError.InvalidSource)
   NodeResult[LocalContext](status: NodeError.None, completed: LocalContext(handshake: handshake,
     limits: policy, body: body.value)) # Only fresh encoded bytes and fixed claim data escape.
+
 proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   ## Retire all engines/callbacks before dropping protocol buffers; host joins canonical jobs separately.
   owner.stopping = true
@@ -656,10 +702,12 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.opened = false
   assert owner.inputUsed == 0 and owner.handshakeUsed == 0 and owner.outputUsed == 0 and
       owner.replyUsed == 0 and owner.clientUsed == 0
+
 proc stop*(owner: var NodeService) =
   ## Callback-safe intent revokes new work; it does not join or release a host's canonical read lease.
   owner.stopping = true
   owner.node.stop()
+
 proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
     limits: SafroleStateConfig): NodeError {.requires: owner.callbacks == 0.} =
   ## Capture all canonical facts before installing stable native callbacks and fixed protocol capacity.
@@ -703,6 +751,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
       else: NodeError.BackendFailure # No failed low-level owner escapes factory cleanup.
     return owner.failure
   NodeError.None
+
 proc advance*(owner: var NodeService, view: ChainView, now: StateTime): NodeResult[EpochUpdate] =
   ## Host updates truthfully selected metadata under its graph gate, independently of native polling.
   if not owner.isOpen: return NodeResult[EpochUpdate](status: NodeError.Unavailable)
@@ -726,16 +775,20 @@ proc peerAt*(owner: NodeService, ordinal: int): NodeResult[NodePeer] =
           completed: owner.peers[index].peer)
       inc found
   NodeResult[NodePeer](status: NodeError.Unavailable)
+
 proc beginPeerConnection*(owner: var NodeService, identity: StateEdKey,
     endpoint: NetworkEndpoint): DialResult =
   ## Explicit detached demand does not add membership or chain claims; native TLS pins the selected original identity.
   owner.node.beginDial(identity, endpoint)
+
 proc peerConnectionLive*(owner: NodeService, ticket: DialTicket): bool =
   ## Source-free cancellation tokens observe only their exact physical engine lifetime.
   owner.node.dialLive(ticket)
+
 proc cancelPeerConnection*(owner: var NodeService, ticket: DialTicket): bool =
   ## Temporary recovery connections retire through the ordinary bounded callback-safe poll loop.
   owner.node.cancelDial(ticket)
+
 proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[NodePeer] =
   ## Find an actual live authenticated generation without requiring announcement-grid eligibility.
   if not owner.isOpen: return NodeResult[NodePeer](status: NodeError.Unavailable)
@@ -746,6 +799,7 @@ proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[Node
       if matches and owner.node.active(peer):
         return NodeResult[NodePeer](status: NodeError.None, completed: peer)
   NodeResult[NodePeer](status: NodeError.Unavailable)
+
 func peerBusy*(owner: NodeService, identity: StateEdKey): bool =
   ## Temporary demand connections may also carry remote work; selectors and closing frames retain that peer until actual native retirement.
   for index in 0..<owner.frames.len:
@@ -753,6 +807,7 @@ func peerBusy*(owner: NodeService, identity: StateEdKey): bool =
     if frame.kind in [FrameKind.Empty, FrameKind.Persistent]: continue
     if array[32, byte](frame.peer.identity) == array[32, byte](identity): return true
   false
+
 proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
   ## Capture only the greatest live UP0 incarnation's claims; they never certify a state root or finality.
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeClaims](
@@ -769,6 +824,7 @@ proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
         completed: NodeClaims(ready: true, peer: peer,
         stream: owner.frames[index].number, claims: captured.value))
   NodeResult[NodeClaims](status: NodeError.Unavailable)
+
 proc requestLive*(owner: NodeService, ticket: NodeRequestTicket): bool =
   ## Native completion may already be retired, but stale/foreign generations never target reused slots.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -776,6 +832,7 @@ proc requestLive*(owner: NodeService, ticket: NodeRequestTicket): bool =
   let frame = addr owner.frames[ticket.index]
   frame.kind == FrameKind.Client and not frame.closing and frame.serial == ticket.serial and
       frame.peer == ticket.peer and owner.node.active(ticket.peer)
+
 proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
     maximum = ByteLimit(MaxReadReplyBytes)): NodeResult[
         NodeRequestTicket] {.requires: owner.callbacks == 0.} =
@@ -838,6 +895,7 @@ ReadKind.ProvenSegmentShards, ReadKind.Segments]
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   NodeResult[NodeRequestTicket](status: NodeError.None, completed: NodeRequestTicket(peer: peer,
       serial: owner.serial, index: index))
+
 proc takeReply*(owner: var NodeService, ticket: NodeRequestTicket): ReadClientResult {.requires: owner.callbacks == 0.} =
   ## Collection transfers only a complete untrusted wire; physical reservations survive until native close.
   if not owner.requestLive(ticket): return clientFailure(ReadError.InvalidStream)
@@ -847,33 +905,42 @@ proc takeReply*(owner: var NodeService, ticket: NodeRequestTicket): ReadClientRe
   owner.frames[ticket.index].closing = true
   if owner.frames[ticket.index].handle == NativeStream(nil): owner.releaseFrame(ticket.index)
   reply
+
 proc cancelRequest*(owner: var NodeService, ticket: NodeRequestTicket): bool {.requires: owner.callbacks == 0.} =
   ## Queued cancellation removes both host/native pending opens; active cancellation waits for real native retirement.
   if not owner.requestLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+
 func sourcePeer*(ticket: NodeReadTicket): NodePeer =
   ## Copied historical source still requires a live generation before followup; it never causes reconnection.
   ticket.peer
+
 proc peerLive*(owner: NodeService, peer: NodePeer): bool =
   ## Followup may use only the original still-authenticated reservation.
   owner.isOpen and owner.node.active(peer)
+
 func isValidator*(owner: NodeService): bool =
   ## Local accepted role is detached from canonical graph access.
   owner.isOpen and owner.node.isValidator
+
 proc isValidator*(owner: NodeService, peer: NodePeer): bool =
   ## Recipient checks preserve current transport generation and gated roster membership.
   owner.isOpen and owner.node.isValidator(peer)
+
 func localIdentity*(owner: NodeService): StateEdKey {.requires: owner.isOpen.} =
   ## Copy the actual validated local transport identity into a detached CPU recipient contract.
   owner.node.localIdentity
+
 func connectivityEpoch*(owner: NodeService): uint32 {.requires: owner.isOpen.} =
   ## Packet certainty requires this accepted epoch to match finalized state and the observed local clock.
   owner.node.connectivityEpoch
+
 proc preimageNeighbour*(owner: NodeService, peer: NodePeer): bool =
   ## Gossip requires both real validator roles and the accepted epoch-gated grid; ordinary UP0 eligibility is insufficient.
   owner.isOpen and owner.node.isValidator and owner.node.isValidator(peer) and
       owner.node.announcements(peer)
+
 proc takeRead(owner: var NodeService, filtered: bool, kinds: set[ReadKind],
     excluded = false): NodeResult[NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
@@ -899,21 +966,26 @@ proc takeRead(owner: var NodeService, filtered: bool, kinds: set[ReadKind],
     return NodeResult[NodeReadTask](status: NodeError.None, completed: NodeReadTask(ticket: ticket,
         request: request.value))
   NodeResult[NodeReadTask](status: NodeError.Unavailable)
+
 proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## General worker admission retains the existing rotating ready-request order.
   owner.takeRead(false, {})
+
 proc takeRead*(owner: var NodeService, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Detached responders may inspect one method without taking unrelated canonical work while its graph is leased.
   owner.takeRead(true, {kind})
+
 proc takeReadExcept*(owner: var NodeService, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## A dedicated consumer cannot monopolize general admission by repeatedly returning a request that general code must defer.
   owner.takeRead(true, {kind}, true)
+
 proc takeReadExcept*(owner: var NodeService, kinds: set[ReadKind]): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Multiple dedicated managed consumers preserve their unclaimed requests and original native deadlines during ordinary read arbitration.
   owner.takeRead(true, kinds, true)
+
 proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   ## Stale/foreign/closed tickets contain no native pointer and cannot target a reused slot.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -921,12 +993,15 @@ proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   owner.frames[ticket.index].kind == FrameKind.Read and not owner.frames[ticket.index].closing and
     owner.frames[ticket.index].serial == ticket.serial and owner.frames[ticket.index].peer ==
         ticket.peer and owner.node.active(ticket.peer)
+
 func sharingRequestCount*(owner: NodeService): int =
   ## Count physical outgoing reservations, including queued, completed-uncollected and closing streams.
   owner.sharingClients
+
 func peerIdentity*(ticket: NodeSharingRequestTicket): StateEdKey =
   ## This exact reservation's actual TLS identity is independent from request/response bytes.
   ticket.peer.identity
+
 proc sharingRequestLive*(owner: NodeService, ticket: NodeSharingRequestTicket): bool =
   ## Foreign/default/stale generations cannot observe or retire a reused client slot.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -934,6 +1009,7 @@ proc sharingRequestLive*(owner: NodeService, ticket: NodeSharingRequestTicket): 
   let frame = addr owner.frames[ticket.index]
   frame.kind == FrameKind.SharingClient and not frame.closing and frame.serial == ticket.serial and
     frame.peer == ticket.peer and owner.node.active(ticket.peer)
+
 proc requestSharing*(owner: var NodeService, peer: NodePeer,
     request: SharedWorkRequest): NodeResult[NodeSharingRequestTicket] {.requires: owner.callbacks == 0.} =
   ## Reserve complete output before copying; incoming bundles keep their independent two-slot progress capacity.
@@ -978,6 +1054,7 @@ proc requestSharing*(owner: var NodeService, peer: NodePeer,
     return NodeResult[NodeSharingRequestTicket](status: NodeError.Unavailable)
   NodeResult[NodeSharingRequestTicket](status: NodeError.None,
     completed: NodeSharingRequestTicket(peer: peer, serial: owner.serial, index: index))
+
 proc takeSharingReply*(owner: var NodeService,
     ticket: NodeSharingRequestTicket): SharingClientResult {.requires: owner.callbacks == 0.} =
   ## Complete fixed bytes survive native close, but no result precedes exact response FIN or exact host collection.
@@ -988,42 +1065,50 @@ proc takeSharingReply*(owner: var NodeService,
   owner.frames[ticket.index].closing = true
   if owner.frames[ticket.index].handle == NativeStream(nil): owner.releaseFrame(ticket.index)
   reply
+
 proc cancelSharingRequest*(owner: var NodeService,
     ticket: NodeSharingRequestTicket): bool {.requires: owner.callbacks == 0.} =
   ## Public queued cancellation precedes slot reuse; active streams retain charges through physical retirement.
   if not owner.sharingRequestLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+
 proc enableJudgmentStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Omission rejects CE145 before payload allocation; the host installs bounded signature, guarantee and retention consumers before activation.
   if not owner.isOpen or not owner.node.isValidator: return false
   owner.judgmentEnabled = true
   true
+
 proc enableAuditStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Omission rejects CE144 before payload allocation; the host installs bounded managed receipt before activating this selector.
   if not owner.isOpen or not owner.node.isValidator: return false
   owner.auditEnabled = true
   true
+
 proc enableAssuranceSending*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Outgoing CE141 needs its own explicitly configured managed signer; it never activates receipt.
   if not owner.isOpen or not owner.node.isValidator: return false
   owner.assuranceSending = true
   true
+
 proc enableAssuranceStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## CE141 remains separately disabled until a real managed verifier and bounded consumer are installed.
   if not owner.isOpen or not owner.node.isValidator: return false
   owner.assuranceEnabled = true
   true
+
 proc enableDistributionStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Managed CE135 verification must be installed before this separately optional validator-only selector is enabled.
   if not owner.isOpen or not owner.node.isValidator: return false
   owner.distributionEnabled = true
   true
+
 proc enableSharingStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## A real managed receiver must be installed before explicitly enabling CE134; omission always rejects it.
   if not owner.isOpen: return false
   owner.sharingEnabled = true
   true
+
 proc takeSharingRequest*(owner: var NodeService): NodeResult[
     NodeSharingTask] {.requires: owner.callbacks == 0.} =
   ## Claim at most one complete exact-FIN request with actual peer identity; no native pointer escapes.
@@ -1046,6 +1131,7 @@ proc takeSharingRequest*(owner: var NodeService): NodeResult[
       completed: NodeSharingTask(ticket: NodeSharingTicket(index: index, serial: owner.serial,
         peer: frame.peer), request: request.value))
   NodeResult[NodeSharingTask](status: NodeError.Unavailable)
+
 func sharingLive*(owner: NodeService, ticket: NodeSharingTicket): bool =
   ## A reset, retired connection or recycled native frame invalidates only its own host claim.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -1053,6 +1139,7 @@ func sharingLive*(owner: NodeService, ticket: NodeSharingTicket): bool =
   let frame = owner.frames[ticket.index]
   frame.kind == FrameKind.Sharing and not frame.closing and frame.serial == ticket.serial and
     frame.peer == ticket.peer and owner.node.active(ticket.peer) and not frame.sharing.failed
+
 proc respondSharing*(owner: var NodeService, ticket: NodeSharingTicket,
     response: array[SharingResponseBytes, byte]): ReadError {.requires: owner.callbacks == 0.} =
   ## Reserve the complete fixed reply before enabling native output; no caller supplies a source-bearing owner.
@@ -1064,16 +1151,19 @@ proc respondSharing*(owner: var NodeService, ticket: NodeSharingTicket,
     owner.frames[ticket.index].replyBytes = size
     owner.replyUsed += size
   reason
+
 proc rejectSharing*(owner: var NodeService, ticket: NodeSharingTicket): bool {.requires: owner.callbacks == 0.} =
   ## CPU cancellation is the controller's separate exact lease; this method retires only the native stream.
   if not owner.sharingLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+
 proc enableWorkStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Explicit host activation promises to consume work tasks; ordinary node actors reject selectors until their dispatcher is installed.
   if not owner.isOpen: return false
   owner.workEnabled = true
   true
+
 proc takeWorkHeader*(owner: var NodeService): NodeResult[
     NodeWorkTask] {.requires: owner.callbacks == 0.} =
   ## Rotate bounded physical slots and claim one exact small header without borrowing a canonical graph.
@@ -1096,6 +1186,7 @@ proc takeWorkHeader*(owner: var NodeService): NodeResult[
       completed: NodeWorkTask(ticket: NodeWorkTicket(peer: owner.frames[index].peer,
         serial: owner.serial, index: index), header: header.value))
   NodeResult[NodeWorkTask](status: NodeError.Unavailable)
+
 proc workLive*(owner: NodeService, ticket: NodeWorkTicket): bool =
   ## Exact generation and serial protect reused physical slots and foreign/restarted actors.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -1103,12 +1194,15 @@ proc workLive*(owner: NodeService, ticket: NodeWorkTicket): bool =
   let frame = addr owner.frames[ticket.index]
   frame.kind == FrameKind.Work and not frame.closing and frame.serial == ticket.serial and
     frame.peer == ticket.peer and owner.node.active(ticket.peer) and not frame.work.failed
+
 func workStreamCount*(owner: NodeService): int =
   ## Physical quota includes closing work streams until actual native close releases their frames.
   owner.works
+
 proc workInputBytes*(owner: NodeService, ticket: NodeWorkTicket): uint64 =
   ## Detached scalar accounting can prove the small-header boundary without reading any canonical or body owner.
   if owner.workLive(ticket): owner.frames[ticket.index].work.receivedBytes else: 0'u64
+
 proc permitWorkBody*(owner: var NodeService, ticket: NodeWorkTicket,
     info: WorkSubmissionInfo): ReadError {.requires: owner.callbacks == 0.} =
   ## Host code calls only after actual managed grant collection; the route independently enforces hard byte bounds.
@@ -1116,6 +1210,7 @@ proc permitWorkBody*(owner: var NodeService, ticket: NodeWorkTicket,
   let allowed = owner.frames[ticket.index].work.permitBody(info)
   if allowed == ReadError.None: owner.frames[ticket.index].activity = owner.now
   allowed
+
 proc takeWorkBody*(owner: var NodeService, ticket: NodeWorkTicket): NodeResult[
     UntrustedWorkBody] {.requires: owner.callbacks == 0.} =
   ## Complete raw bodies have exact request FIN but still require actual commitment/proof/refinement checks.
@@ -1124,15 +1219,18 @@ proc takeWorkBody*(owner: var NodeService, ticket: NodeWorkTicket): NodeResult[
   if body.error != ReadError.None: return NodeResult[UntrustedWorkBody](
       status: NodeError.Unavailable)
   NodeResult[UntrustedWorkBody](status: NodeError.None, completed: body.value)
+
 proc acknowledgeWork*(owner: var NodeService, ticket: NodeWorkTicket): ReadError {.requires: owner.callbacks == 0.} =
   ## A live exact request may receive bare FIN only after the host accepts its genuinely completed managed work.
   if not owner.workLive(ticket): return ReadError.InvalidStream
   owner.frames[ticket.index].work.acknowledge()
+
 proc rejectWork*(owner: var NodeService, ticket: NodeWorkTicket): bool {.requires: owner.callbacks == 0.} =
   ## Source-free native retirement never cancels or collects any Services CPU lease.
   if not owner.workLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+
 proc deferRead*(owner: var NodeService, ticket: NodeReadTicket): bool {.requires: owner.callbacks == 0.} =
   ## Revoke this exact claim immediately; restoring its prior activity prevents repeated cache misses extending inactivity.
   if not owner.readLive(ticket): return false
@@ -1140,6 +1238,7 @@ proc deferRead*(owner: var NodeService, ticket: NodeReadTicket): bool {.requires
   owner.frames[ticket.index].serial = 0
   owner.frames[ticket.index].activity = owner.frames[ticket.index].claimActivity
   true
+
 proc respond*(owner: var NodeService, ticket: NodeReadTicket,
     reply: ReadReply): ReadError {.requires: owner.callbacks == 0.} =
   ## Charge bounded frozen output before copying; worker/canonical owners are already retired by the host.
@@ -1152,11 +1251,13 @@ proc respond*(owner: var NodeService, ticket: NodeReadTicket,
     owner.replyUsed += length
     owner.frames[ticket.index].activity = owner.now
   sent
+
 proc reject*(owner: var NodeService, ticket: NodeReadTicket): bool {.requires: owner.callbacks == 0.} =
   ## Host refuses missing/busy data without fabricating an empty successful reply.
   if not owner.readLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+
 proc poll*(owner: var NodeService, now: MonoTime, maximumMs: range[
     0..1] = 1): bool {.requires: owner.callbacks == 0.} =
   ## Native polling and bounded metadata/byte work continue while a host worker leases canonical state.

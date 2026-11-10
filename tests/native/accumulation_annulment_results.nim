@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused accpar certificates cannot expose owners, copied decisions or original/selected state payloads.
+
 import std/cmdline
 import ../../src/state/accumulation/[annulment as accumulation_annulment,
     inputs as accumulation_inputs]

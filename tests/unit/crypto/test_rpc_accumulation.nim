@@ -20,8 +20,11 @@ include ../../../src/rpc/server
 
 # Backend refusal begins only after genuine signed owners and native transport fixtures exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc rpcPair(domain, kind, protocol: cint, pair: pointer): cint {.importc: "socketpair",
     header: "<sys/socket.h>".}
 

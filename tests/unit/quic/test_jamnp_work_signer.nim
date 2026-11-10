@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_signer_arc_release"}
 
 ## Actual maintained TLS fixture keys load only into matching opaque owners; malformed/ambiguous input never publishes a signer.
+
 import std/[assertions, envvars, syncio, posix/posix]
 import ../../../src/jamnp-s/work_signer
 import ../../../src/crypto/primitives
@@ -20,6 +22,7 @@ proc cycle(cert, key: string, expected: StateEdKey, fixture: GuaranteeFixture) =
   let wrong = loadWorkSigner(cert, getEnv("RAGNAROK_TEST_KEY_B"))
   assert wrong.error == WorkSignerError.IdentityMismatch
   fixture.guaranteeCycle(imported.value)
+
 proc main() {.raises.} =
   ## All key mutation fixtures are generated test-only bytes, never user credential material or printed secrets.
   let cert = getEnv("RAGNAROK_TEST_CERT")

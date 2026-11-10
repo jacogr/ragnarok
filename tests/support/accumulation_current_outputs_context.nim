@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Signed two-entry output fixtures exercise duplicate pairs and differing yields from the same service.
+
 import std/assertions
 import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/[outputs as state_outputs, workqueues as state_workqueues]
@@ -11,10 +12,12 @@ import ../../src/state/accumulation/current/[outputs as accumulation_current_out
 import ../../src/state/accumulation/round as accumulation_round
 import ./[accumulation_execution_context, accumulation_current_round_context,
   accumulation_current_driver_context, report_context, pvm_accumulation_program]
+
 proc currentOutputLimits*(): CurrentAccumulationOutputLimits =
   ## Bound three original provider visits independently of the retained unique pair capacity.
   CurrentAccumulationOutputLimits(entries: ElementLimit(3), outcomes: ElementLimit(4),
     log: OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145)))
+
 proc currentOutputCompletion*(base: OwnedReport, varied: bool,
     reportGas = 10000'u64): CompletedCurrentAccumulationSequence =
   ## Original free reservations exclude the ready report; remaining actual gas admits it in a later entry.

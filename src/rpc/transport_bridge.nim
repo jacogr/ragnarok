@@ -4,6 +4,7 @@
 ## Bounded detached-byte handoff between transport tasks and the RPC dispatcher.
 ## Every operation tries one per-connection lock and returns Busy instead of waiting.
 ## Caller-owned storage must remain at a stable address until its transport tasks have retired.
+
 import std/atomics
 
 const
@@ -48,18 +49,22 @@ type
 
 proc `=copy`*(dest: var RpcTransportBridge, source: RpcTransportBridge) {.error.}
   ## Copying live handoff state would duplicate connection and completion authority.
+
 proc `=dup`*(source: RpcTransportBridge): RpcTransportBridge {.error.}
   ## Transport tasks borrow one stable bridge rather than cloning it.
 
 func valid*(ticket: BridgeTicket): bool =
   ## Default tickets cannot deliver requests or acknowledge output.
   ticket.epoch != 0
+
 func index*(ticket: BridgeTicket): BridgeIndex {.requires: ticket.valid.} =
   ## The fixed connection selector is available only for a live-shaped ticket.
   ticket.slot
+
 func generation*(ticket: BridgeTicket): uint64 {.requires: ticket.valid.} =
   ## A scalar generation is safe to retain on either side of the bridge.
   ticket.epoch
+
 func ticket*(grant: BridgeDispatch): BridgeTicket =
   ## The reservation carries only the detached connection identity.
   grant.connection
@@ -68,12 +73,15 @@ proc acquire(slot: var BridgeSlot): bool =
   ## A failed CAS returns immediately; the dispatcher never spins behind a task.
   var expected = false
   atomicCompareExchange(slot.locked, expected, true, moAcquire, moRelaxed)
+
 proc release(slot: var BridgeSlot) =
   ## Publish moved message storage before another role can take the slot.
   atomicStore(slot.locked, false, moRelease)
+
 func matches(slot: BridgeSlot, connection: BridgeTicket): bool =
   ## Every operation checks both lifecycle and generation while holding the slot lock.
   slot.active and connection.epoch != 0 and slot.epoch == connection.epoch
+
 proc retire(slot: var BridgeSlot) =
   ## Retiring queued storage cannot revoke bytes already owned by a writer; their completion becomes stale.
   slot.active = false
@@ -83,6 +91,7 @@ proc retire(slot: var BridgeSlot) =
   slot.writing = false
   slot.incoming = default(BridgeMessage)
   slot.outgoing = default(BridgeMessage)
+
 func fits(message: BridgeMessage, maximum: int): bool =
   ## Enforce existing RPC byte budgets before retaining untrusted payloads.
   if message.payload.len > maximum: return false
@@ -95,6 +104,7 @@ func fits(message: BridgeMessage, maximum: int): bool =
 proc beginStop*(bridge: var RpcTransportBridge) =
   ## Freeze admission before scanning slots; the bridge is one-shot until all borrowing tasks retire.
   atomicStore(bridge.stopRequested, true, moRelease)
+
 proc stopping*(bridge: var RpcTransportBridge): bool =
   ## A scalar stop observation never inspects slot payloads without their lock.
   atomicLoad(bridge.stopRequested, moAcquire)

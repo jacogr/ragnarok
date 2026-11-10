@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_integration_arc_release"}
 
 ## Cross-host executions bind current effects, terminal checkpoints and conservative complete-batch publication.
@@ -22,6 +23,7 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
 
 # Inject backend refusal only after genuine execution and batch preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Prove stale application performs no hashing or partial incoming credit.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
@@ -63,7 +65,6 @@ proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult): 
   let completed = [first, second]
   prepareCompleteAccumulationBatch(fixture.inputs, prior, completed, [], HeaderSlot(128),
       batchPolicy())
-
 
 # Assert exact fulfillment at the batch's verified invocation slot, rather than just counting pending contributions.
 proc fulfilled(state: StateStoreSnapshot, service: uint32, bytes: seq[byte]) =

@@ -2,13 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime misuse probes reach actual success-only extraction under checked optimized compilation.
+
 import std/[assertions, cmdline]
 import ../../src/state/trie_proof
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc extract[T](outcome: StateProofResult[T]) =
   ## The same generic public accessor must reject defaults and every actual failure payload type.
   discard outcome.value
+
 proc main() =
   ## Genuine capture, membership, absence and batch controls precede deliberately refused extraction.
   let limits = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(2))

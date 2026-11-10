@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_selected_global_stage_arc_release"}
 
 ## Signed bless/assign/designate hosts preserve original payload authority across handoff and annulment.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[layout as state_layout, authorization as state_authorization,
@@ -20,12 +22,15 @@ import ../../../src/state/accumulation/guest_runner as accumulation_guest_runner
 import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
   pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc code(instructions: seq[seq[byte]], payload: seq[byte]): seq[byte] =
   ## Complete service framing preserves actual PVM guest code and independently authored payloads.
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = payload): result.add(
       octet) # Exact canonical service metadata prefix.
+
 proc fixture(base: OwnedReport, cancel = false): ExecutionFixture =
   ## Original manager42 hands roles away; original owner99 still supplies both global payloads unless N annuls it.
   var options = executionFixtureConfig()
@@ -53,6 +58,7 @@ proc fixture(base: OwnedReport, cancel = false): ExecutionFixture =
   owner.add(@[50'u8, 0])
   options.secondProgram = code(owner, payload)
   executionFixture(base, options)
+
 proc provisions(fixture: ExecutionFixture): PreparedAccumulationProvisionStage =
   ## Ready guests capture strict facts before complete selected accounts and original provision fulfillment.
   var limits = currentGuestLimits()
@@ -68,6 +74,7 @@ proc provisions(fixture: ExecutionFixture): PreparedAccumulationProvisionStage =
       contexts: ElementLimit(2),
     values: PreimageLimits(items: ElementLimit(0), perBlob: ByteLimit(0), totalBlobBytes: ByteLimit(
         0)), encodedBytes: ByteLimit(8))).value
+
 proc main() {.raises.} =
   ## Native fixture generation retains actual report/admission cryptography before any guest or global selection.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

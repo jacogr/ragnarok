@@ -86,7 +86,8 @@ for opcode in 124'u8..130'u8:
         let directClipped = clipped.operations
         let actualRaw = actualOperations(raw)
         let actualClipped = actualOperations(clipped)
-        if size == 8: echo "COUNTER_OBSERVATION,", rawBefore, ",", directRaw, ",", actualRaw, ",", clippedBefore, ",", directClipped, ",", actualClipped
+        if size == 8: echo "COUNTER_OBSERVATION,", rawBefore, ",", directRaw, ",", actualRaw, ",",
+            clippedBefore, ",", directClipped, ",", actualClipped
         assert directRaw == rawBefore+charged and directClipped == clippedBefore+charged
         inc widthCases
 echo "CLIPPED_WIDTH_NATIVE_CASES,", widthCases

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-owner loop/read arbitration and checked successor reservation boundaries.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas

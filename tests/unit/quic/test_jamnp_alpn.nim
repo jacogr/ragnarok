@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual production acceptors negotiate both JAMNP-S roles while preserving chain/version isolation.
+
 import ../../../src/jamnp-s/chain_alpn
 import ../../../src/chain/genesis
 
@@ -12,8 +13,10 @@ import ../../../src/jamnp-s/[protocol, alpn, devnet]
 type Client = object ## A stable callback owner outlives the native endpoint and its final callbacks.
   transport: Transport
   expected: array[32, byte]
+
 proc `=copy`(destination: var Client, source: Client) {.error.}
   ## A copied engine would duplicate callback and descriptor ownership.
+
 proc `=dup`(source: Client): Client {.error.}
   ## Last-use analysis must not hide duplicated engine ownership.
 
@@ -21,9 +24,11 @@ proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, r
   ## The dialer pins the same server key for every ALPN trial.
   let client = cast[ptr Client](user)
   cint(validPeer(cast[ptr byte](der), length, client.expected))
+
 proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].} =
   ## Handshake tests open no application streams; unexpected remote streams receive no handler.
   if kind == 0: streamAbort(stream)
+
 proc key(path: string): array[32, byte] {.raises.} =
   ## Native fixture metadata supplies independently generated raw keys.
   let bytes = readFile(path)

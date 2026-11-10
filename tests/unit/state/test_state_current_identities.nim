@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine exact-original predecessor/full-view binding and hash-free complete sorted physical identity observations.
+
 # @@Verification={"arc":"state_current_identities_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_checkpoint_context,
@@ -13,14 +14,18 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/state/store
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Prepare real updates and full supplied matching before disabling all hashes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Full view/identity comparison never rehashes state or namespace keys.
+
 proc cycle(parent: SelectedLogicalParent, update: PreparedCurrentChainUpdate) =
   ## Retire fixed identity observations and admitted full view/index copies on every cycle.
   assert preserveCurrentIdentities(parent, update,
       currentIdentityTestLimits).value.identityInfo.value.entries == 18
+
 proc main() {.raises.} =
   ## Same original parent bytes can yield distinct immutable owners; explicit finality also distinguishes original selections.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

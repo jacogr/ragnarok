@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Services keeps canonical/RPC ownership frozen through native maintenance and preserves its receipt across joined shutdown.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/managed_storage_samples
@@ -13,6 +14,7 @@ import ../../../src/state/store
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/rpc/server
+
 proc waitFinished(owner: var Services) =
   ## Dispatcher work observes only scalar phase while the native worker owns every canonical graph alias.
   let started = getMonoTime()
@@ -22,6 +24,7 @@ proc waitFinished(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining)
+
 proc main() {.raises.} =
   ## A real RPC listener remains paused until collection, with no canonical installation or publication receipt change.
   let path = "managed-services-maintenance"

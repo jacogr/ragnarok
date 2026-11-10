@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent fixture ALPN formatting for real command responders on their configured genesis.
+
 import std/[assertions, syncio, strutils]
 import ../../src/chain/genesis
 import ../../src/rpc/protocol

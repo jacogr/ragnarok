@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_prepared_chain_update_arc_release"}
 
 ## Opaque current updates prepare on private copies and install exact state/view candidates only while all original owners remain current.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, report_owned]
@@ -10,8 +12,11 @@ import ../../../src/state/accumulation/current/[update as accumulation_current_u
     chain as accumulation_current_chain, consensus as accumulation_current_consensus]
 import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, report_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc witness(context: CurrentChainFixture) =
   ## Preparation retains exact originals and independent candidate owners before either live handle changes.
   let parent = context.parent.value.stateSnapshot
@@ -35,6 +40,7 @@ proc witness(context: CurrentChainFixture) =
   assert not canInstallCurrentChainUpdate(state, view, update), "replay cannot replace original parent ownership"
   assert not canInstallCurrentChainUpdate(state, old, update), "one advanced live handle cannot authorize partial installation"
   failHash(0)
+
 proc refusals(context: CurrentChainFixture) =
   ## Failed prepare/can-install checks expose no prefix and preserve current live handles independently.
   let parent = context.parent.value.stateSnapshot
@@ -77,6 +83,7 @@ proc refusals(context: CurrentChainFixture) =
   let mismatch = prepareCurrentChainUpdate(state, wrongProfile, context.source, ByteLimit(100000))
   assert mismatch.error == CurrentChainPreparationError.ChainFailure
   assert mismatch.chainFailure.error == CurrentAccumulationChainError.ProfileMismatch
+
 proc cycle(context: CurrentChainFixture) =
   ## All private preparation/capture/installation handles die before the next lifetime observation.
   var state = forkStateStore(context.parent.value.stateSnapshot).value
@@ -84,6 +91,7 @@ proc cycle(context: CurrentChainFixture) =
   let owner = prepareCurrentChainUpdate(state, view, context.source, ByteLimit(100000)).value
   installCurrentChainUpdate(state, view, owner)
   assert sameStateSnapshot(state.snapshot.value, owner.currentUpdateState)
+
 proc main() {.raises.} =
   ## Real signed current sources cover empty and mixed guest/preimage/guarantee successors.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

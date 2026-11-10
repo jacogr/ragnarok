@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared explicit current STF fetch, statistics and code-blob ceilings preserve every existing authored guest profile.
+
 import ./current_consecutive_context
 import ../../src/app/candidate
 import ../../src/codec/bounded
+
 proc currentStfGuestLimits*(): CurrentCandidateLimits =
   ## Return the original common body/trace guest policy; callers independently declare lifecycle-specific resource ceilings.
   var limits = currentConsecutiveLimits()

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_policy_arc_release"}
 
 ## Strict complete startup policies reject ambiguous or deficient files before resources open; genuine foreground create/open lifetimes release archive locks and remain disabled without an explicit policy.
+
 import std/[assertions, syncio, strutils, os, dirs, paths, posix/posix]
 import ../../../src/app/[node_assurance_policy, options, node_command]
 import ../../../src/app/proof/assurance_storage
@@ -14,23 +16,29 @@ import ../../../src/jamnp-s/[connections, node, assurance_store, assurance_recor
 import ../../../src/quic/transport
 import ../../support/[jamnp_assurance_fixture, jamnp_assurance_policy, current_application_context,
   assurance_signer_context, arc_evidence]
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Separate test-owned paths from any concurrently running independent suite.
+
 proc hex(bytes: array[32, byte]): string =
   ## Independent lower-case fixed-width command finality representation.
   result = ""
   for octet in bytes: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc refuse(user: pointer, bytes: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## An ephemeral port reservation accepts no peer or claimed identity.
   0
+
 proc ignore(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## The reservation never polls or owns an application stream.
   discard
+
 proc appended(base, extra: seq[string]): seq[string] =
   ## Independent argument ownership uses supported explicit sequence traversal.
   result = @[]
   for item in base: result.add(item)
   for item in extra: result.add(item)
+
 proc configuration(text: string) =
   ## Whole schema success and representative resource/role refusals exercise the actual strict loader without native activation.
   let parsed = decodeNodeAssurancePolicy(text)
@@ -58,10 +66,12 @@ proc configuration(text: string) =
   assert decodeNodeAssurancePolicy(text.replace("signing.shards=1023\n",
       "signing.shards=0\n")).error == WorkPolicyError.InvalidPolicy, "assurance policy boundary 58"
   assert decodeNodeAssurancePolicy(repeat('x', 32769)).error == WorkPolicyError.LimitExceeded, "assurance policy boundary 60"
+
 proc cycle(text: string) =
   ## All detached parsed configuration and child policies retire before each ARC observation.
   let parsed = decodeNodeAssurancePolicy(text)
   assert parsed.error == WorkPolicyError.None and parsed.value.valid, "repeat complete parse"
+
 proc foreground(fixture: AssuranceAcquisitionFixture, text, suffix: string) {.raises.} =
   ## Real complete-state startup owns the actual TLS identity, independent durable directory and explicit chain parameters through joined shutdown.
   var chainFile = "assurance-policy-chain-" & suffix & ".json"
@@ -127,6 +137,7 @@ proc foreground(fixture: AssuranceAcquisitionFixture, text, suffix: string) {.ra
   writeFile(policyFile, "ragnarok-assurance-policy-v0\n")
   assert runNodeCommand(options) == NodeCommandError.InvalidAssurancePolicy,
     "invalid file rejected before resource activation"
+
 proc main() {.raises.} =
   ## One genuinely admitted source supplies all structural and executable policy evidence.
   let fixture = assuranceAcquisitionFixture()

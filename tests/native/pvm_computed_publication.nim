@@ -15,6 +15,7 @@ import ../support/pvm_computed_publication
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force an actual maintained backend failure after genuine execution/admission finishes.
+
 proc expect[T](outcome: ComputedPublicationResult[T], reason: ComputedPublicationError) =
   ## Verify exact alternatives before attempting absent successful values or unrelated causes.
   assert outcome.error == reason, "computed publication runtime control"

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_candidate_arc_release"}
 
 ## Genuine signed blocks traverse shared admission and current-only execution/state/capture before any canonical publication.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
@@ -15,6 +17,7 @@ import ../../../src/state/accumulation/current/[consensus as accumulation_curren
     driver as accumulation_current_driver]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   pvm_accumulation_provision, arc_evidence]
+
 proc currentLimits(provided: bool): CurrentCandidateLimits =
   ## Real provided preimages use the same explicit capture ceilings as the independently assembled current fixture.
   result = currentCandidateLimits()
@@ -24,6 +27,7 @@ proc currentLimits(provided: bool): CurrentCandidateLimits =
         perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(2))
     result.completion.execution.initial.provisions.encodedBytes = ByteLimit(32)
     result.completion.execution.execution.round = result.completion.execution.initial
+
 proc verify(context: CurrentChainFixture, provided: bool) =
   ## One-shot and split preparation produce the independently assembled complete current state and keep the original head private.
   let original = initApplicationChain(context.currentChainSeeded).value
@@ -66,12 +70,14 @@ proc verify(context: CurrentChainFixture, provided: bool) =
   let absent = prepareCurrentCandidate(default(ApplicationChain), child, [], limits)
   assert absent.error == CurrentCandidateError.PrefixFailure
   assert absent.prefixFailure.error == ApplicationCandidateError.MissingHead
+
 proc cycle(context: CurrentChainFixture) =
   ## A genuine current candidate's private state, child and original prefix retire without changing the application.
   let owner = initApplicationChain(context.currentChainSeeded).value
   let child = context.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock
   let prepared = prepareCurrentCandidate(owner, child, [], currentLimits(false))
   assert prepared.error == CurrentCandidateError.None
+
 proc main() {.raises.} =
   ## Signed native fixtures exercise actual admission/current PVM execution with and without preimage effects.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

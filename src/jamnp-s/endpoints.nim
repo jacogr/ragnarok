@@ -3,6 +3,7 @@
 
 ## JAMNP-S validator metadata endpoint projection. The first sixteen bytes are IPv6 and the
 ## next two bytes are the little-endian port; trailing validator metadata is unrelated data.
+
 import ../quic/address
 
 type
@@ -12,13 +13,16 @@ type
     case status: EndpointError
     of None: completed: NetworkEndpoint
     else: discard          # No default or rejected projection grants a native destination.
+
 func error*(outcome: EndpointResult): EndpointError =
   ## Observe failure without exposing partially copied metadata.
   outcome.status
+
 func value*(outcome: EndpointResult): NetworkEndpoint {.requires: outcome.status ==
     EndpointError.None.} =
   ## Return only a complete fixed tuple.
   outcome.completed
+
 proc validatorEndpoint*(metadata: openArray[byte]): EndpointResult =
   ## Bound every fixed-field read before copying; unrelated trailing metadata is ignored.
   if metadata.len < 18: return EndpointResult(status: EndpointError.Truncated)

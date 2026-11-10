@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual full Services startup selects a paged directory explicitly and binds only its intact V2 local state/context.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/storage_io
@@ -23,8 +24,10 @@ import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../support/application_checkpoint_context
 import ../../../src/chain/[genesis, provider]
+
 proc appPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private application namespaces preserve earlier forensic artifacts without stale test collisions.
+
 proc configured(path: string, layout: string, resume = false, readOnly = false): Options =
   ## Harness-owned configured genesis and explicit replay policy are captured before listeners or storage become observable.
   var arguments = @["server", "--with-state", "--chain", getEnv("RAGNAROK_APPLICATION_CHECKPOINT"),
@@ -36,6 +39,7 @@ proc configured(path: string, layout: string, resume = false, readOnly = false):
         "0") # Independent imports retain their exact zero-budget recovery policy.
   result = default(Options)
   assert parseCanonicalOptions(arguments, result)
+
 proc imported() {.raises.} =
   ## Independently trusted checkpoint import creates exclusively; ordinary local restart preserves its selected header instead of genesis.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)
@@ -69,6 +73,7 @@ proc imported() {.raises.} =
   assert owner.start(selected, "preserved imported head")
   assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
   owner.close()
+
 proc waitRetirement(owner: var Services) =
   ## Scalar polling waits for worker completion before tick resumes any graph-bearing canonical/RPC access.
   let started = getMonoTime()
@@ -78,6 +83,7 @@ proc waitRetirement(owner: var Services) =
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under an independent monotonic harness deadline.
   owner.tick(0)
+
 proc retirement(mode: int) {.raises.} =
   ## Startup reconstructs one exact pending predecessor; cleanup preserves canonical identity and core publication receipts.
   let path = "paged-services-retirement-" & $appPid() & "-" & $mode
@@ -163,13 +169,16 @@ proc retirement(mode: int) {.raises.} =
   waitRetirement(owner)
   assert owner.diskRetirementCompletion.retirementValue.error == DiskStoreError.None
   assert sameApplicationCheckpoint(owner.checkpointIdentity.value, trusted)
+
 proc replayPresentNative(name: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Fixture-only metadata distinguishes a missing CURRENT from an existing partial bootstrap child.
+
 proc replayPresent(path: string): bool =
   ## Known test paths are checked individually; no directory discovery grants recovery permission.
   var owned = path
   replayPresentNative(owned.toCString(), 0) == 0
+
 proc recoveredFixture(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.raises.} =
   ## Independent caller-selected checkpoint identity/header authority remains separate from local forensic bytes.
   let source = checkpointFixture(variant)
@@ -179,6 +188,7 @@ proc recoveredFixture(variant: CheckpointFixtureVariant): ApplicationRecoveryRes
   var wire = newSeq[byte](selected.headerInfo.value.consumed)
   assert encodeOwnedHeader(selected, wire).error == HeaderError.None
   decodeRecoveryCheckpoint(envelope, wire, identity, genesisStoreLimits(), ByteLimit(4194304))
+
 proc resumedStartup(importing: bool) {.raises.} =
   ## Only explicit resume can complete matching interrupted genesis/import; wrong independent context and existing CURRENT remain protected.
   let path = "paged-services-resume-" & $appPid() & "-" & $importing
@@ -233,6 +243,7 @@ proc resumedStartup(importing: bool) {.raises.} =
     let fresh = configured(path & "-fresh", "paged", resume = true)
     assert owner.start(fresh, "fresh explicit paged run")
     owner.close()
+
 proc main() {.raises.} =
   ## Exclusive locking and wrong-layout/corrupt-CURRENT refusals never replace an existing selected epoch.
   let path = "paged-services-startup-" & $appPid()

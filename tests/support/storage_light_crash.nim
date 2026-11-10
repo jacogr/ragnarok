@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real light-file process death witnesses complete old/new selection, stable leases and explicit forensic cleanup.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_io, storage_crash]
@@ -13,27 +14,33 @@ import ../../src/storage/database_identity
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Test-only presence checks never establish authority for the production held-directory reader.
+
 proc exists(path: string): bool =
   ## Preserve exact namespace observations without scanning or choosing alternate selected files.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc key(first: byte): StateKey =
   ## Independent fixture branches distinguish a removed present value and newly authenticated absence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## One combined batch changes two identities while file/proof/value ceilings stay explicit.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(3),
     writes: ElementLimit(2), valueBytes: ByteLimit(33),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc text(bytes: openArray[byte]): string =
   ## Copy independently prepared canonical bytes for exact selected/staged prefix comparison.
   result = ""
   for octet in bytes: result.add(char(octet))
+
 proc lightPublicationCrash*(operation, skip: cint, shortWrites = false): uint64 {.raises.} =
   ## Every boundary follows real successful SDK IO; parent contention precedes exact-child kill/reap and strict reopen.
   resetIo()

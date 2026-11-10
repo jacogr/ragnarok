@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Unmodified pinned release metadata is not current metadata; explicit test-only expansion remains derived evidence.
+
 import std/[assertions, envvars, strutils, syncio, parseutils]
 import ../../support/state_complete_serialization_context
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout]
+
 proc main() {.raises.} =
   ## Check every exact historical/derived pair without adding a production decoder fallback.
   var count = 0

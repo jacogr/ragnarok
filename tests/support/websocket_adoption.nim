@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exercise public WebSocket split ownership with eight independent loopback peers.
+
 import std/[assertions, syncio, strutils, atomics]
 import std/websocket as ws
 import std/httpserver as http
@@ -19,6 +20,7 @@ type Observation = object
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Let pool workers run without the foreground joining their continuation executor.
+
 proc setOption(fd, level, option: cint, value: pointer, size: SockLen): cint {.
     importc: "setsockopt", header: "<sys/socket.h>".}
   ## Clamp only the independent test peer's receive window to arrange backpressure.

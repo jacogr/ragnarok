@@ -14,21 +14,22 @@ import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
 
-
-
 const
   Directory = "state-worker-write-failure"
   Prefix = Directory & "/checkpoint"
+
 proc policy(): StateStoreLimits =
   ## Distinct nonempty prior and empty candidate roots reveal incorrect old-generation adoption.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(100), nodes: TrieNodeLimit(1024)), writes: ElementLimit(1),
         writeValueBytes: ByteLimit(100))
+
 proc clearFiles() =
   ## Parent-only teardown removes known committed files while leaving orphan temporaries observable through final rmdir.
   for suffix in [".head", ".head.lock", ".0", ".1"]:
     var path = Prefix & suffix
     discard posix.unlink(path.toCString()) # Every child is joined and all cooperating bank descriptors are already closed.
+
 proc advanceInWorker(initial: CheckpointHead, candidate: StateStoreSnapshot): CheckpointBankResult[
     CheckpointHead] {.raises.} =
   ## Only independent encoded bytes cross into the real I/O thread under the process-wide child file-size ceiling.
@@ -48,6 +49,7 @@ proc advanceInWorker(initial: CheckpointHead, candidate: StateStoreSnapshot): Ch
   assert completed.kind == CheckpointCompletionKind.Completed
   result = completed.value
   assert worker.close().retirementError == CheckpointBankError.None # Join before restoring through a fresh native bank.
+
 proc attempt(prior, candidate: StateStoreSnapshot, ceiling: uint64, staged,
     succeeds: bool) {.raises.} =
   ## The selected old slot survives every refusal, even after the new inactive data became durable.
@@ -108,6 +110,7 @@ proc attempt(prior, candidate: StateStoreSnapshot, ceiling: uint64, staged,
     assert readBoundedFile(Prefix & ".1", ByteLimit(1000)).error ==
         AtomicFileError.IoFailure # Inactive write failure never publishes a partial canonical slot.
   assert bank.close() == CheckpointBankError.None
+
 proc main() {.raises.} =
   ## Six actual zero/partial write failures and exact/ample success controls separately witness both transaction stages.
   var directory = Directory

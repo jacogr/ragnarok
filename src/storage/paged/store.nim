@@ -3,6 +3,7 @@
 
 ## Storage-only durable paged-light owners: exclusive writers, sealed candidates and independent pinned readers.
 ## Complete stream verification precedes selection. Explicit close and passive post-confirmation diagnostics preserve uncertainty.
+
 import std/assertions
 import ./[io as paged_io, codec as paged_codec, stream as paged_stream]
 import ../managed/manifest as managed_manifest

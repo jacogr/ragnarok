@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Generic global plans bind generation to independent complete snapshots and genuine selected blocks.
+
 import std/[assertions, syncio]
 import ../../support/[proof_service_helpers, proof_query_context]
 import ../../../src/state/proof/plan as proof_plan
@@ -12,14 +13,18 @@ import ../../../src/chain/[genesis, state_proof]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     safrole as state_safrole]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained hash observer or fail attempted backend work during bound checks.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe that count/map preflight performs no backend work.
+
 proc raw(proofs: StateProofSet): seq[StateProofQuery] =
   ## Detach the bounded query list through immutable set accessors.
   result = newSeq[StateProofQuery](proofs.len)
   for i in 0..<proofs.len: result[i] = proofs.queryAt(i).value
+
 proc main() {.raises.} =
   ## Verify both membership and absence against independently obtained posterior commitments.
   let entries = @[timeEntry(StateTime(42)), entropyEntry(default(StateEntropy))]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Deterministic bounded-output, disabled-formatting, overload, restart and producer lifetime checks.
+
 import std/[assertions, syncio, locks, os, strutils, rawthreads]
 import ../../../src/lib/logging
 
@@ -110,6 +111,7 @@ assert logger.stats.batches < logger.stats.processed # Backlog becomes bounded m
 type Producer = object ## Handles are plain borrows; every producer joins before logger retirement.
   writer: LogWriter
   accepted: int
+
 proc produce(raw: pointer) =
   ## Both native producers contend with each other and the consumer using the public API.
   let producer = cast[ptr Producer](raw)

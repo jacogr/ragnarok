@@ -3,6 +3,7 @@
 
 ## Bounded current accumulation driving and genuine terminal-sequence ownership.
 ## Completion covers recursive accumulation entries, not final statistics/time/history or whole-block publication.
+
 import ../residency
 import ../../../chain/parameters
 import ../../../codec/bounded

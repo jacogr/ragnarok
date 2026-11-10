@@ -1,12 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## ARM64 scalar, guarded-memory and connected-block lowering with prepared source proofs.
 ## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
+
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
+when NativeReadCycleEnabled:
+  import ./native_read_cycle
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -240,7 +244,6 @@ proc armCompactImmediate(words: var seq[uint32], destination: uint32, value: uin
     # Zero and all-ones still require one defining instruction, regardless of the incoming host register.
     words.add((if inverted: 0x92800000'u32 else: 0xd2800000'u32) or destination)
 
-
 proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uint64) =
   ## Arithmetic constants define all bits independently of the fixed conditional return selector.
   if fragment.compact: armCompactImmediate(fragment.words, destination, value)
@@ -360,11 +363,10 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     # ARM word operations zero high bits; GP requires sign extension of the low 32-bit result.
     fragment.words.add(0x93407c00'u32 or (destination shl 5) or destination)
 
-proc emitArmBranchSlots(fragment: var ArmBlock, opcode: byte, leftSlot,
-    rightSlot: range[0..12], immediate: uint64, yes, no: uint32) =
-  ## Only positive cached branch capabilities supply scalar destinations; flags survive MOV/STR publication.
+proc armBranchCompare(fragment: var ArmBlock, opcode: byte, leftSlot,
+    rightSlot: range[0..12], immediate: uint64): uint32 =
+  ## Emit the original full-width comparison and return its A64 condition.
   assert opcode in {81'u8..90'u8, 170'u8..175'u8}
-  assert yes < 2147483646'u32 and no < 2147483646'u32
   let left = armRead(fragment, leftSlot)
   var right = 1'u32
   if opcode <= 90:
@@ -375,18 +377,23 @@ proc emitArmBranchSlots(fragment: var ArmBlock, opcode: byte, leftSlot,
   else:
     right = armRead(fragment, rightSlot)
   fragment.terminal.add(0xeb00001f'u32 or (right shl 16) or (left shl 5)) # CMP Xn,Xm
-  let condition = case opcode
-    of 81, 170: 0'u32  # EQ
-    of 82, 171: 1'u32  # NE
-    of 83, 172: 3'u32  # CC, unsigned less
-    of 84: 9'u32       # LS, unsigned less or equal
-    of 85, 174: 2'u32  # CS, unsigned greater or equal
-    of 86: 8'u32       # HI, unsigned greater
+  result = case opcode
+    of 81, 170: 0'u32 # EQ
+    of 82, 171: 1'u32 # NE
+    of 83, 172: 3'u32 # CC, unsigned less
+    of 84: 9'u32 # LS, unsigned less or equal
+    of 85, 174: 2'u32 # CS, unsigned greater or equal
+    of 86: 8'u32 # HI, unsigned greater
     of 87, 173: 11'u32 # LT, signed less
-    of 88: 13'u32      # LE, signed less or equal
+    of 88: 13'u32 # LE, signed less or equal
     of 89, 175: 10'u32 # GE, signed greater or equal
-    else: 12'u32       # GT, signed greater
-                   # Comparison precedes scratch reuse; these instructions do not change NZCV. X0 is overwritten only after stores.
+    else: 12'u32 # GT, signed greater
+
+proc emitArmBranchSlots(fragment: var ArmBlock, opcode: byte, leftSlot,
+    rightSlot: range[0..12], immediate: uint64, yes, no: uint32) =
+  ## Positive cached branch capabilities supply scalar destinations. MOV and STR preserve NZCV.
+  assert yes < 2147483646'u32 and no < 2147483646'u32
+  let condition = armBranchCompare(fragment, opcode, leftSlot, rightSlot, immediate)
   fragment.terminal.add(0x52800001'u32 or ((yes and 65535) shl 5))
   fragment.terminal.add(0x72a00001'u32 or ((yes shr 16) shl 5))
   fragment.terminal.add(0x52800002'u32 or ((no and 65535) shl 5))
@@ -956,17 +963,10 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
   result.words = move(words)
 
 when NativeCheckedReadEnabled:
-  proc emitArmCheckedRead(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+  proc emitArmCheckedReadAt(span: var ArmReadSpan, destination: uint32,
       opcode: range[124..130]) =
-    ## Reuse the staged register bank while checking the true width of each positive extent.
-    assert nativeReadOpcode(byte(opcode))
+    ## Read the true width from the invocation's clipped descriptors using the address in X3.
     let width = indirectMemoryAccess(opcode).width
-    let source = armRead(span.body, slots.bIndex)
-    let destination = armWrite(span.body, slots.aIndex)
-    if not armSmallIndirectAddress(span.body.words, source, displacement, false):
-      # The 32-bit ADD wraps even when the captured immediate used a wide encoding.
-      armCompactImmediate(span.body.words, 2, uint64(displacement))
-      span.body.words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
     var accepted = default(array[3, int])
     for region in 0..<3:
       # X3 is the wrapped address. X17 keeps the borrowed context across every arithmetic operation.
@@ -989,17 +989,34 @@ when NativeCheckedReadEnabled:
       assert index >= 0 and index < after
       span.body.words[index] = span.body.words[index] or uint32(after-index)
 
+  proc emitArmCheckedRead(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+      opcode: range[124..130], absolute: bool) =
+    ## Form the address before claiming the destination, including when it aliases the base.
+    assert nativeReadOpcode(byte(opcode))
+    if absolute:
+      # X3 receives the zero-extended source address without reserving a guest base lane.
+      armCompactImmediate(span.body.words, 3, uint64(displacement))
+    else:
+      let source = armRead(span.body, slots.bIndex)
+      if not armSmallIndirectAddress(span.body.words, source, displacement, false):
+        # The 32-bit ADD wraps even when the captured immediate used a wide encoding.
+        armCompactImmediate(span.body.words, 2, uint64(displacement))
+        span.body.words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
+    let destination = armWrite(span.body, slots.aIndex)
+    emitArmCheckedReadAt(span, destination, opcode)
+
   proc armCheckedReadInstructions*(body: NativeReadBody): seq[uint32] =
     ## Return 1 after committing every staged slot, or UINT32_MAX with no guest writes.
     assert body.complete
     var span = default(ArmReadSpan)
     for index in 0..<body.len:
       let op = body.operation(index)
-      if nativeReadOpcode(op.opcode):
-        let opcode = int(op.opcode)
+      let encoding = nativeReadEncodingOpcode(op.opcode)
+      if nativeReadOpcode(encoding):
+        let opcode = int(encoding)
         assert opcode >= 124 and opcode <= 130
         emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
-          range[124..130](opcode))
+          range[124..130](opcode), encoding != op.opcode)
       else:
         emitArmReadArithmetic(span, op.opcode, op.slots, op.immediate)
     result = armReadImage(span, NativeReadSuccess, false, false).words
@@ -1031,7 +1048,6 @@ proc armReadInstructionsForOwner*(jit: ArmJit, span: ArmReadSpan, ending: uint32
   ## A full-context owner may publish clipped individual reads or unchanged raw windows.
   assert jit != nil and (not span.clippedReads or jit.clippedReads)
   result = armReadImage(span, ending, conditional, false).words
-
 
 proc armMemoryInstructionsImpl(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32, opcode: range[124..130],
@@ -1118,13 +1134,6 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
   if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
-
-proc armPendingMemoryEnding*(jit: ArmJit, offset, ending: uint32) =
-  ## A deferred read/branch fragment occupies no executable slot until both original branch arms are cached.
-  assert int(offset) < jit.entries.len and jit.entries[int(offset)].code == 0
-  assert ending > offset
-  jit.entries[int(offset)].code = 1
-  jit.entries[int(offset)].ending = ending
 
 proc armStartProbe*(jit: ArmJit, header: uint32) =
   ## Only non-executable header records borrow the operation lane for eight cold discovery visits.
@@ -1243,12 +1252,6 @@ proc callArmMemoryBranch*(jit: ArmJit, offset, yes, no: uint32,
   assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
   callArmMemoryBranchCore(jit, offset, yes, no, registers, addr regions)
 
-proc callArmMemoryBranchContext*(jit: ArmJit, offset, yes, no: uint32,
-    registers: var RegisterFile, context: var ArmReadContext): uint32 =
-  ## Borrow the complete 144-byte frame context for one full-mode native entry.
-  assert jit != nil and jit.clippedReads and sizeof(context) == 144
-  callArmMemoryBranchCore(jit, offset, yes, no, registers, addr context)
-
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
   jit.entries[int(offset)].ending
@@ -1322,7 +1325,6 @@ func armMixedGroupStatistics*(jit: ArmJit): array[3, uint64] =
 
 func armMixedOperationCount*(jit: ArmJit, header: uint32): uint32 =
   jit.entries[int(header)].operations
-
 
 type
   ArmDirtyWordShape* = object ## Frozen role coordinates only; every invocation rechecks values and memory.
@@ -2067,14 +2069,6 @@ func armResidentMemoryCycleActive*(jit: ArmJit): bool =
   ## Report whether the published cycle uses semantic inline dirty/read entries instead of child BLs.
   jit.memoryCycle.status == 2 and jit.memoryCycle.residentMode
 
-func armMemoryCycleHeader*(jit: ArmJit, index: range[0..2]): uint32 =
-  ## The checked adapter can identify every genuinely unstarted source header.
-  assert jit.memoryCycle.status == 2
-  case index
-  of 0: jit.memoryCycle.prefixHeader
-  of 1: jit.memoryCycle.dirtyHeader
-  else: jit.memoryCycle.tailHeader
-
 func armMemoryCycleChargeMatches*(jit: ArmJit, index: range[0..1], header,
     span: uint32, price: uint64): bool =
   ## Every invocation checks sealed default-pricing coordinates before borrowing this driver.
@@ -2469,7 +2463,6 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
   jit.memoryCycle.status = 2
   true
 
-
 proc callArmMemoryCycleCore(jit: ArmJit, registers: var RegisterFile,
     descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var array[14, uint64]): uint32 =
@@ -2534,13 +2527,6 @@ proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
   ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
   assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
   callArmMemoryCycleCore(jit, registers, addr regions, dirtyWords, state)
-
-proc callArmMemoryCycleContext*(jit: ArmJit, registers: var RegisterFile,
-    context: var ArmReadContext, dirtyWords: var seq[uint64],
-    state: var array[14, uint64]): uint32 =
-  ## Borrow the complete 144-byte frame context for one full-mode native entry.
-  assert jit != nil and jit.clippedReads and sizeof(context) == 144
-  callArmMemoryCycleCore(jit, registers, addr context, dirtyWords, state)
 
 func armMacroStatus*(jit: ArmJit): uint8 =
   ## The separate macro owner is untried, retired, or completely published.
@@ -2649,7 +2635,7 @@ proc armMacroCount(words: var seq[uint32], index: uint32) =
   cycleAddImmediate(words, 1, 1, 1)
   cycleStore(words, 1, 20, index*8)
 
-proc armMacroGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+proc armCycleBudget(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
     span: uint32, price: uint64, refusal: int) =
   ## Attempt exhaustion wins over price; a partial block returns unmodified.
   cycleCompareImmediate(words, 22, 0)
@@ -2657,8 +2643,17 @@ proc armMacroGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
   cyclePriceGuard(words, fixes, price, refusal)
   cycleCompareImmediate(words, 22, span)
   cycleEdge(words, fixes, refusal, 3)
+
+proc armCycleDebit(words: var seq[uint32], span: uint32, price: uint64) =
+  ## Debit only after the whole reservation and any unpaid preflight have succeeded.
   cyclePriceChange(words, price)
   cycleAddImmediate(words, 22, 22, span, true)
+
+proc armMacroGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+    span: uint32, price: uint64, refusal: int) =
+  ## Legacy macro units reserve immediately after affordability checks.
+  armCycleBudget(words, fixes, span, price, refusal)
+  armCycleDebit(words, span, price)
 
 proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
     labels: array[12, int]): bool =
@@ -2674,6 +2669,277 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
       if relative < -33554432 or relative > 33554431: return false
       words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
   true
+
+when NativeReadCycleEnabled:
+  proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      span: ArmReadSpan, refusal: int) =
+    ## Inline a true-length read bank with a caller-owned paid or unpaid refusal.
+    cycleMove(words, 17, 20) # The shared read descriptors start at context byte zero.
+    let start = words.len
+    for instruction in span.body.words:
+      words.add(instruction)
+    for guard in span.guards:
+      # The checked extent emitter uses an unconditional edge after all descriptors miss.
+      assert not guard.conditional
+      fixes.add(ArmMemoryCycleFixup(at: start+guard.at, target: refusal, condition: 16))
+
+  proc armCycleDirtyPage(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      refusal: int) =
+    ## Test the absolute page bit for X3 without mutating the borrowed bitmap.
+    words.add(0xd352fc61'u32) # LSR X1,X3,#18: bitmap word.
+    cycleLoad(words, 2, 20, uint32(NativeCycleDirtyWordsOffset))
+    cycleCompare(words, 1, 2)
+    cycleEdge(words, fixes, refusal, 2) # HS: missing word.
+    cycleLoad(words, 2, 20, uint32(NativeCycleDirtyOffset))
+    cycleCompareImmediate(words, 2, 0)
+    cycleEdge(words, fixes, refusal, 0)
+    words.add(0x8b010c42'u32) # ADD X2,X2,X1,LSL #3.
+    cycleLoad(words, 1, 2, 0)
+    words.add(0xd34cfc62'u32) # LSR X2,X3,#12: page number.
+    words.add(0xd2800020'u32) # MOV X0,#1.
+    words.add(0x9ac22002'u32) # LSLV X2,X0,X2: hardware masks the bit index.
+    words.add(0xea02003f'u32) # TST X1,X2.
+    cycleEdge(words, fixes, refusal, 0)
+
+  proc armCycleWordPreflight(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      word: NativeCycleWord, refusal: int) =
+    ## All four byte visits are proved before the store or the debit. X25 holds the writable pointer.
+    let shift = uint32(word.shiftLane)+4
+    let base = uint32(word.baseLane)+4
+    let bound = uint32(word.boundLane)+4
+    words.add(0xf240101f'u32 or (shift shl 5)) # TST Xshift,#31.
+    cycleEdge(words, fixes, refusal, 1)
+    words.add(0xb1001001'u32 or (base shl 5)) # ADDS X1,Xbase,#4.
+    cycleEdge(words, fixes, refusal, 2) # HS: 64-bit wrap.
+    cycleCompare(words, 1, bound)
+    cycleEdge(words, fixes, refusal, 8) # HI: an earlier byte may hit the bound.
+    let displacement = uint32(word.displacement and 0xffffffff'u64)
+    if not armSmallIndirectAddress(words, base, displacement, false):
+      # Materialize wide displacements before the modulo-32 effective address addition.
+      armCompactImmediate(words, 2, uint64(displacement))
+      words.add(0x0b020003'u32 or (base shl 5))
+    words.add(0xf140407f'u32) # CMP X3,#65536.
+    cycleEdge(words, fixes, refusal, 3)
+    armCompactImmediate(words, 2, uint64(high(uint32))-4'u64)
+    cycleCompare(words, 3, 2)
+    cycleEdge(words, fixes, refusal, 8)
+
+    # Select stack when address >= its original base, even if its extent is empty.
+    # A short or absent selected stack cannot fall through to RW.
+    cycleAddImmediate(words, 17, 20, uint32(NativeCycleWritableOffset))
+    cycleLoad(words, 1, 17, 0)
+    cycleAddImmediate(words, 2, 17, 24)
+    cycleCompare(words, 3, 1)
+    words.add(0x9a822231'u32) # CSEL X17,X17,X2,HS.
+    words.add(0xa9400a21'u32) # LDP X1,X2,[X17]: original base and true length.
+    words.add(0xf1001042'u32) # SUBS X2,X2,#4.
+    cycleEdge(words, fixes, refusal, 3)
+    words.add(0xcb010061'u32) # SUB X1,X3,X1: below-base wraps beyond the length.
+    cycleCompare(words, 1, 2)
+    cycleEdge(words, fixes, refusal, 8)
+    cycleLoad(words, 2, 17, 16)
+    cycleCompareImmediate(words, 2, 0)
+    cycleEdge(words, fixes, refusal, 0)
+    cycleAddRegister(words, 25, 2, 1)
+    armCycleDirtyPage(words, fixes, refusal)
+    words.add(0xd34cfc61'u32) # LSR X1,X3,#12: first page.
+    cycleAddImmediate(words, 3, 3, 3)
+    words.add(0xd34cfc62'u32) # LSR X2,X3,#12: last page.
+    cycleCompare(words, 1, 2)
+    let samePage = words.len
+    words.add(0)
+    armCycleDirtyPage(words, fixes, refusal)
+    words[samePage] = 0x54000000'u32 or (uint32(words.len-samePage) shl 5)
+
+  proc armCycleBranch(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      op: NativeOperation, target: int) =
+    ## Emit the original predicate and branch directly to the certified true edge.
+    var branch = newArmRegionBody()
+    let condition = armBranchCompare(branch, op.opcode, op.slots.aIndex,
+        op.slots.bIndex, op.immediate)
+    for instruction in branch.terminal:
+      words.add(instruction)
+    cycleEdge(words, fixes, target, condition)
+
+  proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
+    ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
+    ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
+    ## the common exit publishes the changed lanes.
+    const
+      readCount = 22
+      readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,
+        198, 130, 197, 212, 151, 152, 130, 198, 130, 197, 212, 51, 200, 149]
+      paidBody = 7
+      readMiss = 8
+      unpaid = 9
+      commit = 10
+      outside = 11
+    result = @[]
+    let sites = cycle.layout.sites
+    let read = cycle.read.info
+    let setup = cycle.read.continuationInfo
+    if not cycle.read.complete or cycle.read.len != readCount+3 or
+        read.header != sites[NativeCycleRole.Read].header or
+        read.first != sites[NativeCycleRole.Read].first or read.last-read.first != 23 or
+        setup.header != sites[NativeCycleRole.StoreSetup].header or
+        setup.price != sites[NativeCycleRole.StoreSetup].price or
+        cycle.tailLoad.opcode != 57 or
+        cycle.tailStep.opcode != 131 or cycle.tailBranch.opcode != 173 or
+        cycle.outer[0].opcode != 131 or cycle.outer[1].opcode != 149 or
+        cycle.outer[2].opcode != 81 or cycle.gate.opcode != 88 or
+        sites[NativeCycleRole.Store].price > high(uint64) div NativeCycleGroupVisits:
+      return
+    let word = cycle.word
+    let lanes = [word.valueLane, word.shiftLane, word.byteLane, word.baseLane, word.boundLane]
+    for i in 0..<lanes.len:
+      for j in i+1..<lanes.len:
+        # A word projection needs the five distinct lanes of the checked proof.
+        if lanes[i] == lanes[j]: return
+
+    var readBank = default(ArmReadSpan)
+    readBank.body = newArmRegionBody()
+    var setupBank = newArmRegionBody()
+    for index in 0..<cycle.read.len:
+      let op = cycle.read.operation(index)
+      # Refuse any profile outside the shared certificate's fixed opcode sequence.
+      if op.opcode != readOpcodes[index]: return
+      if index < readCount:
+        if nativeReadOpcode(op.opcode):
+          let opcode = int(op.opcode)
+          assert opcode >= 124 and opcode <= 130
+          emitArmCheckedRead(readBank, op.slots, uint32(op.immediate and 0xffffffff'u64),
+              range[124..130](opcode), absolute = false)
+        else:
+          emitArmOperation(readBank.body, op.opcode, op.slots, op.immediate)
+      else:
+        # The copied continuation executes only after its separate original header is paid.
+        emitArmOperation(setupBank, op.opcode, op.slots, op.immediate)
+    var tail = default(ArmReadSpan)
+    armCompactImmediate(tail.body.words, 3, cycle.tailLoad.immediate and 0xffffffff'u64)
+    emitArmCheckedReadAt(tail, 0, 129) # Absolute LDRSW stages in X0 before the tail debit.
+    let tailSlot = uint32(cycle.tailLoad.slots.aIndex)
+    var tailStep = newArmRegionBody()
+    emitArmOperation(tailStep, cycle.tailStep.opcode, cycle.tailStep.slots,
+        cycle.tailStep.immediate)
+    var outer = newArmRegionBody()
+    for index in 0..<2:
+      let op = cycle.outer[index]
+      emitArmOperation(outer, op.opcode, op.slots, op.immediate)
+
+    let value = uint32(word.valueLane)+4
+    let shift = uint32(word.shiftLane)+4
+    let byteReg = uint32(word.byteLane)+4
+    let base = uint32(word.baseLane)+4
+    let bound = uint32(word.boundLane)+4
+    let readWrites = readBank.body.writes
+    let written = readWrites or setupBank.writes or tailStep.writes or outer.writes or
+        (1'u32 shl tailSlot) or (1'u32 shl int(word.shiftLane)) or
+        (1'u32 shl int(word.byteLane)) or (1'u32 shl int(word.baseLane))
+    var labels = default(array[12, int])
+    var fixes: seq[ArmMemoryCycleFixup] = @[]
+    var words: seq[uint32] = @[0xd10103ff'u32] # SUB SP,SP,#64.
+    for pair in 0..<4:
+      # X19..X25 own invocation state and X26 completes the aligned save pairs. X18 is reserved.
+      let first = uint32(19+pair*2)
+      words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
+          ((first+1) shl 10) or (31'u32 shl 5) or first)
+    cycleMove(words, 19, 0)
+    cycleMove(words, 20, 1)
+    cycleLoad(words, 21, 20, uint32(NativeCycleGasOffset))
+    cycleLoad(words, 22, 20, uint32(NativeCycleRemainingOffset))
+    cycleImmediate(words, 23, NativeCycleNoCompleted)
+    for role in NativeCycleRole:
+      # Receipts start empty for every entry, including an initial paid guard miss.
+      cycleStore(words, 31, 20, uint32(NativeCycleVisitsOffset+ord(role)*8))
+    for slot in 0..<13:
+      # Initialize the entire resident bank before any guard can publish a dirty union.
+      cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
+    cycleEdge(words, fixes, paidBody, 16)
+
+    for role in NativeCycleRole:
+      labels[ord(role)] = words.len
+      cycleImmediate(words, 24, uint64(sites[role].header))
+      let groups = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
+      let span = uint32(NativeCycleSpans[role]*groups)
+      let price = sites[role].price*groups
+      armCycleBudget(words, fixes, span, price, unpaid)
+      if role != NativeCycleRole.Store and role != NativeCycleRole.Tail:
+        # Store and tail may decline preflight while still unpaid.
+        armCycleDebit(words, span, price)
+      case role
+      of NativeCycleRole.Read:
+        labels[paidBody] = words.len
+        for slot in 0..<13:
+          # These caller-saved lanes checkpoint only the current read's prospective writes.
+          if (readWrites and (1'u32 shl slot)) != 0:
+            words.add(0x9e670000'u32 or ((uint32(slot)+4) shl 5) or uint32(slot+18))
+        appendArmCycleRead(words, fixes, readBank, readMiss)
+      of NativeCycleRole.StoreSetup:
+        for instruction in setupBank.words: words.add(instruction)
+      of NativeCycleRole.Store:
+        armCycleWordPreflight(words, fixes, word, unpaid)
+        armCycleDebit(words, span, price)
+        # From the store through completion all instructions are non-faulting native bookkeeping.
+        words.add(0xb9000000'u32 or (25'u32 shl 5) or value) # STR Wvalue,[X25].
+        words.add(0x53187c00'u32 or (value shl 5) or byteReg) # LSR Wbyte,Wvalue,#24.
+        cycleAddImmediate(words, base, base, 4)
+        cycleAddImmediate(words, shift, shift, 32)
+      of NativeCycleRole.Tail:
+        appendArmCycleRead(words, fixes, tail, unpaid)
+        armCycleDebit(words, span, price)
+        cycleMove(words, tailSlot+4, 0)
+        for instruction in tailStep.words: words.add(instruction)
+      of NativeCycleRole.Jump, NativeCycleRole.Gate:
+        discard # A terminal-only unit completes without a scalar body.
+      of NativeCycleRole.Outer:
+        for instruction in outer.words: words.add(instruction)
+
+      armMacroCount(words, uint32(NativeCycleVisitsOffset div 8+ord(role)))
+      words.add(0xd2800017'u32 or (uint32(ord(role)) shl 5)) # MOV X23,#role.
+      case role
+      of NativeCycleRole.Store:
+        cycleCompare(words, base, bound)
+        cycleEdge(words, fixes, ord(NativeCycleRole.Store), 1)
+      of NativeCycleRole.Tail:
+        armCycleBranch(words, fixes, cycle.tailBranch, ord(NativeCycleRole.StoreSetup))
+      of NativeCycleRole.Outer:
+        armCycleBranch(words, fixes, cycle.outer[2], outside)
+      of NativeCycleRole.Gate:
+        armCycleBranch(words, fixes, cycle.gate, ord(NativeCycleRole.Outer))
+        cycleEdge(words, fixes, ord(NativeCycleRole.Read), 16)
+      else:
+        discard # The next emitted role is the original unconditional successor.
+
+    labels[outside] = words.len
+    cycleImmediate(words, 24, uint64(cycle.layout.outsideHeader))
+    labels[unpaid] = words.len
+    cycleMove(words, 0, 24)
+    words.add(0xd2800001'u32) # paidRead = 0.
+    cycleEdge(words, fixes, commit, 16)
+    labels[readMiss] = words.len
+    for slot in 0..<13:
+      # Restore only this failed read. Earlier committed registers and stores survive.
+      if (readWrites and (1'u32 shl slot)) != 0:
+        words.add(0x9e660000'u32 or (uint32(slot+18) shl 5) or uint32(slot+4))
+    armCompactImmediate(words, 0, uint64(read.header))
+    words.add(0xd2800021'u32) # paidRead = 1. Retain the read's whole reservation.
+    labels[commit] = words.len
+    for slot in 0..<13:
+      if (written and (1'u32 shl slot)) != 0:
+        cycleStore(words, uint32(slot)+4, 19, uint32(slot*8))
+    cycleStore(words, 21, 20, uint32(NativeCycleGasOffset))
+    cycleStore(words, 22, 20, uint32(NativeCycleRemainingOffset))
+    cycleStore(words, 23, 20, uint32(NativeCycleLastOffset))
+    cycleStore(words, 1, 20, uint32(NativeCyclePaidReadOffset))
+    for pair in 0..<4:
+      # Restore every saved register before returning the checked destination in W0.
+      let first = uint32(19+pair*2)
+      words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
+          ((first+1) shl 10) or (31'u32 shl 5) or first)
+    words.add(0x910103ff'u32) # ADD SP,SP,#64.
+    words.add(0xd65f03c0'u32) # RET.
+    if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
+      result = move(words)
 
 func armWindowInstructionSafe(instruction: uint32): bool =
   ## Admit only present integer emitter families and the dirty byte body's exact
@@ -3181,6 +3447,7 @@ proc callArmMacroCore(jit: ArmJit, registers: var RegisterFile,
   jit.dirtyLoop.blocks+=dirty
   jit.dirtyLoop.wordGroups+=wordGroups
   if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
+
 proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
     regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
     state: var ArmMacroState): uint32 =

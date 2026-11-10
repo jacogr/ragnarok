@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal foreign-account programs exercise authority and selected publication through genuine current guests.
+
 import ./pvm_accumulation_program
 import ../../src/crypto/primitives
 

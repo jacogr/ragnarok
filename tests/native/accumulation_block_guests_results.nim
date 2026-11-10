@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused block guest results expose no successful owners or inactive failure payloads.
+
 import std/cmdline
 import "../../src/state/accumulation/block/guests" as accumulation_block_guests
 import ../../src/state/accumulation/[guest_runner as accumulation_guest_runner,

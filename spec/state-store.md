@@ -14,62 +14,14 @@ partial state, proof-backed reads and verified roots need a separate contract; a
 is not a complete state commitment. Shared codecs/crypto remain mode-independent. This PR adds no
 placeholder mode flag, light-state implementation, persistence schema or backend factory.
 
-## First increment
+## Store and value contract
 
-`src/state/store.nim` provides an owned map with atomic mutation batches and retained immutable
-versions. This is the storage foundation for execution, not state-transition execution, a disk
-backend, trie-node database or proofs. Incremental in-memory commitments are now adopted under
-the [separately authorized integration contract](state-store-incremental.md).
-
-- `newStateStore(entries, limits)` validates the complete mapping/root before copying caller
-  bytes into private ARC storage. Duplicate initial keys reject. Input order is irrelevant.
-- `snapshot(store)` retains the current version as an opaque `StateStoreSnapshot`. The name is
-  distinct from the existing typed-composition `StateSnapshot` in `codec/state/composition`.
-- `snapshot.lookup(key)` returns either a retained `StateValue`, `MissingKey`, or an initialization
-  error. A present empty value is successful with length zero. The view retains its exact owner;
-  it exposes a length and an explicitly copied byte sequence, never mutable backing storage.
-- `snapshot.commitment` returns copied root/entry/node metadata. Prior snapshots and lookup views
-  remain valid after updates, handle copies and destruction of the originating store.
-- `store.apply(writes)` accepts one mutation per key. Put inserts/replaces, Delete removes, and
-  deleting an absent key is an idempotent no-op. A Delete with a payload rejects. Duplicate batch
-  keys reject even for identical writes; there is no order-dependent last-write-wins policy.
-
-A batch preflights its count, tags, individual/aggregate write bytes and exact final-map count/
-value bytes. Two sorted merge passes count then construct the private candidate. Old published
-values remain immutable; new caller values are deep-copied. The private incremental trie checks
-node budgets and computes changed paths. Only complete success publishes the matching map/trie head.
-Any policy, duplicate or backend failure drops the candidate and leaves the prior head unchanged.
-An empty batch retains the existing snapshot without hashing.
-
-All count/byte arithmetic is checked before addition/allocation under Nimony's wrapping integer
-semantics. Explicit batch limits supplement `StateTrieLimits`. Allocation exhaustion retains the
-project's fail-stop policy. Limits apply per map/batch, not globally to caller-retained historical
-snapshots; callers control their retention. Updates still merge O(n + w) sorted-map descriptors and sort O(w log w) write identities;
-commitment hashing follows changed paths with cached unchanged subtrees. The mapping and trie
-currently own separate payload copies. Reproducible measurements and limits of the performance
-claim belong to the integration contract.
-
-Stores are single-threaded value handles. Copying a store creates another independently updateable
-handle sharing immutable prior state. Borrowed initial entries and writes must remain stable for
-the call. ARC owners are acyclic; no callback, foreign pointer or mutable sequence is exported.
-Default and failed tagged results expose only their reason. Successful payload extraction and
-initialized-view access have checked contracts; private fields remain inaccessible to callers.
-
-## Bounded value slicing
-
-`copySlice(StateValue, offset, length, ByteLimit)` copies exactly one raw interval
-without materializing the rest of the retained value. Generic storage coordinates
-are full-width uint64 values, checked against the owner's native extent by
-subtraction before narrowing or allocation. This API requires a valid interval;
-it does not silently clip caller coordinates. Empty slices at the value end are
-valid. Default owners return `Uninitialized`, invalid ranges return `InvalidRange`
-and a short copy ceiling returns `LimitExceeded`, with no byte payload on failure.
-Successful bytes are independently mutable; they retain no borrowed pointer or
-writable reference into the map. The input view keeps its original snapshot alive
-throughout the call and across later map updates. No hashing/publication occurs.
+The [store module](../src/state/store.nim) owns complete-map publication, retained
+views and bounded owner-bound byte slices. Incremental commitments were adopted under
+[the separately authorized integration contract](state-store-incremental.md).
 
 The [PVM lookup host](pvm-accumulation-lookup.md) clips protocol offsets first,
-then uses this operation to bound work by selected bytes rather than total
+then uses `copySlice` to bound work by selected bytes rather than total
 preimage size. Unit witnesses exhaust small intervals, exact/short ceilings,
 full-width invalid ranges and source/output mutation. A strict byte-result probe
 and privacy check preserve the generic store-result contract.

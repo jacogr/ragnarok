@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent small-integer equations and full-width cancellation literals qualify exact deposit observations.
+
 import std/[assertions, syncio]
 import ../../../src/state/account/[deposit as account_deposit, footprint as account_footprint]
 import ../../../src/codec/state/accounts as state_accounts
+
 proc minimum(items: uint32, bytes, gratis, base, item, octet: uint64): AccountDepositResult =
   ## Pass explicit nominal mathematical inputs, independent of source or parameter authentication.
   calculateAccountMinimum(AccountFootprint(items: AccountStorageItems(items),

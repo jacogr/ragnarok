@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Locked light journal owners preserve exact policies, sparse durability, immutable readers and uncertain-IO refusal.
+
 # @@Verification={"arc":"storage_light_journal_cache_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -18,15 +19,19 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Prepared opaque appends require no provider calls; failed proof preparation never writes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Distinguish opaque transition adoption from redundant proof revalidation.
+
 proc key(first: byte): StateKey =
   ## Independent full-state fixture queries separate present evidence from authenticated absence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc config(root: StateRoot): LightJournalConfig =
   ## Exact checkpoint policy stays external; independent journal budgets bound replay and append.
   LightJournalConfig(root: root, snapshot: LightSnapshotLimits(bytes: ByteLimit(4096),
@@ -34,12 +39,15 @@ proc config(root: StateRoot): LightJournalConfig =
       proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(64)))),
     journal: LightReplayLimits(bytes: ByteLimit(16384), frames: ElementLimit(64),
       frame: LightDeltaLimits(items: ElementLimit(4), bytes: ByteLimit(4096))))
+
 proc path(suffix: string): string =
   ## Isolate exact owned filesystem fixtures across native processes and failed-run evidence.
   "storage-light-journal-" & $storageProcessId() & "-" & suffix
+
 proc child(path: string, kind: ManagedFileKind): string =
   ## Production canonical names identify only the exact known fixture epoch for assertions and cleanup.
   path & "/" & managedFileName(kind, ManagedEpoch(1)).value
+
 proc remove(path: string) =
   ## Retired fixtures contain only exact owned regular files; never prune another epoch or unknown child.
   for name in ["CURRENT.next", "CURRENT", "snapshot-0000000000000001.bin",
@@ -49,6 +57,7 @@ proc remove(path: string) =
     if removed != 0: assert posix.errno() == ENOENT, "only absent exact fixture files may remain"
   var directory = path
   assert posix.rmdir(directory.toCString()) == 0, "journal owner witness 43"
+
 proc checkedOpen(path: string, settings: LightJournalConfig, expected: PreparedLightSnapshot) =
   ## Isolate all temporary owner, loaded journal and replay scratch before ARC sampling.
   var owner = default(LightJournalCache)
@@ -57,6 +66,7 @@ proc checkedOpen(path: string, settings: LightJournalConfig, expected: PreparedL
   assert retained.bytes == expected.bytes, "journal owner witness 49"
   assert owner.close == FileError.None, "journal owner witness 50"
   assert not owner.opened and retained.bytes == expected.bytes, "journal owner witness 51"
+
 proc normal(initial: PreparedLightSnapshot, incoming: LightStateProof,
     settings: LightJournalConfig): uint64 {.raises.} =
   ## Complete synchronized bootstrap and one sparse edit establish immutable readers and exact namespace behavior.
@@ -142,6 +152,7 @@ proc normal(initial: PreparedLightSnapshot, incoming: LightStateProof,
       limits: settings.snapshot)) != FileError.None, "journal owner witness 127"
   assert not oldOwner.opened, "journal owner witness 129"
   remove(directory)
+
 proc faults(initial: PreparedLightSnapshot, incoming: LightStateProof,
     settings: LightJournalConfig) {.raises.} =
   ## Full refusal, short-prefix refusal, complete-unsynced append and zero progress all withhold current authority.
@@ -191,6 +202,7 @@ proc faults(initial: PreparedLightSnapshot, incoming: LightStateProof,
           2: delta.snapshot.bytes else: initial.bytes), "journal owner witness 176"
       assert owner.close == FileError.None, "journal owner witness 178"
     remove(directory)
+
 proc limits(initial: PreparedLightSnapshot, incoming: LightStateProof,
     settings: LightJournalConfig) {.raises.} =
   ## Exact preparation policies and independent frame/count/total budgets refuse without writes or poisoning.
@@ -231,6 +243,7 @@ proc limits(initial: PreparedLightSnapshot, incoming: LightStateProof,
   assert ioCalls(writeIo) == 0 and owner.preparedSnapshot.value.bytes == initial.bytes, "journal owner witness 216"
   assert owner.close == FileError.None, "journal owner witness 217"
   remove(directory)
+
 proc bootstrap(initial: PreparedLightSnapshot, settings: LightJournalConfig,
     barriers: uint64) {.raises.} =
   ## Failed bootstrap exposes no owner; the final post-rename barrier is explicitly uncertain and strictly reopenable.
@@ -253,6 +266,7 @@ proc bootstrap(initial: PreparedLightSnapshot, settings: LightJournalConfig,
       assert reopened == FileError.None and owner.preparedSnapshot.value.bytes == initial.bytes, "journal owner witness 238"
       assert owner.close == FileError.None, "journal owner witness 239"
     remove(directory)
+
 proc main() {.raises.} =
   ## Independent flat-map hashing fixes the complete root before any partial cache or journal exists.
   var raw = newSeq[byte](33)

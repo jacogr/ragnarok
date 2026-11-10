@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent local management HTTP stays responsive while actual current native leases remain uncollected.
+
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -24,6 +25,7 @@ import ../../support/[management_socket, proof_query_context, current_applicatio
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Short private local socket names remain within the native Unix address bound.
+
 proc inspect(owner: var Services, path: string) =
   ## Poll only the management member: no canonical aliases, worker collection or graph retirement is allowed here.
   assert owner.rpc.chainPaused

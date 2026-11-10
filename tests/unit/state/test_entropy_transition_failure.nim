@@ -16,8 +16,10 @@ import ../../../src/codec/bounded
 
 ## The test-only observer can refuse the very first entropy or commitment hash.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Allow a known successful hash prefix before refusing private store-root construction.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count actual hash attempts so slot/configuration/state rejection cannot hide crypto work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

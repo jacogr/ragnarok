@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Timed proxy broadcast owns bounded exact native requests and detached checked proofs, never a canonical graph or CPU lease.
+
 import std/[assertions, monotimes, times]
 import ./[node, connections, read_stream, read_client, ticket_packet, ticket_validation, ticket_pool]
 import ../codec/[bounded, header, tickets]
@@ -33,10 +34,13 @@ type
     epoch, duration: uint32
     applied, first, finish, observed: uint64
     delivered: uint64
+
 proc `=copy`*(destination: var TicketForwarding, source: TicketForwarding) {.error.}
   ## A second owner must not cancel or collect the same native requests.
+
 proc `=dup`*(source: TicketForwarding): TicketForwarding {.error.}
   ## Initialization cannot duplicate native authority either.
+
 proc `=wasMoved`*(owner: var TicketForwarding) {.nodestroy, requires: owner.active == 0.} =
   ## Only retired native requests permit moving detached proof and namespace storage.
   `=wasMoved`(owner.rows)
@@ -45,9 +49,11 @@ proc `=wasMoved`*(owner: var TicketForwarding) {.nodestroy, requires: owner.acti
   `=wasMoved`(owner.included)
   owner.count = 0
   owner.configured = false
+
 proc requireClosed(owner: TicketForwarding) {.requires: owner.active == 0.} =
   ## Destruction is not an implicit cancellation of a live protocol exchange.
   discard
+
 proc `=destroy`*(owner: TicketForwarding) =
   ## Explicit close retires native authority before checked proofs and peer namespaces leave scope.
   requireClosed(owner)
@@ -55,19 +61,24 @@ proc `=destroy`*(owner: TicketForwarding) =
   `=destroy`(owner.recipients)
   `=destroy`(owner.exchanges)
   `=destroy`(owner.included)
+
 func len*(owner: TicketForwarding): int =
   ## Count retained deduplicated forwarding intents, including completed broadcasts until inclusion/expiry.
   owner.count
+
 func sending*(owner: TicketForwarding): int =
   ## Observe charged exchanges independently of Services graph access.
   owner.active
+
 func acknowledged*(owner: TicketForwarding): uint64 =
   ## Acknowledgments are delivery observations, never proof of canonical inclusion.
   owner.delivered
+
 proc clearExchange(owner: var TicketForwarding, index: int) =
   ## Caller has collected or cancelled exactly this native request.
   owner.exchanges[index] = default(ForwardExchange)
   dec owner.active
+
 proc close*(owner: var TicketForwarding, streams: var NodeService) =
   ## No foreign native request or Services CPU lease is touched.
   for index in 0..<MaxTicketForwards:
@@ -82,6 +93,7 @@ proc close*(owner: var TicketForwarding, streams: var NodeService) =
   owner.included = @[]
   owner.cursor = 0
   owner.configured = false
+
 proc remove(owner: var TicketForwarding, streams: var NodeService, row: int) =
   ## Dense-row removal updates every owned exchange before another index can denote a different proof.
   for index in 0..<MaxTicketForwards:
@@ -97,6 +109,7 @@ proc remove(owner: var TicketForwarding, streams: var NodeService, row: int) =
   owner.rows[last] = default(ForwardRow)
   dec owner.count
   owner.cursor = 0
+
 proc expire*(owner: var TicketForwarding, streams: var NodeService, now: StateTime) =
   ## Clock-only retirement is safe during an unrelated immutable canonical CPU lease.
   if not owner.configured: return
@@ -105,6 +118,7 @@ proc expire*(owner: var TicketForwarding, streams: var NodeService, now: StateTi
     owner.close(streams)
     return
   owner.observed = observed
+
 proc advance*(owner: var TicketForwarding, streams: var NodeService, source: TicketSource,
     now: StateTime, applied: StateTime): bool =
   ## Caller owns the graph gate; only fixed copied facts survive this selected-source activation.
@@ -151,6 +165,7 @@ proc advance*(owner: var TicketForwarding, streams: var NodeService, source: Tic
     owner.lastBlock = blockHash
     owner.lastRoot = root
   true
+
 proc offer*(owner: var TicketForwarding, proof: CheckedNetworkTicket): bool =
   ## A distributed ticket cannot create proxy intent; the sealed context and proxy identity are rechecked at actual send.
   if not owner.configured or not proof.valid: return false
@@ -165,6 +180,7 @@ proc offer*(owner: var TicketForwarding, proof: CheckedNetworkTicket): bool =
   owner.rows[owner.count] = ForwardRow(proof: proof)
   inc owner.count
   true
+
 proc poll*(owner: var TicketForwarding, streams: var NodeService, clock: MonoTime) =
   ## Collect at most16 exact native exchanges without touching finalized state or a shared worker.
   for index in 0..<MaxTicketForwards:
@@ -185,6 +201,7 @@ proc poll*(owner: var TicketForwarding, streams: var NodeService, clock: MonoTim
       discard streams.cancelRequest(owner.exchanges[index].ticket)
       owner.rows[row].status[recipient] = status+1 # Three failed complete exchanges exhaust only this proof/recipient pair.
     owner.clearExchange(index)
+
 proc dispatch*(owner: var TicketForwarding, streams: var NodeService, now: StateTime,
     clock: MonoTime): bool =
   ## A fresh advance must precede this call; at most32 recipient checks and one admitted request bound main-loop work.

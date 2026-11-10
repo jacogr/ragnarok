@@ -17,12 +17,16 @@ import ../../support/validator_rotation_fixture
 
 ## Control ordinary-verification refusal independently of map construction hashes.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Refuse the seal or entropy verification after an exact successful prefix.
 proc refuseAfter(successful: cint) {.importc: "bo_ietf_after", cdecl.}
+
 ## Prove malformed/preflight paths cannot reach the Rust primitive.
 proc verifications(): cint {.importc: "bo_ietf_calls", cdecl.}
+
 ## Refuse any new store/hash work after immutable fixture maps have been constructed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count attempted store/hash work on both success and refusal.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -4,7 +4,7 @@
   "transitions": 24,
   "initial_slot": 6,
   "initial_ancestry_slot": 5,
-  "epoch_guests_sha256": "1c534e633253c6fefde639b63b7ed3e5b2efb420b71daf5fa5b51339f5f9b4da",
+  "epoch_guests_sha256": "8d72372730b2958bcd08b7ebc9e149527468034b07b825744ca327e92c9c6866",
   "successor_roots": [
     [
       "4f340980924679bb979c10fea5a0c9614936e2064c4a2285142815bfccf6c9e6",

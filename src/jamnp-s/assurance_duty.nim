@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete selected-parent assignment plans preserve every actual TLS-key roster position before CE137 acquisition or assurance possession checks.
+
 import ../chain/[genesis, parameters]
 import ../codec/[bounded, assurances, guarantees, report_owned, owned]
 import ../codec/work/report
@@ -45,42 +46,52 @@ type
     of AvailabilityFailure: availabilityReason: AvailabilityError
     of GeometryFailure: geometryReason: ErasureLayoutError
     else: discard # Simple/default failures own no successful value or unrelated child reason.
+
 func error*[T](outcome: AssuranceDutyResult[T]): AssuranceDutyError =
   ## Inspect the immutable selected alternative before accessing a plan or child cause.
   outcome.status
+
 func value*[T](outcome: AssuranceDutyResult[T]): T {.requires: outcome.status ==
     AssuranceDutyError.None.} =
   ## Failed/default results expose neither assignment facts nor a fabricated successful request.
   outcome.completed
+
 func stateError*[T](outcome: AssuranceDutyResult[T]): StateStoreError {.requires: outcome.status ==
     AssuranceDutyError.StateFailure.} =
   ## Preserve only the actual failed canonical chapter lookup.
   outcome.stateReason
+
 func componentError*[T](outcome: AssuranceDutyResult[
     T]): StateComponentError {.requires: outcome.status == AssuranceDutyError.ComponentFailure.} =
   ## Preserve only an actual roster/time codec refusal.
   outcome.componentReason
+
 func availabilityError*[T](outcome: AssuranceDutyResult[
     T]): AvailabilityError {.requires: outcome.status == AssuranceDutyError.AvailabilityFailure.} =
   ## Preserve only the actual pending-assignment codec refusal.
   outcome.availabilityReason
+
 func geometryError*[T](outcome: AssuranceDutyResult[
     T]): ErasureLayoutError {.requires: outcome.status == AssuranceDutyError.GeometryFailure.} =
   ## Preserve only the actual source report's failed erasure layout.
   outcome.geometryReason
+
 func refused[T](reason: AssuranceDutyError): AssuranceDutyResult[T] {.requires: reason notin {
     AssuranceDutyError.None, AssuranceDutyError.StateFailure, AssuranceDutyError.ComponentFailure,
     AssuranceDutyError.AvailabilityFailure, AssuranceDutyError.GeometryFailure}.} =
   ## Simple errors carry no accepted prefix or unrelated child diagnostic.
   AssuranceDutyResult[T](status: reason)
+
 func valid*(duty: AssuranceDuty): bool =
   ## A default handle cannot authorize even an empty bitfield plan.
   duty.data != nil
+
 proc dutyInfo*(duty: AssuranceDuty): AssuranceDutyResult[AssuranceDutyInfo] =
   ## Read detached source metadata without exporting decoded chapter storage.
   let data = duty.data
   if data == nil: return refused[AssuranceDutyInfo](AssuranceDutyError.Uninitialized)
   AssuranceDutyResult[AssuranceDutyInfo](status: AssuranceDutyError.None, completed: data.info)
+
 proc matches*(duty: AssuranceDuty, source: BlockSnapshotResult): bool =
   ## A new head or a different complete posterior state revokes the captured plan before signing.
   let data = duty.data
@@ -88,6 +99,7 @@ proc matches*(duty: AssuranceDuty, source: BlockSnapshotResult): bool =
   let head = source.value
   array[32, byte](data.info.anchor) == array[32, byte](head.blockHash) and array[32, byte](
       data.info.root) == array[32, byte](head.stateRoot)
+
 proc localIndex*(duty: AssuranceDuty, ordinal: int): AssuranceDutyResult[ValidatorIndex] =
   ## Repeated identities retain every original index; no shuffled/compressed ordinal replaces them.
   let data = duty.data
@@ -96,6 +108,7 @@ proc localIndex*(duty: AssuranceDuty, ordinal: int): AssuranceDutyResult[Validat
       AssuranceDutyError.InvalidIndex)
   AssuranceDutyResult[ValidatorIndex](status: AssuranceDutyError.None, completed: ValidatorIndex(
       data.local[ordinal]))
+
 proc assignment*(duty: AssuranceDuty, core: CoreIndex): AssuranceDutyResult[
     AvailabilityAssignment] =
   ## Return only the selected parent's actual immutable assignment, never a caller-created descriptor.
@@ -105,6 +118,7 @@ proc assignment*(duty: AssuranceDuty, core: CoreIndex): AssuranceDutyResult[
       AssuranceDutyError.InvalidIndex)
   AssuranceDutyResult[AvailabilityAssignment](status: AssuranceDutyError.None,
     completed: data.assignments.availabilityAt(AssignmentCoreIndex(uint64(core))).value)
+
 proc shardRequest*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): AssuranceDutyResult[
     AvailabilityRequest] =
   ## CE137 coordinates come from canonical report geometry and each original local index, not from a peer or request payload.
@@ -120,6 +134,7 @@ proc shardRequest*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): Assuranc
   AssuranceDutyResult[AvailabilityRequest](status: AssuranceDutyError.None,
     completed: AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
       root: facts.header.erasureRoot, shard: ErasureShardIndex(position)))
+
 proc guarantorAt*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): AssuranceDutyResult[
     StateValidator] =
   ## A canonical guarantee's credential index selects the original current/prior-epoch roster position; it is never a shuffled or null-compressed offset.
@@ -148,6 +163,7 @@ proc guarantorAt*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): Assurance
   if record.error != StateComponentError.None:
     return refused[StateValidator](AssuranceDutyError.InvalidState)
   AssuranceDutyResult[StateValidator](status: AssuranceDutyError.None, completed: record.value)
+
 proc captureAssuranceDuty*(source: BlockSnapshotResult, local: StateEdKey,
     limits: AssuranceDutyLimits): AssuranceDutyResult[AssuranceDuty] =
   ## Complete parent C8/C9/C10/C11 preflight precedes chapter copies, decoded owners and whole-request plan publication.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Qualify all sixteen globals on one original selected configured parent without substituting its map/profile/view.
+
 import ./profile as parent_profile
 import ../global_snapshot
 type

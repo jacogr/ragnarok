@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Refuse every required hash stage independently before a durable StateStore update can publish.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -11,12 +12,16 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Restore primitive behavior between independent journal fixtures.
+
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse the next required invocation after a permitted prefix of hash calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Require every failure to be the selected operation, not unrelated fixture setup.
+
 proc run() {.raises.} =
   ## Exhaust the update's actual hash stages; successful controls use the same owner and inputs.
   var failures = 0
