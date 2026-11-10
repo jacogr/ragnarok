@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FULL_EPOCH_RING_INPUT",
   "files": {
-    "jam-full-epoch-ring-input.json": "dc02b661be9cfdb59e4484f3660d973680876380858104fd9aa89ec35fcc93f6"
+    "jam-full-epoch-ring-input.json": "7aa13e8db3ef3362cd683c544f0a4f17594c1a7f016d8bbe7953f250eba9efda"
   },
   "target": "jam-full-epoch-ring-input.json"
 }
