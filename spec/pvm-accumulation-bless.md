@@ -2,44 +2,31 @@
 
 ## Scope and authority
 
-Qualify bless (16), Omega_B, against Gray Paper revision
-`fad0ded4a433052397bf7234352a57fe491883f7`, pvm_invocations.tex and
-definitions.tex. Charge the full `422 + 20*r12` before all table mutations.
-Read one E4 assigner per configured core from r8 and r12 raw E4-service/E8-gas
-pairs from r11. Bad readable intervals panic before authorization. A non-manager or any repeated service key
-returns HUH; only then do out-of-domain full-width manager/delegator/registrar
-registers (r7/r9/r10) return WHO. Successful calls replace those roles, assigners
-and the complete always-accumulate set, returning OK.
+Qualify bless (16), Omega_B, against the [owned-role amendment](https://github.com/gavofyork/graypaper/pull/558)
+at `068d88c6` (merged after the repository's Gray Paper pin). Charge
+`422 + 20*r12` before capture, including when r11 keeps the current allowance
+dictionary. A full-width all-ones role register or input pointer keeps the
+corresponding current value. An all-ones E4 assigner keeps that core's owner.
+Other inputs use the existing E4 assigner array and E4-service/E8-gas pairs.
 
-Current privilege snapshots and serialized C(12) remain coherent with the current
-complete account map. Each effect version owns both; checkpoint retains them,
-while write/provide/yield preserve them. Never mutate initial provenance or publish
-persistent block state. Local copy, item, codec/store and backend failures expose
-no partial execution. Protocol cost retains all high bits and the existing signed
-negative-gas representation gate.
+The current manager may replace all fields. Each current delegator, registrar
+and assigner may transfer the role or core they hold. Any caller may submit an
+unchanged proposal. Only the manager can change the allowance dictionary.
+Unreadable supplied memory panics. Unauthorized proposals and repeated service
+keys return HUH before a permitted out-of-domain role returns WHO. Unique keys
+publish in numeric order. Identical repeated keys also return HUH.
+The original duplicate-key fixtures remain under
+`tests/fixtures/historical/bless-duplicate-keys/`.
 
-Completion witnesses cover gas/overflow edges, memory/authorization/type ordering,
-zero and multiple pairs, numeric sorting and repeated-key refusal, role
-boundaries, repeated manager handoff, checkpoints, coherent state and prior owners,
-resource/backend refusals, guarded APIs and ARC release.
+Both block publication paths use the role owners from the start of the
+parallel accumulation. A changed choice from the original manager wins for
+that field. Otherwise the original holder's selected context supplies its
+successor. Supervisor account authority does not grant privilege authority.
+Staging and queue sources remain the original delegator and core assigners.
 
-## Explicit specification boundaries
-
-The distinct service-key count must equal the original raw pair count. Repeated
-keys return HUH even if every gas value is identical. The duplicate check follows
-complete memory capture and current-manager authority, and precedes WHO for
-proposed role IDs. The state API separately returns `DuplicatePrivilege` before
-encoding or publishing a successor; guest dispatch maps it to HUH. All raw pairs
-are charged, including refused duplicates. Unique keys publish in numeric order.
-
-This resolves the historical `AmbiguousPrivileges` gate and replaces identical-pair
-deduplication. Original golden records remain byte-for-byte under
-`tests/fixtures/historical/bless-duplicate-keys/`. Intermediate qualification keeps
-the existing wire/profile pin until the remaining upgrade layers are ready.
-
-Grow_heap (1) remains gated by the existing GP/vector gas and stack-rounding
-questions in pvm-heap-memory.md. This tranche adopts neither vector deviation.
-Other host and publication scopes remain recorded in their own integration contracts.
+Completion witnesses cover role and pointer sentinels, owned and foreign role
+proposals, dictionary equality and refusal, manager precedence, original queue
+and staging producers, and checkpoint ownership.
 
 ## Ownership and bounded work
 
@@ -52,8 +39,8 @@ input count, before the uniqueness decision. Funded item cost proves the subsequ
 12*n byte extent cannot wrap; successful memory preflight and explicit typed
 allocation ceilings precede every native index conversion and allocation.
 
-The manager check is repeated at the state API boundary. It accepts only typed
-role IDs, independently owns canonical snapshot bytes and replaces serialized
+The effect API checks field ownership against the current snapshot before
+narrowing guest role IDs. It owns canonical snapshot bytes and replaces serialized
 C(12) on a fork with inherited store ceilings. Default/failed results expose no
 map, privileges or partial execution. Subsequent yield/provide/storage operations
 preserve accepted privileges; checkpoint and outcome normalization retain/select
@@ -100,3 +87,33 @@ Independent signed whole-map chains now require duplicate HUH to leave the free
 allowance dictionary empty, preventing later empty-operand execution. Rotation
 chains retain the same rule across validator population changes. Historical
 source/vector evidence and the separate heap questions retain their original scope.
+
+## November 11 campaign qualification
+
+The [0.8.0 campaign](https://github.com/jam-conformance/jam-fuzzing/pull/212),
+merged at `cddba17d`, includes post-0.8.0 heap charging and stack rounding,
+conditional-move gas pricing and program limits, report limits and saturated
+transfer credits. Its bless deviation removes the older blanket non-manager
+refusal. The merged rule used here also specifies field ownership and sentinels.
+
+- `1793732768_5752`, slot 36, is the bless witness. The Lasair report differs
+  only in C(12). The expected delegator and registrar are both `0x55b364b8`.
+  The reported result leaves both roles at service 0. The original signed block
+  contains the 0.8.0 assurance anchor field, which the current wire schema omits.
+  The local peer reproduced the supplied parent state root. Block decoding
+  then refused the old assurance layout with `InvalidValidator` before
+  accumulation. Local guest and publication tests cover the handoff.
+- `1792928756_4797`, slot 1, is a report admission control. It contains no
+  assurances and expects rejection without changing the state root. The
+  old genesis header refused initialization with `HeaderFailure`. The exact
+  child block and parent map decoded separately, and the native report policy
+  returned `RefinementLoadExceeded` for 50,000,001 authorizer gas.
+
+The local macOS build passed eight native suites covering bless, assign,
+designate, complete batch publication, annulment and availability. Two
+independent Python allowance checks also passed.
+
+The current `gp-next` vector head is four commits ahead of the pinned
+`a49f241a791f559d1502dc1b0b5328372995e375`. The range includes changes to the
+assurance and preimage codecs and STF witnesses. The pinned corpus and protocol
+sources retain their existing revisions during this scoped qualification.

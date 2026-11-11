@@ -28,7 +28,9 @@ type
       BackendFailure, InvalidIndex,
       StorageFull,               ## Candidate storage footprint requires more balance than the account has.
       InvalidParameters,         ## Deposit settings must come from a valid parameter snapshot.
-      NotManager,                ## Only the current privileged manager may replace the privilege state.
+      NotManager,                ## Only the current manager can grant storage credits.
+      UnauthorizedPrivilege,     ## The caller proposed a change to a privilege it does not hold.
+      InvalidPrivilegeService,   ## An authorized proposal contains a service ID outside the E4 domain.
       DuplicatePrivilege,        ## Every repeated allowance service key refuses, including identical gas values.
       InvalidCore,               ## The selected core is outside the current positional queue layout.
       NotAssigner,               ## Only the current assigner may replace its core queue.
@@ -1424,11 +1426,13 @@ func comparePrivilege(left, right: AlwaysAccumulate): int =
   if uint32(left.service) > uint32(right.service): return 1 # No subtraction or signed narrowing.
   0
 
-proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeState,
+proc recordAccumulationBless*(effects: AccumulationEffects, proposed: array[3, uint64],
+    assigners: seq[ServiceIndex], always: openArray[AlwaysAccumulate],
     config: PrivilegeConfig): AccumulationEffectResult[AccumulationEffects] =
-  ## Replace regular privileges only for the current manager, preserving accounts, yield, provisions and checkpoint.
-  ## Borrowed sequences stay stable during this call; accepted canonical bytes and snapshot own independent copies.
-  ## Every repeated service key refuses explicitly; identical gas values do not reduce the raw count.
+  ## Apply a guest privilege proposal in manager, delegator, registrar order.
+  ## A full-width all-ones ID keeps the corresponding current role. The caller resolves
+  ## memory sentinels before passing the exact proposed assigner array and allowance table.
+  ## Accepted roles and canonical allowance bytes are owned independently of the input.
   # No partially encoded map or privilege owner escapes refusal.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)
@@ -1437,26 +1441,50 @@ proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeSta
     fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize manager operations.
   let previous = data.regular.data
   assert previous != nil # Private effect constructors retain initialized current snapshots.
-  let current = previous.privileges.privilegeInfo
+  let currentSnapshot = previous.privileges
+  let current = currentSnapshot.privilegeInfo
   if current.error != PrivilegeError.None:
     fail(AccumulationEffectError.InvalidState) # Invalid owners cannot fabricate authority.
-  if uint32(previous.initial.contextInfo.value.service) != uint32(current.value.manager):
-    fail(AccumulationEffectError.NotManager) # Authorization precedes proposed role/dictionary validation.
-  if uint64(config.cores) != uint64(current.value.cores) or source.assigners.len !=
-      current.value.cores:
-    fail(AccumulationEffectError.InvalidState) # The current profile fixes the exact positional assigner count.
-  if uint64(source.always.len) > uint64(config.maxAlways) or
-      source.always.len > high(int) div sizeof(AlwaysAccumulate):
-    fail(AccumulationEffectError.LimitExceeded) # Bound all raw pair sorting/capture before duplicate rejection.
-  var ordered = newSeq[AlwaysAccumulate](source.always.len)
-  for i, pair in source.always:
-    ordered[i] = pair # Never sort or mutate the caller's borrowed sequence.
+  let info = current.value
+  if uint64(config.cores) != uint64(info.cores) or assigners.len != info.cores:
+    fail(AccumulationEffectError.InvalidState) # The current profile fixes the positional assigner count.
+  if uint64(always.len) > uint64(config.maxAlways) or
+      always.len > high(int) div sizeof(AlwaysAccumulate):
+    fail(AccumulationEffectError.LimitExceeded) # Bound the raw table before allocating sort scratch.
+  var ordered = newSeq[AlwaysAccumulate](always.len)
+  for i, pair in always:
+    ordered[i] = pair # Preserve the caller's table order.
   ordered.sort(comparePrivilege)
   for index in 1..<ordered.len:
     if uint32(ordered[index-1].service) == uint32(ordered[index].service):
-      fail(AccumulationEffectError.DuplicatePrivilege) # Compare keys alone; no duplicate pair may become a dictionary entry.
-  let canonical = PrivilegeState(manager: source.manager, delegator: source.delegator,
-    registrar: source.registrar, assigners: source.assigners, always: ordered)
+      fail(AccumulationEffectError.DuplicatePrivilege) # All repeated keys return HUH before role narrowing.
+  let service = uint32(previous.initial.contextInfo.value.service)
+  let prior = [uint32(info.manager), uint32(info.delegator), uint32(info.registrar)]
+  var roles = proposed
+  for index in 0..<prior.len:
+    if roles[index] == high(uint64):
+      roles[index] = uint64(prior[index]) # Resolve the sentinel against this invocation's current snapshot.
+  if service != prior[0]:
+    # The manager and the whole allowance dictionary are reserved to the manager.
+    if roles[0] != uint64(prior[0]) or ordered.len != info.always:
+      fail(AccumulationEffectError.UnauthorizedPrivilege)
+    for index in 1..<prior.len:
+      if roles[index] != uint64(prior[index]) and service != prior[index]:
+        fail(AccumulationEffectError.UnauthorizedPrivilege) # A supervisor has no role authority.
+    for core, assigner in assigners:
+      let owner = currentSnapshot.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value
+      if uint32(assigner) != uint32(owner) and service != uint32(owner):
+        fail(AccumulationEffectError.UnauthorizedPrivilege) # Ownership is independent for every core.
+    for index, pair in ordered:
+      let old = currentSnapshot.alwaysAccumulateAt(PrivilegeEntryIndex(uint64(index))).value
+      if uint32(pair.service) != uint32(old.service) or uint64(pair.gas) != uint64(old.gas):
+        fail(AccumulationEffectError.UnauthorizedPrivilege) # Compare the canonical dictionary, including gas.
+  for role in roles:
+    if role > uint64(high(uint32)):
+      fail(AccumulationEffectError.InvalidPrivilegeService) # WHO follows every HUH predicate.
+  let canonical = PrivilegeState(manager: ServiceIndex(uint32(roles[0])),
+    delegator: ServiceIndex(uint32(roles[1])), registrar: ServiceIndex(uint32(roles[2])),
+    assigners: assigners, always: ordered)
   let encoded = privilegeStateEntry(canonical, config)
   if encoded.error in {PrivilegeError.LimitExceeded, PrivilegeError.LengthOverflow}:
     fail(AccumulationEffectError.LimitExceeded) # Codec byte/item ceilings are local, never HUH or WHO.
@@ -1484,6 +1512,13 @@ proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeSta
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: currentContext,
       exceptional: data.exceptional)))
+
+proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeState,
+    config: PrivilegeConfig): AccumulationEffectResult[AccumulationEffects] =
+  ## Apply a typed proposal through the same field ownership and dictionary checks as guest dispatch.
+  recordAccumulationBless(effects, [uint64(uint32(source.manager)), uint64(uint32(
+      source.delegator)),
+    uint64(uint32(source.registrar))], source.assigners, source.always, config)
 
 proc recordAccumulationAssign*(effects: AccumulationEffects, core: AuthorizationCoreIndex,
     queue: openArray[AuthorizerHash], assigner: ServiceIndex, queues: AuthorizationConfig,

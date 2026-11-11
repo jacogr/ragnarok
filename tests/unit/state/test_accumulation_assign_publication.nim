@@ -207,6 +207,40 @@ proc checkManagerGate() =
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
       HeaderSlot(128), policy()).error == AccumulationBatchError.LimitExceeded
 
+proc checkOwnedBlessPublication(managerChanges: bool) =
+  ## Publish a real assigner's bless through the complete batch and exercise both sides of manager precedence.
+  var payload = @[255'u8, 255, 255, 255, 255, 255, 255, 255]
+  if managerChanges:
+    for i, octet in [88'u8, 0, 0, 0]:
+      payload[i] = octet # The original manager explicitly replaces core zero.
+  let managerProgram = guestEnvelope([registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196608), registerImmediate(9, high(uint64)),
+    registerImmediate(10, high(uint64)), registerImmediate(11, high(uint64)),
+    registerImmediate(12, 0), @[10'u8, 16], @[50'u8, 0]],
+    writable = payload)
+  # Encode an explicit core zero handoff, and use the E4 sentinel for core one.
+  let ownerProgram = guestEnvelope([registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196608), registerImmediate(9, high(uint64)),
+    registerImmediate(10, high(uint64)), registerImmediate(11, high(uint64)),
+    registerImmediate(12, 0), @[10'u8, 16], @[50'u8, 0]],
+    writable = @[77'u8, 0, 0, 0, 255, 255, 255, 255])
+  let fixture = batchFixture(firstEnvelope = managerProgram, secondEnvelope = ownerProgram,
+    assigners = @[ServiceIndex(99), ServiceIndex(42)], manager = 42)
+  let prior = fixture.state.snapshot.value
+  let manager = batchExecution(fixture, 0, parameters = parameters())
+  let owner = batchExecution(fixture, 1, parameters = parameters())
+  assert normalizeAccumulationOutcome(owner).value.outcomeContext.value.effectInfo.value.hasPrivileges
+  var limits = policy()
+  limits.managerBytes = ByteLimit(42)
+  let plan = prepareCompleteAccumulationBatch(fixture.inputs, prior, [owner, manager], [],
+    HeaderSlot(128), limits).value
+  var working = forkStateStore(prior).value
+  let published = applyAccumulationBatch(working, plan)
+  assert published.error == AccumulationBatchError.None
+  let roles = working.snapshot.value.lookup(chapterKey(StateChapter(12))).value.bytes
+  assert roles[4] == (if managerChanges: 88'u8 else: 77'u8), "manager changes win per core"
+  assert roles[8] == 42, "the unrelated core retains its original owner"
+
 proc main() =
   ## Exercise both original core owners, distinct terminal branches and restored-equal provenance.
   check(Halt, Halt)
@@ -218,6 +252,8 @@ proc main() =
   checkSubset()
   checkStoreLimit()
   checkManagerGate()
+  checkOwnedBlessPublication(false)
+  checkOwnedBlessPublication(true)
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     let source = batchFixture()

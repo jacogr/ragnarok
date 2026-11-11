@@ -58,7 +58,10 @@ passes independent literal original bundles, complete 104-byte six-field tuples,
 first/last validator hash pairs and exact observed hash-call/preimage-byte facts
 for empty/single/mixed/65 exports at 6/1023 validators. Exact buffer/hash-call/
 hash-byte caps succeed; one-unit-short caps refuse before hashing. Empty export
-roots are zero without extra hashes. Failed initial bundle hashes, export roots,
+roots are zero for every validator without extra hashes, matching the
+[empty-export clarification](https://github.com/gavofyork/graypaper/pull/583)
+at `27b64a6a`. The six-validator empty-export witness passed on 2026-11-11.
+Failed initial bundle hashes, export roots,
 later validators, first outer nodes and final root hashes expose no successful
 prefix. Copy/source/detached lifetime and full-width index refusals pass. Fresh
 1000-cycle ARC includes complete and partial-prefix/backend cleanup and reports
