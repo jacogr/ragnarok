@@ -7,6 +7,9 @@
 ## Native regions enforce the admitted block reservations. Checked code owns source admission,
 ## validates exact receipts and resumes the original continuation or fallback.
 ## Resident guest banks are bounded to one entry; no invocation pointer survives return.
+## Prepared execution publishes through the shared asynchronous worker. The direct
+## region and wide-cycle owners still exercise the former SysV ABIs in native tests.
+## A direct publisher does not grant admission to a prepared frame.
 
 import std/assertions
 import ../[program, machine]
@@ -2231,6 +2234,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
     proc publishX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
         emission: X86WideEmission, childSlot: int, planIdentity: nil pointer): bool =
       ## One bounded driver links an existing immutable child without copying or replacing it.
+      ## It checks that the child is active in this arena and matches the copied cycle and
+      ## plan identity. Parent refusal leaves that child intact and grants no wide entry.
       if jit == nil or jit.wideCycle.status != 0 or planIdentity == nil or
           jit.unavailable or not x86PublicationAvailable(jit) or
           childSlot < 0 or childSlot >= int(jit.memoryCycle.count): return false
