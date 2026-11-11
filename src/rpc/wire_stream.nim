@@ -71,8 +71,11 @@ proc waitForDispatch(s: ptr StreamExchange, reason: WaitFor, deadline = never) {
   suspend()
 
 proc cancelWatch(s: ptr StreamExchange) =
-  ## Only the dispatcher lane registers and cancels readiness. It cancels
-  ## before waking a writer or stopping the stream, while the fd is still live.
+  ## The dispatcher cancels on the lane that registered readiness, before
+  ## waking a writer or retiring the fd. On the pinned kqueue and epoll
+  ## backends, submitPollRemove drains a queued registration and completes
+  ## cancellation synchronously. io_uring can defer completion while the
+  ## kernel owns the operation, so Linux builds select epoll.
   if s.watching:
     discard submitPollRemove(s.fd)
     assert s.readiness != PendingReadiness
