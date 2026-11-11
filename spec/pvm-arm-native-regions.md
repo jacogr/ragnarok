@@ -205,19 +205,9 @@ callee-saved registers and retains X29 for profiling/unwinding. It loads the
 union of every read and prospective write before any guard, then publishes only
 the written union on exit. Zero-work exits therefore retain initialized values.
 
-A multi-read body may fail after speculative register writes. Only that body's
-written guest slots are checkpointed in caller-saved D18-D30 while the read is
-live. Every failed guard restores those slots before refunding the whole read
-charge/attempt span and replaying the original source. Earlier dirty memory
-writes remain committed. The read renderer uses no SIMD scratch; its checkpoint
-lifetime ends before the next dirty core. Both the child-local last header in
-word 13 and the global last header in word 24 retain their distinct contracts.
-
-Publication checks the complete image, relocations and byte capacity before
-installing it. A published image may contain 1 through 1,024 words including RET.
-Resident refusal leaves the previous linked macro available without displacing
-children or poisoning publication state. Full append and executable-storage
-refusal remain separate controls. Native qualification now requires a dedicated
+The [resident image and direct publishers](../src/pvm/internal/arm64_jit.nim) own the
+late Read rollback and refund, return receipt, and image capacity contracts. The
+qualification at this revision added a dedicated
 resident-only-refused profile, resident-kind/word-bound/rollback receipts, and
 missing/truncated/duplicate and wrong-policy negatives through both the parser
 and the full qualification controller.

@@ -3080,6 +3080,10 @@ proc armResidentMacroImage(shape: ArmMacroShape, cycle: ArmMemoryCycleBlock,
     pure: ArmBlock, read: ArmReadSpan, branchBody: ArmBlock, cacheWindow: bool,
     remainingBytes: uint64): ArmResidentMacroImage =
   ## Render and patch one complete bounded image without touching its executable owner.
+  ## A late Read guard restores only that Read's written guest lanes from D18–D30,
+  ## refunds its full gas price and attempt span, and returns to the original Read
+  ## header. Earlier committed stores and their receipts survive. The checkpoint
+  ## lives only through the Read, which does not use those SIMD lanes.
   result = default(ArmResidentMacroImage)
   let readImage = armMacroReadImage(read)
   if readImage.words.len == 0: return
@@ -3233,7 +3237,9 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
     cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
   ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
   ## This direct publisher checks the copied shape against the owner's installed children.
-  ## Resident refusal leaves those children available for a linked macro.
+  ## The image must fit 1,024 words including RET and the remaining space under the
+  ## 1 MiB arena limit. An owner with 8,192 fragments cannot append another image.
+  ## Resident refusal leaves the children available for a linked macro.
   if (cycle.tailRead.clippedReads or read.clippedReads) and not jit.clippedReads:
     return false
   when defined(pvmArmMacroResidentRefuse):
@@ -3299,8 +3305,9 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
 
 proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
   ## Link the three existing same-owner children and source-derived scalar controls.
-  ## A failed append leaves the children intact. The macro has one publication record
-  ## and uses the existing arena capacity and branch reach checks.
+  ## The single macro record needs a new fragment under the 8,192-fragment limit,
+  ## at most 1,024 words including RET in the remaining 1 MiB arena, and reachable
+  ## same-arena children. A failed append leaves the children intact.
   if jit.macroRoute.status != 0: return false
   if jit.unavailable or jit.fragments >= 8192 or jit.codeBytes > 1048576 or
       not armMacroShapeValid(jit, shape):
