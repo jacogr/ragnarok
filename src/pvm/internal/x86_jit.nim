@@ -1718,8 +1718,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
         ## Ordinary x86 uses register budgets and credits for eligible connected cycles.
         ## The Read and role masks must fit the bank, and every role must fit one credit.
-        ## Try the page proof with the credited register allocation. Each retry
-        ## preserves the original image-size fallback and seven-role receipt.
+        ## Try the credited triad within the 4,096-byte image ceiling. Retry the
+        ## original credited page proof first, then the older credited and exact images.
+        ## Every image preserves the seven-role receipt.
         when readCycleUsesCredits:
           result = emitX86ReadCycle(cycle, true, true, true, true)
           if result.len == 0:

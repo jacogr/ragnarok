@@ -3148,6 +3148,7 @@ when NativeReadCycleEnabled:
 
   proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
     ## Prefer the Read window and Store/Tail pair with the entry-local Store page proof.
+    ## The 4,096-byte ceiling still admits the original Read window or ordered probes.
     result = emitArmReadCycle(cycle, storePage = true, allowWindow = true, allowStoreTail = true)
     if result.len == 0:
       # Keep the existing Read-window image if the pair exceeds the byte ceiling.
