@@ -170,6 +170,7 @@ class PerformanceRunner:
         self.images = {}
         self.references = {}
         self.inputs = {}
+        self.control_sequence = 0  # Run-local attempt identity; repeated endpoints keep distinct logs.
         self.doom_folder = self.folder/'doom/prepared'
         self.report = dict(schema=SCHEMA, status='incomplete', scope=scope,
                            runs=[], controls=[], builds=[], identity={})
@@ -196,13 +197,17 @@ class PerformanceRunner:
         """A changed fixture, source, executable or compiler cannot supply accepted performance data."""
         unchanged(self.seals)
 
-    def command(self, arguments, name, env=None, timeout=900, expected_failure=False):
-        """Check sealed identities on both sides of every tool, including failed controls."""
+    def command(self, arguments, name, env=None, timeout=900, expected_failure=False, *, control=None):
+        """Check seals around every tool; checkpoint control receipts before result validation."""
         self.verify()
         selected = execution_environment() if env is None else env
         row = self.checks.command(arguments, name, environment=selected, timeout=timeout)
         row['benchmark_environment'] = {key: value for key, value in selected.items()
                                         if key.startswith('RAGNAROK_PVM_')}
+        if control is not None:
+            # Even a failed exit, parse, precise refusal or post-command seal needs its actual receipt.
+            self.report['controls'].append(dict(control, run=command_record(row)))
+            self.checkpoint()
         self.verify()
         if not expected_failure and row['exit_code']:
             raise RuntimeError('PVM performance command failed: '+row['log'])
@@ -449,10 +454,16 @@ class PerformanceRunner:
         args, env, controlled = self.invocation(case, role)
         identity = 'synthetic' if case['family'] == 'synthetic' else case['case_id']
         prefix = identity+'-'+role
-        positive = self.command(args, prefix+'-positive', env)
+        # Namespace only raw transcripts. Copied-fixture paths and guest arguments stay unchanged.
+        while True:
+            log_prefix = f'control-{self.control_sequence:04d}-'+prefix
+            self.control_sequence += 1
+            if not any(self.folder.glob(log_prefix+'-*.log')):
+                # A fresh runner in an existing output folder must preserve earlier attempts too.
+                break
+        positive = self.command(args, log_prefix+'-positive', env,
+            control=dict(case_id=identity, role=role, kind='positive'))
         self.parse(positive['output'], case, role)
-        self.report['controls'].append(dict(case_id=identity, role=role, kind='positive',
-                                            run=command_record(positive)))
         for kind in ('assertions', 'state', 'events') if case['family'] == 'doom' else ('assertions', 'state'):
             # Never alter a sealed canonical input; point each negative process at a private copy.
             probe, probe_args = dict(env), list(args)
@@ -495,15 +506,14 @@ class PerformanceRunner:
                         if role == 'reference':
                             probe_args[3] = directory
             try:
-                refused = self.command(probe_args, prefix+'-'+kind, probe, expected_failure=True)
+                refused = self.command(probe_args, log_prefix+'-'+kind, probe, expected_failure=True,
+                    control=dict(case_id=identity, role=role, kind=kind))
             finally:
                 # Logs and refusal identities remain; copied full-memory fixtures need not accumulate.
                 if directory is not None:
                     shutil.rmtree(directory)
             if not intended_refusal(refused, case['family'], role, kind):
                 raise ValueError('Missing intended '+kind+' refusal: '+prefix)
-            self.report['controls'].append(dict(case_id=identity, role=role, kind=kind,
-                                                run=command_record(refused)))
         self.checkpoint()
 
     def execute(self):

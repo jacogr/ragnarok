@@ -81,6 +81,19 @@ class InertChecks:
         return dict(command=args, exit_code=1 if failure else 0, log=name+'.log', output=output)
 
 
+class TranscriptChecks(InertChecks):
+    """Retain distinct observable process transcripts using the real log writer's file contract."""
+
+    def command(self, arguments, name, environment=None, timeout=180):
+        """Write each emulated process result, including unsuccessful qualification attempts."""
+        row = super().command(arguments, name, environment, timeout)
+        row['output'] += '\nprocess receipt '+str(len(self.trace))+' '+str(arguments[0])+'\n'
+        path = self.runner.folder/(name+'.log')
+        path.write_text(row['output'])
+        row['log'] = str(path.relative_to(ROOT))
+        return row
+
+
 from pvm_performance_fixtures import scope_observations
 
 
@@ -225,10 +238,105 @@ class PerformanceOrchestrationTests(unittest.TestCase):
     def test_real_publication_accepts_complete_inert_runner_contract(self):
         """The orchestration result and real report API agree on all identity/control/sample fields."""
         runner = InertRunner(self.folder)
+        runner.checks = TranscriptChecks(runner)
         report = runner.execute()
+        logs = [ROOT/row['run']['log'] for row in report['controls']]
+        self.assertEqual(len(set(logs)), len(logs))
+        self.assertTrue(all(path.is_file() for path in logs))
         self.assertEqual(report['status'], 'passed')
         self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'passed')
         self.assertIn('CPU', (self.folder/'summary.md').read_text())
+
+    def test_repeated_endpoint_controls_preserve_every_transcript_and_invocation(self):
+        """Two endpoint passes keep all policies' positive/state/assertion/event evidence immutable."""
+        runner = InertRunner(self.folder, 'doom')
+        runner.checks = TranscriptChecks(runner)
+        runner.prepare_doom()
+        runner.build_images()
+        case = next(case for case in runner.cases if case['case_id'] == 'doom-tick')
+        retained = {}
+        first_commands = {}
+        for endpoint in ('stock', 'candidate'):
+            image = self.folder/endpoint
+            image.write_text(endpoint+' executable')
+            runner.seal([image])
+            runner.images['doom'] = image
+            for role in performance.ROLES:
+                start = len(runner.checks.trace)
+                runner.controls(case, role)
+                commands = [(args[1:], env) for _, args, env in runner.checks.trace[start:]]
+                if endpoint == 'stock':
+                    first_commands[role] = commands
+                else:
+                    # Transcript identity must not leak into guest argv or its environment.
+                    self.assertEqual(commands, first_commands[role])
+                for path, content in retained.items():
+                    self.assertEqual(path.read_text(), content)
+                controls = runner.report['controls']
+                self.assertEqual(len({row['run']['log'] for row in controls}), len(controls))
+                for row in controls[-4:]:
+                    path = ROOT/row['run']['log']
+                    output = path.read_text()
+                    retained[path] = output
+                    self.assertEqual(row['case_id'], 'doom-tick')
+                    self.assertEqual(row['role'], role)
+                    self.assertEqual(row['run']['exit_code'], 0 if row['kind'] == 'positive' else 1)
+                    if row['kind'] != 'positive':
+                        self.assertTrue(performance.intended_refusal(
+                            dict(row['run'], output=output), 'doom', role, row['kind']))
+                self.assertFalse(any((self.folder/'negative').rglob('*.events')))
+        self.assertEqual(len(retained), 24)
+        checkpoint = json.loads((self.folder/'results.json').read_text())
+        self.assertEqual(checkpoint['controls'], runner.report['controls'])
+        # A new runner using this evidence directory also cannot replace the first attempt's files.
+        restarted = InertRunner(self.folder, 'doom')
+        restarted.images = runner.images
+        restarted.references = runner.references
+        restarted.doom_blob, restarted.rom = runner.doom_blob, runner.rom
+        restarted.seals = runner.seals
+        restarted.checks = TranscriptChecks(restarted)
+        restarted.controls(case, performance.ROLES[0])
+        self.assertTrue(set(retained).isdisjoint(
+            ROOT/row['run']['log'] for row in restarted.report['controls']))
+        for path, content in retained.items():
+            self.assertEqual(path.read_text(), content)
+
+    def test_failed_controls_checkpoint_the_executed_process_receipts(self):
+        """Failed exits, framing, exact refusals and seals retain raw diagnostics without publishing."""
+        for failure, count in (('positive_exit', 1), ('parse', 1), ('accept_bad_state', 3),
+                               ('unrelated_crash', 2), ('tamper', 1)):
+            with self.subTest(failure=failure):
+                runner = InertRunner(self.folder/failure, 'doom')
+                runner.checks = TranscriptChecks(runner)
+                if failure in ('accept_bad_state', 'unrelated_crash', 'tamper'):
+                    setattr(runner.checks, failure, True)
+                elif failure == 'parse':
+                    def invalid_protocol(*args):
+                        raise ValueError('bad framing')
+                    runner.parse = invalid_protocol
+                else:
+                    command = runner.checks.command
+                    def failed_exit(*args, **kwargs):
+                        row = command(*args, **kwargs)
+                        row['exit_code'] = 2
+                        return row
+                    runner.checks.command = failed_exit
+                with patch.object(performance, 'publish_report') as publisher:
+                    with self.assertRaises((ValueError, RuntimeError)):
+                        runner.execute()
+                publisher.assert_not_called()
+                report = json.loads((runner.folder/'results.json').read_text())
+                self.assertEqual(report['status'], 'failed')
+                self.assertEqual(report['runs'], [])
+                self.assertEqual(len(report['controls']), count)
+                self.assertEqual(len(runner.checks.trace), count)
+                for row, (_, args, env) in zip(report['controls'], runner.checks.trace):
+                    self.assertEqual(row['run']['command'], args)
+                    self.assertEqual(row['run']['benchmark_environment'],
+                        {key: value for key, value in env.items() if key.startswith('RAGNAROK_PVM_')})
+                    self.assertIn('process receipt', (ROOT/row['run']['log']).read_text())
+                self.assertFalse((runner.folder/'samples.csv').exists())
+                self.assertFalse(any((runner.folder/'negative').rglob('*.expected')))
 
     def test_canonical_guest_admission_preserves_pinky_snapshot_and_all_inputs(self):
         """All eight ordinary configurations pass the raw reference artifact with the full ABI oracle."""
