@@ -6,6 +6,17 @@
 ## through the locked mailbox, with no borrow of the session, program, frame or callbacks.
 ## Parked completions belong to individual registrations, so publishing one frees the work
 ## slot before the host collects it. Credits bound image owners through retirement.
+## Deferred identities hold no credit; only eligible work that can queue claims one.
+## Installed owners retain credits while idle, so a serialized second consumer can still
+## exhaust the table. Consumer reservations, fairness and aggregate prepared-memory limits
+## belong to the enclosing execution environment; this scheduler implements no such policy.
+##
+## One source epoch keeps its first structural pure candidate and selects at most one
+## immutable request/image. Ready code has no later hot-region replacement or expansion.
+## The 4096-work gate is the maximum settled work of one public call, not lifetime heat or
+## evidence that the selected candidate is profitable. Ready entry also needs the current
+## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
+## revalidation, and acquire a credit only when eligible work can queue.
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
@@ -788,6 +799,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   ## Gate scheduling on settled work from a single public call of this source epoch.
   ## Queue admission and active-lease release share the mutex. A busy slot or full
   ## credit table leaves execution checked and eligible evidence available for retry.
+  ## Selection fixes one ticket for this source epoch. Existing installed images are not
+  ## evicted for another consumer or replaced by later hot regions within the same epoch.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return
   collectNative(session)

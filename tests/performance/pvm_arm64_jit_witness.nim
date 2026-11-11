@@ -3693,29 +3693,28 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
     assert flatArmMacroStatistics(fresh) == movedBefore, "checked stream move creates no macro image"
     echo "ARM_MACRO_OWNER_MOVE,0"
     when not defined(pvmArm64JitRefuse):
-      # Existing legacy hook only constructs an old JIT here; retain full checked source/owner outcomes.
-      var linked = newFlatFrame(plan, [page], info)
-      flatArmRefuseResidentCycleReceipt(linked)
-      for warm in 0..<16: verifyControl(linked, guestProgram, info, 4096, [page])
-      assert not flatArmResidentMemoryCycleActive(linked)
-      assert flatArmMemoryCycleStatistics(linked) == default(array[6, uint64])
-      assert flatArmMacroStatistics(linked) == default(array[7, uint64])
-      var linkedCases = 0
+      # Reuse the checked macro source across every partial budget and a fresh stream lease.
+      var reentry = newFlatFrame(plan, [page], info)
+      for warm in 0..<16: verifyControl(reentry, guestProgram, info, 4096, [page])
+      assert not flatArmResidentMemoryCycleActive(reentry)
+      assert flatArmMemoryCycleStatistics(reentry) == default(array[6, uint64])
+      assert flatArmMacroStatistics(reentry) == default(array[7, uint64])
+      var reentryCases = 0
       for budget in 0'u64..160'u64:
-        verifyControl(linked, guestProgram, info, budget, [page])
-        inc linkedCases
-      var linkedCache = takeFlatStream(linked)
-      var linkedFresh = newFlatFrame(plan, [page], replacement)
-      restoreFlatStream(linkedFresh, linkedCache)
-      let beforeLinked = flatArmMemoryCycleStatistics(linkedFresh)[0]
-      verifyControl(linkedFresh, guestProgram, replacement, 4096, [page])
-      assert flatArmMemoryCycleStatistics(linkedFresh)[0] == beforeLinked
-      assert not flatArmResidentMemoryCycleActive(linkedFresh)
-      assert flatArmMacroStatistics(linkedFresh) == default(array[7, uint64])
-      inc linkedCases
-      echo "ARM_MACRO_LINKED_FALLBACK_CASES,", linkedCases
+        verifyControl(reentry, guestProgram, info, budget, [page])
+        inc reentryCases
+      var reentryCache = takeFlatStream(reentry)
+      var reentryFresh = newFlatFrame(plan, [page], replacement)
+      restoreFlatStream(reentryFresh, reentryCache)
+      let beforeReentry = flatArmMemoryCycleStatistics(reentryFresh)[0]
+      verifyControl(reentryFresh, guestProgram, replacement, 4096, [page])
+      assert flatArmMemoryCycleStatistics(reentryFresh)[0] == beforeReentry
+      assert not flatArmResidentMemoryCycleActive(reentryFresh)
+      assert flatArmMacroStatistics(reentryFresh) == default(array[7, uint64])
+      inc reentryCases
+      echo "ARM_MACRO_CHECKED_REENTRY_CASES,", reentryCases
     else:
-      echo "ARM_MACRO_LINKED_FALLBACK_CASES,0"
+      echo "ARM_MACRO_CHECKED_REENTRY_CASES,0"
 
     # A late second-read failure must undo speculative R10 and R5 before source replay.
     # Without rollback, the first load replays at +8 and both increments are doubled.
@@ -3752,7 +3751,7 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
 else:
   let macroBackendCases = 0
   let macroFrameCases = 0
-  echo "ARM_MACRO_LINKED_FALLBACK_CASES,0"
+  echo "ARM_MACRO_CHECKED_REENTRY_CASES,0"
   echo "ARM_MACRO_ACTIVE,0"
   echo "ARM_MACRO_SIGNED_BACKEDGE,0"
   echo "ARM_MACRO_LATE_READ_REFUND,0"

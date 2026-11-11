@@ -4,6 +4,11 @@
 ## Explicit sequential execution workers retain one decoded source and one source/policy-bound prepared cache.
 ## Logical CPU, arguments, gas and callbacks are rebuilt per invocation; bounded immutable memory
 ## baseline/private scratch may remain for restoration. No process-global state is retained.
+## Construction binds an optional compiler runtime to this one prepared cache. The default
+## selects checked execution even for requested Jit. Native image credits do not account for
+## retained decoded facts or memory: convenience execution uses defaultPreparedLimits with
+## a 64 MiB idle baseline/private-payload ceiling per prepared owner. A collection of workers
+## needs its own aggregate retention policy; this wrapper has no environment-wide budget.
 
 import ./[program, machine, initialize, step]
 import ./gas/gas

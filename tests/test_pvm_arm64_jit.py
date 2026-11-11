@@ -171,25 +171,25 @@ class ArmMacroReceiptTests(unittest.TestCase):
     markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
                'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
-               'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+               'ARM_MACRO_CHECKED_REENTRY_CASES', 'ARM_MACRO_RESIDENT',
                'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
 
     @classmethod
     def fixture(cls, mode, words=None):
         """Keep the test transcript's mode literals independent of production policy mapping."""
-        backend, frame, active, linked, resident, rollback, image_words = cls.expected[mode]
-        counts = (backend, frame, active, active, active, active, linked, resident, rollback,
+        backend, frame, active, reentry, resident, rollback, image_words = cls.expected[mode]
+        counts = (backend, frame, active, active, active, active, reentry, resident, rollback,
                   image_words if words is None else words)
         return ''.join(f'{marker},{count}\n' for marker, count in zip(cls.markers, counts))
 
     def test_valid_native_refused_and_plain_fixtures(self):
-        for mode, (backend, frame, active, linked, resident, rollback, words) in self.expected.items():
+        for mode, (backend, frame, active, reentry, resident, rollback, words) in self.expected.items():
             with self.subTest(mode=mode):
                 receipt = macro_witness_receipts(self.fixture(mode), mode)
                 self.assertEqual(receipt['ARM_MACRO_BACKEND_CASES'], backend)
                 self.assertEqual(receipt['ARM_MACRO_FRAME_CASES'], frame)
                 self.assertEqual(receipt['ARM_MACRO_OWNER_MOVE'], active)
-                self.assertEqual(receipt['ARM_MACRO_LINKED_FALLBACK_CASES'], linked)
+                self.assertEqual(receipt['ARM_MACRO_CHECKED_REENTRY_CASES'], reentry)
                 self.assertEqual(receipt['ARM_MACRO_RESIDENT'], resident)
                 self.assertEqual(receipt['ARM_MACRO_ROLLBACK_ALIAS'], rollback)
                 self.assertEqual(receipt['ARM_MACRO_IMAGE_WORDS'], words)

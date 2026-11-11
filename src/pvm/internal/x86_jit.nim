@@ -1,9 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Independent Linux x86-64 arithmetic lowering; source charging and every observable boundary stay in the interpreter.
-## The canonical SysV leaf borrows one register array in RDI and touches only caller-saved registers.
-## A separate default-off proof may preserve a bounded resident bank; neither path retains input pointers.
+## Linux x86-64 lowering for scalar blocks, register loops and checked memory regions.
+## Scalar SysV leaves borrow the register file. Register loops also borrow fresh budget and
+## visit state, and checked memory entries receive call-local memory capabilities.
+## Native regions enforce the admitted block reservations. Checked code owns source admission,
+## validates exact receipts and resumes the original continuation or fallback.
+## Resident guest banks are bounded to one entry; no invocation pointer survives return.
 
 import std/assertions
 import ../[program, machine]
