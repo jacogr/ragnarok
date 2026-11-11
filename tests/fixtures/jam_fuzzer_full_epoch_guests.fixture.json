@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_EPOCH_GUESTS",
   "files": {
-    "jam-fuzzer-full-epoch-guests.json": "8d72372730b2958bcd08b7ebc9e149527468034b07b825744ca327e92c9c6866"
+    "jam-fuzzer-full-epoch-guests.json": "2892ee5d204643f0b78c2f4305b3fb64123a31f76b019254eb657fd2c95678b8"
   },
   "target": "jam-fuzzer-full-epoch-guests.json"
 }

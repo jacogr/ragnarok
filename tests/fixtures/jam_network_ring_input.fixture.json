@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_NETWORK_RING_INPUT",
   "files": {
-    "jam-network-ring-input.json": "b23c303697f1eee6dd41c73a8f1a4fe6662da9a2f1470d4f99585173cc257052"
+    "jam-network-ring-input.json": "56cc7066b07235ef5be96ba0f877da20e72a5d85a7a9eae572d57ccf3ee2b44d"
   },
   "target": "jam-network-ring-input.json"
 }
