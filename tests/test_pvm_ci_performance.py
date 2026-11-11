@@ -4,6 +4,7 @@
 from copy import deepcopy
 import json
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -337,6 +338,54 @@ class PerformanceOrchestrationTests(unittest.TestCase):
                     self.assertIn('process receipt', (ROOT/row['run']['log']).read_text())
                 self.assertFalse((runner.folder/'samples.csv').exists())
                 self.assertFalse(any((runner.folder/'negative').rglob('*.expected')))
+
+    def test_timed_out_controls_retain_partial_output_and_propagate_failure(self):
+        """The real command path retains positive and refusal timeouts, even with assertion text."""
+        for count, kind in enumerate(('positive', 'assertions', 'state', 'events'), 1):
+            with self.subTest(kind=kind):
+                runner = InertRunner(self.folder/kind, 'doom')
+                runner.checks = performance.NativeChecks(runner.folder)
+                calls = []
+                captured = ('Assertion Failure: doom event payload mismatch\n' if kind == 'events'
+                            else b'partial stdout \xff\n')
+                diagnostic = None if kind == 'state' else b'partial stderr\n'
+                timeout_error = subprocess.TimeoutExpired(['placeholder'], 900,
+                    output=captured, stderr=diagnostic)
+                def process(args, **kwargs):
+                    calls.append((args, kwargs))
+                    if len(calls) == count:
+                        raise timeout_error
+                    output = ('inert positive protocol' if len(calls) == 1 else
+                              'Assertion Failure: doom native assertion control' if len(calls) == 2
+                              else 'Assertion Failure: doom terminal gas mismatch')
+                    return subprocess.CompletedProcess(args, 0 if len(calls) == 1 else 1, output, '')
+                with patch.object(performance.subprocess, 'run', side_effect=process), \
+                        patch.object(performance, 'publish_report') as publisher:
+                    with self.assertRaises(subprocess.TimeoutExpired) as raised:
+                        runner.execute()
+                self.assertIs(raised.exception, timeout_error)
+                publisher.assert_not_called()
+                report = json.loads((runner.folder/'results.json').read_text())
+                self.assertEqual(report['status'], 'failed')
+                self.assertEqual(report['runs'], [])
+                self.assertEqual(len(report['controls']), count)
+                row = report['controls'][-1]
+                self.assertEqual((row['case_id'], row['role'], row['kind']),
+                                 ('doom-init', 'interpreted', kind))
+                self.assertEqual(row['run']['exit_code'], 124)
+                self.assertEqual(row['run']['command'], calls[-1][0])
+                self.assertEqual(row['run']['benchmark_environment'], {key: value for key, value
+                    in calls[-1][1]['env'].items() if key.startswith('RAGNAROK_PVM_')})
+                self.assertGreaterEqual(row['run']['elapsed_seconds'], 0)
+                output = (ROOT/row['run']['log']).read_text()
+                self.assertIn(captured if isinstance(captured, str) else
+                              captured.decode(errors='replace'), output)
+                if diagnostic is not None:
+                    self.assertIn(diagnostic.decode(), output)
+                self.assertIn('timed out', output)
+                self.assertTrue(all((ROOT/item['run']['log']).is_file() for item in report['controls']))
+                self.assertFalse(any((runner.folder/'negative').rglob('*.events')))
+                self.assertFalse((runner.folder/'samples.csv').exists())
 
     def test_canonical_guest_admission_preserves_pinky_snapshot_and_all_inputs(self):
         """All eight ordinary configurations pass the raw reference artifact with the full ABI oracle."""

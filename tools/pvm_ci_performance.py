@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 
 from native_checks import NativeChecks, ROOT
@@ -201,13 +202,31 @@ class PerformanceRunner:
         """Check seals around every tool; checkpoint control receipts before result validation."""
         self.verify()
         selected = execution_environment() if env is None else env
-        row = self.checks.command(arguments, name, environment=selected, timeout=timeout)
+        started = time.monotonic()
+        timeout_error = None
+        try:
+            row = self.checks.command(arguments, name, environment=selected, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            if control is None:
+                raise
+            # subprocess.run has reaped the child, but NativeChecks has not written its partial output.
+            timeout_error = error
+            fragments = (error.stdout or '', error.stderr or '')
+            output = ''.join(part.decode(errors='replace') if isinstance(part, bytes) else part
+                             for part in fragments)+'\n'+str(error)+'\n'
+            log = self.folder/(name+'.log')
+            log.write_text(output)
+            row = dict(command=[str(arg) for arg in arguments], exit_code=124,
+                elapsed_seconds=round(time.monotonic()-started, 6),
+                log=str(log.relative_to(ROOT)), output=output)
         row['benchmark_environment'] = {key: value for key, value in selected.items()
                                         if key.startswith('RAGNAROK_PVM_')}
         if control is not None:
             # Even a failed exit, parse, precise refusal or post-command seal needs its actual receipt.
             self.report['controls'].append(dict(control, run=command_record(row)))
             self.checkpoint()
+        if timeout_error is not None:
+            raise timeout_error
         self.verify()
         if not expected_failure and row['exit_code']:
             raise RuntimeError('PVM performance command failed: '+row['log'])
