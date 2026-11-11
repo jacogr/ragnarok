@@ -148,7 +148,7 @@ when declared(FlatFrame):
       f.handlers[int(header)] = protectedReadProbeCharge
 
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32) =
-    ## Keep the four ordinary probes independent of the optional protected observation.
+    ## Bound certificate walks per call and deduplicate cached headers during later discovery.
     if f.readProbe.inspected == ReadProbeWalkLimit: return
     when NativeReadCycleEnabled:
       if f.readProbe.count == ReadProbeSlots and f.readProbe.protectedTried: return
@@ -290,7 +290,7 @@ when declared(FlatFrame):
     nominateNativeRead(f.nativeSession, body)
 
   proc finishNativeReadObservation*(f: var FlatFrame, success: bool) =
-    ## Revalidate on the real returned frame after all observers are gone, before its stream is retained.
+    ## Qualify the returned halt, then restore and revalidate the checked stream before retirement.
     assert not f.readProbe.observing
     when NativeReadCycleEnabled:
       assert not f.readProbe.protectedActive
@@ -327,7 +327,7 @@ when declared(FlatFrame):
             valid = not readProbeBodyGuardOverlaps(f, body) and
               validateNativeReplacementRead(f.nativeSession, body)
     if valid and retireNativeForReadReplacement(f.nativeSession, key): return
-    # Refusal never turns candidate authority into installed authority. The original image
-    # remains mapped and can be rebound only by its own unchanged source certificate.
+    # The incumbent remains mapped if revalidation or retirement fails.
+    # Rebind it only through its unchanged source certificate.
     discardNativeReplacement(f.nativeSession)
     installNative(f)

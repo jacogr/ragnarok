@@ -563,7 +563,7 @@ func frameCreationError(error: FlatError): StepError =
 proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine, owner: Program,
     original: CodeAddress, limit: ExecutionStepLimit, plan: GasPlan, memo: GasMemo,
     single: bool): StepResult {.alwaysInline.} =
-  ## Borrow the admitted frame through execution, publication and return of its reusable buffers.
+  ## Borrow the tagged result's frame through pricing, execution, publication and buffer handback.
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return StepResult(status: policy)
   frame.nativeSession = data.native
@@ -591,7 +591,7 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
 
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
-  ## Lease code and optional idle bytes; initialize CPU and restore complete input memory before execution.
+  ## Check source and zero steps before page admission. The tagged result owns frame cleanup.
   let selectedData = prepared.data
   if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
       PvmBackend.PolkaCompiled]:

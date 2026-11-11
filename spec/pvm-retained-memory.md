@@ -289,12 +289,8 @@ callback state and follow the same complete byte-restoration rule if their stora
 
 ## Plain prepared frame lifetime
 
-Plain prepared execution borrows the admitted frame from its successful result through policy
-selection, execution, publication and return of the stream and optional idle bytes. The tagged
-result owns the remaining frame until cleanup. Admission refusals occur before the borrow and
-leave the existing idle lease available to a later call. The memory reuse suite checks that a
-zero attempt limit takes precedence over page admission after an unpublished cross-page store,
-and that both refusals preserve the retained stream and lease for a subsequent successful call.
+See the [prepared frame routines](../src/pvm/step.nim#L563) and the
+[cross-page reuse regression](../tests/unit/codec/test_pvm_memory_reuse.nim#L151).
 
 ## Validation
 

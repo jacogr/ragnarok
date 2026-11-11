@@ -387,24 +387,6 @@ This architectural change does not establish the cause of the earlier shared-wit
 
 ## Later Read replacement
 
-A complete checked halt with an unused incumbent arms the next qualifying call to observe
-later Read bodies. Qualification binds the current installed image key and stream epoch,
-requires settled work at the existing invocation floor, and excludes committed native use.
-Two consecutive qualified observations must agree on the complete disjoint Read certificate.
-A refusal, native use or a mismatched observation resets the previous streak. One session can replace its
-incumbent once per stream epoch.
-
-The ordinary dispatcher selects the observed loop at segment entry. Its reservation path keeps
-the existing charge and checked execution semantics. The observer uses an invocation-local
-attempt limit and a session-owned, fixed-size header table with a whole-call search limit.
-Repeated refused headers retain their cached identity across host segments. The end-of-call
-proof restores the checked stream, revalidates the winning body and guards, then retires the
-exact incumbent and submits through the existing asynchronous compiler. Callback entry and
-normal invocations keep their existing no-wait behavior.
-
-The shared ARM and x86 Async suites exercise one retained owner across prefix submission, an
-unused completion, two observations of a later Read behind a repeated refused store header, and
-ready native execution. A second disjoint Read runs three times in the same epoch and leaves the
-replacement installed. The suites use the existing worker gate between public calls and check
-both publication and actual native work. Each call preserves complete CPU, gas, permissions and
-memory parity with an interpreted owner and leaves the input snapshot immutable.
+The [native session](../src/pvm/internal/native_pipeline.nim#L617) and
+[read probe](../src/pvm/internal/read_admission_probe.nim#L292) document the replacement contract.
+The [shared Async history](../tests/support/pvm_shared_async.nim#L1374) covers both ISAs.

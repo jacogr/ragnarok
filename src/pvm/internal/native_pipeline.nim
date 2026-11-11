@@ -11,11 +11,11 @@
 ## exhaust the table. Consumer reservations, fairness and aggregate prepared-memory limits
 ## belong to the enclosing execution environment; this scheduler implements no such policy.
 ##
-## One source epoch keeps its first structural pure candidate. An installed image stays
-## immutable; a separately copied later Read candidate can replace an unused image only
-## after two qualified observed calls, real-frame source revalidation and physical retirement.
-## Replacement owns at most one image. Physical retirement frees its credit before fresh admission;
-## busy work or occupied credits leave checked execution without a reservation or fairness promise.
+## A source epoch retains its first structural pure candidate.
+## At most one later Read can replace an unused installed image per stream epoch.
+## Physical retirement releases the incumbent's credit before fresh admission.
+## Busy work or occupied credits can defer the replacement and leave execution checked.
+##
 ## The 4096-work gate is the maximum settled work of one public call, not lifetime heat or
 ## evidence that the selected candidate is profitable. Ready entry also needs the current
 ## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
@@ -615,7 +615,7 @@ proc completeNativeObservation*(session: NativeSession, successfulHalt: bool) =
 
 when NativeCheckedReadEnabled:
   func nativeReplacementObservation*(session: NativeSession): bool =
-    ## One prior qualified unused call arms bounded observation of later checked headers.
+    ## Admit later observation only while the armed incumbent's exact image key remains unused.
     let data {.cursor.} = session.data
     if data == nil: return false
     data.invocation and data.state == NativeState.Ready and data.imageKey.ticket != 0 and
@@ -624,14 +624,14 @@ when NativeCheckedReadEnabled:
       data.invocationBudget >= NativeInvocationFloor and data.image.ready
 
   proc beginNativeReadDiscovery*(session: NativeSession) =
-    ## Allocate no new owner; clear the embedded table once when this call first observes later Read.
+    ## Clear the session-owned table once before the first later observation segment.
     let data {.cursor.} = session.data
     assert data != nil and data.invocation and not data.readDiscovery.active
     data.readDiscovery = default(NativeReadDiscoveryWorkspace)
     data.readDiscovery.active = true
 
   proc admitReadProbeHeader(probe: var NativeReadDiscoveryWorkspace, header: uint32): bool =
-    ## Deduplicate refused cached bodies with bounded storage and a whole-call search-step budget.
+    ## Bound header deduplication by the table size and the invocation-wide search budget.
     if probe.searches == NativeReadProbeSearchLimit: return false
     assert header < NativeEntryLimit
     let key = header+1
@@ -829,7 +829,7 @@ when NativeCheckedReadEnabled:
     data.epoch
 
   proc considerLaterRead(data: NativeSessionData, proof: NativeReadStorage, kind: NativeKind) =
-    ## Keep one exact candidate across consecutive qualified unused calls, never rewriting installed proof.
+    ## Require two consecutive observations of the same qualified certificate and incumbent key.
     if data.laterRead.observed: return
     when NativeReadCycleEnabled:
       if kind == NativeKind.ConnectedReadCycle and data.image.kind == kind and
@@ -986,7 +986,7 @@ when NativeCheckedReadEnabled:
     if data != nil: data.laterRead = default(NativeReadCandidate)
 
   proc retireNativeForReadReplacement*(session: NativeSession, key: NativeImageKey): bool =
-    ## The real exclusive frame has restored every old bridge and revalidated this exact candidate.
+    ## Require the exact incumbent key and a candidate revalidated on the restored frame.
     ## Its active lease prevents close while physical retirement unlocks to unmap the installed image.
     let data {.cursor.} = session.data
     if data == nil or nativeReplacementReadInfo(session).epoch == 0 or
@@ -1130,9 +1130,9 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Short inputs neither manufacture eligibility nor revoke a genuinely long same-source observation.
   data.provenWork = max(data.provenWork, completedWork)
   when NativeCheckedReadEnabled:
-    # Qualification is whole-call evidence. Short, failed or actually native calls cannot
-    # keep a later-region streak, even when cumulative diagnostic counters have saturated.
-    # Retirement marks this stream epoch as spent until the stream is invalidated.
+    # A complete checked halt with settled work at the floor and the same unused image can arm
+    # discovery. An unqualified call or missing observation clears the previous streak.
+    # Physical retirement consumes the epoch's one replacement until stream invalidation.
     let unused = not data.replacedRead and data.state == NativeState.Ready and data.image.ready and
       data.invocationImageKey.ticket != 0 and data.invocationImageKey == data.imageKey and
       data.invocationQualified and completedWork >= NativeInvocationFloor and
