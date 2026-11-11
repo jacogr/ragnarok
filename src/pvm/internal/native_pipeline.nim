@@ -93,7 +93,7 @@ when defined(pvmSharedAsyncWitness):
       kind*: NativeKind
 
 type
-  NativePhase* {.pure.} = enum ## Active work wins; otherwise Done observes parked completions, never blocks admission.
+  NativePhase* {.pure.} = enum ## Queued or running compilation takes precedence over parked completions.
     Idle, Queued, Running, Done
   NativeState* {.pure.} = enum ## Profit deferral is reversible; unavailable lowering is not a timed guest failure.
     Absent, Deferred, Pending, Ready, Unavailable, Closed
@@ -175,7 +175,7 @@ type
   NativeSession* = object ## Shared prepared identity, used exclusively under PreparedStorage.busy.
     data: nil NativeSessionData
   NativeRuntimeInfo* = object ## Copied work and parked-result activity, never a borrowed session/cache view.
-    phase*: NativePhase
+    phase*: NativePhase ## Auxiliary retirement can hold a credit with no queued or running compilation.
     registered*: int ## Image credits held by live/retiring requests, not cold prepared identities.
     active*: int     ## Whole public invocation leases, including calls with no image credit.
     completions*: int ## Uncollected Complete rows, including empty failed images; independent of work phase.
@@ -1346,8 +1346,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   ## Gate scheduling on settled work from a single public call of this source epoch.
   ## Queue admission and active-lease release share the mutex. A busy slot or full
   ## credit table leaves execution checked and eligible evidence available for retry.
-  ## A submission fixes one immutable ticket. Only the real-frame later-Read boundary may
-  ## first retire an unused installed image; admission here never evicts another consumer.
+  ## A primary may revoke another owner's auxiliary for a credit. An installed primary
+  ## can only be replaced at the qualified real-frame later-Read boundary.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return
   collectNative(session)
