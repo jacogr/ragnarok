@@ -6,37 +6,16 @@
 FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS ubuntu-base
 
-# Prefer Ubuntu's default archive and security hosts when DNS resolves promptly.
-# Omitting an unresolvable host avoids a resolver wait for every archive object.
-# The second mirror publishes the same signed Ubuntu release and package data.
-# A partial index update must fail so the retry repeats update before install.
-RUN set -eu; \
-    fallback=http://mirrors.edge.kernel.org/ubuntu; \
-    for scope in archive security; do \
-      host="$scope.ubuntu.com"; \
-      { \
-        if timeout 5s getent ahosts "$host" >/dev/null; then \
-          printf 'http://%s/ubuntu\tpriority:1\n' "$host"; \
-        else \
-          printf 'Ubuntu APT primary %s did not resolve. Using %s\n' "$host" "$fallback" >&2; \
-        fi; \
-        printf '%s\n' "$fallback"; \
-      } > "/etc/apt/$scope-mirrors.list"; \
-    done; \
-    sed -i \
-      -e 's|^URIs: http://archive[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/archive-mirrors.list|' \
-      -e 's|^URIs: http://security[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/security-mirrors.list|' \
-      /etc/apt/sources.list.d/ubuntu.sources \
-    && test "$(grep -c '^URIs: mirror+file:' /etc/apt/sources.list.d/ubuntu.sources)" -eq 2
+# Share the bootstrap logic, with a fresh mirror decision inside each package transaction.
+COPY tools/download_retry.sh /usr/local/bin/download-retry
+COPY tools/docker_ubuntu_apt.sh /usr/local/bin/ubuntu-apt-install
 
 FROM ubuntu-base AS sources
 
 # The production image is qualified on Linux x86-64; other architectures use separate local trials.
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
-COPY tools/download_retry.sh /usr/local/bin/download-retry
-RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
-    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
+RUN sh /usr/local/bin/ubuntu-apt-install \
     build-essential ca-certificates clang cmake git lld make openssl python3 xz-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -63,8 +42,7 @@ RUN --mount=type=secret,id=github_token make build-storage-full-paged-resources
 FROM sources AS builder
 RUN --mount=type=secret,id=github_token git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
-RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
-    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y patchelf \
+RUN sh /usr/local/bin/ubuntu-apt-install patchelf \
     && mkdir /out && cp /src/build/ragnarok /out/ragnarok \
     && patchelf \
       --replace-needed /src/build-tools/crypto/libragnarok_crypto.so libragnarok_crypto.so \
@@ -75,12 +53,10 @@ RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
 
 # Ship only the peer, its maintained native ABIs and the required system runtime libraries.
 FROM ubuntu-base AS runtime
-COPY --from=sources /usr/local/bin/download-retry /usr/local/bin/download-retry
-RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
-    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
+RUN sh /usr/local/bin/ubuntu-apt-install \
     ca-certificates libgcc-s1 libstdc++6 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -f /usr/local/bin/download-retry \
+    && rm -f /usr/local/bin/download-retry /usr/local/bin/ubuntu-apt-install \
     && groupadd --gid 10001 ragnarok \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home ragnarok \
     && mkdir /data && chown 10001:10001 /data
