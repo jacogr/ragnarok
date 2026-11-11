@@ -366,6 +366,9 @@ type
     prices: GasMemo      # Source-bound lazy prices share the same exclusive invocation lease.
     when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
       mixedPairMode: FlatMixedPairMode
+    when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
+      mixedDirtyPages: array[2, uint64]
+      mixedDirtyCount: uint8
     when defined(polkavmRuntime):
       foreign: ForeignOwner
   PreparedProgram* = object ## Copies share one source-bound cache identity; synchronous same-owner reentry is refused.
@@ -474,6 +477,14 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
         checkedFallbackEnabled: data.selected == PvmBackend.Jit,
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
         data.memoryScratch)))
+
+when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
+  proc setPreparedMixedDirtyPages*(prepared: PreparedProgram, addresses: openArray[uint64]) =
+    ## Private native continuation witnesses seed the same checked page bookkeeping as a first write.
+    let data = prepared.data
+    assert data != nil and not data.busy and addresses.len <= 2
+    data.mixedDirtyCount = uint8(addresses.len)
+    for index in 0..<addresses.len: data.mixedDirtyPages[index] = addresses[index]
 
 when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
   export FlatMixedPairMode
@@ -591,6 +602,10 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
     frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
+  when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
+    if data.mixedDirtyCount != 0:
+      seedFlatMixedDirtyPages(frame, data.mixedDirtyPages.toOpenArray(0, int(
+          data.mixedDirtyCount)-1))
   when NativeCheckedReadEnabled:
     # Plain execution preserves initial selection and observes only an already armed later phase.
     if nativeReplacementObservation(frame.nativeSession): beginReadProbe(frame, uint64(limit))
@@ -980,6 +995,10 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
     frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
+  when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
+    if data.mixedDirtyCount != 0:
+      seedFlatMixedDirtyPages(frame, data.mixedDirtyPages.toOpenArray(0, int(
+          data.mixedDirtyCount)-1))
   when NativeCheckedReadEnabled:
     beginReadProbe(frame, uint64(steps))
   let answer = driveHostFrame[Context, Reason, Fallible, ScalarCapable, Callbacks](frame, owner,

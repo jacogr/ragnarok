@@ -84,7 +84,7 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       let proof = buildFlatMixedLoop(native, pc, 1, allowPaid = true)
       assert proof.complete and uint64(proof.span) == span and proof.count == 8 and proof.price == blockPrice
       assert proof.paidGuards == 0x2f'u32
-      assert not buildFlatMixedLoop(native, pc, 1).complete
+      assert not buildFlatMixedLoop(native, pc, 1, allowPaid = false).complete
       var corrupted = proof
       corrupted.paidGuards = corrupted.paidGuards xor 1
       assert not corrupted.complete

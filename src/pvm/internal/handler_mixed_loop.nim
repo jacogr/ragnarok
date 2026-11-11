@@ -9,7 +9,7 @@
 
 when declared(FlatFrame):
   proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64,
-      allowPaid = false): NativeMixedLoop =
+      allowPaid = true): NativeMixedLoop =
     ## Only an ordinary complete header with the original operands and price can certify a visit.
     result = default(NativeMixedLoop)
     if epoch == 0 or f.plan == nil or f.plan.allowNative or f.plan.singleStep or
@@ -49,13 +49,19 @@ when declared(FlatFrame):
         if worker != original.handler:
           let paired = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(fact.opcode)
             else: flatMemoryPairHandler(fact.opcode)
-          if paired == nil or worker != paired: return
+          if paired == nil or worker != paired:
+            # A fused pair must name both adjacent original scalar facts. The ordered source walk
+            # and the next iteration independently bind the second site's worker and operands.
+            if ordinal >= source.last or node+1 >= walk.terminal or
+                f.sites[int(node+1)] != ordinal+1: return
+            let nextFact = f.plan.facts[int(ordinal+1)]
+            let fused = flatFusedRegisterHandler(fact.opcode, nextFact.opcode)
+            if fused == nil or worker != fused or nextFact.priceIndex != priceIndex: return
       proof.operations[int(node-header-1)] = NativeOperation(opcode: fact.opcode,
         slots: original.args.slots, immediate: (if node ==
             walk.terminal: 0'u64 else: original.args.x))
       inc node
-    when defined(pvmPaidMixedLoopWitness):
-      if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
+    if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
     if proof.complete: result = proof
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
@@ -116,6 +122,23 @@ when declared(FlatFrame):
           inc counters.refusals
         break
 
+  when defined(pvmMixedLoopWitness):
+    proc observeFlatMixedArena(f: var FlatFrame, off: uint32, receipt: NativeMixedLoopReceipt,
+        funded: uint32, operations: uint64) =
+      let requested = f.mixedProofs
+      if requested == nil: return
+      for index in 0..<int(requested[].count):
+        if requested[].proofs[index].header != off: continue
+        template counters: untyped = f.mixedArenaWitness[index]
+        inc counters.entries
+        counters.visits += uint64(receipt.visits)
+        counters.operations += operations
+        if receipt.visits != 0: inc counters.branches
+        if receipt.visits > 1: inc counters.repeatedHeaders
+        if receipt.paid: inc counters.paid
+        if receipt.paid or (receipt.next == off and receipt.visits < funded): inc counters.refusals
+        break
+
   template enterFlatMixedLoop(f: var FlatFrame, off: uint32, certificate: NativeMixedLoop, image,
       enter: untyped): uint32 =
     ## Borrow fresh read, writable and dirty-page descriptors for at most 256 funded visits.
@@ -141,27 +164,31 @@ when declared(FlatFrame):
     if not receipt.valid: abortNativeReceipt()
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       inc f.mixedWitnessEntries
-    when defined(pvmPaidMixedLoopWitness):
-      if receipt.paid:
-        assert receipt.next > off and receipt.next < boundProof.terminal
-        let ordinal = f.sites[int(receipt.next)]
-        assert ordinal >= boundProof.first and ordinal-boundProof.first < uint32(boundProof.span)
-        let visits = uint64(receipt.visits)
-        let reserved = visits+1
-        let prefix = uint64(ordinal-boundProof.first)
-        let operations = visits*uint64(boundProof.span)+prefix
-        f.info.gas = MachineGas(gas-reserved*boundProof.price)
-        f.info.blockCharged = true
-        f.remaining -= reserved*uint64(boundProof.span)
-        f.reservation = off or flatReservationHeaderFlag
-        if operations != 0: recordNativeMixedLoop(f.nativeSession, operations, visits > 1, visits != 0)
+    if receipt.paid:
+      assert receipt.next > off and receipt.next < boundProof.terminal
+      let ordinal = f.sites[int(receipt.next)]
+      assert ordinal >= boundProof.first and ordinal-boundProof.first < uint32(boundProof.span)
+      let visits = uint64(receipt.visits)
+      let reserved = visits+1
+      let prefix = uint64(ordinal-boundProof.first)
+      let operations = visits*uint64(boundProof.span)+prefix
+      f.info.gas = MachineGas(gas-reserved*boundProof.price)
+      f.info.blockCharged = true
+      f.remaining -= reserved*uint64(boundProof.span)
+      f.reservation = off or flatReservationHeaderFlag
+      if operations != 0: recordNativeMixedLoop(f.nativeSession, operations, visits > 1, visits != 0)
+      when defined(pvmPaidMixedLoopWitness):
         observeFlatMixedPair(f, off, receipt, funded, operations)
-        when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
-          f.mixedWitnessVisits += visits
-          inc f.mixedWitnessRefusals
-        return receipt.next
+      when defined(pvmMixedLoopWitness):
+        observeFlatMixedArena(f, off, receipt, funded, operations)
+      when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
+        f.mixedWitnessVisits += visits
+        inc f.mixedWitnessRefusals
+      return receipt.next
     when defined(pvmPaidMixedLoopWitness):
       observeFlatMixedPair(f, off, receipt, funded, uint64(receipt.visits)*uint64(boundProof.span))
+    when defined(pvmMixedLoopWitness):
+      observeFlatMixedArena(f, off, receipt, funded, uint64(receipt.visits)*uint64(boundProof.span))
     if receipt.visits != 0:
       let visits = uint64(receipt.visits)
       f.info.gas = MachineGas(gas-visits*boundProof.price)
@@ -195,35 +222,59 @@ when declared(FlatFrame):
 
   proc flatMixedLoopEntry(f: var FlatFrame, off: uint32): uint32 =
     let image = f.mixedImage
-    let proof = f.mixedProof
-    if image == nil or proof == nil: return flatCharge(f, off)
-    enterFlatMixedLoop(f, off, proof[], image, enterNativeMixedLoop)
+    let requested = f.mixedProofs
+    if image == nil or requested == nil: return flatCharge(f, off)
+    for index in 0..<int(requested[].count):
+      if (f.mixedMask and (1'u8 shl index)) != 0 and requested[].proofs[index].header == off:
+        template selected(entry, registers, context: untyped): untyped =
+          enterNativeMixedLoopAt(entry, uint8(index), registers, context)
+        return enterFlatMixedLoop(f, off, requested[].proofs[index], image, selected)
+    abortNativeReceipt()
 
-  proc borrowFlatMixedLoopSegment(f: var FlatFrame, proof: ptr NativeMixedLoop): bool =
-    ## The second entry changes only its own checked header for the duration of this segment.
-    let header = proof[].header
-    assert f.mixedImage == nil and f.mixedProof == nil and f.handlers[int(header)] == flatCharge
-    let borrowed = borrowNativeMixedLoop(f.nativeSession, proof[])
-    if borrowed.image == nil: return borrowed.refused
-    f.mixedProof = proof
-    f.mixedImage = borrowed.image
+  proc borrowFlatMixedLoopSegment(f: var FlatFrame,
+      requested: ptr NativeMixedLoopSet): NativeMixedLoopBorrow =
+    ## Borrow the arena once, and patch only the proof slots the immutable image actually published.
+    assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
+    result = borrowNativeMixedLoops(f.nativeSession, requested[])
+    if result.image == nil: return
+    f.mixedProofs = requested
+    f.mixedImage = result.image
+    f.mixedMask = result.mask
+    when defined(pvmMixedLoopWitness):
+      f.mixedArenaWitness = default(array[NativeMixedLoopEntryLimit, FlatMixedArenaWitness])
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       f.mixedWitnessEntries = 0
       f.mixedWitnessVisits = 0
       f.mixedWitnessRefusals = 0
-    f.handlers[int(header)] = flatMixedLoopEntry
-    false
+    for index in 0..<int(requested[].count):
+      if (result.mask and (1'u8 shl index)) == 0: continue
+      let header = requested[].proofs[index].header
+      assert f.handlers[int(header)] == flatCharge
+      f.handlers[int(header)] = flatMixedLoopEntry
 
   proc returnFlatMixedLoopSegment(f: var FlatFrame) =
-    ## Restore the original header and drop both invocation borrows before release.
-    let proof = f.mixedProof
+    ## Restore every original checked header before dropping either borrow or releasing the arena.
+    let requested = f.mixedProofs
     let image = f.mixedImage
-    assert proof != nil and image != nil
-    let header = proof[].header
-    assert f.handlers[int(header)] == flatMixedLoopEntry
-    f.handlers[int(header)] = flatCharge
+    assert requested != nil and image != nil
+    for index in 0..<int(requested[].count):
+      if (f.mixedMask and (1'u8 shl index)) == 0: continue
+      let header = requested[].proofs[index].header
+      restoreFlatTemporaryHandler(f, header, flatMixedLoopEntry, flatCharge)
+    when defined(pvmMixedLoopWitness):
+      for index in 0..<int(requested[].count):
+        if (f.mixedMask and (1'u8 shl index)) == 0: continue
+        let proof {.cursor.} = requested[].proofs[index]
+        let counts = f.mixedArenaWitness[index]
+        let geometry = witnessNativeMixedLoopGeometry(image[], uint8(index))
+        let pc = f.plan.facts[int(f.sites[int(proof.header)])].pc
+        echo "MIXED_ARENA_ENTRY,", pc, ",", index, ",", counts.entries, ",", counts.visits,
+          ",", counts.refusals, ",", counts.paid, ",", counts.operations, ",", counts.branches,
+          ",", counts.repeatedHeaders, ",", image[].codeBytes, ",", f.mixedMask,
+          ",", geometry.offset, ",", geometry.length
     f.mixedImage = nil
-    f.mixedProof = nil
+    f.mixedProofs = nil
+    f.mixedMask = 0
     when defined(pvmMixedLoopWitness):
       echo "MIXED_LOOP_SEGMENT,", f.mixedWitnessEntries, ",", f.mixedWitnessVisits, ",",
         f.mixedWitnessRefusals, ",", image[].codeBytes
@@ -282,6 +333,33 @@ when declared(FlatFrame):
       assert not buildFlatMixedLoop(frame, pc, 1).complete
       frame.arguments[int(terminal)] = branch
       assert buildFlatMixedLoop(frame, pc, 1) == proof
+
+      for node in int(header)+1..<int(terminal)-1:
+        let ordinal = frame.sites[node]
+        let fact = frame.plan.facts[int(ordinal)]
+        if ordinal >= source.last: continue
+        let next = frame.plan.facts[int(ordinal+1)]
+        let fused = flatFusedRegisterHandler(fact.opcode, next.opcode)
+        if fused == nil or frame.handlers[node] != fused: continue
+        let firstArgs = frame.arguments[node]
+        frame.arguments[node].x = firstArgs.x xor 1
+        assert not buildFlatMixedLoop(frame, pc, 1).complete
+        frame.arguments[node] = firstArgs
+        let secondArgs = frame.arguments[node+1]
+        frame.arguments[node+1].x = secondArgs.x xor 1
+        assert not buildFlatMixedLoop(frame, pc, 1).complete
+        frame.arguments[node+1] = secondArgs
+        let secondSite = frame.sites[node+1]
+        frame.sites[node+1] = secondSite+1
+        assert not buildFlatMixedLoop(frame, pc, 1).complete
+        frame.sites[node+1] = secondSite
+        let wrongPair = if fact.opcode == 151:
+            flatFusedRegisterHandler(200, 139) else: flatFusedRegisterHandler(151, 152)
+        assert wrongPair != nil
+        frame.handlers[node] = wrongPair
+        assert not buildFlatMixedLoop(frame, pc, 1).complete
+        frame.handlers[node] = fused
+        assert buildFlatMixedLoop(frame, pc, 1) == proof
 
       assert nativeMixedLoopBudget(proof.span, proof.price, proof.price, uint64(proof.span)-1) == 0
       assert nativeMixedLoopBudget(proof.span, proof.price, proof.price, uint64(proof.span)) == 1

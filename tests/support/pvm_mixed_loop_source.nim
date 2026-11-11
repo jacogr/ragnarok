@@ -9,7 +9,8 @@ import ../../src/pvm/program
 import ../../src/pvm/internal/[handler_stream, native_mixed_loop, native_read_cycle]
 
 type PatternVariant {.pure.} = enum
-  Exact, Alias, WrongStore, FoldedNoop, WrongTarget, ReadAfterStore, OverBound
+  Exact, Alias, WrongStore, FoldedNoop, WrongTarget, ReadAfterStore, OverBound,
+    FusedShift, FusedAddImmediate, FusedAddPair
 
 proc appendNatural(wire: var seq[byte], value: uint64) =
   ## Emit the bounded encoded length from the public codec.
@@ -28,30 +29,55 @@ proc pattern(pc: uint32, variant: PatternVariant, prefixMisses: int = 0): Progra
     # Near misses fall through into the next complete original loop.
     let form = if index < prefixMisses: PatternVariant.WrongStore else: variant
     let loopPc = code.len
-    emit([152'u8, 0x88, 1])
-    emit([210'u8, 0x88, 9])
-    emit([58'u8, 8, 0, 0, 1, 0])
-    emit([139'u8, 0x88, 0])
-    emit([212'u8, 0x88, 9])
-    emit([58'u8, 9, 8, 0, 1, 0])
-    emit([200'u8, 0x88, 9])
-    emit([124'u8, 0x6a, 0])
-    emit([200'u8, 0x99, 10])
-    emit([124'u8, 0x6b, 1])
-    if form == PatternVariant.FoldedNoop: emit([2'u8])
-    if prefixMisses > 0: emit([149'u8, 0xb2, 1])
-    else: emit([149'u8, 0x22, 1])
-    if form == PatternVariant.WrongStore: emit([121'u8, 0x50, 0])
-    elif form == PatternVariant.Alias: emit([120'u8, 0x52, 1])
-    else: emit([120'u8, 0x50, 0])
-    if form == PatternVariant.ReadAfterStore: emit([124'u8, 0x6a, 0])
-    if form == PatternVariant.OverBound:
-      for _ in 0..<18: emit([2'u8])
-    emit([190'u8, 0x75, 5])
-    emit([100'u8, 0x43])
+    let fused = form in {PatternVariant.FusedShift, PatternVariant.FusedAddImmediate,
+        PatternVariant.FusedAddPair}
+    if fused:
+      emit([2'u8])
+      emit([58'u8, 8, 0, 0, 1, 0])
+      emit([58'u8, 9, 8, 0, 1, 0])
+      case form
+      of PatternVariant.FusedShift:
+        emit([151'u8, 0x88, 1])
+        emit([152'u8, 0x99, 1])
+      of PatternVariant.FusedAddImmediate:
+        emit([200'u8, 0x88, 9])
+        emit([139'u8, 0x99, 1])
+      else:
+        emit([149'u8, 0x88, 1])
+        emit([149'u8, 0x99, 1])
+      emit([200'u8, 0x88, 9])
+      emit([124'u8, 0x6a, 0])
+      emit([200'u8, 0x99, 10])
+      emit([124'u8, 0x6b, 1])
+      emit([120'u8, 0x50, 0])
+      emit([149'u8, 0x55, 1])
+      emit([200'u8, 0x99, 10])
+    else:
+      emit([152'u8, 0x88, 1])
+      emit([210'u8, 0x88, 9])
+      emit([58'u8, 8, 0, 0, 1, 0])
+      emit([139'u8, 0x88, 0])
+      emit([212'u8, 0x88, 9])
+      emit([58'u8, 9, 8, 0, 1, 0])
+      emit([200'u8, 0x88, 9])
+      emit([124'u8, 0x6a, 0])
+      emit([200'u8, 0x99, 10])
+      emit([124'u8, 0x6b, 1])
+      if form == PatternVariant.FoldedNoop: emit([2'u8])
+      if prefixMisses > 0: emit([149'u8, 0xb2, 1])
+      else: emit([149'u8, 0x22, 1])
+      if form == PatternVariant.WrongStore: emit([121'u8, 0x50, 0])
+      elif form == PatternVariant.Alias: emit([120'u8, 0x52, 1])
+      else: emit([120'u8, 0x50, 0])
+      if form == PatternVariant.ReadAfterStore: emit([124'u8, 0x6a, 0])
+      if form == PatternVariant.OverBound:
+        for _ in 0..<18: emit([2'u8])
+      emit([190'u8, 0x75, 5])
+      emit([100'u8, 0x43])
     let target = if form == PatternVariant.WrongTarget: 0 else: loopPc
     let displacement = cast[uint32](int32(target-code.len))
-    emit([171'u8, 0xc2, byte(displacement and 255),
+    let branchSlots = if fused: 0xc5'u8 else: 0xc2'u8
+    emit([171'u8, branchSlots, byte(displacement and 255),
       byte((displacement shr 8) and 255), byte((displacement shr 16) and 255),
       byte(displacement shr 24)])
   emit([0'u8])
@@ -83,5 +109,13 @@ proc runMixedLoopSource*() =
   witnessFlatMixedLoop(pattern(37, PatternVariant.WrongTarget), 37, false)
   witnessFlatMixedLoop(pattern(37, PatternVariant.ReadAfterStore), 37, false)
   witnessFlatMixedLoop(pattern(37, PatternVariant.OverBound), 37, false)
+  for variant in [PatternVariant.FusedShift, PatternVariant.FusedAddImmediate,
+      PatternVariant.FusedAddPair]:
+    let owner = pattern(19, variant)
+    witnessFlatMixedLoop(owner, 19, true)
+    when defined(pvmSharedAsyncWitness): witnessFlatMixedProbeBarrier(owner, 19)
+    when defined(pvmMixedLoopEntryWitness): witnessFlatFusedMixedLoopEntry(owner, 19)
+  when defined(pvmSharedAsyncWitness):
+    witnessFlatMixedProbeBarrier(pattern(0, PatternVariant.Exact), 0)
   when defined(pvmMixedLoopEntryWitness):
     witnessFlatMixedLoopEntry(pattern(0, PatternVariant.Exact), 0)

@@ -7,8 +7,8 @@ import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
 
 const
-  NativeMixedLoopCandidateLimit* = 8
-  NativeMixedLoopEntryLimit* = NativeMixedLoopCandidateLimit ## Bounded source checks and per-ticket deterministic refusals.
+  NativeMixedLoopCandidateLimit* = 8 ## Source checks and deterministic refusals are bounded per epoch/ticket.
+  NativeMixedLoopEntryLimit* = NativeMixedLoopCandidateLimit ## One arena preserves the ranked inventory's slot identities.
   NativeMixedLoopMinimum* = 3'u32 ## Ordered read, byte store and checked terminal.
   NativeMixedLoopVisitLimit* = 256'u32
   NativeMixedLoopVisitLimitOffset* = NativeCycleGasOffset
@@ -70,7 +70,7 @@ func nativeMixedLoopPaidGuards*(proof: NativeMixedLoop): uint32 =
   if stores == 2: guards else: 0'u32
 
 func complete*(proof: NativeMixedLoop): bool =
-  ## Only one ordered byte store separates a guarded prefix from an infallible suffix.
+  ## Admit a transactional byte-store body or a sealed paid continuation body.
   let count = uint32(proof.count)
   let span = uint32(proof.span)
   if proof.epoch == 0 or count < NativeMixedLoopMinimum or count > span or
@@ -140,8 +140,8 @@ type NativeMixedLoopSet* = object
 func nativeMixedLoopDisjoint*(left, right: NativeMixedLoop): bool =
   ## Both bodies and their checked outside continuations keep independent patch ownership.
   if not left.complete or not right.complete or left.epoch != right.epoch: return false
-  (left.first+uint32(left.span) <= right.first or
-    right.first+uint32(right.span) <= left.first) and
+  (uint64(left.first)+uint64(left.span) <= uint64(right.first) or
+    uint64(right.first)+uint64(right.span) <= uint64(left.first)) and
     (left.terminal < right.header or right.terminal < left.header) and
     left.exitHeader notin right.header..right.terminal and
     right.exitHeader notin left.header..left.terminal
@@ -159,3 +159,11 @@ func singleNativeMixedLoop*(proof: NativeMixedLoop): NativeMixedLoopSet =
   result = default(NativeMixedLoopSet)
   result.count = 1
   result.proofs[0] = proof
+
+func sameNativeMixedLoopSet*(left, right: NativeMixedLoopSet): bool =
+  ## Compare active exact source proofs without inspecting unused inventory capacity.
+  if left.count == 0 or left.count > uint8(NativeMixedLoopEntryLimit) or
+      left.count != right.count: return false
+  for index in 0..<int(left.count):
+    if left.proofs[index] != right.proofs[index]: return false
+  true
