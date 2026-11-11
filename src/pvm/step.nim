@@ -250,12 +250,15 @@ proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
   StepError.None
 
 proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
-  ## Apply a trusted reply to a recursive execute suspension at its causing ecalli.
+  ## Apply a trusted reply to a genuine, unmodified recursive execute suspension.
+  ## Preserve the outcome and machine snapshot returned by recursive execution.
+  ## The caller establishes that provenance and owns host trust and replay policy.
+  ## Structural validation checks the supplied snapshot's causing PC, ecalli and
+  ## full-width host ID against the suspension. It also validates the reply.
   ## Continue uses the decoded successor. Panic and OutOfGas keep the causing PC.
   ## A successful reply keeps the program and paid-block flag and publishes a fresh
   ## immutable machine with the supplied unsigned gas, registers and memory.
-  ## No host callback, guest step or gas charge occurs here. The checks bind the
-  ## reply structurally to the suspension. The caller owns host trust and replay policy.
+  ## No host callback, guest step or gas charge occurs here.
 
   # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
   if suspension.exit != StepExit.Host:
