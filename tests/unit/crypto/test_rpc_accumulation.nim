@@ -16,6 +16,7 @@ import ../../../src/state/report/admission as report_admission
 import "../../../src/state/block/transition" as block_transition
 import "../../../src/state/block/admission" as block_admission
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
+const rpcDirectTestSockets = true # These fixtures inject and retire native descriptors.
 include ../../../src/rpc/server
 
 # Backend refusal begins only after genuine signed owners and native transport fixtures exist.
