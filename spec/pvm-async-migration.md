@@ -92,27 +92,10 @@ policy across the existing consumers before increasing availability or image cap
 
 ## Bounded mixed byte-store loops
 
-A connected Read owner can request one auxiliary mixed loop. The checked frame binds a complete
-original block of at most 32 source facts. A guarded prefix contains scalar operations and at least
-one read, followed by one relative byte store, a scalar suffix and the original BNE. Its taken edge
-returns to the same header and its other edge reaches a distinct checked header. Folded no-ops still
-count toward the original gas and attempt reservation.
-
-Cold branch resolution checks at most eight plausible candidates per stream epoch. A ready Read
-owner observes checked visits at those headers during the current callback-free segment and restores
-the ordinary worker at the first whole visit that reaches 65,536 source attempts. After actual
-primary work, the hottest eligible block can claim one of the four existing runtime credits while
-leaving a credit free for primary work. The compiler claims queued primary work first.
-
-Each entry uses fresh read, writable and dirty-page capabilities and can complete up to 256 funded
-visits. A refused visit leaves the first unstarted header to checked execution. The frame restores
-its handler before releasing the auxiliary borrow, including when pressure has revoked its image.
-The runtime retains the credit through physical unmapping. Owner statistics count observed
-publications once per exact ticket and report current occupied bytes. An entry contributes a call
-and original source attempts when it completes at least one native visit.
-
-The `pvm_shared_async_arm` and `pvm_shared_async_x86` native suites exercise source certificates,
-primary priority, epoch changes, publication accounting, revocation and borrowed retirement.
+Both shared native backends can run a bounded mixed byte-store loop beside a connected Read
+image. See the [source certificate](../src/pvm/internal/handler_mixed_loop.nim) and
+[worker and image ownership](../src/pvm/internal/native_pipeline.nim). The shared-async native
+suites cover source admission, primary priority, publication accounting and borrowed retirement.
 
 ## Qualification and retirement
 

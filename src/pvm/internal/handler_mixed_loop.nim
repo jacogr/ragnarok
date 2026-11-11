@@ -1,7 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bind a bounded mixed self-loop to exact checked source and cached branch edges.
+## Bind a complete original self-loop to its cached edges, decoded operands and block price.
+## The visit has a guarded scalar/read prefix, one relative byte store, a scalar suffix
+## and the original BNE with a distinct checked exit. Folded no-ops still count toward gas
+## and the original attempt span. Cold branch resolution reconstructs at most eight plausible
+## candidates per stream epoch. The frame ranks their checked visits only beside a ready Read owner.
 
 when declared(FlatFrame):
   proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64): NativeMixedLoop =
@@ -58,8 +62,8 @@ when declared(FlatFrame):
     let epoch = nativeEpoch(f.nativeSession)
     if epoch == 0: return
     if f.mixedSource.epoch != epoch: f.mixedSource = FlatMixedLoopSource(epoch: epoch)
-    if f.mixedSource.count == uint8(FlatMixedCandidateLimit) or
-        f.mixedSource.checks == uint8(FlatMixedCandidateLimit): return
+    if f.mixedSource.count == uint8(NativeMixedLoopCandidateLimit) or
+        f.mixedSource.checks == uint8(NativeMixedLoopCandidateLimit): return
     let token = pc+1
     for index in 0..<int(f.mixedSource.count):
       if f.mixedSource.candidates[index] == token: return
@@ -89,7 +93,8 @@ when declared(FlatFrame):
 
   template enterFlatMixedLoop(f: var FlatFrame, off: uint32, certificate: NativeMixedLoop, image,
       enter: untyped): uint32 =
-    ## Each entry borrows fresh descriptors and charges only verified complete visits.
+    ## Borrow fresh read, writable and dirty-page descriptors for at most 256 funded visits.
+    ## Charge only verified whole visits and resume the first unstarted block through flatCharge.
     let boundProof {.cursor.}: NativeMixedLoop = certificate
     assert off == boundProof.header
     if f.info.blockCharged or f.barrier != flatStop: return flatCharge(f, off)
@@ -116,7 +121,7 @@ when declared(FlatFrame):
       f.info.gas = MachineGas(gas-visits*boundProof.price)
       f.remaining -= visits*uint64(boundProof.span)
       f.reservation = off or flatReservationHeaderFlag
-      recordNativeMixedLoop(f.nativeSession, visits*uint64(boundProof.span))
+      recordNativeMixedLoop(f.nativeSession, visits*uint64(boundProof.span), visits > 1)
       when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
         f.mixedWitnessVisits += visits
     if receipt.next == off and receipt.visits < funded:
@@ -138,19 +143,20 @@ when declared(FlatFrame):
     if image == nil or proof == nil: return flatCharge(f, off)
     enterFlatMixedLoop(f, off, proof[], image, enterNativeMixedLoop)
 
-  proc borrowFlatMixedLoopSegment(f: var FlatFrame, proof: ptr NativeMixedLoop) =
+  proc borrowFlatMixedLoopSegment(f: var FlatFrame, proof: ptr NativeMixedLoop): bool =
     ## The second entry changes only its own checked header for the duration of this segment.
     let header = proof[].header
     assert f.mixedImage == nil and f.mixedProof == nil and f.handlers[int(header)] == flatCharge
-    let image = borrowNativeMixedLoop(f.nativeSession, proof[])
-    if image == nil: return
+    let borrowed = borrowNativeMixedLoop(f.nativeSession, proof[])
+    if borrowed.image == nil: return borrowed.refused
     f.mixedProof = proof
-    f.mixedImage = image
+    f.mixedImage = borrowed.image
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       f.mixedWitnessEntries = 0
       f.mixedWitnessVisits = 0
       f.mixedWitnessRefusals = 0
     f.handlers[int(header)] = flatMixedLoopEntry
+    false
 
   proc returnFlatMixedLoopSegment(f: var FlatFrame) =
     ## Restore the original header and drop both invocation borrows before release.

@@ -29,20 +29,19 @@ when NativeReadCycleEnabled:
   import ./[native_mixed_loop, native_platform]
 
   const
-    FlatMixedCandidateLimit = 8
     FlatMixedHeatLimit = 16*NativeInvocationFloor
   type
     FlatMixedLoopSource = object
       ## Cold discovery retains only bounded source coordinates and their epoch.
       epoch: uint64
       chosen: uint32
-      count, checks: uint8
-      candidates: array[FlatMixedCandidateLimit, uint32]
+      count, checks, refused: uint8
+      candidates: array[NativeMixedLoopCandidateLimit, uint32]
     FlatMixedLoopProbe = object
       ## Temporary checked header handlers borrow this segment's scalar visit counters.
       count: int
-      headers, tokens, remaining: array[FlatMixedCandidateLimit, uint32]
-      spans: array[FlatMixedCandidateLimit, uint8]
+      headers, tokens, remaining: array[NativeMixedLoopCandidateLimit, uint32]
+      spans: array[NativeMixedLoopCandidateLimit, uint8]
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit) and
     defined(pvmArmMacroReceipt) and defined(pvmArmMacroStateTrace):
@@ -3059,10 +3058,13 @@ when NativeReadCycleEnabled:
     selected(f, body)
 
   proc runFlatMixedProbeSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
-    ## Discover the hottest eligible complete block in this callback-free segment.
+    ## Compare checked visits within this callback-free segment. A header stops collecting
+    ## at the first whole visit reaching 65,536 source attempts. After primary native work,
+    ## offer the hottest disjoint block that reached the admission floor.
     var probe = default(FlatMixedLoopProbe)
     let source = f.mixedSource
     for index in 0..<int(source.count):
+      if (source.refused and (1'u8 shl index)) != 0: continue
       let token = source.candidates[index]
       let proof = buildFlatMixedLoop(f, token-1, source.epoch)
       if not proof.complete or not mixedLoopDisjoint(f.nativeSession, proof): continue
@@ -3102,7 +3104,13 @@ when NativeReadCycleEnabled:
     if source.chosen != 0:
       var proof = buildFlatMixedLoop(f, source.chosen-1, source.epoch)
       if proof.complete:
-        borrowFlatMixedLoopSegment(f, addr proof)
+        if borrowFlatMixedLoopSegment(f, addr proof):
+          # This exact primary already rejected the encoding. The other candidates can still compete.
+          for index in 0..<int(source.count):
+            if f.mixedSource.candidates[index] == source.chosen:
+              f.mixedSource.refused = f.mixedSource.refused or (1'u8 shl index)
+              break
+          f.mixedSource.chosen = 0
         if f.mixedImage != nil:
           defer: returnFlatMixedLoopSegment(f)
           flatDispatchSegment(f, entry)
@@ -3236,8 +3244,9 @@ when defined(pvmMixedLoopEntryWitness) and NativeReadCycleEnabled:
         if scenario != 0: flatMarkStore[1](frame[], writeAddress)
       let proof = buildFlatMixedLoop(native, pc, 1)
       assert proof.complete and proof.price == blockPrice
-      var image = lowerNativeMixedLoop(proof)
-      assert image.ready
+      var refused = false
+      var image = lowerNativeMixedLoop(proof, refused)
+      assert image.ready and not refused
       native.mixedWitnessProof = proof
       native.mixedWitnessImage = addr image
       native.handlers[int(proof.header)] = flatMixedLoopEntryWitness
