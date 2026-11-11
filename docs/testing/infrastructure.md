@@ -283,9 +283,10 @@ bytes remain listed and must be present when runtime, E2E or guard reports hash 
 `make check-fixture-provenance` verifies declared checked-in fixture checksums once, including the
 shared manifest links in JAM input witnesses and the frozen evidence links declared in
 `tests/fixtures/fixture-evidence-links.json`. That table also covers file digests embedded in
-individual trace rows. Oracles still compare the transition data in those rows. `make check`, full CI and CI requests that include
-Smoke run it before starting their workloads. Full CI runs the gate once for all jobs, including
-Smoke. A stale checksum stops that run at the gate. Other focused targets can run directly.
+individual trace rows. Oracles still compare the transition data in those rows. `make check` runs
+provenance before its workloads. Full CI and CI requests that include Smoke run provenance once
+as a separate job in parallel with the selected workloads. A stale checksum fails that job and
+the workflow. Other focused targets can run directly.
 Vendor download checks, generated fixture checks and comparisons against independent expected
 outputs remain with their respective consumers.
 

@@ -14,7 +14,7 @@ import re
 def event_context(event='push', action='', label='', suite='', state='open', merged=False):
     return dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label),
                                                           pull_request=dict(state=state, merged=merged))),
-                inputs=dict(suite=suite), needs={'fixture-provenance': {'result': 'success'}})
+                inputs=dict(suite=suite))
 
 
 # Interpret only the operators used by the workflow; never execute arbitrary Python from YAML.
