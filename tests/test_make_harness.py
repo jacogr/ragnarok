@@ -339,7 +339,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
             environment = {**os.environ, 'PYTHONPATH': str(folder),
                            'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
-                           'CI': '', 'UI_MINIFY': '0'}
+                           # The network fixture above owns the GitHub-specific setup case.
+                           'CI': '', 'GITHUB_ACTIONS': 'false', 'UI_MINIFY': '0'}
             # The Python environment installer is an external boundary: never run pip/network here.
             python = folder/'bin/python'
             python.write_text('#!'+sys.executable+'\n'+"""import os, shutil, sys
