@@ -55,10 +55,14 @@ allowance reserves suffix length plus containing-price-block length before emiss
 It is separate from guest gas, source attempts and each pricing call's cycle limit.
 
 Stable offsets are never recycled or evicted during a call. A whole suffix must fit before its
-first node/map write; cached entries remain usable at a full budget. New suffix refusal is sticky
-with that cache and returns local `InvalidPreparedProgram`, never a guest panic/out-of-gas or a
-successful partial snapshot. Reconstruct an owner to choose a different policy. Zero attempts
-retain ordinary `StepLimitExceeded`. Admission is atomic per suffix, not per conditional graph.
+first node/map write. A node or preparation-work quota refusal is sticky in the active frame and
+returns local `InvalidPreparedProgram` without publishing a guest snapshot. A fresh public
+invocation can reuse admitted entries through the same prepared owner, even at a full budget.
+The owner retains the admitted entries and cumulative occupancy under the same ceilings. A new
+public host invocation can call its host callback again before a later local refusal.
+Reconstruct an owner to choose a different policy. Zero attempts retain ordinary
+`StepLimitExceeded`. Admission is atomic per suffix, and conditional prelinking still requires
+both arms.
 
 Overlapping suffix emission preserves every existing complete entry-header mapping. Emitting an
 earlier source entry may add operation nodes and update interior-only coordinates, but cannot
@@ -68,7 +72,7 @@ preparation units without another admission. The `pvm_stream_entry_reuse` suite 
 capacity and all six permutations of three entries at six nodes/fifteen preparation units, then
 repeats every admitted entry with fresh immutable inputs. Literal trap/register/terminal-PC
 expectations do not use another execution adapter as their oracle. This mapping fix does not
-change suffix admission, sticky refusals, host continuation growth, gas or attempt accounting.
+change suffix admission, active-frame refusals, host continuation growth, gas or attempt accounting.
 
 The defect was reproduced against unchanged master `51d6774f93365d0b76ab6bec738e532f7b5538b3`
 in [CI run 40903185657](https://github.com/jacogr/ragnarok/actions/runs/40903185657): ARM64 and
@@ -83,7 +87,7 @@ directly through an existing interior body coordinate. It neither emits a second
 nor prices the paid block again. A partial reservation installs the same temporary budget barrier,
 starting its search at the reused body; folded noops still stop at the exact original source PC.
 Complete-header hits retain their normal dispatch. Unpaid, missing and invalid entries retain
-their original admission/pricing/refusal order, and sticky preparation failures still win first.
+their original admission/pricing/refusal order, and active-frame preparation failures still win first.
 
 This stateful reservation is confined to `runFlat`'s actual entry after its zero-attempt,
 single-step, initialized-plan and sticky-refusal guards, with source-PC bounds checked before map access.
@@ -99,8 +103,10 @@ as independently reproduced in run 40903185657. The focused `pvm_stream_host_res
 exact occupancy for dynamic/complete/lazy prices, prepaid zero-cycle inputs, zero/partial/exact
 folded budgets, unchanged unpaid/sticky refusals, actual native prefix execution and partial
 fallback where built, source-PC rejection, branch/dynamic prelink budgets and public prepared
-callback/attempt limits with fresh immutable inputs. These are logical occupancy and correctness
-witnesses, not timing or decoded-visit claims; complete independent state traces remain separate.
+callback/attempt limits with fresh immutable inputs. It also checks repeated public host callbacks
+before node and work refusals, stable cumulative occupancy, and reuse of an admitted trap.
+These are logical occupancy and correctness witnesses, not timing or decoded-visit claims;
+complete independent state traces remain separate.
 The existing resource-boundary host retry/mapping-replacement witness likewise keeps its initial
 four preparation units and three nodes, rather than expecting seven units from re-emitting a paid
 suffix. Its CPU, immutable page, permission/refusal and slow-replacement checks remain intact.

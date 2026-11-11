@@ -3448,9 +3448,12 @@ when defined(pvmArm64Jit) or defined(pvmX86Jit):
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.
+  # A quota refusal stays in the active frame. An absent saved status also leaves a same-frame restore sticky.
+  let savedFailure = if f.preparationFailure in {FlatError.StreamLimitExceeded,
+      FlatError.PreparationLimitExceeded}: FlatError.Uninitialized else: f.preparationFailure
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
     compiledForPc: move(f.compiledForPc), sourcePlan: f.plan, pricingKind: f.pricingKind,
-    failure: f.preparationFailure,
+    failure: savedFailure,
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
     nativeInstalledEpoch: f.nativeInstalledEpoch, nativeInstallation: f.nativeInstallation)
 
