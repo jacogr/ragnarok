@@ -2683,7 +2683,7 @@ proc armMacroGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
   armCycleDebit(words, span, price)
 
 proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
-    labels: array[12, int]): bool =
+    labels: openArray[int]): bool =
   ## Every local edge is instruction-relative and bounded before publication.
   for fix in fixes:
     if fix.target < 0 or fix.target >= labels.len: return false
@@ -2698,6 +2698,14 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
   true
 
 when NativeReadCycleEnabled:
+  const
+    armStorePageMiss = 12
+    armStorePageExtent = 13
+    armStorePageCommit = 14
+
+  type ArmReadCycleLabels = array[armStorePageCommit+1, int]
+    ## Seven role edges, checked exits, and the optional Store proof's local joins.
+
   proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       span: ArmReadSpan, refusal: int) =
     ## Inline a true-length read bank with a caller-owned paid or unpaid refusal.
@@ -2728,9 +2736,43 @@ when NativeReadCycleEnabled:
     words.add(0xea02003f'u32) # TST X1,X2.
     cycleEdge(words, fixes, refusal, 0)
 
+  proc armCycleStorePageFill(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      labels: var ArmReadCycleLabels) =
+    ## Use the accepted X25 pointer and X17 descriptor after the original dirty checks.
+    ## The full page must belong to the same descriptor under stack-first selection.
+    ## X27/X28 borrow that page only until this synchronous entry returns.
+    ## X3 ended at effective+3. Publish the tag only after forming the page pointer.
+    cycleAddImmediate(words, 3, 3, 3, true)
+    words.add(0x92402c60'u32) # AND X0,X3,#4095.
+    cycleCompareImmediate(words, 0, 4092)
+    cycleEdge(words, fixes, armStorePageCommit, 8)
+    words.add(0x12144c63'u32) # AND W3,W3,#0xfffff000.
+    armCompactImmediate(words, 2, 0xfffff000'u64)
+    cycleCompare(words, 3, 2)
+    cycleEdge(words, fixes, armStorePageCommit, 0)
+    # The stock low bound is page aligned. A threshold inside the page prevents a fill.
+    cycleLoad(words, 1, 20, uint32(NativeCycleWritableOffset))
+    cycleCompare(words, 3, 1)
+    cycleEdge(words, fixes, armStorePageExtent, 2)
+    words.add(0x91400462'u32) # ADD X2,X3,#1,LSL #12.
+    cycleCompare(words, 2, 1)
+    cycleEdge(words, fixes, armStorePageCommit, 8)
+    labels[armStorePageExtent] = words.len
+    words.add(0xa9400a21'u32) # LDP X1,X2,[X17].
+    words.add(0xeb010061'u32) # SUBS X1,X3,X1.
+    cycleEdge(words, fixes, armStorePageCommit, 3)
+    words.add(0xf1400442'u32) # SUBS X2,X2,#1,LSL #12.
+    cycleEdge(words, fixes, armStorePageCommit, 3)
+    cycleCompare(words, 1, 2)
+    cycleEdge(words, fixes, armStorePageCommit, 8)
+    cycleAddRegister(words, 28, 25, 0, true)
+    words.add(0xd34cfc7b'u32) # LSR X27,X3,#12.
+
   proc armCycleWordPreflight(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
-      word: NativeCycleWord, refusal: int) =
+      labels: var ArmReadCycleLabels, word: NativeCycleWord, refusal: int, storePage: bool) =
     ## All four byte visits are proved before the store or the debit. X25 holds the writable pointer.
+    ## A hit requires whole-word containment. A miss runs the original dirty checks so
+    ## a first write returns unpaid to the checked Store, which owns dirty publication.
     let shift = uint32(word.shiftLane)+4
     let base = uint32(word.baseLane)+4
     let bound = uint32(word.boundLane)+4
@@ -2745,6 +2787,17 @@ when NativeReadCycleEnabled:
       # Materialize wide displacements before the modulo-32 effective address addition.
       armCompactImmediate(words, 2, uint64(displacement))
       words.add(0x0b020003'u32 or (base shl 5))
+    if storePage:
+      # X3 stays intact on either miss. X25 is the original commit's pointer.
+      words.add(0xd34cfc61'u32) # LSR X1,X3,#12.
+      cycleCompare(words, 1, 27)
+      cycleEdge(words, fixes, armStorePageMiss, 1)
+      words.add(0x92402c61'u32) # AND X1,X3,#4095.
+      cycleCompareImmediate(words, 1, 4092)
+      cycleEdge(words, fixes, armStorePageMiss, 8)
+      cycleAddRegister(words, 25, 28, 1)
+      cycleEdge(words, fixes, armStorePageCommit, 16)
+      labels[armStorePageMiss] = words.len
     words.add(0xf140407f'u32) # CMP X3,#65536.
     cycleEdge(words, fixes, refusal, 3)
     armCompactImmediate(words, 2, uint64(high(uint32))-4'u64)
@@ -2777,6 +2830,10 @@ when NativeReadCycleEnabled:
     words.add(0)
     armCycleDirtyPage(words, fixes, refusal)
     words[samePage] = 0x54000000'u32 or (uint32(words.len-samePage) shl 5)
+    if storePage:
+      # A failed fill still commits the already-proved word at the original pointer.
+      armCycleStorePageFill(words, fixes, labels)
+      labels[armStorePageCommit] = words.len
 
   proc armCycleBranch(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       op: NativeOperation, target: int) =
@@ -2788,7 +2845,7 @@ when NativeReadCycleEnabled:
       words.add(instruction)
     cycleEdge(words, fixes, target, condition)
 
-  proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
+  proc emitArmReadCycle(cycle: NativeReadCycle, storePage: bool): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
     ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
@@ -2864,16 +2921,20 @@ when NativeReadCycleEnabled:
     let written = readWrites or setupBank.writes or tailStep.writes or outer.writes or
         (1'u32 shl tailSlot) or (1'u32 shl int(word.shiftLane)) or
         (1'u32 shl int(word.byteLane)) or (1'u32 shl int(word.baseLane))
-    var labels = default(array[12, int])
+    var labels = default(ArmReadCycleLabels)
     var fixes: seq[ArmMemoryCycleFixup] = @[]
-    var words: seq[uint32] = @[0xd10103ff'u32] # SUB SP,SP,#64.
-    for pair in 0..<4:
-      # X19..X25 own invocation state and X26 completes the aligned save pairs. X18 is reserved.
+    var words = @[if storePage: 0xd10143ff'u32 else: 0xd10103ff'u32] # SUB SP,SP,#80 or #64.
+    let pairs = if storePage: 5 else: 4
+    for pair in 0..<pairs:
+      # Save X19..X26 and the optional X27/X28 page proof. X18 is reserved.
       let first = uint32(19+pair*2)
       words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
           ((first+1) shl 10) or (31'u32 shl 5) or first)
     cycleMove(words, 19, 0)
     cycleMove(words, 20, 1)
+    if storePage:
+      # No valid guest page can match the entry tag before the host page pointer is defined.
+      words.add(0x1280001b'u32) # MOV W27,#0xffffffff.
     # Resolve only entry-local extent metadata. A miss stays zero until Tail.
     words.add(0xaa1f03fa'u32) # MOV X26,XZR. X26 is already saved in the frame.
     cycleMove(words, 17, 20)
@@ -2913,7 +2974,7 @@ when NativeReadCycleEnabled:
       of NativeCycleRole.StoreSetup:
         for instruction in setupBank.words: words.add(instruction)
       of NativeCycleRole.Store:
-        armCycleWordPreflight(words, fixes, word, unpaid)
+        armCycleWordPreflight(words, fixes, labels, word, unpaid, storePage)
         armCycleDebit(words, span, price)
         # From the store through completion all instructions are non-faulting native bookkeeping.
         words.add(0xb9000000'u32 or (25'u32 shl 5) or value) # STR Wvalue,[X25].
@@ -2970,15 +3031,22 @@ when NativeReadCycleEnabled:
     cycleStore(words, 22, 20, uint32(NativeCycleRemainingOffset))
     cycleStore(words, 23, 20, uint32(NativeCycleLastOffset))
     cycleStore(words, 1, 20, uint32(NativeCyclePaidReadOffset))
-    for pair in 0..<4:
+    for pair in 0..<pairs:
       # Restore every saved register before returning the checked destination in W0.
       let first = uint32(19+pair*2)
       words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
           ((first+1) shl 10) or (31'u32 shl 5) or first)
-    words.add(0x910103ff'u32) # ADD SP,SP,#64.
+    words.add(if storePage: 0x910143ff'u32 else: 0x910103ff'u32) # ADD SP,SP,#80 or #64.
     words.add(0xd65f03c0'u32) # RET.
     if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
       result = move(words)
+
+  proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
+    ## Try the entry-local Store page proof within the normal image ceiling.
+    result = emitArmReadCycle(cycle, true)
+    if result.len == 0:
+      # Preserve admission of an image whose original probes fit the ceiling.
+      result = emitArmReadCycle(cycle, false)
 
 func armWindowInstructionSafe(instruction: uint32): bool =
   ## Admit only present integer emitter families and the dirty byte body's exact

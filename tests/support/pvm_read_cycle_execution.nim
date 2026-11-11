@@ -544,9 +544,14 @@ when NativeReadCycleEnabled:
       NativeReadContinuation(header: setupHeader, terminal: 44, price: 3), setup)
     result.tailLoad = operation(57, 5, uint32(wordAddress))
 
-  proc checkTailPointerEntry(image: NativeImage, writable: var array[8, byte],
+  proc checkTailPointerEntry(image: NativeImage, writable: var array[4096, byte],
       firstExtent: bool, lowByte: byte) =
-    ## Force two overlapping Stores through one image and vary its live byte borrow on each entry.
+    ## Force two overlapping Stores on a proved page. Tail must observe the latest bytes.
+    var expected = writable
+    expected[0] = lowByte
+    for i in 1..3:
+      # The second Store clears the upper three bytes of the first word.
+      expected[i] = 0
     var registers = default(RegisterFile)
     registers[0] = RegisterValue(0x80000000'u64+uint64(lowByte))
     registers[3] = RegisterValue(wordAddress)
@@ -580,20 +585,78 @@ when NativeReadCycleEnabled:
     assert registers[0] == RegisterValue(0x100000000'u64+uint64(lowByte))
     assert registers[1] == RegisterValue(64) and registers[3] == RegisterValue(wordAddress+4)
     assert registers[6] == RegisterValue(0x19) and registers[8] == RegisterValue(3)
-    assert writable == [lowByte, 0, 0, 0, 0x6e, 0x7f, 0x80, 0x91]
+    assert writable == expected
     assert dirty == 1'u64 shl (wordAddress shr 12)
 
   proc checkTailPointerReuse() =
     ## Keep both backing arrays live while one published image enters twice.
     const original = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
-    var first = original
-    var second = original
+    var first = default(array[4096, byte])
+    var second = default(array[4096, byte])
+    for i in 0..<original.len:
+      # Both pages expose the same guest address through different host allocations.
+      first[i] = original[i]
+      second[i] = original[i]
     assert (addr first[0]) != (addr second[0])
     var image = lowerNativeReadCycle(tailPointerFixture())
     assert image.ready and image.kind == NativeKind.ConnectedReadCycle
     checkTailPointerEntry(image, first, false, 1)
     checkTailPointerEntry(image, second, true, 9)
     assert first[0] == 1 and second[0] == 9
+
+  proc checkStorePageBoundary() =
+    ## The first word proves page 63. The next shares its tag and straddles into page 64.
+    const
+      first = 0x3f000'u64
+      offset = 4089
+      firstDirty = 1'u64 shl 63
+      word = [0x44'u8, 0x55, 0x66, 0x87]
+    var cycle = cycleFixture()
+    cycle.word.displacement = first+uint64(offset)-wordAddress
+    let image = lowerNativeReadCycle(cycle)
+    assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+    let readable = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
+    let other = default(array[8, byte])
+    for trailingDirty in [false, true]:
+      # Exact quota 44 funds a second Store after x86 reconstructs the live credit ledger.
+      let groups = if trailingDirty: 2'u64 else: 1'u64
+      var writable = default(array[8192, byte])
+      var expectedMemory = writable
+      for i in 0..<int(groups)*word.len:
+        # Compare the literal original Store bytes and all untouched neighbors.
+        expectedMemory[offset+i] = word[i mod word.len]
+      var registers = default(RegisterFile)
+      registers[0] = RegisterValue(0x87665544)
+      registers[3] = RegisterValue(wordAddress)
+      registers[4] = RegisterValue(wordAddress+8)
+      registers[10] = RegisterValue(tailAddress+4)
+      var expected = registers
+      expected[1] = RegisterValue(32*groups)
+      expected[2] = RegisterValue(0x87)
+      expected[3] = RegisterValue(wordAddress+4*groups)
+      expected[6] = RegisterValue(0x19)
+      expected[9] = RegisterValue(0x7c)
+      let initialDirty = [firstDirty, uint64(ord(trailingDirty))]
+      var dirty = initialDirty
+      var context = NativeCycleContext(
+        read: [default(NativeReadRegion), initNativeReadRegion(wordAddress, readable),
+          initNativeReadRegion(tailAddress+4, other)],
+        writable: [NativeCycleWritable(first: first+8192),
+          NativeCycleWritable(first: first, length: 8192,
+            data: cast[pointer](addr writable[0]))],
+        dirty: cast[pointer](addr dirty[0]), dirtyWords: 2, gas: 1000, remaining: 44)
+      let destination =
+        when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+          enterNativeReadCycleAbiProof(image, registers, context)
+        else:
+          enterNativeReadCycle(image, registers, context)
+      let wanted = if trailingDirty: tailHeader else: layout.sites[NativeCycleRole.Store].header
+      assert destination == wanted
+      assert context.gas == 997-28*groups and context.remaining == 40-20*groups
+      assert context.visits == [1'u64, 1, groups, 0, 0, 0, 0]
+      assert context.lastCompleted == uint64(ord(NativeCycleRole.Store)) and context.paidRead == 0
+      assert validNativeCycleReceipt(layout, destination, 1000, 44, context)
+      assert registers == expected and writable == expectedMemory and dirty == initialDirty
 
 when NativeReadCycleEnabled and defined(pvmX86Jit):
   proc checkStoreDirtyBoundary() =
@@ -681,6 +744,7 @@ proc runReadCycleExecution*() =
     when defined(pvmReadCycleRoleWitness):
       runReadCycleRoleWitness()
     checkTailPointerReuse()
+    checkStorePageBoundary()
     when defined(pvmX86Jit):
       checkStoreDirtyBoundary()
       assert nativePlatformSupported()

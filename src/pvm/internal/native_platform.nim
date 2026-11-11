@@ -280,8 +280,8 @@ when NativeCheckedReadEnabled:
 when NativeReadCycleEnabled:
   proc lowerNativeReadCycle*(cycle: NativeReadCycle): NativeImage =
     ## Publish one complete region under its own ABI and image size limit.
-    ## For the admitted opcode profile the conservative bounds are 2,500 bytes on ARM64
-    ## and 3,132 on x86-64, including the return and either register checkpoint.
+    ## The lowerers retain their original probes when the Store proof exceeds the
+    ## ceiling. Publication checks the complete image again, including the return.
     result = default(NativeImage)
     if not nativePlatformSupported() or not cycle.read.complete: return
     when defined(pvmX86Jit):

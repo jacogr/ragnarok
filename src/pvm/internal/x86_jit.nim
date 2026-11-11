@@ -1013,6 +1013,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleSetupOps = 3
         readCycleCreditGasShift = 7'u8
         readCycleCreditSpanShift = 5'u8
+        storePagePointerSlot = 16'u8
+        storePageTagSlot = 24'u8
 
       type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+20, int]
 
@@ -1085,12 +1087,15 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         put(code, [0x4d'u8, 0x39, 0xc1, 0x4d, 0x0f, 0x47, 0xc8]) # CMP R9,R8; CMOVA R9,R8.
 
       proc emitReadCycleCreditSlow(code: var X86Block, fixes: var seq[X86CycleFixup],
-          labels: var X86ReadCycleLabels, layout: NativeCycleLayout) =
+          labels: var X86ReadCycleLabels, layout: NativeCycleLayout, storePage: bool) =
         ## Cold code owns RCX/RDX (budgets), ESI (selector), R8/R11 (receipt scratch).
         ## The guest bank, RDI, R10, EAX (exit header), and stack stay intact.
         for role in NativeCycleRole:
           # Each hot borrow has a static role identity and enters before the original probe.
           labels[int(readCycleCreditSlow)+ord(role)] = code.bytes.len
+          if storePage:
+            # Preserve the tag only on a path that can reenter the hot role graph.
+            put(code, [0x44'u8, 0x89, 0x5c, 0x24, storePageTagSlot]) # MOV [RSP+slot],R11D.
           put(code, [0xbe'u8]) # MOV ESI,role.
           cycleWord(code, uint32(ord(role)))
           cycleEdge(code, fixes, 0, readCycleCreditReconstruct)
@@ -1126,6 +1131,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         # resume after the exact guard below. Never resume with the unsigned borrow value.
         put(code, [0x45'u8, 0x31, 0xdb, 0x49, 0x83, 0xe9, 1]) # XOR R11D,R11D; SUB R9,1.
         put(code, [0x4d'u8, 0x0f, 0x42, 0xcb]) # CMOVB R9,R11.
+        if storePage:
+          # The cold exit-only reconstruction branches away before this reload.
+          put(code, [0x44'u8, 0x8b, 0x5c, 0x24, storePageTagSlot]) # MOV R11D,[RSP+slot].
         for role in NativeCycleRole:
           put(code, [0x83'u8, 0xfe, byte(ord(role))]) # CMP ESI,role.
           cycleEdge(code, fixes, 0x84, readCycleCreditExact+byte(ord(role)))
@@ -1178,10 +1186,55 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           put(code, [byte(if hardware >= 8: 0x49 else: 0x48), 0x83,
             byte(0xc0 or (hardware and 7)), delta]) # ADD resident64,delta.
 
+      proc emitReadCycleStorePageFill(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, commit: byte, nextLabel: var byte) =
+        ## The original preflight proved the current R8 pointer and dirty bits.
+        ## Require the same stack-first descriptor for the entire page. The
+        ## frame slot and R11D tag borrow the page only until this leaf returns.
+        const stack = byte(NativeCycleWritableOffset)
+        const rw = stack+24
+        let stackPage = nextLabel
+        let extent = nextLabel+1
+        nextLabel += 2
+        put(code, [0x89'u8, 0xd6, 0x81, 0xe6]) # MOV ESI,EDX; AND ESI,4095.
+        cycleWord(code, 4095)
+        put(code, [0x81'u8, 0xfe]) # CMP ESI,4092.
+        cycleWord(code, 4092)
+        cycleEdge(code, fixes, 0x87, commit)
+        put(code, [0x89'u8, 0xd0, 0x25]) # MOV EAX,EDX; AND EAX,0xfffff000.
+        cycleWord(code, 0xfffff000'u32)
+        put(code, [0x3d'u8]) # CMP EAX,0xfffff000. The stock low bound is page aligned.
+        cycleWord(code, 0xfffff000'u32)
+        cycleEdge(code, fixes, 0x84, commit)
+        put(code, [0x49'u8, 0x3b, 0x42, stack]) # CMP RAX,[R10+stack.first].
+        cycleEdge(code, fixes, 0x83, stackPage)
+        put(code, [0x48'u8, 0x8d, 0x90]) # LEA RDX,[RAX+4096].
+        cycleWord(code, 4096)
+        put(code, [0x49'u8, 0x3b, 0x52, stack]) # CMP RDX,[R10+stack.first].
+        cycleEdge(code, fixes, 0x87, commit)
+        put(code, [0x49'u8, 0x8d, 0x4a, rw]) # LEA RCX,[R10+rw].
+        cycleEdge(code, fixes, 0, extent)
+        labels[int(stackPage)] = code.bytes.len
+        put(code, [0x49'u8, 0x8d, 0x4a, stack]) # LEA RCX,[R10+stack].
+        labels[int(extent)] = code.bytes.len
+        put(code, [0x48'u8, 0x89, 0xc2, 0x48, 0x2b, 0x11]) # MOV RDX,RAX; SUB RDX,[RCX].
+        cycleEdge(code, fixes, 0x82, commit)
+        put(code, [0x48'u8, 0x8b, 0x49, 8, 0x48, 0x81, 0xe9]) # MOV RCX,[RCX+8]; SUB RCX,4096.
+        cycleWord(code, 4096)
+        cycleEdge(code, fixes, 0x82, commit)
+        put(code, [0x48'u8, 0x39, 0xca]) # CMP RDX,RCX.
+        cycleEdge(code, fixes, 0x87, commit)
+        put(code, [0x4c'u8, 0x89, 0xc2, 0x48, 0x29, 0xf2]) # MOV RDX,R8; SUB RDX,RSI.
+        put(code, [0x48'u8, 0x89, 0x54, 0x24, storePagePointerSlot]) # MOV [RSP+slot],RDX.
+        put(code, [0xc1'u8, 0xe8, 12, 0x41, 0x89, 0xc3]) # SHR EAX,12; MOV R11D,EAX.
+
       template emitReadCycleStore(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: untyped, word: NativeCycleWord, span, unpaid: byte, price: uint64,
-          nextLabel: var byte, budgetRegisters, credits: bool, access: X86ResidentAccess) =
+          nextLabel: var byte, budgetRegisters, credits, storePage: bool,
+              access: X86ResidentAccess) =
         ## Preflight the existing checked word projection, then commit exactly one group.
+        ## Hits prove whole-word containment. Misses preserve the original dirty
+        ## checks and return first writes unpaid to the checked Store.
         readAccess(code, access, word.shiftLane, false)
         put(code, [0xa8'u8, 0x1f]) # TEST AL,31: the first extraction must start at bit zero.
         cycleEdge(code, fixes, 0x85, unpaid)
@@ -1194,6 +1247,22 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readBodyBase(code, access, word.baseLane)
         put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 after capturing the old low word.
         cycleWord(code, uint32(word.displacement and 0xffffffff'u64))
+        let commit = nextLabel
+        if storePage:
+          # EDX retains the original address across both misses. R8 is the commit pointer.
+          let miss = nextLabel+1
+          nextLabel += 2
+          put(code, [0x89'u8, 0xd0, 0xc1, 0xe8, 12, 0x44, 0x39, 0xd8]) # Page compare.
+          cycleEdge(code, fixes, 0x85, miss)
+          put(code, [0x89'u8, 0xd6, 0x81, 0xe6]) # MOV ESI,EDX; AND ESI,4095.
+          cycleWord(code, 4095)
+          put(code, [0x81'u8, 0xfe]) # CMP ESI,4092.
+          cycleWord(code, 4092)
+          cycleEdge(code, fixes, 0x87, miss)
+          put(code, [0x4c'u8, 0x8b, 0x44, 0x24, storePagePointerSlot]) # MOV R8,[RSP+slot].
+          put(code, [0x49'u8, 0x01, 0xf0]) # ADD R8,RSI.
+          cycleEdge(code, fixes, 0, commit)
+          labels[int(miss)] = code.bytes.len
         put(code, [0x81'u8, 0xfa]) # CMP EDX,65536.
         cycleWord(code, 65536)
         cycleEdge(code, fixes, 0x82, unpaid)
@@ -1226,6 +1295,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         cycleEdge(code, fixes, 0x84, pagesReady)
         readCycleDirtyPage(code, fixes, unpaid, true)
         labels[int(pagesReady)] = code.bytes.len
+        if storePage:
+          # Failed fills still reach the unchanged commit with the original R8.
+          emitReadCycleStorePageFill(code, fixes, labels, commit, nextLabel)
+          labels[int(commit)] = code.bytes.len
 
         if not credits: readCycleDebit(code, span, price, budgetRegisters)
         readAccess(code, access, word.valueLane, false)
@@ -1320,7 +1393,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           fixes.add(X86CycleFixup(at: bodyStart+fix.at, target: fix.target))
         commitCheckedReadRegisters(code, bank)
 
-      proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow: bool): seq[byte] =
+      proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow,
+          allowStorePage: bool): seq[byte] =
         ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
         ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
@@ -1359,13 +1433,16 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             allowCredits and roleRegisters and readCycleFitsCredits(cycle.layout)
           else:
             false
+        # The exact register ledger owns R11 as quota and the nonresident profile
+        # owns it as the canonical register pointer. Both retain the original Store.
+        let storePage = allowStorePage and credits
         let bank = if roleRegisters: x86ResidentAccess(roleMask)
           elif resident: x86ResidentAccess(dirty) else: default(X86ResidentAccess)
         let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
         # Keep the entry-local borrow outside the 104-byte stack checkpoint.
         # Both allocations preserve the original alignment and fit a signed immediate.
         let tailSlot = if resident: 0'u8 else: byte(sizeof(RegisterFile))
-        let stackBytes = tailSlot+16'u8
+        let stackBytes = tailSlot+(if storePage: 32'u8 else: 16'u8)
         var code = default(X86Block)
         var fixes: seq[X86CycleFixup] = @[]
         var labels = default(X86ReadCycleLabels)
@@ -1397,6 +1474,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           # R9 funds paid roles. The first Read bypasses it because the checked header paid.
           readCycleLoadBudgets(code)
           readCycleCreditCount(code)
+          if storePage:
+            # No valid 20-bit page can match before the host pointer is initialized.
+            put(code, [0x41'u8, 0xbb]) # MOV R11D,0xffffffff.
+            cycleWord(code, high(uint32))
         elif budgetRegisters:
           # R9/R11 belong to the resident ledger across all roles. Keep scalar and guard scratch
           # out of them. The stack path needs R11 for its canonical pointer.
@@ -1460,7 +1541,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             readCycleComplete(code, role)
           of NativeCycleRole.Store:
             emitReadCycleStore(code, fixes, labels, word, span, unpaid, price, nextLabel,
-              budgetRegisters, credits, roleAccess)
+              budgetRegisters, credits, storePage, roleAccess)
           of NativeCycleRole.Tail:
             # A missing pointer leaves this affordable role unpaid. Load fresh bytes
             # on every visit so earlier Stores remain visible, including aliases.
@@ -1527,7 +1608,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         put(code, [0x48'u8, 0x83, 0xc4, stackBytes]) # ADD RSP,stackBytes releases the borrow.
         if resident: restoreCheckedReadRegisters(code, bank)
         put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
-        if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout)
+        if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout, storePage)
         if window.operations != 0:
           # Run the same original operations after the original checkpoint and debit.
           labels[int(slowRead)] = code.bytes.len
@@ -1545,16 +1626,19 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
         ## Ordinary x86 uses register budgets and credits for eligible connected cycles.
         ## The Read and role masks must fit the bank, and every role must fit one credit.
-        ## Both x86 and ARM publish the same checked receipt for all seven roles.
+        ## Try the page proof with the credited register allocation. Each retry
+        ## preserves the original image-size fallback and seven-role receipt.
         when readCycleUsesCredits:
-          result = emitX86ReadCycle(cycle, true, true)
+          result = emitX86ReadCycle(cycle, true, true, true)
+          if result.len != 0: return
+          result = emitX86ReadCycle(cycle, true, true, false)
           if result.len == 0:
             # Preserve the original credited image if only the extra Read body exceeds the cap.
-            result = emitX86ReadCycle(cycle, true, false)
+            result = emitX86ReadCycle(cycle, true, false, false)
           if result.len != 0: return
         # Preserve the original exact image under the same ceiling.
-        result = emitX86ReadCycle(cycle, false, true)
-        if result.len == 0: result = emitX86ReadCycle(cycle, false, false)
+        result = emitX86ReadCycle(cycle, false, true, false)
+        if result.len == 0: result = emitX86ReadCycle(cycle, false, false, false)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =
