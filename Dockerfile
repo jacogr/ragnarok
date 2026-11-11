@@ -4,13 +4,29 @@
 # Build the checked ThinLTO peer with Make; keep its toolchains available as the builder target.
 # Official image digests pin the bootstrap environments; application toolchain pins remain in spec/.
 FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
-FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS sources
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS ubuntu-base
+
+# Prefer Ubuntu's default archive and security hosts. APT can fetch the same signed
+# release and package data from a second mirror when the primary is unavailable.
+# A partial index update must fail so the retry repeats update before install.
+RUN printf '%s\tpriority:1\n%s\n' http://archive.ubuntu.com/ubuntu http://mirrors.edge.kernel.org/ubuntu \
+      > /etc/apt/archive-mirrors.list \
+    && printf '%s\tpriority:1\n%s\n' http://security.ubuntu.com/ubuntu http://mirrors.edge.kernel.org/ubuntu \
+      > /etc/apt/security-mirrors.list \
+    && sed -i \
+      -e 's|^URIs: http://archive[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/archive-mirrors.list|' \
+      -e 's|^URIs: http://security[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/security-mirrors.list|' \
+      /etc/apt/sources.list.d/ubuntu.sources \
+    && test "$(grep -c '^URIs: mirror+file:' /etc/apt/sources.list.d/ubuntu.sources)" -eq 2
+
+FROM ubuntu-base AS sources
 
 # The production image is qualified on Linux x86-64; other architectures use separate local trials.
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
 COPY tools/download_retry.sh /usr/local/bin/download-retry
-RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
+RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
+    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
     build-essential ca-certificates clang cmake git lld make openssl python3 xz-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -37,7 +53,8 @@ RUN --mount=type=secret,id=github_token make build-storage-full-paged-resources
 FROM sources AS builder
 RUN --mount=type=secret,id=github_token git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
-RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y patchelf \
+RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
+    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y patchelf \
     && mkdir /out && cp /src/build/ragnarok /out/ragnarok \
     && patchelf \
       --replace-needed /src/build-tools/crypto/libragnarok_crypto.so libragnarok_crypto.so \
@@ -47,9 +64,10 @@ RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/downloa
     && rm -rf /var/lib/apt/lists/*
 
 # Ship only the peer, its maintained native ABIs and the required system runtime libraries.
-FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
+FROM ubuntu-base AS runtime
 COPY --from=sources /usr/local/bin/download-retry /usr/local/bin/download-retry
-RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
+RUN sh /usr/local/bin/download-retry apt-get update --error-on=any \
+    && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
     ca-certificates libgcc-s1 libstdc++6 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /usr/local/bin/download-retry \
