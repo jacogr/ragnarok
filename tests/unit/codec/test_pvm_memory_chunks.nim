@@ -415,6 +415,26 @@ proc fullPrefixCycle() =
   let changed = changedMemoryPageSlots(middle, published).value
   assert changed.len == 1 and uint32(changed[0]) == 0
   assert samePage(original, published, PageIndex(17)) and samePage(original, published, PageIndex(18))
+  var denseBytes = observed.bytes
+  for chunk in 0..<8:
+    # Force every span to differ, including the separately owned final chunk.
+    let offset = chunk*512
+    denseBytes[offset] = denseBytes[offset] xor 255'u8
+  var dense = beginResidentReplacements(published)
+  assert stageResidentPage(dense, MemoryPageSlot(0), description, denseBytes) == MachineError.None
+  denseBytes[0] = observed.bytes[0] # Staging must finish copying before the caller can mutate the span.
+  let denseMemory = finishResidentReplacements(dense).value
+  var restored = default(array[4096, byte])
+  let restoredPage = copyMemoryPage(denseMemory, MemoryPageSlot(0), restored)
+  assert restoredPage.error == MachineError.None
+  assert restoredPage.value.index == description.index and restoredPage.value.access ==
+      description.access
+  for offset in 0..<4096:
+    # The resulting full backing and tail retain exactly the independent changed bytes.
+    let expected = if offset mod 512 == 0: observed.bytes[offset] xor 255'u8 else: observed.bytes[offset]
+    assert restored[offset] == expected
+  assert pageImage(published, PageIndex(16)).value.bytes == observed.bytes
+  assert samePage(published, denseMemory, PageIndex(17))
   let partial = pageImage(published, PageIndex(17)).value
   let zero = pageImage(published, PageIndex(18)).value
   for offset in 0..<4096:
