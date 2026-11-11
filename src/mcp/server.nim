@@ -25,15 +25,12 @@ import ./protocol
 
 const
   MaxConnections = 4
-  MaxHeader = http_parse.MaxHeadLen
-  MaxInput = MaxHeader + MaxMcpBody
 
 type
-  Connection = object                   ## One bounded request/response and an absolute five-second deadline.
+  Connection = object ## One bounded request/response and an absolute five-second deadline.
     opened: bool
     stream: HttpStream
     input, output: string
-    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
   McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
     logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
@@ -125,12 +122,10 @@ proc response(status: string, body = "", extra = ""): string =
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n" &
         extra & "\r\n" & body
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, context: QueryContext) =
-  ## Strict single-message HTTP framing rejects ambiguous lengths, browser origins and upgrades.
-  ## The stock scanner and parser own syntax and head extent. Keep the parsed
-  ## message within this activation, then apply MCP selectors and body policy.
-  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-  if headBytes == http_parse.ParseIncomplete: return
+proc processHead(slot: var Connection, tags: http_msg.HttpTags, headBytes: int, port: uint16): int =
+  ## Validate the complete head while its parser tokens and tags remain local.
+  ## A nonnegative result authorizes exactly that many body bytes.
+  result = -1
   if headBytes < 0:
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
@@ -168,15 +163,16 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, contex
   if length > MaxMcpBody:
     slot.output = response("413 Content Too Large")
     return
-  let total = headBytes + length
-  if slot.input.len > total: return # Pipelined data is never interpreted as a second request.
-  if slot.input.len < total:
-    slot.output = ""
-    return # Partial bodies retain the original absolute deadline.
-  let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
+  slot.output = ""
+  length
+
+proc processBody(slot: var Connection, body: string, hasSuffix: bool, context: QueryContext) =
+  ## Dispatch only a complete authorized body against this turn's context.
+  if hasSuffix:
+    slot.output = response("400 Bad Request")
+    return
   let reply = respond(body, context)
   slot.output = response(if reply.len == 0: "202 Accepted" else: "200 OK", reply)
-  slot.input = "" # No request token/context alias survives the synchronous dispatch.
 
 proc tick*(server: var McpServer, context: QueryContext) =
   ## Accept once, then dispatch bounded byte handoffs under each connection’s fixed deadline.
@@ -206,7 +202,7 @@ proc tick*(server: var McpServer, context: QueryContext) =
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP connection setup failed: " & $int32(error))
     else:
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted, MaxInput)
+      server.connections[free].stream.start(accepted, maxBodyBytes = MaxMcpBody)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "MCP connection accepted")
   else:
     let error = osLastError()
@@ -223,14 +219,19 @@ proc tick*(server: var McpServer, context: QueryContext) =
       slot.stream.stop() # The I/O task retires its halves before slot reuse.
       continue
     if not slot.stream.canSend: continue
-    if slot.output.len == 0 and slot.stream.receiveChunk(slot.input):
-      slot.process(tags, server.port, context)
-      if not slot.opened: continue
-      if slot.output.len == 0:
-        let available = MaxInput - slot.input.len
-        if available > 0: slot.stream.requestChunk(available)
-        else: slot.close()
-        continue
+    if slot.output.len == 0:
+      let headBytes = slot.stream.receiveHead(slot.input)
+      if headBytes != http_parse.ParseIncomplete:
+        let length = slot.processHead(tags, headBytes, server.port)
+        slot.input = ""
+        if length >= 0:
+          slot.stream.requestBody(length)
+          continue
+      else:
+        var body = ""
+        var hasSuffix = false
+        if not slot.stream.receiveBody(body, hasSuffix): continue
+        slot.processBody(body, hasSuffix, context)
       logHttpResponse(server.logger, "MCP", slot.output)
     if slot.opened and slot.output.len > 0:
       slot.stream.sendChunk(slot.output, true)

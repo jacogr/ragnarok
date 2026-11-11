@@ -24,16 +24,14 @@ include ../../build/ui_assets
 
 const
   MaxConnections = 8
-  MaxHeader = http_parse.MaxHeadLen
   ChunkBytes = 16384
 
 type
-  Connection = object                   ## Each slot owns its socket, optional file and bounded write buffer.
+  Connection = object ## Each slot owns its socket, optional file and bounded write buffer.
     opened, fileOpened, embedded: bool
     file: cint
     stream: HttpStream
     input, output: string
-    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     assetIndex, position: int
     remaining: int64
   UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
@@ -250,13 +248,11 @@ proc readEmbedded(slot: var Connection) =
   slot.position += count
   slot.remaining -= int64(count)
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint, headBytes: int) =
   ## Parse complete stock HTTP GET/HEAD headers with no body or ambiguous framing.
   ## After stock syntax validation, apply UI method, path and encoding policy.
   ## The parsed request stays local to this call, while the response owns its
   ## selected asset or development descriptor across dispatcher turns.
-  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-  if headBytes == http_parse.ParseIncomplete: return
   if headBytes < 0:
     slot.close()
     return # Upstream scanning owns incomplete and oversized head handling.
@@ -340,7 +336,7 @@ proc tick*(server: var UiServer) =
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI connection setup failed: " & $int32(error))
     else:
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted, MaxHeader + 1)
+      server.connections[free].stream.start(accepted)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "UI connection accepted")
   else:
     let error = osLastError()
@@ -357,15 +353,11 @@ proc tick*(server: var UiServer) =
       slot.stream.stop() # The I/O task retires its halves before slot reuse.
       continue
     if not slot.stream.canSend: continue
-    if slot.output.len == 0 and not slot.fileOpened and not slot.embedded and
-        slot.stream.receiveChunk(slot.input):
-      slot.process(tags, server.root)
+    if slot.output.len == 0 and not slot.fileOpened and not slot.embedded:
+      let headBytes = slot.stream.receiveHead(slot.input)
+      if headBytes == http_parse.ParseIncomplete: continue
+      slot.process(tags, server.root, headBytes)
       if not slot.opened: continue
-      if slot.output.len == 0:
-        let available = MaxHeader + 1 - slot.input.len
-        if available > 0: slot.stream.requestChunk(available)
-        else: slot.close()
-        continue
       logHttpResponse(server.logger, "UI", slot.output)
     if slot.stream.expired:
       slot.stream.stop()

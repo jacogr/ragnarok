@@ -21,8 +21,6 @@ import ../lib/utf8
 
 const
   MaxConnections = 4
-  MaxHeader = http_parse.MaxHeadLen
-  MaxInput = MaxHeader + MaxManagementBody
 
 type
   LocalAddress = object
@@ -33,11 +31,10 @@ type
     else:
       sun_family: cushort
     sun_path: array[104, char]
-  Connection = object                   ## Each slot owns bounded bytes and one nonblocking descriptor.
+  Connection = object ## Each slot owns bounded bytes and one nonblocking descriptor.
     opened: bool
     stream: HttpStream
     input, output: string
-    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
   ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
     logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
@@ -163,12 +160,10 @@ proc response(status, body = ""): string =
   "HTTP/1.1 " & status & "\r\nContent-Type: application/json\r\nContent-Length: " & $body.len &
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n" & body
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo) =
-  ## Parse stock HTTP POST / with one explicit length; no upgrade, chunking or pipelining.
-  ## The stock parser validates head syntax. This routine owns endpoint, unique
-  ## application selectors, body limits and dispatch into the private registry.
-  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-  if headBytes == http_parse.ParseIncomplete: return
+proc processHead(slot: var Connection, tags: http_msg.HttpTags, headBytes: int): int =
+  ## Validate the complete head while its parser tokens and tags remain local.
+  ## A nonnegative result authorizes exactly that many body bytes.
+  result = -1
   if headBytes < 0:
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
@@ -191,15 +186,16 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo
   if length > MaxManagementBody:
     slot.output = response("413 Content Too Large")
     return
-  let total = headBytes + length # Both operands have already been bounded independently.
-  if slot.input.len > total: return # No pipelined suffix is interpreted as another request.
-  if slot.input.len < total:
-    slot.output = ""
-    return # A bounded partial body waits only until its original connection deadline.
-  let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
+  slot.output = ""
+  length
+
+proc processBody(slot: var Connection, body: string, hasSuffix: bool, info: ManagementInfo) =
+  ## Dispatch only a complete authorized body against this turn's context.
+  if hasSuffix:
+    slot.output = response("400 Bad Request")
+    return
   let reply = respond(body, info)
   slot.output = response(if reply.len == 0: "204 No Content" else: "200 OK", reply)
-  slot.input = "" # No parser token or input borrow survives this synchronous call.
 
 proc tick*(server: var ManagementServer) =
   ## Accept once, then dispatch bounded byte handoffs under each connection’s fixed deadline.
@@ -232,7 +228,7 @@ proc tick*(server: var ManagementServer) =
           $int32(error))
     else:
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted, MaxInput)
+      server.connections[free].stream.start(accepted, maxBodyBytes = MaxManagementBody)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "Management RPC connection accepted")
   else:
     let error = osLastError()
@@ -249,14 +245,19 @@ proc tick*(server: var ManagementServer) =
       slot.stream.stop() # The I/O task retires its halves before slot reuse.
       continue
     if not slot.stream.canSend: continue
-    if slot.output.len == 0 and slot.stream.receiveChunk(slot.input):
-      slot.process(tags, server.info)
-      if not slot.opened: continue
-      if slot.output.len == 0:
-        let available = MaxInput - slot.input.len
-        if available > 0: slot.stream.requestChunk(available)
-        else: slot.close()
-        continue
+    if slot.output.len == 0:
+      let headBytes = slot.stream.receiveHead(slot.input)
+      if headBytes != http_parse.ParseIncomplete:
+        let length = slot.processHead(tags, headBytes)
+        slot.input = ""
+        if length >= 0:
+          slot.stream.requestBody(length)
+          continue
+      else:
+        var body = ""
+        var hasSuffix = false
+        if not slot.stream.receiveBody(body, hasSuffix): continue
+        slot.processBody(body, hasSuffix, server.info)
       logHttpResponse(server.logger, "Management RPC", slot.output)
     if slot.opened and slot.output.len > 0:
       slot.stream.sendChunk(slot.output, true)

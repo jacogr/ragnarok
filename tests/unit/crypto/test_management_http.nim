@@ -8,6 +8,18 @@ import ../../../src/rpc/protocol as public_protocol
 from ../../../src/lib/stop_signal import ignorePipeSignal
 include ../../../src/management/server
 
+proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo) =
+  ## Run the same header and body policy against an in-memory wire fixture.
+  var scanner = default(http_parse.HeadScanner)
+  let headBytes = scanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes == http_parse.ParseIncomplete: return
+  let length = slot.processHead(tags, headBytes)
+  if length >= 0 and slot.input.len >= headBytes + length:
+    let total = headBytes + length
+    let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
+    slot.processBody(body, slot.input.len > total, info)
+    slot.input = ""
+
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
 
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
@@ -108,8 +120,17 @@ block lifecycle:
   for index, c in path: destination.sun_path[index] = c
   assert connectSocket(peer, addr destination, SockLen(sizeof(destination))) == 0
   assert nonblocking(peer)
-  var wire = packet(request)
-  assert sendBytes(peer, wire.toCString(), csize_t(wire.len), 0) == wire.len
+  let wire = packet(request)
+  var first = wire.substr(0, wire.len - 3)
+  assert sendBytes(peer, first.toCString(), csize_t(first.len), 0) == first.len
+  var octet = '\0'
+  for attempt in 0..<20:
+    # The head and partial body arrive together, but dispatch must wait for the authorized extent.
+    listener.tick()
+    assert receive(peer, addr octet, 1, 0) < 0
+    discard pauseMicros(1000)
+  var tail = wire.substr(first.len)
+  assert sendBytes(peer, tail.toCString(), csize_t(tail.len), 0) == tail.len
   var output = ""
   for attempt in 0..<200:
     listener.tick()
@@ -128,6 +149,30 @@ block lifecycle:
     if not listener.connections[0].opened: break
     discard pauseMicros(1000)
   assert not listener.connections[0].opened, "response worker retires before filling idle slots"
+  # Expect is refused from the head even when the client has withheld the body.
+  let rejected = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  assert rejected >= 0 and connectSocket(rejected, addr destination, SockLen(sizeof(
+      destination))) == 0
+  assert nonblocking(rejected)
+  var expectHead = "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 64\r\nExpect: 100-continue\r\n\r\n"
+  assert sendBytes(rejected, expectHead.toCString(), csize_t(expectHead.len), 0) == expectHead.len
+  output = ""
+  for attempt in 0..<200:
+    listener.tick()
+    var bytes = default(array[512, char])
+    let count = receive(rejected, addr bytes[0], csize_t(bytes.len), 0)
+    if count > 0:
+      for index in 0..<count: output.add(bytes[index])
+    elif count == 0: break
+    discard pauseMicros(1000)
+  assert output.startsWith("HTTP/1.1 400 Bad Request")
+  discard posix.close(rejected)
+  for attempt in 0..<1000:
+    listener.tick()
+    if not listener.connections[0].opened: break
+    discard pauseMicros(1000)
+  assert not listener.connections[0].opened
+
   # Capacity and absolute timeout retirement use real idle consumers, independently of JSON parsing.
   var idle = default(array[5, cint])
   for index in 0..<idle.len:
@@ -212,15 +257,15 @@ block disconnectedWriter:
       0, addr pair[0]) == 0
   assert nonblocking(pair[0]) and nonblocking(pair[1])
   var stream = default(HttpStream)
-  stream.start(pair[0], 64)
-  var request = "request"
+  stream.start(pair[0])
+  var request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
   assert sendBytes(pair[1], request.toCString(), csize_t(request.len), 0) == request.len
   var input = ""
   for attempt in 0..<1000:
     pollHttpStreams()
-    if stream.receiveChunk(input): break
+    if stream.receiveHead(input) == request.len: break
     discard pauseMicros(1000)
-  assert input == "request"
+  assert input == request
   assert posix.close(pair[1]) == 0
   var reply = "response"
   stream.sendChunk(reply, true)
@@ -252,7 +297,7 @@ block expiredRequest:
   listener.opened = true
   listener.info = admin
   listener.connections[0].opened = true
-  listener.connections[0].stream.start(pair[0], MaxInput, timeoutMs = 200)
+  listener.connections[0].stream.start(pair[0], timeoutMs = 200)
   for attempt in 0..<150:
     pollHttpStreams()
     if listener.connections[0].stream.canSend: break
