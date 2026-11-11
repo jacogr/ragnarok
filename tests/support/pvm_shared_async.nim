@@ -1482,6 +1482,9 @@ proc runSharedAsync*() =
     purePrefixControl()
     when NativeReadCycleEnabled:
       runMixedLoopSource()
+      when defined(pvmPaidMixedLoopWitness):
+        # Both maintained native profiles include deterministic paid fault and retry coverage.
+        runPaidMixedLoopSource()
       runMixedLoopMailbox()
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")

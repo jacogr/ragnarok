@@ -147,7 +147,16 @@ when declared(FlatFrame):
   template enterFlatMixedLoop(f: var FlatFrame, off: uint32, certificate: NativeMixedLoop, image,
       enter: untyped): uint32 =
     ## Borrow fresh read, writable and dirty-page descriptors for at most 256 funded visits.
-    ## Charge only verified whole visits and resume the first unstarted block through flatCharge.
+    ## Entry requires an unpaid header and no quota barrier; otherwise use flatCharge.
+    ## Whole visits consume their original span and price. An unpaid refusal replays
+    ## its unstarted header once through checked charging. A packed paid guard keeps
+    ## the committed prefix live: charge visits+1 blocks, subtract visits+1 complete
+    ## spans from remaining, mark blockCharged, and retain the original header reservation.
+    ## Return the source-certified guard node directly so checked workers consume the
+    ## reserved suffix. The caller's reservation/refund path accounts for unused attempts
+    ## on a fault or stop; it must never charge this already paid block again.
+    ## Credited native work is whole visits plus the original prefix, including folded
+    ## no-ops; a prefix without a completed BNE credits work/calls but no branch/header.
     let boundProof {.cursor.}: NativeMixedLoop = certificate
     assert off == boundProof.header
     if f.info.blockCharged or f.barrier != flatStop: return flatCharge(f, off)

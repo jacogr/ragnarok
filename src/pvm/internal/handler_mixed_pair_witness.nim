@@ -24,7 +24,7 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       assert a.value.access == b.value.access and a.value.bytes == b.value.bytes
 
   proc witnessFlatPaidMixedLoop*(program: Program, pc: uint32, base, wordAddress,
-      readBase: uint64) =
+      readBase: uint64, report: bool = true) =
     ## Compare true native entries to original checked workers before and after repairing a fault.
     let cycles = GasCycleLimit(100000)
     var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
@@ -187,7 +187,9 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         let finalWord = load(flatMemorySnapshot(resumed), MemoryAddress(wordAddress), AccessWidth(4))
         let expectedWord = if scenario == 5: 0x8000a5a5'u64 else: 0x800000a5'u64
         assert finalWord.error == MachineError.None and uint64(finalWord.value) == expectedWord
-      echo "MIXED_PAID_FRAME,", scenario, ",", observed.visits, ",", observed.paid, ",",
-        observed.operations, ",", observed.branches, ",", observed.repeatedHeaders, ",",
-        observed.lastGuardPc, ",", uint64(native.faultPage)
+      if report:
+        # Maintained unit goldens stay portable; private qualification retains exact receipts.
+        echo "MIXED_PAID_FRAME,", scenario, ",", observed.visits, ",", observed.paid, ",",
+          observed.operations, ",", observed.branches, ",", observed.repeatedHeaders, ",",
+          observed.lastGuardPc, ",", uint64(native.faultPage)
     assert close(runtime)

@@ -1,6 +1,7 @@
 {
   "defines": [
     "pvmArm64Jit",
+    "pvmPaidMixedLoopWitness",
     "pvmSharedAsyncWitness"
   ],
   "directory": "codec",
