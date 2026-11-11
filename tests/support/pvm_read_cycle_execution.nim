@@ -1017,8 +1017,26 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
         operation(100, 0xb8), operation(171, 0x38)]
     for index, item in operations: result.operations[index] = item
 
-  proc runMixedLoopMailbox*() =
-    ## Force actual cancellation, pressure, idle/active retirement and close ordering.
+  proc mixedLoopTestPair(proof: NativeMixedLoop): NativeMixedLoopSet =
+    ## Copy two genuinely disjoint source/handler intervals under the same primary epoch.
+    result = singleNativeMixedLoop(proof)
+    result.count = 2
+    result.proofs[1] = proof
+    result.proofs[1].header += 512
+    result.proofs[1].terminal += 512
+    result.proofs[1].exitHeader += 512
+    result.proofs[1].first += 512
+    assert result.complete
+
+  proc runMixedLoopMailboxCase[Paired: static[bool]]() =
+    ## Force the same real scheduler lifecycle for either one entry or a disjoint two-entry arena.
+    template candidates(proof: NativeMixedLoop): NativeMixedLoopSet =
+      when Paired: mixedLoopTestPair(proof)
+      else: singleNativeMixedLoop(proof)
+    template offer(session: NativeSession, proof: NativeMixedLoop): bool =
+      offerNativeMixedLoops(session, candidates(proof))
+    template borrow(session: NativeSession, proof: NativeMixedLoop): NativeMixedLoopBorrow =
+      borrowNativeMixedLoops(session, candidates(proof))
     assert nativePlatformSupported()
     let runtime = newNativeRuntime()
     try:
@@ -1036,7 +1054,22 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     let beforeAuxiliary = runtimeInfo(runtime)
     pauseNativeCompiler(runtime, true)
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert offerNativeMixedLoop(renderer, queuedProof)
+    var malformed = candidates(queuedProof)
+    malformed.count = uint8(NativeMixedLoopEntryLimit+1)
+    assert not malformed.complete and not sameNativeMixedLoopSet(malformed, malformed)
+    assert not offerNativeMixedLoops(renderer, malformed)
+    let malformedBorrow = borrowNativeMixedLoops(renderer, malformed)
+    assert malformedBorrow.image == nil and not malformedBorrow.settled
+    malformed.count = 0
+    assert not offerNativeMixedLoops(renderer, malformed)
+    assert borrowNativeMixedLoops(renderer, malformed).image == nil
+    when Paired:
+      var highSource = candidates(queuedProof)
+      highSource.proofs[0].first = high(uint32)-uint32(queuedProof.span)+1
+      highSource.proofs[1].first = highSource.proofs[0].first
+      assert highSource.proofs[0].complete and highSource.proofs[1].complete
+      assert not highSource.complete and not offerNativeMixedLoops(renderer, highSource)
+    assert offer(renderer, queuedProof)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     let queuedAuxiliary = runtimeInfo(runtime)
     assert queuedAuxiliary.phase == NativePhase.Queued and
@@ -1065,7 +1098,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     let parked = nativeOwnerStatistics(renderer)
     assert parked[0] == 2 and parked[3] > nativeStatistics(renderer)[3]
     assert nativeOwnerStatistics(renderer) == parked
-    let queuedImage = borrowNativeMixedLoop(renderer, queuedProof).image
+    let queuedBorrow = borrow(renderer, queuedProof)
+    assert queuedBorrow.mask == (when Paired: 3'u8 else: 1'u8) and not queuedBorrow.pairRefused
+    let queuedImage = queuedBorrow.image
     assert queuedImage != nil and queuedImage[].ready, "optional work must resume after primary"
     assert nativeOwnerStatistics(renderer) == parked
     returnNativeMixedLoop(renderer)
@@ -1079,7 +1114,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     # The optional job owns its image at the publication gate. A primary must still queue.
     beginNativeInvocation(renderer, NativeInvocationFloor)
     armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
-    assert offerNativeMixedLoop(renderer, original)
+    assert offer(renderer, original)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     let optional = waitNativeCompilerGate(runtime)
     assert optional.kind == NativeKind.MixedSelfLoop and optional.hasImage
@@ -1103,14 +1138,14 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert mixedLoopPrimaryReady(priority)
     finishNativeInvocation(priority, NativeInvocationFloor)
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert mixedLoopPrimaryReady(renderer) and not offerNativeMixedLoop(renderer, original)
+    assert mixedLoopPrimaryReady(renderer) and not offer(renderer, original)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     invalidateNativeStream(priority)
 
     # Cancel a pending optional payload by invalidating its exact primary epoch.
     beginNativeInvocation(renderer, NativeInvocationFloor)
     armNativeCompilerGate(runtime, NativeCompilerPoint.AfterClaim)
-    assert offerNativeMixedLoop(renderer, original)
+    assert offer(renderer, original)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     let pending = waitNativeCompilerGate(runtime)
     assert pending.kind == NativeKind.MixedSelfLoop and not pending.hasImage
@@ -1125,19 +1160,19 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     let next = mixedLoopTestProof(nativeEpoch(renderer))
     assert next.epoch != original.epoch
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert not offerNativeMixedLoop(renderer, original)
-    assert offerNativeMixedLoop(renderer, next)
+    assert not offer(renderer, original)
+    assert offer(renderer, next)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     waitNativeCompiler(runtime)
     beginNativeInvocation(other, NativeInvocationFloor)
-    assert borrowNativeMixedLoop(other, next).image == nil
+    assert borrow(other, next).image == nil
     finishNativeInvocation(other, NativeInvocationFloor)
 
     # A borrowed runtime-owned mapping stays charged during pressure. Its next owner
     # boundary releases it while the already queued primary retains its own credit.
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert borrowNativeMixedLoop(renderer, original).image == nil
-    let image = borrowNativeMixedLoop(renderer, next).image
+    assert borrow(renderer, original).image == nil
+    let image = borrow(renderer, next).image
     assert image != nil and image[].ready and image[].codeBytes > 0
     assert not close(runtime)
     let entrant = newNativeSession(runtime)
@@ -1166,6 +1201,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     var registers = default(RegisterFile)
     var emptyContext = NativeMixedLoopContext(visitLimit: 1)
     assert enterNativeMixedLoop(image[], registers, emptyContext) == 0
+    when Paired:
+      assert nativeMixedLoopEntries(image[]) == 3
+      assert enterNativeMixedLoopAt(image[], 1, registers, emptyContext) == 0
     assert registers == default(RegisterFile)
     returnNativeMixedLoop(renderer)
     assert runtimeInfo(runtime).registered == 3 and mixedLoopPrimaryReady(renderer)
@@ -1189,7 +1227,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
 
     # An unrelated primary can reclaim a parked optional mapping while its owner is idle.
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert offerNativeMixedLoop(renderer, next)
+    assert offer(renderer, next)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     waitNativeCompiler(runtime)
     let idlePressure = newNativeSession(runtime)
@@ -1206,12 +1244,12 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     # An unrelated primary with a spare credit left over need not revoke a parked optional image.
     invalidateNativeStream(other)
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert offerNativeMixedLoop(renderer, next)
+    assert offer(renderer, next)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     waitNativeCompiler(runtime)
     readyMixedLoopTestRenderer(runtime, other)
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert borrowNativeMixedLoop(renderer, next).image != nil
+    assert borrow(renderer, next).image != nil
     returnNativeMixedLoop(renderer)
     finishNativeInvocation(renderer, NativeInvocationFloor)
 
@@ -1219,7 +1257,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 3 and close(runtime)
     assert runtimeInfo(runtime).registered == 2
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    assert borrowNativeMixedLoop(renderer, next).image == nil
+    assert borrow(renderer, next).image == nil
     finishNativeInvocation(renderer, 0)
     invalidateNativeStream(renderer)
     invalidateNativeStream(other)
@@ -1239,20 +1277,20 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
       oversized.operations[31] = operation(171, 0x38)
       assert oversized.complete
       beginNativeInvocation(renderer, NativeInvocationFloor)
-      assert offerNativeMixedLoop(renderer, oversized)
+      assert offer(renderer, oversized)
       finishNativeInvocation(renderer, NativeInvocationFloor)
       waitNativeCompiler(runtime)
       let rejected = runtimeInfo(runtime)
       assert rejected.registered == 1 and rejected.completions == 0
       beginNativeInvocation(renderer, NativeInvocationFloor)
-      let refused = borrowNativeMixedLoop(renderer, oversized)
+      let refused = borrow(renderer, oversized)
       assert refused.image == nil and refused.refused
-      assert not offerNativeMixedLoop(renderer, oversized)
+      assert not offer(renderer, oversized)
       assert runtimeInfo(runtime).submitted == rejected.submitted
       finishNativeInvocation(renderer, NativeInvocationFloor)
     beginNativeInvocation(renderer, NativeInvocationFloor)
     armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
-    assert offerNativeMixedLoop(renderer, closing)
+    assert offer(renderer, closing)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     let closingImage = waitNativeCompilerGate(runtime)
     assert closingImage.hasImage
@@ -1264,3 +1302,47 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     # Stop bypasses the worker gate. Close joins before it inspects or returns that credit.
     assert close(runtime)
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
+
+  proc runMixedLoopMailbox*() =
+    runMixedLoopMailboxCase[false]()
+    runMixedLoopMailboxCase[true]()
+
+  proc runMixedArenaPublishRefusal*() =
+    ## A real partial arena publication failure must never become a callable worker completion.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "mixed arena refusal worker failed to start"
+    let renderer = newNativeSession(runtime)
+    readyMixedLoopTestRenderer(runtime, renderer)
+    let requested = mixedLoopTestPair(mixedLoopTestProof(nativeEpoch(renderer)))
+    let baseline = runtimeInfo(runtime)
+    let owner = nativeOwnerStatistics(renderer)
+    assert owner[0] == 1 and owner[3] > 0
+    for attempt in 0..1:
+      beginNativeInvocation(renderer, NativeInvocationFloor)
+      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+      assert offerNativeMixedLoops(renderer, requested)
+      finishNativeInvocation(renderer, NativeInvocationFloor)
+      let failed = waitNativeCompilerGate(runtime)
+      assert failed.kind == NativeKind.MixedSelfLoop and not failed.hasImage
+      let pending = runtimeInfo(runtime)
+      assert pending.registered == 2 and pending.phase == NativePhase.Running
+      assert nativeOwnerStatistics(renderer) == owner
+      releaseNativeCompilerGate(runtime)
+      waitNativeCompiler(runtime)
+      let retired = runtimeInfo(runtime)
+      assert retired.registered == 1 and retired.completions == 0
+      assert retired.submitted == baseline.submitted+uint64(attempt)+1
+      assert retired.completed == baseline.completed
+      beginNativeInvocation(renderer, NativeInvocationFloor)
+      let borrow = borrowNativeMixedLoops(renderer, requested)
+      assert borrow.settled and not borrow.pending and borrow.image == nil
+      assert borrow.mask == 0 and borrow.refusedMask == 0 and not borrow.pairRefused
+      assert nativeOwnerStatistics(renderer) == owner and mixedLoopPrimaryReady(renderer)
+      finishNativeInvocation(renderer, NativeInvocationFloor)
+      echo "MIXED_ARENA_ASYNC_REFUSAL,", attempt, ",", retired.submitted-baseline.submitted,
+        ",", retired.completed-baseline.completed, ",", retired.registered
+    invalidateNativeStream(renderer)
+    assert runtimeInfo(runtime).registered == 0 and close(runtime)
