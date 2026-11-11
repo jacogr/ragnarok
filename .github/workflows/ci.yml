@@ -60,7 +60,7 @@ env:
   # Exercise the shipped minified JS/CSS in every native/browser verification job.
   UI_MINIFY: "1"
 
-# Independent checks become eligible together when selected.
+# Start builds and the longest checks first, then release the remaining workloads.
 jobs:
   # Verify pinned fixtures alongside the other selected checks.
   fixture-provenance:
@@ -81,24 +81,23 @@ jobs:
           python-version: "3.12"
       - run: make check-fixture-provenance
 
-  # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
+  # These builds release the second wave on full runs.
   # Build group: named workloads report their own results.
   build:
-    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:
       fail-fast: false
       matrix:
-        runner:
+        runner: &build-runners
           - x86: *ubuntu-x86-version
             arm: &ubuntu-arm-version ubuntu-26.04-arm
         family: >-
           ${{ fromJSON(
-            inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]'
-            || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]'
-            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
-            || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]'
+            (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]'
+            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
+            || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]'
             || inputs.suite == 'build' && '[{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
             || '[{"name":"Smoke","group":"smoke","platform":""}]'
           ) }}
@@ -228,6 +227,89 @@ jobs:
             build/ci/*.log
             build/tests/smoke/*.log
             build/tests/smoke/results.json
+      - name: Build, package and smoke-test relocated peer
+        if: ${{ matrix.family.group == 'binary' }}
+        run: make package-binary
+      - name: Retain downloadable binary archive
+        if: ${{ matrix.family.group == 'binary' }}
+        uses: *upload-artifact
+        with:
+          name: ragnarok-${{ matrix.family.platform }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
+      - name: Retain binary build diagnostics
+        if: ${{ always() && matrix.family.group == 'binary' }}
+        uses: *upload-artifact
+        with:
+          name: binary-${{ matrix.family.platform }}-diagnostics-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
+      - name: Check every production module in release mode
+        if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        run: make check-modules
+      - name: Show verification coverage
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        run: make summary-modules SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-modules-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/modules/*.log
+            build/tests/modules/results.json
+      # The container owns an independent image build and runtime smoke checks.
+      - name: Build and smoke-test Docker image
+        if: ${{ !cancelled() && matrix.family.group == 'docker' }}
+        run: make check-docker
+      - name: Retain Docker build diagnostics
+        if: ${{ always() && matrix.family.group == 'docker' }}
+        uses: *upload-artifact
+        with:
+          name: docker-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/docker-build.log
+            build/ci/docker-smoke.log
+
+  # Tooling starts with the builds and runs independently of the second wave.
+  tooling:
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    name: Build / Tooling
+    timeout-minutes: *ci-job-timeout
+    strategy:
+      matrix:
+        runner: *build-runners
+        family:
+          - {name: Tooling, group: python, platform: ""}
+    runs-on: *ubuntu-x86-version
+    steps:
+      - *checkout
+      - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Check references and tooling
         if: ${{ matrix.family.group == 'python' }}
         run: make check-python
@@ -289,64 +371,6 @@ jobs:
             build/tests/guards/results.json
             build/ci/native/bandersnatch/build.log
             build/ci/native/bandersnatch/cargo-features.log
-      - name: Build, package and smoke-test relocated peer
-        if: ${{ matrix.family.group == 'binary' }}
-        run: make package-binary
-      - name: Retain downloadable binary archive
-        if: ${{ matrix.family.group == 'binary' }}
-        uses: *upload-artifact
-        with:
-          name: ragnarok-${{ matrix.family.platform }}-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: error
-          path: |
-            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
-            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
-      - name: Retain binary build diagnostics
-        if: ${{ always() && matrix.family.group == 'binary' }}
-        uses: *upload-artifact
-        with:
-          name: binary-${{ matrix.family.platform }}-diagnostics-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/ci/native/crypto/build.log
-            build/ci/native/bandersnatch/build.log
-            build/ci/native/bandersnatch/cargo-features.log
-            build/ci/native/quic/build.log
-      - name: Check every production module in release mode
-        if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        run: make check-modules
-      - name: Show verification coverage
-        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        run: make summary-modules SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.family.os || matrix.runner.x86 }}-modules-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/modules/*.log
-            build/tests/modules/results.json
-      # The container owns an independent image build and runtime smoke checks.
-      - name: Build and smoke-test Docker image
-        if: ${{ !cancelled() && matrix.family.group == 'docker' }}
-        run: make check-docker
-      - name: Retain Docker build diagnostics
-        if: ${{ always() && matrix.family.group == 'docker' }}
-        uses: *upload-artifact
-        with:
-          name: docker-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/docker-build.log
-            build/ci/docker-smoke.log
 
   # Unit group: named workloads report their own results.
   unit:
@@ -355,10 +379,10 @@ jobs:
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 19
       matrix:
         os: &ci-os [*ubuntu-x86-version]
-        family: ${{ fromJSON('[{"name":"Test (1/16)","shard":"1/16","group":"suites"},{"name":"Test (2/16)","shard":"2/16","group":"suites"},{"name":"Test (3/16)","shard":"3/16","group":"suites"},{"name":"Test (4/16)","shard":"4/16","group":"suites"},{"name":"Test (5/16)","shard":"5/16","group":"suites"},{"name":"Test (6/16)","shard":"6/16","group":"suites"},{"name":"Test (7/16)","shard":"7/16","group":"suites"},{"name":"Test (8/16)","shard":"8/16","group":"suites"},{"name":"Test (9/16)","shard":"9/16","group":"suites"},{"name":"Test (10/16)","shard":"10/16","group":"suites"},{"name":"Test (11/16)","shard":"11/16","group":"suites"},{"name":"Test (12/16)","shard":"12/16","group":"suites"},{"name":"Test (13/16)","shard":"13/16","group":"suites"},{"name":"Test (14/16)","shard":"14/16","group":"suites"},{"name":"Test (15/16)","shard":"15/16","group":"suites"},{"name":"Test (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"}]') }}
+        family: ${{ fromJSON('[{"name":"Test (1/15)","shard":"1/15","group":"suites"},{"name":"Test (2/15)","shard":"2/15","group":"suites"},{"name":"Test (3/15)","shard":"3/15","group":"suites"},{"name":"Test (4/15)","shard":"4/15","group":"suites"},{"name":"Test (5/15)","shard":"5/15","group":"suites"},{"name":"Test (6/15)","shard":"6/15","group":"suites"},{"name":"Test (7/15)","shard":"7/15","group":"suites"},{"name":"Test (8/15)","shard":"8/15","group":"suites"},{"name":"Test (9/15)","shard":"9/15","group":"suites"},{"name":"Test (10/15)","shard":"10/15","group":"suites"},{"name":"Test (11/15)","shard":"11/15","group":"suites"},{"name":"Test (12/15)","shard":"12/15","group":"suites"},{"name":"Test (13/15)","shard":"13/15","group":"suites"},{"name":"Test (14/15)","shard":"14/15","group":"suites"},{"name":"Test (15/15)","shard":"15/15","group":"suites"},{"name":"Corpus (1/4)","shard":"","group":"corpus","corpus_shard":"1/4"},{"name":"Corpus (2/4)","shard":"","group":"corpus","corpus_shard":"2/4"},{"name":"Corpus (3/4)","shard":"","group":"corpus","corpus_shard":"3/4"},{"name":"Corpus (4/4)","shard":"","group":"corpus","corpus_shard":"4/4"}]') }}
     env:
       UNIT_SHARD: ${{ matrix.family.shard }}
       CORPUS_SHARD: ${{ matrix.family.corpus_shard }}
@@ -468,8 +492,10 @@ jobs:
             build/ci/native/quic/build.log
 
   # Preserve the stable contract gate and require every partition, including specialized controls.
+  # The second wave waits for build completion. Its explicit cancellation checks also allow failed or skipped builds.
   # E2E group: named workloads report their own results.
   e2e:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
     name: E2E / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
@@ -572,6 +598,7 @@ jobs:
 
   # Interop group: named workloads report their own results.
   interop:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     name: Interop / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
@@ -643,6 +670,7 @@ jobs:
 
   # Real shared-adapter gameplay parity belongs to Interop; each native architecture must execute DOOM.
   pvm-doom-backends:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     name: Interop / PVM Backends (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
@@ -701,6 +729,7 @@ jobs:
 
   # Storage retains its existing performance panels; PVM has one native architecture path below.
   perf:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     name: Perf / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
@@ -812,6 +841,7 @@ jobs:
   # Every merge measures the same complete current-source PVM cohort on both native CPUs.
   # Focused manual requests reuse this runner/report protocol, without diagnostic benchmark paths.
   pvm-comparison:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     # Reports retain the actual API job name without maintaining a separate display-name selector.
     name: &pvm-performance-name ${{ format('Perf / PVM ({0})', matrix.family.name) }}
@@ -869,6 +899,7 @@ jobs:
             build/ci/*.log
 
   pvm-fuzz:
+    needs: build
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
     name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout

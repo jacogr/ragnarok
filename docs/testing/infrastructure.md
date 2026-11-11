@@ -93,7 +93,7 @@ the exact build profile; workers reuse only their own compatible intermediates. 
 advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
-CI partitions discovered unit work across sixteen bounded jobs, keeping each job's
+CI partitions discovered unit work across fifteen bounded jobs, keeping each job's
 linked/resource work sequential.
 Selected PVM AddressSanitizer replays are distinct `asan:<suite>` tasks in that same plan.
 Their dependency weights are doubled to account for instrumented lowering and calibration;
@@ -118,7 +118,7 @@ shards, including the final partial block, then each shard's execution order is 
 mains are independent single-suite items in multi-shard runs, with their existing checked flags,
 private compatible caches, fixtures, expected outputs and fresh ARC observations. An unsharded
 run keeps the reusable directory batch; CI never places the whole directory under one child deadline. The corpus
-work runs once across four `Unit / Corpus (i/4)` matrix jobs alongside all sixteen suite-only shards.
+work runs once across four `Unit / Corpus (i/4)` matrix jobs alongside all fifteen suite-only shards.
 Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
 there are no timing weights or maintained assignments. Each shard executes its assigned cases in
 original feature/task order and reuses its own compatible driver builds. Consumers that read a
