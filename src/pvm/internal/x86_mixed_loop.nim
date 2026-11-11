@@ -1,12 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Lower a source-certified mixed byte-store self-loop.
+## Lower source-certified transactional and paid-prefix mixed self-loops.
 ## Included beside the checked Read-cycle emitter so it can share its memory guards.
 
 when declared(X86Block):
-  type X86MixedLoopLabels = array[6+4*(int(NativeReadFactLimit)-2), int]
-    ## Four fixed targets, two Store targets and four per possible read.
+  type X86MixedLoopLabels = array[3+5*(int(NativeReadFactLimit)-1), int]
+    ## The paid loop has three fixed targets and at most five targets per body operation.
 
   proc mixedLoopReadPointer(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, width, refusal: byte, nextLabel: var byte) =
@@ -53,19 +53,23 @@ when declared(X86Block):
     emitCheckedReadValue(code, encoding)
     writeAccess(code, access, op.slots.aIndex)
 
-  proc mixedLoopByteStore(code: var X86Block, fixes: var seq[X86CycleFixup],
-      labels: var X86MixedLoopLabels, op: NativeOperation, refusal: byte, nextLabel: var byte) =
-    ## The only mutation needs a current writable byte and existing dirty membership.
+  proc mixedLoopStore(code: var X86Block, fixes: var seq[X86CycleFixup],
+      labels: var X86MixedLoopLabels, op: NativeOperation, width, refusal: byte,
+      nextLabel: var byte) =
+    ## Prove the selected writable extent and every touched dirty page before the Store.
     const stackOffset = byte(NativeCycleWritableOffset)
     const rwOffset = stackOffset+24
     let access = X86CanonicalAccess()
-    readBodyBase(code, access, op.slots.bIndex)
-    put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 captures the old staged base.
+    if width == 4:
+      put(code, [0xba'u8]) # MOV EDX,absolute32 for opcode 61.
+    else:
+      readBodyBase(code, access, op.slots.bIndex)
+      put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps the current base modulo 2^32.
     cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
     put(code, [0x81'u8, 0xfa]) # CMP EDX,65536 protects the low pages.
     cycleWord(code, 65536)
     cycleEdge(code, fixes, 0x82, refusal)
-    put(code, [0x83'u8, 0xfa, 0xfe]) # CMP EDX,0xfffffffe excludes the top byte.
+    put(code, [0x83'u8, 0xfa, 255'u8-width]) # CMP EDX,UINT32_MAX-width excludes the top byte.
     cycleEdge(code, fixes, 0x87, refusal)
     let rw = nextLabel
     let ready = nextLabel+1
@@ -73,19 +77,28 @@ when declared(X86Block):
     # A selected stack extent shadows the RW extent even when the stack is empty.
     put(code, [0x49'u8, 0x3b, 0x52, stackOffset]) # CMP RDX,[R10+stack.first].
     cycleEdge(code, fixes, 0x82, rw)
-    emitCheckedExtent(code, fixes, stackOffset, 1, refusal, ready)
+    emitCheckedExtent(code, fixes, stackOffset, width, refusal, ready)
     labels[int(rw)] = code.bytes.len
-    emitCheckedExtent(code, fixes, rwOffset, 1, refusal, ready)
+    emitCheckedExtent(code, fixes, rwOffset, width, refusal, ready)
     labels[int(ready)] = code.bytes.len
     put(code, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX requires live writable storage.
     cycleEdge(code, fixes, 0x84, refusal)
-    put(code, [0x4c'u8, 0x8d, 0x04, 0x01]) # LEA R8,[RCX+RAX] holds the exact byte address.
+    put(code, [0x4c'u8, 0x8d, 0x04, 0x01]) # LEA R8,[RCX+RAX] holds the exact write address.
     readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset)
     put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI checks the dirty bitmap pointer.
     cycleEdge(code, fixes, 0x84, refusal)
     readCycleDirtyPage(code, fixes, refusal, false)
+    if width == 4:
+      # A word crossing a page needs both bits before the single write.
+      readCycleDirtyPage(code, fixes, refusal, true)
     readAccess(code, access, op.slots.aIndex, false)
-    put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL commits only after every guard.
+    if width == 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX commits the word.
+    else: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL commits the byte.
+
+  template mixedLoopByteStore(code: var X86Block, fixes: var seq[X86CycleFixup],
+      labels: var X86MixedLoopLabels, op: NativeOperation, refusal: byte, nextLabel: var byte) =
+    ## The transactional leaf's unique Store retains its original one-byte encoding.
+    mixedLoopStore(code, fixes, labels, op, 1, refusal, nextLabel)
 
   proc x86MixedLoopInstructions*(operations: openArray[NativeOperation]): seq[byte] =
     ## Emit exact SysV (registers, context) -> (completed visits | checked-exit bit).
@@ -205,3 +218,88 @@ when declared(X86Block):
       for shift in 0..<4:
         code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
     takeX86Instructions(code)
+
+  when defined(pvmPaidMixedLoopWitness):
+    proc x86PaidMixedLoopInstructions*(operations: openArray[NativeOperation],
+        guards: uint32): seq[byte] =
+      ## Publish every successful operation before the next guard. A guard names the
+      ## first uncommitted physical operation and leaves its checked worker the live prefix.
+      ## The caller binds the original source interval, edges and funded visit ceiling.
+      const
+        visit = 0'u8
+        capped = 1'u8
+        outside = 2'u8
+      result = @[]
+      if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
+        return
+      let terminal = operations.len-1
+      let branch = operations[terminal]
+      if branch.opcode != 171 or guards == 0: return
+
+      var code = default(X86Block)
+      var fixes: seq[X86CycleFixup] = @[]
+      var labels = default(X86MixedLoopLabels)
+      var guardLabels = default(array[int(NativeReadFactLimit)-1, byte])
+      var nextLabel = 3'u8
+      var emittedGuards = 0'u32
+      let access = X86CanonicalAccess()
+      # RDI stays canonical. All body operations preserve R9, R10 and R11.
+      put(code, [0x49'u8, 0x89, 0xf2, 0x45, 0x31, 0xc9]) # Context R10, visits R9D.
+      readCycleContextOp(code, [0x4d'u8, 0x8b, 0x9a], NativeMixedLoopVisitLimitOffset) # Cap R11.
+      put(code, [0x4d'u8, 0x85, 0xdb]) # TEST R11,R11.
+      cycleEdge(code, fixes, 0x84, capped)
+      put(code, [0x49'u8, 0x81, 0xfb]) # CMP R11,256.
+      cycleWord(code, NativeMixedLoopVisitLimit)
+      cycleEdge(code, fixes, 0x87, capped)
+
+      labels[int(visit)] = code.bytes.len
+      for index in 0..<terminal:
+        let op = operations[index]
+        let encoding = nativeReadEncodingOpcode(op.opcode)
+        let width = nativeMixedLoopStoreWidth(op.opcode)
+        if width != 0 or nativeReadOpcode(encoding):
+          let guard = nextLabel
+          inc nextLabel
+          guardLabels[index] = guard
+          emittedGuards = emittedGuards or (1'u32 shl index)
+          if width != 0:
+            mixedLoopStore(code, fixes, labels, op, byte(width), guard, nextLabel)
+          else:
+            mixedLoopLoad(code, fixes, labels, op, encoding, guard, nextLabel)
+        elif supportedScalarOpcode(op.opcode):
+          emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
+        else:
+          return # The source certificate omits folded no-ops and binds the unique terminal.
+      if emittedGuards != guards: return
+
+      put(code, [0x41'u8, 0xff, 0xc1]) # INC R9D after the complete original body.
+      readAccess(code, access, branch.slots.aIndex, false)
+      readAccess(code, access, branch.slots.bIndex, true)
+      put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX selects the original BNE edge.
+      cycleEdge(code, fixes, 0x84, outside)
+      put(code, [0x45'u8, 0x39, 0xd9]) # CMP R9D,R11D retries only while funded.
+      cycleEdge(code, fixes, 0x82, visit)
+
+      labels[int(capped)] = code.bytes.len
+      put(code, [0x44'u8, 0x89, 0xc8, 0xc3]) # MOV EAX,R9D; RET at the original header.
+      labels[int(outside)] = code.bytes.len
+      put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,checked outside bit.
+      cycleWord(code, NativeMixedLoopExitBit)
+      put(code, [0xc3'u8])
+      for index in 0..<terminal:
+        let guard = guardLabels[index]
+        if guard != 0:
+          labels[int(guard)] = code.bytes.len
+          put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,one-based guard.
+          cycleWord(code, uint32(index+1) shl NativeMixedLoopGuardShift)
+          put(code, [0xc3'u8])
+
+      if code.bytes.len > NativeImageByteLimit: return
+      for fix in fixes:
+        # The self-edge may patch backward. All targets and fixups remain image-local.
+        let target = labels[int(fix.target)]
+        assert target > 0 and target < code.bytes.len
+        let delta = cast[uint32](int32(target-(fix.at+4)))
+        for shift in 0..<4:
+          code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
+      result = takeX86Instructions(code)

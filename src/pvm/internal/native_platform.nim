@@ -296,11 +296,18 @@ when NativeReadCycleEnabled:
     result = default(NativeImage)
     refused = true
     if not proof.complete: return
+    template operations: untyped = proof.operations.toOpenArray(0, int(proof.count)-1)
     when defined(pvmX86Jit):
-      var encoded = x86MixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
+      var encoded = when defined(pvmPaidMixedLoopWitness):
+          if proof.paidGuards != 0: x86PaidMixedLoopInstructions(operations, proof.paidGuards)
+          else: x86MixedLoopInstructions(operations)
+        else: x86MixedLoopInstructions(operations)
       const unitBytes = 1
     else:
-      var encoded = armMixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
+      var encoded = when defined(pvmPaidMixedLoopWitness):
+          if proof.paidGuards != 0: armPaidMixedLoopInstructions(operations, proof.paidGuards)
+          else: armMixedLoopInstructions(operations)
+        else: armMixedLoopInstructions(operations)
       const unitBytes = 4
     let count = encoded.len
     if count == 0 or count > NativeImageByteLimit div unitBytes: return

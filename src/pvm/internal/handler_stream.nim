@@ -25,7 +25,8 @@ import ./register_ops
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
-  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness): import std/syncio
+  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness):
+    import std/syncio
   import ./[native_mixed_loop, native_platform]
 
   const
@@ -42,6 +43,17 @@ when NativeReadCycleEnabled:
       count: int
       headers, tokens, remaining: array[NativeMixedLoopCandidateLimit, uint32]
       spans: array[NativeMixedLoopCandidateLimit, uint8]
+  when defined(pvmPaidMixedLoopWitness):
+    type
+      FlatMixedPairMode* {.pure.} = enum
+        Disabled, Checked, ByteOnly, PaidOnly, Both
+      FlatMixedPairCounts = object
+        entries, visits, refusals, paid, operations, branches, repeatedHeaders: uint64
+        lastGuardPc, lastGuardOrdinal: uint32
+      FlatMixedPairWitness = object
+        proofs: array[2, NativeMixedLoop]
+        images: array[2, nil ptr NativeImage]
+        counts: array[2, FlatMixedPairCounts]
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit) and
     defined(pvmArmMacroReceipt) and defined(pvmArmMacroStateTrace):
@@ -208,6 +220,9 @@ type
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProof: nil ptr NativeMixedLoop # Borrowed only while the outlined segment is on the stack.
       mixedImage: nil ptr NativeImage
+      when defined(pvmPaidMixedLoopWitness):
+        mixedPairMode*: FlatMixedPairMode
+        mixedPair: nil ptr FlatMixedPairWitness
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -3117,6 +3132,77 @@ when NativeReadCycleEnabled:
           return
     runFlatMixedProbeSegment(f, entry)
 
+  when defined(pvmPaidMixedLoopWitness):
+    proc runFlatMixedPairSegment(f: var FlatFrame, entry: uint32) =
+      ## Privately install both disjoint entries in the same already linked checked frame.
+      ## The shared Read owner and its ordinary worker keep their original lease.
+      if not mixedLoopPrimaryReady(f.nativeSession):
+        flatDispatchSegment(f, entry)
+        return
+      let epoch = nativeEpoch(f.nativeSession)
+      var pair = default(FlatMixedPairWitness)
+      pair.proofs[0] = buildFlatMixedLoop(f, 469077, epoch)
+      pair.proofs[1] = buildFlatMixedLoop(f, 467872, epoch, allowPaid = true)
+      let byteLoop {.cursor.} = pair.proofs[0]
+      let paidLoop {.cursor.} = pair.proofs[1]
+      if not byteLoop.complete or not paidLoop.complete or paidLoop.paidGuards == 0 or
+          not mixedLoopDisjoint(f.nativeSession, byteLoop) or
+          not mixedLoopDisjoint(f.nativeSession, paidLoop):
+        flatDispatchSegment(f, entry)
+        return
+      assert paidLoop.first+uint32(paidLoop.span) <= byteLoop.first
+      assert paidLoop.exitHeader notin byteLoop.header..byteLoop.terminal
+      assert byteLoop.exitHeader notin paidLoop.header..paidLoop.terminal
+      assert paidLoop.terminal < byteLoop.header or byteLoop.terminal < paidLoop.header
+      var byteImage = default(NativeImage)
+      var paidImage = default(NativeImage)
+      var refused = false
+      if f.mixedPairMode in {FlatMixedPairMode.ByteOnly, FlatMixedPairMode.Both}:
+        byteImage = lowerNativeMixedLoop(byteLoop, refused)
+        assert byteImage.ready and not refused
+        pair.images[0] = addr byteImage
+      if f.mixedPairMode in {FlatMixedPairMode.PaidOnly, FlatMixedPairMode.Both}:
+        paidImage = lowerNativeMixedLoop(paidLoop, refused)
+        assert paidImage.ready and not refused
+        pair.images[1] = addr paidImage
+      assert f.mixedPair == nil
+      f.mixedPair = addr pair
+      for index in 0..1:
+        if pair.images[index] != nil:
+          let header = pair.proofs[index].header
+          assert f.handlers[int(header)] == flatCharge
+          f.handlers[int(header)] = flatMixedPairEntry
+      defer:
+        for index in 0..1:
+          if pair.images[index] != nil:
+            let header = pair.proofs[index].header
+            assert f.handlers[int(header)] == flatMixedPairEntry
+            f.handlers[int(header)] = flatCharge
+        f.mixedPair = nil
+        let first = pair.counts[0]
+        let second = pair.counts[1]
+        if first.entries != 0 or second.entries != 0:
+          echo "MIXED_PAIR_SEGMENT,", first.entries, ",", first.visits, ",", first.refusals,
+            ",", first.paid, ",", first.operations, ",", first.branches, ",", first.repeatedHeaders,
+            ",", second.entries, ",", second.visits, ",", second.refusals, ",", second.paid,
+            ",", second.operations, ",", second.branches, ",", second.repeatedHeaders
+      flatDispatchSegment(f, entry)
+
+  template dispatchPreparedMixed(f: var FlatFrame, offset: uint32) =
+    template ordinary() =
+      if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
+          mixedLoopPrimaryReady(f.nativeSession):
+        runFlatMixedLoopSegment(f, offset)
+      else:
+        flatDispatchSegment(f, offset)
+    when defined(pvmPaidMixedLoopWitness):
+      if f.mixedPairMode != FlatMixedPairMode.Disabled:
+        runFlatMixedPairSegment(f, offset)
+      else:
+        ordinary()
+    else:
+      ordinary()
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   ## A zero budget returns StepLimitExceeded before the frame's preparation failure
@@ -3167,11 +3253,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
   when NativeReadCycleEnabled:
-    if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
-        mixedLoopPrimaryReady(f.nativeSession):
-      runFlatMixedLoopSegment(f, offset)
-    else:
-      flatDispatchSegment(f, offset)
+    dispatchPreparedMixed(f, offset)
   else:
     flatDispatchSegment(f, offset)
   if f.barrier != flatStop:
@@ -3672,6 +3754,7 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     nativeInstalledEpoch: f.nativeInstalledEpoch, nativeInstallation: f.nativeInstallation)
   when NativeReadCycleEnabled:
     assert f.mixedImage == nil
+    when defined(pvmPaidMixedLoopWitness): assert f.mixedPair == nil
     result.mixedSource = f.mixedSource
     f.mixedSource = default(FlatMixedLoopSource)
 
@@ -3880,3 +3963,6 @@ proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.S
     f.pricingMemo = memo
     f.pricingKind = 2
   oracle.StepError.None
+
+when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+  include ./handler_mixed_pair_witness
