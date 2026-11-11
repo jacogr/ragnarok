@@ -185,6 +185,11 @@ check: check-fixture-provenance
 check-workloads: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
 test: check
 
+# Optional stock-library assessment retains slow-peer failures without qualifying RPC adoption.
+.PHONY: assess-websocket-adoption
+assess-websocket-adoption: toolchain check-inventory
+	$(PYTHON) tools/websocket_adoption.py
+
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
 check-modules: check-inventory compiler-tools ui-assets build-info

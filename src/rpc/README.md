@@ -9,7 +9,10 @@ views. It implements part of JIP-2 plus documented diagnostic/state extensions.
 | --- | --- |
 | [`protocol.nim`](protocol.nim) | JSON-RPC parsing, dispatch, response bounds and configured chain/service queries |
 | [`wire.nim`](wire.nim) | HTTP upgrade, RFC 6455 framing, UTF-8 validation and incremental frame decoding |
-| [`server.nim`](server.nim) | Optional loopback listener, bounded connections/subscriptions and explicit publication handoffs |
+| [`wire_stream.nim`](wire_stream.nim) | Task-owned Nimony Reader and Writer with bounded byte handoff |
+| [`server.nim`](server.nim) | Optional loopback listener, bounded connections/subscriptions, publication and detached dispatcher entry points |
+| [`transport_bridge.nim`](transport_bridge.nim) | Bounded detached-byte mailboxes with generation and in-flight output credit |
+| [`websocket_transport.nim`](websocket_transport.nim) | Stock split-half IO tasks and RPC-specific upgrade admission |
 
 Append `--with-rpc` to a supported proof-peer invocation to expose `ws://127.0.0.1:9418/`;
 `--rpc-port NUMBER` changes the port. RPC is disabled unless `--with-rpc` or `--with-ui` is

@@ -1,0 +1,6 @@
+probe: upgrades=8
+probe: delivered=8
+probe: unsolicited frames verified
+probe: writer abort leaves readers pending=8
+probe: closing peers
+probe: task owners retired and pool joined

@@ -10,7 +10,9 @@ with framing and access policy held by each service.
 [Parser qualification](../../spec/http-parser-adoption.md)
 
 [The WebSocket listener](../../src/rpc/server.nim) owns
-request lifetimes, publication and the chain pause token.
+request lifetimes, publication and the chain pause token. Its I/O runs through
+[task-owned streams](../../src/rpc/wire_stream.nim) with
+[Nimony WebSocket framing](../../src/rpc/wire.nim).
 
 [MCP](../../src/mcp/README.md) shares synchronous read validation. [UI](../../src/ui/README.md)
 depends on WebSocket RPC for browser queries. [Management](../../src/management/server.nim)

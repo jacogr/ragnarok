@@ -12,13 +12,15 @@
 ## selected view before serving chain queries again. Destruction and close release
 ## the socket owner and per-connection state.
 
-import std/[nativesocket, oserrors, strutils, monotimes]
+import std/[assertions, nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./[wire, protocol, proof_requests]
 import ./light_source
+import ./wire_stream
+import ./transport_bridge as transport
 from ../codec/state/trie as state_trie import StateRoot
 import ../chain/[parameters, genesis, provider]
 import ../state/store
@@ -33,16 +35,23 @@ type
   Connection = object
     opened, upgraded, closing, fragmented: bool
     fd: cint
+    stream: RpcWireStream
+    streamWriting: bool
     input, output, message: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
+    bridgeEpoch, retiredBridgeEpoch: uint64
+    bridgeWaiting: bool
+    bridgeGrant: transport.BridgeDispatch
+    bridgeReply: transport.BridgeMessage
     session: RpcSession                 # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
   RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
     marker: uint8
   Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
-    opened, proofs: bool
+    opened, proofs, transportMode: bool
+    bridgeAddress: nil pointer
     proofCursor: int                # Fair bounded scan advances after each successfully claimed connection.
     lease: nil RpcChainLease
     fd: cint
@@ -107,6 +116,8 @@ proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
 proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false
+  server.transportMode = false
+  server.bridgeAddress = nil
   server.fd = -1
   `=wasMoved`(server.lease)
   `=wasMoved`(server.role)
@@ -123,12 +134,15 @@ proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
 proc `=destroy`*(server: Server) =
   ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
   requireChainReleased(server)
-  if server.opened:
-    # Default instances never close stdin.
+  assert not server.transportMode, "closeTransport must retire the detached bridge before destruction"
+  if server.opened and server.fd >= 0:
+    # Default and detached instances never close stdin.
     discard posix.close(server.fd)
   for slot in server.connections: # Slots are owned solely by this server, without reference cycles.
-    if slot.opened:
-      discard posix.close(slot.fd)
+    slot.stream.stop()
+    when declared(rpcDirectTestSockets):
+      if slot.opened and slot.bridgeEpoch == 0 and slot.fd >= 0:
+        discard posix.close(slot.fd)
 
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.httpTags)
@@ -160,8 +174,17 @@ proc resumeChain*(server: var Server, lease: nil RpcChainLease): bool =
 
 proc close(slot: var Connection) =
   ## Retire one slot exactly once and release queued data; close is not retried after EINTR.
-  if slot.opened:
-    discard posix.close(slot.fd)
+  slot.stream.stop() # Joining happens after completion, so one stalled writer cannot block a tick.
+  slot.streamWriting = false
+  when declared(rpcDirectTestSockets):
+    if slot.opened and slot.bridgeEpoch == 0 and slot.fd >= 0:
+      discard posix.close(slot.fd)
+  if slot.bridgeEpoch != 0:
+    slot.retiredBridgeEpoch = slot.bridgeEpoch # The next bridge tick retires only this old generation.
+  slot.bridgeEpoch = 0
+  slot.bridgeWaiting = false
+  slot.bridgeGrant = default(transport.BridgeDispatch)
+  slot.bridgeReply = default(transport.BridgeMessage)
   slot.opened = false
   slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
   slot.input = ""; slot.output = ""; slot.message = ""
@@ -170,12 +193,16 @@ proc close(slot: var Connection) =
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
 proc close*(server: var Server) {.requires: server.lease == nil.} =
-  ## Explicit shutdown is idempotent and leaves ARC with no live native handles.
+  ## Request retirement for every stream before joining any of them.
+  assert not server.transportMode, "use closeTransport for a detached dispatcher"
   for slot in mitems(server.connections):
     # Release accepted sockets before listener.
     slot.close()
-  if server.opened:
+  for slot in mitems(server.connections):
+    slot.stream = default(RpcWireStream) # Every stream has already received its stop request.
+  if server.opened and server.fd >= 0:
     discard posix.close(server.fd)
+  server.bridgeAddress = nil
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.light = default(RpcLightHead)
@@ -233,6 +260,19 @@ proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: Sta
     return false
   true
 
+proc initializeContext(server: var Server, port: uint16, role: string,
+    parameters: ParameterResult, genesis: GenesisResult, uiPort: uint16, identity: ChainIdentity) =
+  ## Both socket and detached transports retain exactly the same dispatcher-owned query context.
+  server.started = getMonoTime().ticks div 1_000_000
+  server.port = port
+  server.uiPort = uiPort
+  server.role = role
+  server.parameters = parameters
+  server.identity = identity
+  server.light = default(RpcLightHead)
+  server.lightDisk = false
+  server.chain = genesisView(genesis)
+
 proc start*(server: var Server, port: uint16, role: string,
     parameters = unavailableParameters(), genesis = unavailableGenesis(),
         uiPort: uint16 = 0, identity = default(ChainIdentity)): bool =
@@ -243,41 +283,45 @@ proc start*(server: var Server, port: uint16, role: string,
   if port == 0:
     # Disabled by default, with no allocation or clock work.
     return true
-  server.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
-  if server.fd < 0:
-    return false
+  server.fd = listenLoopback(port, cint(MaxConnections))
+  if server.fd < 0: return false # Failed setup closes its own descriptor.
   server.opened = true
-  var reuse = 1.cint
-  if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
-    server.close() # Failed restart policy setup must retire the newly acquired descriptor.
-    return false
-  var address = default(Sockaddr_in)
-  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-  address.sin_port = networkPort(port)
-  when defined(macosx):
-    # Darwin includes the sockaddr extent.
-    address.sin_len = uint8(sizeof(Sockaddr_in))
-  var loopback = "127.0.0.1"
-  let host = loopback.toCString()
-  let family = cint(ord(nativesocket.AF_INET))
-  if not nonblocking(server.fd) or parseAddress(family, host, addr address.sin_addr) != 1:
-    server.close() # Atomic flag/address failure retires the listener before binding.
-    return false
-  if bindSocket(server.fd, addr address, SockLen(sizeof(address))) != 0:
-    server.close() # A requested occupied port cannot silently disable RPC.
-    return false
-  if listenSocket(server.fd, cint(MaxConnections)) != 0:
-    server.close() # Failed admission setup cannot leave an unusable bound socket.
-    return false
-  server.started = getMonoTime().ticks div 1_000_000
-  server.port = port
-  server.uiPort = uiPort
-  server.role = role
-  server.parameters = parameters
-  server.identity = identity
-  server.light = default(RpcLightHead)
-  server.lightDisk = false
-  server.chain = genesisView(genesis)
+  server.initializeContext(port, role, parameters, genesis, uiPort, identity)
+  true
+
+proc startTransport*(server: var Server, port: uint16, role: string,
+    parameters = unavailableParameters(), genesis = unavailableGenesis(),
+    uiPort: uint16 = 0, identity = default(ChainIdentity)): bool =
+  ## Initialize the real RPC dispatcher without a native listener; the caller owns transport IO and bridge lifetime.
+  if not server.availableForStart: return false
+  server.fd = -1
+  server.opened = true
+  server.transportMode = true
+  server.bridgeAddress = nil
+  for slot in mitems(server.connections):
+    slot.retiredBridgeEpoch = 0 # A restarted dispatcher begins after its previous bridge was retired.
+  server.initializeContext(port, role, parameters, genesis, uiPort, identity)
+  true
+
+proc closeTransport*(server: var Server, bridge: var transport.RpcTransportBridge): bool =
+  ## Retire detached mailboxes in bounded work before canonical owners; IO task joining remains the caller's duty.
+  if server.lease != nil: return false
+  if not server.transportMode: return not server.opened
+  if server.bridgeAddress != nil and server.bridgeAddress != cast[pointer](
+      addr bridge): return false
+  bridge.beginStop() # Admission cannot race a completed retirement scan.
+  var retired = true
+  for index in transport.BridgeIndex.low..transport.BridgeIndex.high:
+    # Busy mailboxes are retried on a later dispatcher turn rather than blocking shutdown.
+    var connection = default(transport.BridgeTicket)
+    let observed = bridge.snapshot(index, connection)
+    if observed == transport.Busy:
+      retired = false
+    elif observed == transport.Ready and bridge.close(connection) != transport.Ready:
+      retired = false # A changed generation is observed again on the next bounded close turn.
+  if not retired: return false
+  server.transportMode = false
+  server.close()
   true
 
 # Queue only after a successful publication; overflow retires one consumer without rolling back the head.
@@ -505,7 +549,7 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, info: ClientInfo, no
 
 proc tick*(server: var Server, peers: uint32) =
   ## One accept, one bounded read, one frame and one write per slot per turn; called by the existing peer loop.
-  if not server.opened or server.lease != nil:
+  if not server.opened or server.lease != nil or server.transportMode:
     # Default peer operation does no additional syscall or clock work.
     return
   let existingTags = server.httpTags
@@ -516,19 +560,25 @@ proc tick*(server: var Server, peers: uint32) =
       let vocabulary = http_msg.newHttpTags()
       server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
       vocabulary
+  pollRpcStreams()
+  for slot in mitems(server.connections):
+    if slot.stream.finished:
+      slot.close()
+      slot.stream = default(RpcWireStream)
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure closes only the newly accepted socket.
     var free = -1
     for i in 0..<MaxConnections:
-      if not server.connections[i].opened:
+      if not server.connections[i].opened and not server.connections[i].stream.active:
         # At most one admission per dispatcher turn.
         free = i
         break
     if free < 0 or not nonblocking(accepted):
       discard posix.close(accepted)
     else:
-      server.connections[free].fd = accepted
+      server.connections[free].fd = -1
+      server.connections[free].stream.start(accepted)
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
@@ -537,54 +587,78 @@ proc tick*(server: var Server, peers: uint32) =
       identity: server.identity,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
-    if not slot.opened:
+    if not slot.opened or slot.bridgeEpoch != 0:
       continue
     if now >= slot.deadline or (slot.fragmented and now >= slot.messageDeadline):
       # Partial headers/messages and blocked writes expire.
       slot.close()
       continue
-    if slot.output.len == 0 and not slot.closing:
-      var bytes = default(array[4096, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
-      if count == 0:
-        # Orderly EOF retires queued input.
+    if slot.streamWriting:
+      if slot.stream.writing: continue
+      slot.streamWriting = false
+      if slot.closing:
         slot.close()
         continue
-      if count < 0:
-        let error = osLastError()
-        if not retryableSocketError(error):
-          slot.close()
-          continue
+      if slot.input.len == 0 and not slot.fragmented:
+        slot.deadline = now + 30000
+    # Observe EOF before taking input. If EOF is visible, the worker has already
+    # seen the last mailbox transfer, so only dispatcher-owned bytes remain.
+    let inputEnded = slot.stream.inputEnded
+    var consumedInput = false
+    if slot.output.len == 0 and not slot.closing:
+      var chunk = ""
+      if slot.stream.active:
+        discard slot.stream.takeInput(chunk)
       else:
-        # Before upgrade, the stock scanner bounds the head and preserves bytes after it.
-        if slot.upgraded and count > MaxMessage + 14 - slot.input.len:
-          slot.reject(1009, now) # Reject before appending beyond the fixed receive allowance.
+        when declared(rpcDirectTestSockets):
+          # Directly injected descriptors are used by the native dispatcher fixtures.
+          var bytes = default(array[4096, char])
+          let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
+          if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
+            slot.close()
+            continue
+          if count > 0:
+            for i in 0..<count: chunk.add(bytes[i])
+      if chunk.len > 0:
+        # The scanner owns the HTTP limit until the upgrade has succeeded.
+        if slot.upgraded and chunk.len > MaxMessage + 14 - slot.input.len:
+          slot.reject(1009, now)
         else:
           if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
-            slot.deadline = now + 5000 # Begin one fixed partial-message deadline.
-          for i in 0..<count:
-            # Copy only the initialized native prefix.
-            slot.input.add(bytes[i])
+            slot.deadline = now + 5000
+          slot.input.add(chunk)
       if slot.opened and slot.output.len == 0:
+        let before = slot.input.len
         slot.process(tags, info, now, server.uiPort)
+        consumedInput = slot.input.len < before
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:
         slot.output = frame(update) # Request replies precede queued notifications on this connection.
         slot.offset = 0
         slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
-    if not slot.opened or slot.output.len == 0:
+    if not slot.opened:
       continue
-    let written = writePending(slot.fd, slot.output, slot.offset)
-    if written == WriteComplete: # All response bytes were handed to the kernel.
-      slot.output = ""; slot.offset = 0
-      if slot.closing:
+    if slot.output.len == 0:
+      # A consumed frame may have produced no reply, so give subsequent buffered
+      # frames a turn. With EOF and no progress, an incomplete tail cannot finish.
+      if inputEnded and not consumedInput: slot.close()
+      continue
+    if slot.stream.active:
+      slot.stream.send(slot.output)
+      slot.streamWriting = true
+      continue
+    when declared(rpcDirectTestSockets):
+      let written = writePending(slot.fd, slot.output, slot.offset)
+      if written == WriteComplete: # All response bytes were handed to the kernel.
+        slot.output = ""; slot.offset = 0
+        if slot.closing:
+          slot.close()
+        elif slot.input.len == 0 and not slot.fragmented:
+          slot.deadline = now + 30000
+      elif written == WriteFailed:
+        # A zero-progress or permanently failed send cannot spin indefinitely.
         slot.close()
-      elif slot.input.len == 0 and not slot.fragmented:
-        slot.deadline = now + 30000
-    elif written == WriteFailed:
-      # A zero-progress or permanently failed send cannot spin indefinitely.
-      slot.close()
 
 proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
     head: RpcLightHead, disk: bool, uiPort: uint16 = 0,
@@ -608,3 +682,88 @@ proc installLightHead*(server: var Server, expected, target: RpcLightHead): bool
       expected): return false # Refuse stale/foreign/paused source without changing RPC metadata.
   server.light = target
   true
+
+proc bindTransportSlot(slot: var Connection, connection: transport.BridgeTicket) =
+  ## A reservation may follow slot reuse after snapshot; bind sessions to its actual generation.
+  if slot.bridgeEpoch != connection.generation:
+    slot.close()
+    slot.bridgeEpoch = connection.generation
+    slot.opened = true
+    slot.upgraded = true
+    slot.fd = -1
+
+proc dispatchTransport*(server: var Server, bridge: var transport.RpcTransportBridge,
+    peers: uint32): int =
+  ## One bounded request/frame per slot; no worker receives ClientInfo, RpcSession or canonical aliases.
+  ## A lease refusal happens before constructing a query context or inspecting session owners.
+  result = 0
+  if not server.opened or not server.transportMode or server.lease != nil or bridge.stopping(): return 0
+  let address = cast[pointer](addr bridge)
+  if server.bridgeAddress == nil: server.bridgeAddress = address
+  if server.bridgeAddress != address: return 0
+  let now = getMonoTime().ticks div 1_000_000
+  let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
+    port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
+    light: server.light, lightDisk: server.lightDisk, identity: server.identity,
+    occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
+  for index in transport.BridgeIndex.low..transport.BridgeIndex.high:
+    # Each connection has its own credit; a blocked writer cannot consume another slot's turn.
+    var connection = default(transport.BridgeTicket)
+    let observed = bridge.snapshot(index, connection)
+    if observed == transport.Busy: continue
+    if observed == transport.Empty:
+      server.connections[index].close()
+      continue
+    let epoch = connection.generation
+    if server.connections[index].retiredBridgeEpoch == epoch:
+      discard bridge.close(connection) # Publication overflow or a terminal request retires this generation.
+      continue
+    server.connections[index].bindTransportSlot(connection)
+    if server.connections[index].bridgeWaiting:
+      # A busy commit retains the already serialized response; requests must not execute twice.
+      let committed = bridge.commit(server.connections[index].bridgeGrant,
+        server.connections[index].bridgeReply)
+      if committed == transport.Busy: continue
+      server.connections[index].bridgeWaiting = false
+      if committed != transport.Ready: server.connections[index].close()
+      continue
+    var grant = default(transport.BridgeDispatch)
+    var incoming = default(transport.BridgeMessage)
+    let reserved = bridge.reserve(index, grant, incoming)
+    if reserved == transport.Full:
+      discard bridge.close(connection) # Exhausted reservation sequences never wrap into old authority.
+      server.connections[index].close()
+      continue
+    if reserved != transport.Ready: continue
+    server.connections[index].bindTransportSlot(grant.ticket)
+    if server.connections[index].closing:
+      discard bridge.close(connection) # The close frame has completed before its credit becomes available.
+      server.connections[index].close()
+      continue
+    var outgoing = default(transport.BridgeMessage)
+    case incoming.kind
+    of transport.Text:
+      let response = respond(incoming.payload, info, server.connections[index].session)
+      if response.len > 0: outgoing = transport.BridgeMessage(kind: transport.Text,
+          payload: response)
+    of transport.Ping:
+      outgoing = transport.BridgeMessage(kind: transport.Pong, payload: move(incoming.payload))
+    of transport.Close:
+      outgoing = transport.BridgeMessage(kind: transport.Close, code: incoming.code,
+        payload: move(incoming.payload))
+    of transport.Binary:
+      outgoing = transport.BridgeMessage(kind: transport.Close, code: 1003)
+    of transport.Pong, transport.None:
+      discard # Pongs and turns without a request leave notification delivery eligible.
+    if outgoing.kind == transport.None:
+      let update = server.connections[index].session.nextUpdate()
+      if update.len > 0: outgoing = transport.BridgeMessage(kind: transport.Text, payload: update)
+    if outgoing.kind == transport.Close: server.connections[index].closing = true
+    let committed = bridge.commit(grant, outgoing)
+    if committed == transport.Busy:
+      server.connections[index].bridgeWaiting = true
+      server.connections[index].bridgeGrant = grant
+      server.connections[index].bridgeReply = move(outgoing)
+    elif committed != transport.Ready:
+      server.connections[index].close() # A stale reservation never delivers into a replacement session.
+    inc result

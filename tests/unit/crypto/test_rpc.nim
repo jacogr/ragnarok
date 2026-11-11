@@ -20,6 +20,7 @@ from ../../../src/codec/state/layout as state_layout import chapterKey, chapterS
 from ../../../src/codec/state/service_values as state_service_values import serviceStorageKey,
     servicePreimageKey, ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
+const rpcDirectTestSockets = true # Socketpair fixtures drive dispatcher turns synchronously.
 include ../../../src/rpc/server
 
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
@@ -1919,6 +1920,29 @@ proc publicationReply(fd: cint): string =
   for index in 0..<count:
     result.add(bytes[index]) # Copy only the initialized native receive prefix.
 
+let SendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
+
+proc backpressureSubscriber(fd: cint) =
+  ## Fill only the synthetic slow peer's kernel buffer before publishing real subscription frames.
+  var capacity = 4096.cint
+  assert setOption(fd, SocketLevel, SendBuffer, addr capacity, SockLen(sizeof(capacity))) == 0
+  var padding = repeat('x', 4096)
+  for attempt in 0..<1024:
+    # The unread peer retains fixture padding; observing would-block proves actual backpressure.
+    let written = sendBytes(fd, padding.toCString(), csize_t(padding.len), 0)
+    if written < 0:
+      let reason = osLastError()
+      if reason == OSErrorCode(EAGAIN) or reason == OSErrorCode(EWOULDBLOCK):
+        if padding.len > 1:
+          # A large-send refusal can leave space for a small update; exhaust that remainder too.
+          padding = "x"
+          continue
+        return
+      assert reason == OSErrorCode(EINTR), "slow-peer fixture failed before backpressure"
+    else:
+      assert written > 0
+  assert false, "slow-peer fixture reaches kernel backpressure within its finite allowance"
+
 proc upgradeReceiveBounds(owner: var Server) =
   ## Exercise both sides of the HTTP boundary through actual dispatcher reads.
   let first = "X-Padding-A: " & repeat('a', 8100) & "\r\n"
@@ -2067,6 +2091,11 @@ proc publicationLifecycle() =
   assert publicationReply(pair[1]) == frame(UnsubscribedBest)
   assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
     owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+  for identity in 3..4:
+    # Several selectors let the existing bounded publication run overflow a genuinely blocked writer.
+    assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
+      owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":" & $identity)
+  backpressureSubscriber(pair[0])
   var survivor = default(array[2, cint])
   assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
     0, addr survivor[0]) == 0
@@ -2076,11 +2105,54 @@ proc publicationLifecycle() =
   assert nonblocking(survivor[0]) and nonblocking(survivor[1])
   owner.connections[1].upgraded = true
   owner.connections[1].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  var fast = default(array[2, cint])
+  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+    0, addr fast[0]) == 0
+  owner.connections[2].fd = fast[0]
+  owner.connections[2].opened = true
+  defer: discard posix.close(fast[1])
+  assert nonblocking(fast[0]) and nonblocking(fast[1])
+  owner.connections[2].upgraded = true
+  owner.connections[2].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+      subscribePacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(SubscribedBest)
+  assertUsage(owner.connections[2].session, current, 1, 1, 0, 1,
+    initialBestUpdate.replace(genesisHash, base64.encode(array[32, byte](
+        published.value.blockHash))).replace(
+      "\"slot\":7", "\"slot\":11").len)
+  assert sendBytes(fast[1], cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
+      cancelPacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(UnsubscribedBest)
+  assertUsage(owner.connections[2].session, current, 0, 0, 0, 0, 0)
+  owner.tick(0)
+  var silent = default(array[1, char])
+  assert receive(fast[1], addr silent[0], 1, 0) < 0
+  assert osLastError() in [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK)]
+  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+      subscribePacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(SubscribedBest.replace("\"result\":1", "\"result\":2"))
+  owner.tick(0)
+  let fastInitial = initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+  assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+    base64.encode(array[32, byte](published.value.blockHash))).replace("\"slot\":7", "\"slot\":11"))
+  assert owner.connections[0].output.len > owner.connections[0].offset
+  var overflowed = false
   for atSlot in 12'u32..27'u32:
     let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    let wasOpen = owner.connections[0].opened
     assert owner.publishBlock(child) == ViewAdvanceError.None # A stalled consumer cannot stall head publication.
+    if wasOpen and not owner.connections[0].opened:
+      overflowed = true # Publication itself must retire the full queue; a tick timeout cannot substitute.
+    owner.tick(0)
+    assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+      base64.encode(array[32, byte](child.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot))
+    assert owner.connections[2].opened # Every publication reaches the active reader across slow-peer overflow.
   assert owner.opened and owner.chain.bestBlock.value.slot == 27
-  assert not owner.connections[0].opened # Initial plus sixteen undelivered updates exceeds the bounded FIFO.
+  assert overflowed and not owner.connections[0].opened # Undelivered updates exceed the bounded FIFO.
   assert owner.connections[0].session.nextUpdate() == ""
   var survivorRequest = masked(bestRequest)
   assert sendBytes(survivor[1], survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
@@ -2089,6 +2161,7 @@ proc publicationLifecycle() =
   let survivingInfo = ClientInfo(chain: owner.chain, parameters: genesisParameters)
   assert publicationReply(survivor[1]) == frame(respond(bestRequest, survivingInfo))
   assert owner.connections[1].opened # The overflowing subscriber cannot disconnect another client.
+  owner.connections[2].close() # Retire the independent subscription before the remaining family fixtures.
   let rawActivity = base64.decode(activityBlob[1..^2])
   var activityBytes = newSeq[byte](rawActivity.len)
   for index in 0..<rawActivity.len:
@@ -2332,6 +2405,87 @@ proc publicationLifecycle() =
   owner.close() # Shutdown remains idempotent after successful publications.
 
 publicationLifecycle()
+
+block reservationGeneration:
+  # A transport can reuse a slot after snapshot and before the dispatcher reserves its input.
+  var bridge = default(transport.RpcTransportBridge)
+  var original, replacement = default(transport.BridgeTicket)
+  assert bridge.open(0, original) == transport.Ready
+  var slot = default(Connection)
+  slot.bindTransportSlot(original)
+  assert respond(SubscribeBest, withGenesis, slot.session) == SubscribedBest
+  assert bridge.close(original) == transport.Ready
+  assert bridge.open(0, replacement) == transport.Ready
+  var grant = default(transport.BridgeDispatch)
+  var incoming = default(transport.BridgeMessage)
+  assert bridge.reserve(0, grant, incoming) == transport.Ready
+  slot.bindTransportSlot(grant.ticket)
+  assert slot.session.nextUpdate() == "", "new reservation cannot inherit an earlier generation's subscription"
+  assert respond(UnsubscribeBest, withGenesis, slot.session) == UnsubscribedBest.replace("true", "false")
+  assert bridge.close(replacement) == transport.Ready
+  slot.close()
+
+block detachedTransport:
+  # Exercise the real RPC/session/publication owner through detached transport bytes.
+  var owner = default(Server)
+  var bridge = default(transport.RpcTransportBridge)
+  assert owner.startTransport(9944, "bridge", genesisParameters, capturedGenesis)
+  var first, slow = default(transport.BridgeTicket)
+  assert bridge.open(0, first) == transport.Ready
+  assert bridge.open(1, slow) == transport.Ready
+  var firstCall = transport.BridgeMessage(kind: transport.Text, payload: SubscribeBest)
+  var slowCall = transport.BridgeMessage(kind: transport.Text, payload: SubscribeBest)
+  assert bridge.publish(first, firstCall) == transport.Ready
+  assert bridge.publish(slow, slowCall) == transport.Ready
+  let pause = owner.pauseChain()
+  assert pause != nil
+  assert owner.dispatchTransport(bridge, 0) == 0
+  assert not owner.closeTransport(bridge)
+  assert owner.resumeChain(pause)
+  assert owner.dispatchTransport(bridge, 0) == 2
+  var firstWrite, slowWrite = default(transport.BridgeWrite)
+  var reply = default(transport.BridgeMessage)
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.kind == transport.Text and reply.payload == SubscribedBest
+  assert bridge.take(slow, slowWrite, reply) == transport.Ready
+  assert reply.payload == SubscribedBest
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.None
+  assert owner.dispatchTransport(bridge, 0) == 0 # In-flight replies retain their output credit.
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert owner.dispatchTransport(bridge, 0) == 1
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.payload == initialBestUpdate # Initial event precedes the queued publication.
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert owner.dispatchTransport(bridge, 0) == 1
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.payload == initialBestUpdate.replace(genesisHash, childHashText).replace(
+    "\"slot\":7", "\"slot\":9")
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert bridge.close(first) == transport.Ready
+  var replacement = default(transport.BridgeTicket)
+  assert bridge.open(0, replacement) == transport.Ready
+  var query = transport.BridgeMessage(kind: transport.Text, payload: request)
+  assert bridge.publish(replacement, query) == transport.Ready
+  discard owner.dispatchTransport(bridge, 0)
+  assert bridge.complete(firstWrite, false) == transport.Stale
+  assert bridge.take(replacement, firstWrite, reply) == transport.Ready
+  assert "\"subscriptionState\":{\"active\":0" in reply.payload
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  var overflowed = false
+  for atSlot in 10'u32..26'u32:
+    # The healthy replacement remains usable while the stalled subscriber exhausts its FIFO.
+    let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    let wasOpen = owner.connections[1].opened
+    assert owner.publishBlock(child) == ViewAdvanceError.None
+    if wasOpen and not owner.connections[1].opened: overflowed = true
+    discard owner.dispatchTransport(bridge, 0)
+  assert overflowed and owner.connections[0].opened
+  assert bridge.snapshot(1, slow) == transport.Empty
+  assert bridge.complete(slowWrite, false) == transport.Stale
+  assert owner.closeTransport(bridge)
+  assert bridge.open(0, replacement) == transport.Closed
+  owner.close() # Native-style idempotent close is safe after detached retirement.
+
 echo "rpc ok"
 
 # Moving the listener also transfers every accepted connection cleanup obligation.

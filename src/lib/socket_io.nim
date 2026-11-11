@@ -5,7 +5,7 @@
 ## Descriptors and borrowed buffers remain caller-owned. No scheduler, retry loop or global
 ## signal handler is installed; callers retain admission, deadlines, budgets and cleanup.
 
-import std/oserrors
+import std/[nativesocket, oserrors]
 import std/posix/posix
 
 type WriteStatus* = enum
@@ -75,6 +75,26 @@ proc nonblocking*(fd: cint): bool =
     if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
       return false
   true
+
+proc listenLoopback*(port: uint16, backlog: cint): cint =
+  ## Open a configured IPv4 loopback listener. A negative result owns no descriptor.
+  let family = cint(ord(nativesocket.AF_INET))
+  let fd = socket(family, cint(ord(nativesocket.SOCK_STREAM)), 0)
+  if fd < 0: return -1
+  var reuse = 1.cint
+  var address = default(Sockaddr_in)
+  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
+  address.sin_port = networkPort(port)
+  when defined(macosx):
+    # Darwin includes the sockaddr extent.
+    address.sin_len = uint8(sizeof(Sockaddr_in))
+  var loopback = "127.0.0.1"
+  if setOption(fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0 or
+      not nonblocking(fd) or parseAddress(family, loopback.toCString(), addr address.sin_addr) != 1 or
+      bindSocket(fd, addr address, SockLen(sizeof(address))) != 0 or listenSocket(fd, backlog) != 0:
+    discard posix.close(fd) # The caller receives only a fully configured listener.
+    return -1
+  fd
 
 proc retryableSocketError*(error: OSErrorCode): bool =
   ## Backpressure and interruption defer work to a later dispatcher turn without spinning.
