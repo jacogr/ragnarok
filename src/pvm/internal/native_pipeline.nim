@@ -171,6 +171,8 @@ type
       mixedOffered: bool
       mixedObserved: JobKey
       mixedPublications, mixedCalls, mixedOperations, mixedHeaderCalls: uint64
+      when defined(pvmPaidMixedLoopWitness):
+        mixedBranchCalls: uint64
   NativeSessionData = ref NativeSessionStorage
   NativeSession* = object ## Shared prepared identity, used exclusively under PreparedStorage.busy.
     data: nil NativeSessionData
@@ -1546,7 +1548,8 @@ func nativeControlStatistics*(session: NativeSession): NativeControlStatistics =
   let data {.cursor.} = session.data
   if data == nil: return default(NativeControlStatistics)
   when NativeReadCycleEnabled:
-    NativeControlStatistics(branchCalls: addNativeCount(data.branchCalls, data.mixedCalls),
+    let mixedBranches = when defined(pvmPaidMixedLoopWitness): data.mixedBranchCalls else: data.mixedCalls
+    NativeControlStatistics(branchCalls: addNativeCount(data.branchCalls, mixedBranches),
       headerCalls: addNativeCount(data.headerCalls, data.mixedHeaderCalls))
   else:
     NativeControlStatistics(branchCalls: data.branchCalls, headerCalls: data.headerCalls)
@@ -1670,13 +1673,16 @@ proc nativeStatistics*(session: NativeSession): array[5, uint64] =
   [data.publications, data.calls, data.operations, data.image.codeBytes, 0'u64]
 
 when NativeReadCycleEnabled:
-  proc recordNativeMixedLoop*(session: NativeSession, operations: uint64, repeatedHeader: bool) =
+  proc recordNativeMixedLoop*(session: NativeSession, operations: uint64, repeatedHeader: bool,
+      branch = true) =
     ## Count one physical call and all original attempted facts in a validated nonempty receipt.
     ## The checked continuation contributes no native work.
     let data {.cursor.} = session.data
     if data == nil: return
     assert data.invocation and operations > 0
     if data.mixedCalls < high(uint64): inc data.mixedCalls
+    when defined(pvmPaidMixedLoopWitness):
+      if branch and data.mixedBranchCalls < high(uint64): inc data.mixedBranchCalls
     if repeatedHeader and data.mixedHeaderCalls < high(uint64): inc data.mixedHeaderCalls
     data.mixedOperations = addNativeCount(data.mixedOperations, operations)
 

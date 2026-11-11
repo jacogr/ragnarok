@@ -8,7 +8,8 @@
 ## candidates per stream epoch. The frame ranks their checked visits only beside a ready Read owner.
 
 when declared(FlatFrame):
-  proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64): NativeMixedLoop =
+  proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64,
+      allowPaid = false): NativeMixedLoop =
     ## Only an ordinary complete header with the original operands and price can certify a visit.
     result = default(NativeMixedLoop)
     if epoch == 0 or f.plan == nil or f.plan.allowNative or f.plan.singleStep or
@@ -53,6 +54,8 @@ when declared(FlatFrame):
         slots: original.args.slots, immediate: (if node ==
             walk.terminal: 0'u64 else: original.args.x))
       inc node
+    when defined(pvmPaidMixedLoopWitness):
+      if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
     if proof.complete: result = proof
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
@@ -91,6 +94,28 @@ when declared(FlatFrame):
           ",", operation.slots.bIndex, ",", operation.slots.dIndex, ",",
           operation.slots.destinationIndex, ",", operation.immediate
 
+  when defined(pvmPaidMixedLoopWitness):
+    proc observeFlatMixedPair(f: var FlatFrame, header: uint32, receipt: NativeMixedLoopReceipt,
+        funded: uint32, operations: uint64) =
+      let pair = f.mixedPair
+      if pair == nil: return
+      for index in 0..1:
+        if pair[].images[index] == nil or pair[].proofs[index].header != header: continue
+        template counters: untyped = pair[].counts[index]
+        inc counters.entries
+        counters.visits += uint64(receipt.visits)
+        counters.operations += operations
+        if receipt.visits != 0: inc counters.branches
+        if receipt.visits > 1: inc counters.repeatedHeaders
+        if receipt.paid:
+          inc counters.paid
+          let ordinal = f.sites[int(receipt.next)]
+          counters.lastGuardOrdinal = ordinal
+          counters.lastGuardPc = f.plan.facts[int(ordinal)].pc
+        if receipt.paid or (receipt.next == header and receipt.visits < funded):
+          inc counters.refusals
+        break
+
   template enterFlatMixedLoop(f: var FlatFrame, off: uint32, certificate: NativeMixedLoop, image,
       enter: untyped): uint32 =
     ## Borrow fresh read, writable and dirty-page descriptors for at most 256 funded visits.
@@ -116,6 +141,27 @@ when declared(FlatFrame):
     if not receipt.valid: abortNativeReceipt()
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       inc f.mixedWitnessEntries
+    when defined(pvmPaidMixedLoopWitness):
+      if receipt.paid:
+        assert receipt.next > off and receipt.next < boundProof.terminal
+        let ordinal = f.sites[int(receipt.next)]
+        assert ordinal >= boundProof.first and ordinal-boundProof.first < uint32(boundProof.span)
+        let visits = uint64(receipt.visits)
+        let reserved = visits+1
+        let prefix = uint64(ordinal-boundProof.first)
+        let operations = visits*uint64(boundProof.span)+prefix
+        f.info.gas = MachineGas(gas-reserved*boundProof.price)
+        f.info.blockCharged = true
+        f.remaining -= reserved*uint64(boundProof.span)
+        f.reservation = off or flatReservationHeaderFlag
+        if operations != 0: recordNativeMixedLoop(f.nativeSession, operations, visits > 1, visits != 0)
+        observeFlatMixedPair(f, off, receipt, funded, operations)
+        when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
+          f.mixedWitnessVisits += visits
+          inc f.mixedWitnessRefusals
+        return receipt.next
+    when defined(pvmPaidMixedLoopWitness):
+      observeFlatMixedPair(f, off, receipt, funded, uint64(receipt.visits)*uint64(boundProof.span))
     if receipt.visits != 0:
       let visits = uint64(receipt.visits)
       f.info.gas = MachineGas(gas-visits*boundProof.price)
@@ -130,6 +176,16 @@ when declared(FlatFrame):
         inc f.mixedWitnessRefusals
       return flatCharge(f, off)
     receipt.next
+
+  when defined(pvmPaidMixedLoopWitness):
+    proc flatMixedPairEntry(f: var FlatFrame, off: uint32): uint32 =
+      let pair = f.mixedPair
+      assert pair != nil
+      for index in 0..1:
+        let image = pair[].images[index]
+        if image != nil and pair[].proofs[index].header == off:
+          return enterFlatMixedLoop(f, off, pair[].proofs[index], image, enterNativeMixedLoop)
+      flatCharge(f, off)
 
   when defined(pvmMixedLoopEntryWitness):
     proc flatMixedLoopEntryWitness(f: var FlatFrame, off: uint32): uint32 =

@@ -364,6 +364,8 @@ type
     selected: PvmBackend
     native: NativeSession # Shared asynchronous pipeline; no active graph is borrowed by its compiler.
     prices: GasMemo      # Source-bound lazy prices share the same exclusive invocation lease.
+    when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+      mixedPairMode: FlatMixedPairMode
     when defined(polkavmRuntime):
       foreign: ForeignOwner
   PreparedProgram* = object ## Copies share one source-bound cache identity; synchronous same-owner reentry is refused.
@@ -473,6 +475,15 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
         data.memoryScratch)))
 
+when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+  export FlatMixedPairMode
+
+  proc setPreparedMixedPairMode*(prepared: PreparedProgram, mode: FlatMixedPairMode) =
+    ## Private controls compare both exact loops inside one ordinary prepared frame.
+    let data = prepared.data
+    assert data != nil and not data.busy
+    data.mixedPairMode = mode
+
 when defined(pvmMixedLoopWitness) or defined(pvmSharedAsyncWitness):
   proc preparedPrimaryNativeStatistics*(prepared: PreparedProgram): array[5, uint64] =
     ## Qualification observes the primary independently from the public owner totals.
@@ -577,6 +588,8 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return StepResult(status: policy)
   frame.nativeSession = data.native
+  when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+    frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
   when NativeCheckedReadEnabled:
     # Plain execution preserves initial selection and observes only an already armed later phase.
@@ -964,6 +977,8 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return executionResult[Reason](StepResult(status: policy))
   frame.nativeSession = data.native
+  when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+    frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
   when NativeCheckedReadEnabled:
     beginReadProbe(frame, uint64(steps))
