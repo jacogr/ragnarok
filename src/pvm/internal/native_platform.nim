@@ -1,9 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Thin machine lowering and OS executable-memory mechanics. Admission/lifecycle policy lives in native_pipeline.
-## Mixed entries share one immutable arena with target-specific alignment, checked
-## offsets and an occupancy mask. Failed publication releases the whole mapping.
+## Platform lowering and OS mechanics; native_pipeline owns scheduling and admission.
+## One immutable auxiliary arena holds bounded self-loops; general graphs remain checked.
+## Its 4096-byte cap yields target-dependent subsets; failed publication releases it whole.
 
 import std/assertions
 import ../machine
@@ -300,9 +300,9 @@ when NativeReadCycleEnabled:
   proc lowerNativeMixedLoops*(candidates: NativeMixedLoopSet, refused: var uint8,
       pairRefused: var bool): NativeImage =
     ## Publish accepted source slots into one immutable arena before returning its owner.
-    ## Individual bad encodings set their refusal bits. A combined size refusal keeps
-    ## the first usable ranked leaf and sets only pairRefused. Allocation or append
-    ## failures release the entire arena and leave those transient failures retryable.
+    ## Individual bad encodings set refusal bits. An aggregate size refusal skips
+    ## that ranked leaf and sets only pairRefused; later leaves still fit greedily.
+    ## Allocation or append failures release the whole arena and remain retryable.
     ## Encoding lengths and alignment depend on the target ISA: identical admitted
     ## source sets can occupy different subsets under the same byte cap. Original
     ## rank indices remain stable; a skipped leaf does not prevent later smaller
