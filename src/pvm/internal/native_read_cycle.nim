@@ -2,6 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copied read-cycle input and the receipt shared by the ARM and x86 lowerers.
+##
+## ARM64 checks and debits each new role in native budget registers. Eligible x86-64 images
+## use conservative role credits and reconstruct exact gas and attempt balances before return.
+## Exhausted credits and images without credits use the exact role guards.
+##
+## Both reuse the checked first Read reservation and leave Store and Tail preflight refusals
+## unpaid. A Read guard miss restores only that Read's staged registers and keeps its reservation
+## paid and earlier stores committed. The shared receipt checks exact debits and the continuation.
 
 import ../[machine, program]
 import ./[native_ir, native_read_body]
