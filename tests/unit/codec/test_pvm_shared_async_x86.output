@@ -1,3 +1,1 @@
-PASS auxiliary priority, epoch, cancellation, retirement and close
-PASS mixed arena priority, epochs, shared borrow and whole-image retirement
 PVM shared async passed

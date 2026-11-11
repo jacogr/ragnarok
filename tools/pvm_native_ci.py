@@ -172,7 +172,7 @@ def qualify_shared(checks, compiler, host):
     refused = NATIVE_REQUIREMENTS['pvm_runtime_policy_refused']
     positive_flags, refused_flags = positive['defines'], refused['defines']
     if (len(positive_flags) != len(set(positive_flags)) or
-            set(positive_flags) != {isa, 'pvmSharedAsyncWitness'} or
+            set(positive_flags) != {isa, 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness'} or
             len(refused_flags) != len(set(refused_flags)) or
             set(refused_flags) != {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'}):
         raise ValueError('Shared native witness/refusal registration changed')

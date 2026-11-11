@@ -107,7 +107,15 @@ func nativeMixedLoopBudget*(span: uint8, price, gas, remaining: uint64): uint32 
 
 func nativeMixedLoopReceipt*(proof: NativeMixedLoop, funded, raw: uint32,
     registers: RegisterFile): NativeMixedLoopReceipt =
-  ## Refused work keeps its current header. A committed visit's last predicate must match its exit.
+  ## Decode completed visits and the first original continuation after native entry.
+  ## Paid receipts pack visits in bits0..8, a one-based physical guard node in
+  ## bits9..14 and the checked outside-exit bit31; all other bits must be zero.
+  ## A guard is source-certified, cannot also exit, and needs one funded visit
+  ## beyond the completed visits. Its earlier register and memory writes are live.
+  ## The caller charges/reserves that next block once, keeps blockCharged true,
+  ## and resumes the guard with its remaining original attempts reserved.
+  ## A transactional refusal retains the unpaid header; completed visits validate
+  ## their final predicate against the outside-exit bit before charging whole visits.
   result = default(NativeMixedLoopReceipt)
   if funded > NativeMixedLoopVisitLimit or
       proof.count < uint8(NativeMixedLoopMinimum) or proof.count > uint8(
