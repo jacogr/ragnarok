@@ -2887,9 +2887,7 @@ when NativeReadCycleEnabled:
       allowStoreTail: bool): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
-    ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
-    ## readable extent once. Tail checks for a missing extent after gas and quota, and loads
-    ## the current signed word after preceding Stores.
+    ## the common exit publishes the changed lanes.
     ##
     ## The invariant-base proof permits five ordered qword loads from the
     ## current bytes. ARM64 keeps their descriptor pointer in caller-saved D31.
@@ -2897,6 +2895,12 @@ when NativeReadCycleEnabled:
     ## uses X0 for the pointer and X1..X3/X17 as scratch. D31 survives Store,
     ## which can reuse X0 and keeps its separate page proof in X27/X28.
     ## A miss selects the ordered read bank after the same paid checkpoint.
+    ##
+    ## Each entry resolves Tail's readable extent once.
+    ## After the writable and dirty Store proof, ARM uses its exact gas and attempt ledgers to
+    ## reserve the combined Store/Tail price and span. Pairing requires a mapped Tail, a Store
+    ## successor at Tail and a nonoverflowing price. Otherwise the original per-role checks apply.
+    ## The pair writes the Store before reading the live signed Tail word, including aliased bytes.
     const
       readCount = 22
       readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,

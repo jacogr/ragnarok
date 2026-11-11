@@ -1094,8 +1094,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc emitReadCycleStoreTailSetup(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: var X86ReadCycleLabels, word: NativeCycleWord, access: X86ResidentAccess,
           addend: range[0..12], tailSlot: byte) =
-        ## Credited x86 borrows three roles at Setup. Original Setup handles
-        ## short credits, a possible Store backedge and an unmapped Tail.
+        ## Reserve Setup, Store and Tail together on the credited register profile.
+        ## The copied Setup resets the shift and computes base + addend + 1. The addend must
+        ## be independent of the Store lanes, stay canonical and equal 3. Require a mapped Tail
+        ## and three credits before committing Setup.
+        ## A failed admission guard returns to original Setup with its original credits.
+        ## The folded path publishes the wrapping bound and Setup receipt before testing carry.
+        ## Carry returns the original unpaid Store, with Setup still committed.
         put(code, [0x48'u8, 0x83, 0x7f, byte(addend*8), 3]) # CMP qword [RDI+slot],3.
         cycleEdge(code, fixes, 0x85, readCycleOriginalSetup)
         put(code, [0x48'u8, 0x83, 0x7c, 0x24, tailSlot, 0]) # CMP qword [RSP+tail],0.
@@ -1470,8 +1475,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow,
           allowStorePage, allowStoreTail: bool): seq[byte] =
         ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
-        ## A credited Setup, Store and Tail may share one guard. A short credit, backedge or
-        ## unmapped Tail enters original Setup. Store refusal after folded Setup retains its receipt.
+        ## ARM uses an exact Store/Tail reservation after the writable proof. The x86 pair
+        ## runs on the credited profile, where Setup can reserve three credits.
+        ## Store refusal after folded Setup retains its receipt and reconstructs exact balances.
         ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
         ## The synchronous leaf owns the canonical file until return. Its mapped Read slots
