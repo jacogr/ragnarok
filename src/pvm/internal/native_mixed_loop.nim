@@ -7,9 +7,9 @@ import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
 
 const
-  NativeMixedLoopEntryLimit* = 2
-  NativeMixedLoopCandidateLimit* = 8 ## Bounded source checks and per-ticket deterministic refusals.
-  NativeMixedLoopMinimum* = 3'u32    ## Ordered read, byte store and checked terminal.
+  NativeMixedLoopCandidateLimit* = 8
+  NativeMixedLoopEntryLimit* = NativeMixedLoopCandidateLimit ## Bounded source checks and per-ticket deterministic refusals.
+  NativeMixedLoopMinimum* = 3'u32 ## Ordered read, byte store and checked terminal.
   NativeMixedLoopVisitLimit* = 256'u32
   NativeMixedLoopVisitLimitOffset* = NativeCycleGasOffset
   NativeMixedLoopContextBytes* = NativeMixedLoopVisitLimitOffset+8
@@ -150,7 +150,12 @@ func complete*(set: NativeMixedLoopSet): bool =
   if set.count == 0 or set.count > uint8(NativeMixedLoopEntryLimit): return false
   for index in 0..<int(set.count):
     if not set.proofs[index].complete: return false
-  set.count == 1 or nativeMixedLoopDisjoint(set.proofs[0], set.proofs[1])
+  for left in 0..<int(set.count):
+    for right in left+1..<int(set.count):
+      if not nativeMixedLoopDisjoint(set.proofs[left], set.proofs[right]): return false
+  true
 
 func singleNativeMixedLoop*(proof: NativeMixedLoop): NativeMixedLoopSet =
-  NativeMixedLoopSet(count: 1, proofs: [proof, default(NativeMixedLoop)])
+  result = default(NativeMixedLoopSet)
+  result.count = 1
+  result.proofs[0] = proof
