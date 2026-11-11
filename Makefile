@@ -129,6 +129,7 @@ host-tools:
 	  packages='build-essential clang lld cmake zlib1g-dev openssl'; missing=0; \
 	  if [ "$(BINARY_PACKAGE)" = 1 ]; then packages="$$packages patchelf"; fi; \
 	  if [ "$(STORAGE_ABORT_DIAGNOSTICS)" = 1 ]; then packages="$$packages lldb"; fi; \
+	  if [ "$(PVM_ASSET_TOOLS)" = 1 ]; then packages="$$packages zstd"; fi; \
 	  for package in $$packages; do \
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
@@ -140,6 +141,13 @@ host-tools:
 	      $(PYTHON) tools/storage_pressure_apt.py; \
 	      if [ -f build/ci/storage-pressure-https.list ]; then \
 	        apt_source_args=(-o "Dir::Etc::sourcelist=$(CURDIR)/build/ci/storage-pressure-https.list" -o Dir::Etc::sourceparts=-); \
+	      fi; \
+	    elif [ "$${GITHUB_ACTIONS:-}" = true ]; then \
+	      ci_apt_directory="$$(mktemp -d /tmp/ragnarok-ci-apt.XXXXXXXX)"; \
+	      trap 'rm -rf -- "$$ci_apt_directory"' EXIT; \
+	      ci_apt_source="$$($(PYTHON) tools/ci_ubuntu_apt.py "$$ci_apt_directory")"; \
+	      if [ -n "$$ci_apt_source" ]; then \
+	        apt_source_args=(-o "Dir::Etc::sourcelist=$$ci_apt_source" -o Dir::Etc::sourceparts=-); \
 	      fi; \
 	    fi; \
 	    $(PYTHON) tools/download_retry.py sudo timeout --kill-after=10s 300s apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \

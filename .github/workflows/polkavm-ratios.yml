@@ -38,9 +38,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install DOOM asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
+        run: make host-tools PVM_ASSET_TOOLS=1
       - name: Enable the pinned Linux compiler sandbox
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

@@ -136,23 +136,32 @@ assert not any(name.startswith('test_') for name in sys.modules)
 
     def test_host_package_network_bounds_and_failure_logs(self):
         """Bound stalled updates, retain setup diagnostics, and stop after package-manager failures."""
-        cases = (('Linux', False, '', False), ('Linux', False, 'update', False),
-                 ('Linux', False, 'install', False), ('Linux', False, '', True),
-                 ('Linux', True, '', False), ('Darwin', False, '', False))
-        for system, ready, failure, timeout in cases:
-            # Fake every privileged/network command; execute the real Make recipe on both host branches.
-            with self.subTest(system=system, ready=ready, failure=failure, timeout=timeout), tempfile.TemporaryDirectory() as temporary:
+        cases = (('Linux', False, '', False, False), ('Linux', False, 'update', False, False),
+                 ('Linux', False, 'install', False, False), ('Linux', False, '', True, False),
+                 ('Linux', True, '', False, False), ('Darwin', False, '', False, False),
+                 ('Linux', False, '', False, True))
+        for system, ready, failure, timeout, ci in cases:
+            # Fake privileged/network commands and execute the real Make recipe for each host.
+            with self.subTest(system=system, ready=ready, failure=failure, timeout=timeout,
+                              ci=ci), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
                 (folder/'tools').mkdir()
-                for helper in ('download_retry.py', 'toolchain_archives.py'):
+                for helper in ('ci_ubuntu_apt.py', 'download_retry.py', 'toolchain_archives.py'):
                     shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
-                (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
+                (folder/'sitecustomize.py').write_text(
+                    'from pathlib import Path\nimport platform, time\n'
+                    'time.sleep = lambda delay: None\n'
+                    'platform.freedesktop_os_release = lambda: {"ID": "ubuntu", '
+                    '"VERSION_CODENAME": "resolute"}\n'
+                    'original_is_file = Path.is_file\n'
+                    'Path.is_file = lambda self: str(self) == '
+                    '"/usr/share/keyrings/ubuntu-archive-keyring.gpg" or original_is_file(self)\n')
                 (folder/'spec').mkdir()
                 shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
                 binary = folder/'bin'
                 binary.mkdir()
-                stub = '#!'+sys.executable+'\n'+r"""import json, os, sys
+                stub = '#!'+sys.executable+'\n'+r"""import json, os, stat, sys
 from pathlib import Path
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
@@ -164,6 +173,9 @@ if name == 'dpkg-query':
         print('install ok installed')
         sys.exit(0)
     sys.exit(1)
+if name == 'getent':
+    # Exercise a healthy archive primary and a security primary that fails to resolve.
+    sys.exit(1 if args[-1] == 'security.ubuntu.com' else 0)
 with Path('calls').open('a') as output:
     output.write(json.dumps([name, *args])+'\n')
 if name == 'sudo':
@@ -174,21 +186,31 @@ if name == 'timeout':
         sys.exit(124)
     os.execvp(args[2], args[2:])
 stage = 'update' if args[-1] == 'update' else 'install'
+if stage == 'update' and os.environ['GITHUB_ACTIONS'] == 'true':
+    prefix = 'Dir::Etc::sourcelist='
+    source = Path(next(arg[len(prefix):] for arg in args if arg.startswith(prefix)))
+    files = {p.name: [stat.S_IMODE(p.stat().st_mode), p.read_text()]
+             for p in source.parent.iterdir()}
+    Path('apt-sources.json').write_text(json.dumps({
+        'path': str(source), 'directory_mode': stat.S_IMODE(source.parent.stat().st_mode),
+        'files': files,
+    }))
 print(stage+' fixture output')
 if os.environ['FIXTURE_FAILURE'] == stage:
     print('deliberate '+stage+' failure', file=sys.stderr)
     sys.exit(7)
 """
-                for name in ('uname', 'dpkg-query', 'sudo', 'timeout', 'apt-get'):
+                for name in ('uname', 'dpkg-query', 'getent', 'sudo', 'timeout', 'apt-get'):
                     # PATH resolves to these fixtures before any host executable, including sudo.
                     command = binary/name
                     command.write_text(stub)
                     command.chmod(0o755)
                 environment = dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
-                    PYTHONPATH=str(folder),
+                    PYTHONPATH=str(folder), GITHUB_ACTIONS='true' if ci else 'false',
                     FIXTURE_SYSTEM=system, FIXTURE_READY=str(int(ready)),
                     FIXTURE_FAILURE=failure, FIXTURE_TIMEOUT=str(int(timeout)))
-                result = subprocess.run(['make', 'host-tools', 'PYTHON='+sys.executable], cwd=folder,
+                result = subprocess.run(['make', 'host-tools', 'PYTHON='+sys.executable,
+                                         'PVM_ASSET_TOOLS='+str(int(ci))], cwd=folder,
                     env=environment, capture_output=True, text=True, timeout=10)
                 if system != 'Linux' or ready:
                     # Provisioned hosts and non-APT hosts never enter privileged setup.
@@ -205,6 +227,32 @@ if os.environ['FIXTURE_FAILURE'] == stage:
                     for option in ('Acquire::Retries=3', 'Acquire::http::Timeout=30',
                                    'Acquire::https::Timeout=30', 'DPkg::Lock::Timeout=60'):
                         self.assertIn(option, row)
+                if ci:
+                    # Both APT stages use the same signed sources and install the requested tool.
+                    evidence = json.loads((folder/'apt-sources.json').read_text())
+                    source = Path(evidence['path'])
+                    self.assertEqual(source.parent.parent, Path('/tmp').resolve())
+                    self.assertEqual(evidence['directory_mode'], 0o755)
+                    self.assertFalse(source.parent.exists())
+                    self.assertEqual(set(mode for mode, _ in evidence['files'].values()), {0o644})
+                    apt_calls = [row for row in calls if row[0] == 'apt-get']
+                    self.assertEqual(len(apt_calls), 2)
+                    for row in apt_calls:
+                        self.assertIn('Dir::Etc::sourcelist='+str(source), row)
+                        self.assertIn('Dir::Etc::sourceparts=-', row)
+                    self.assertIn('zstd', apt_calls[1])
+                    lines = evidence['files']['ubuntu-ci.list'][1].splitlines()
+                    self.assertEqual([line.split()[3] for line in lines],
+                                     ['resolute', 'resolute-updates', 'resolute-backports',
+                                      'resolute-security'])
+                    for line in lines:
+                        self.assertIn('signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg', line)
+                    self.assertEqual(evidence['files']['ubuntu-ci-archive.mirrors'][1].splitlines(),
+                                     ['https://archive.ubuntu.com/ubuntu/\tpriority:1',
+                                      'https://mirrors.edge.kernel.org/ubuntu/'])
+                    self.assertEqual(evidence['files']['ubuntu-ci-security.mirrors'][1].splitlines(),
+                                     ['https://mirrors.edge.kernel.org/ubuntu/'])
+                    self.assertIn('security.ubuntu.com did not resolve', result.stderr)
                 update = (folder/'build/ci/host-tools-update.log').read_text()
                 if timeout or failure == 'update':
                     # A timed-out or failed update cannot be hidden by tee or proceed to installation.
