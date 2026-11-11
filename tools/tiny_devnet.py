@@ -12,9 +12,11 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import random
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,28 +54,47 @@ def certificates(binary, directory):
         der.unlink() # The retained PEM is the single process-owned TLS key file.
 
 
+def automatic_port_range():
+    """Read the kernel's inclusive default UDP allocation range where available."""
+    try:
+        if sys.platform == 'linux':
+            configured = Path('/proc/sys/net/ipv4/ip_local_port_range').read_text()
+        elif sys.platform == 'darwin':
+            configured = command(['sysctl', '-n', 'net.inet.ip.portrange.first',
+                                  'net.inet.ip.portrange.last'])
+        else:
+            return 32768, 65535
+        first, last = sorted(map(int, configured.split()))
+        if 1 <= first <= last <= 65535:
+            return first, last
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass # Some local sandboxes restrict the kernel query.
+    return 32768, 65535 # Conservative range covering the supported hosts' defaults.
+
+
 def free_ports():
-    """Reserve and release six contiguous loopback UDP ports with a finite admission budget."""
-    for _ in range(100):
+    """Probe six contiguous loopback UDP listener ports outside automatic allocation."""
+    first, last = automatic_port_range()
+    below = range(1024, first-5)
+    above = range(last+1, 65531)
+    choices = len(below)+len(above)
+    for index in random.sample(range(choices), min(100, choices)):
+        # Earlier validators open ephemeral discovery sockets while later listeners
+        # are still starting. Leave the entire six-port listener block out of that pool.
+        base = below[index] if index < len(below) else above[index-len(below)]
         sockets = []
         try:
-            first = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sockets.append(first)
-            first.bind(('127.0.0.1', 0))
-            base = first.getsockname()[1]
-            if base > 65530:
-                continue # A complete six-port range must fit the native uint16 endpoint domain.
-            for index in range(1, 6):
+            for port in range(base, base+6):
                 current = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sockets.append(current)
-                current.bind(('127.0.0.1', base+index))
+                current.bind(('127.0.0.1', port))
             return base
         except OSError:
-            pass # Another local listener may own a sibling; retry an unrelated OS-selected base.
+            pass # Another explicit listener may own a sibling. Try another complete block.
         finally:
             for current in sockets:
                 current.close()
-    raise RuntimeError('Could not reserve six contiguous loopback UDP ports')
+    raise RuntimeError('Could not reserve six contiguous loopback UDP ports outside automatic allocation')
 
 
 def head(directory, index):
@@ -126,7 +147,8 @@ def exercise(binary, directory, *, slots=14, restart=False, before_start=None, a
         while time.monotonic() < deadline:
             for index, process in processes.items():
                 if process.poll() is not None and not (restart and index == 5 and stopped and not restarted):
-                    raise RuntimeError(f'Node{index} exited early with{process.returncode}; see {directory}')
+                    raise RuntimeError(f'Node{index} exited early with{process.returncode} '
+                                       f'on UDP port {base+index}; see {directory}')
             heads = [head(directory, index) for index in range(6)]
             if not joined:
                 existing = [heads[index] for index in range(6) if index != 3]

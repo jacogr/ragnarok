@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from tiny_devnet_checks import check, smoke, authoring, freeze
-from tiny_devnet import exercise
+from tiny_devnet import exercise, free_ports
 from tiny_devnet_oracle import verify
 
 
@@ -35,6 +35,40 @@ class TinyDevnetEvidence(unittest.TestCase):
         for slots,restart in ((2,False),(14,True)):
             with self.subTest(slots=slots), self.assertRaisesRegex(ValueError,'Late author acceptance'):
                 exercise(Path('/binary'),Path('/unused'),slots=slots,restart=restart,late_join=True)
+
+    def test_listener_block_avoids_automatic_and_occupied_ports(self):
+        """A blocked low block must leave only the complete high block available."""
+        occupied = {1027}
+
+        class Reservation:
+            """Track live UDP reservations without depending on host networking."""
+
+            port = None
+
+            def bind(self, address):
+                """Model both explicit binds and the old automatic bind request."""
+                host, requested = address
+                assert host == '127.0.0.1'
+                selected = requested or 43834
+                if selected in occupied:
+                    raise OSError('UDP port already held')
+                occupied.add(selected)
+                self.port = selected
+
+            def getsockname(self):
+                """Expose the bound address for the automatic allocation control."""
+                return '127.0.0.1', self.port
+
+            def close(self):
+                """Release only ports this reservation actually acquired."""
+                if self.port is not None:
+                    occupied.remove(self.port)
+
+        with patch('tiny_devnet.automatic_port_range', return_value=(1030, 65529)), patch(
+                'tiny_devnet.random.sample', return_value=[0, 1]), patch(
+                'tiny_devnet.socket.socket', side_effect=lambda *_: Reservation()):
+            self.assertEqual(free_ports(), 65530)
+        self.assertEqual(occupied, {1027})
 
     def observations(self, directory):
         """Create equal reported roots with explicit test-owned map and journal identities."""
