@@ -27,9 +27,6 @@ of "nonhost":
 of "memory":
   # All posterior actions require a real immutable memory owner.
   response.memory = default(Memory)
-of "machine":
-  # Replacing a public snapshot handle must not bypass owner validation.
-  host.machine = default(Machine)
 of "halt":
   # Removed host Halt is rejected before any successful outcome can be selected.
   response.action = HostAction.Halt

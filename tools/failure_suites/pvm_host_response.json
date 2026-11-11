@@ -45,19 +45,6 @@
     },
     {
       "identity": {
-        "origin": "machine",
-        "accessor": "value"
-      },
-      "arguments": [
-        "machine",
-        "value"
-      ],
-      "name": "pvm-host-response-machine",
-      "diagnostic": "r.status == None",
-      "description": "Host response failure payload machine"
-    },
-    {
-      "identity": {
         "origin": "continue",
         "accessor": "host"
       },

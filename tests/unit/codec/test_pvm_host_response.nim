@@ -12,6 +12,13 @@ import ../../../src/pvm/gas/gas
 import ../../../src/pvm/[step, output]
 import ../../support/arc_evidence
 
+# A replacement at the same host PC and ID could otherwise choose different executable code.
+when compiles((block:
+  var outcome = default(StepOutcome)
+  outcome.machine = default(Machine)
+)):
+  {.error: "StepOutcome must keep its original machine snapshot".}
+
 # Original code executes unlikely, ecalli 7, then jump_ind through initial r0 to halt.
 proc initial(): Machine =
   initializeMachine([0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0,
@@ -98,24 +105,12 @@ let notHost = default(StepOutcome)
 assert applyHostResponse(notHost, reply(host, HostAction.Continue)).error ==
     StepError.InvalidHostSuspension
 assert applyHostResponse(stopped, terminating).error == StepError.InvalidHostSuspension
-var broken = host
-broken.machine = default(Machine)
-assert applyHostResponse(broken, terminating).error == StepError.InvalidMachine
 
 # One-step Host outcomes use a following PC, so callers must supply recursive execute suspensions.
 let stepped = stepOnce(captureMachine(programOf(host.machine).value, memoryOf(host.machine).value,
   beforeHost).value, GasCycleLimit(0)).value
 assert stepped.exit == StepExit.Host
 assert applyHostResponse(stepped, terminating).error == StepError.InvalidHostSuspension
-# An altered PC that still names valid code cannot masquerade as the causing host instruction.
-var altered = beforeHost
-altered.pc = CodeAddress(0)
-broken = host
-broken.machine = captureMachine(programOf(host.machine).value, memoryOf(host.machine).value, altered).value
-assert applyHostResponse(broken, terminating).error == StepError.InvalidHostSuspension
-altered.pc = CodeAddress(999)
-broken.machine = captureTerminalMachine(programOf(host.machine).value, memoryOf(host.machine).value, altered).value
-assert applyHostResponse(broken, terminating).error == StepError.InvalidHostSuspension
 
 # Host immediates use zero padding/sign extension, while continuation uses the entire capped skip.
 for width in [0, 1, 4, 24]:
@@ -146,11 +141,6 @@ for width in [0, 1, 4, 24]:
   let continued = applyHostResponse(stoppedAtHost, response).value
   assert uint64(machineInfo(continued.machine).value.pc) == uint64(width + 2)
   assert execute(continued.machine, ExecutionStepLimit(1), GasCycleLimit(0)).value.exit == StepExit.Halt
-  if width != 0:
-    # Pair a valid Host tag for call 7 with code for call -1; matching only the opcode is insufficient.
-    var mismatched = host
-    mismatched.machine = stoppedAtHost.machine
-    assert applyHostResponse(mismatched, response).error == StepError.InvalidHostSuspension
 
 # Adjacent identical calls must not make a single-step following PC look like a recursive suspension.
 block:
@@ -163,9 +153,14 @@ block:
   assert applyHostResponse(single, reply(single, HostAction.Continue)).error ==
     StepError.InvalidHostSuspension
   let first = execute(source, ExecutionStepLimit(1), GasCycleLimit(0)).value
+  assert uint64(single.hostCall) == uint64(first.hostCall)
+  assert uint64(machineInfo(single.machine).value.pc) == 2
+  assert uint64(machineInfo(first.machine).value.pc) == 0
   let next = applyHostResponse(first, reply(first, HostAction.Continue)).value
   assert uint64(machineInfo(next.machine).value.pc) == 2
   let second = execute(next.machine, ExecutionStepLimit(1), GasCycleLimit(0)).value
+  assert uint64(second.hostCall) == uint64(first.hostCall)
+  assert uint64(machineInfo(second.machine).value.pc) == 2
   var response = reply(second, HostAction.Continue)
   response.registers[0] = RegisterValue(0xffff0000'u64)
   let resumed = applyHostResponse(second, response).value

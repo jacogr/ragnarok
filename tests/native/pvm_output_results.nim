@@ -14,16 +14,13 @@ var result = default(OutputResult)
 if selection == "nonhalt":
   let pending = default(StepOutcome)
   result = captureOutput(pending, OutputByteLimit(0))
-elif selection == "invalid" or selection == "limit":
+elif selection == "limit":
   # Standard initialization supplies a real one-byte argument and the halt return-address register.
   let source = initializeMachine([0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0,
     0, 0, 2, 50, 0, 1], [9'u8], CodeAddress(0), MachineGas(100),
     InitializationLimits(envelope: InitializationByteLimit(21), program: ProgramByteLimit(6),
       jumps: JumpCountLimit(0), pages: PageLimit(1))).value
-  var outcome = execute(source, ExecutionStepLimit(1), GasCycleLimit(100)).value
-  if selection == "invalid":
-    # A replaced public handle must never permit access through a stale halted discriminator.
-    outcome.machine = default(Machine)
+  let outcome = execute(source, ExecutionStepLimit(1), GasCycleLimit(100)).value
   result = captureOutput(outcome, OutputByteLimit(0))
 else:
   # Leave the default local failure selected, without inventing any guest outcome.

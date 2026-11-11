@@ -227,16 +227,17 @@ proc witness(selected: PvmBackend) =
       HostCallLimit(2), GasCycleLimit(1000), selected)
   assert terminal.error == HostExecutionError.None and terminal.value.exit == StepExit.Panic
   assert terminal.value.backend == selected and context.calls == 1
-  # Adjacent identical host IDs do not authorize replacing the genuine causing PC.
+  # The first of two adjacent identical host calls resumes at the second one.
   let suspended = execute(original, ExecutionStepLimit(1), GasCycleLimit(1000), selected).value
-  var forged = suspended
-  var wrong = machineInfo(suspended.machine).value
-  wrong.pc = CodeAddress(2)
-  forged.machine = captureTerminalMachine(programOf(suspended.machine).value,
-      memoryOf(suspended.machine).value, wrong).value
-  let reply = HostResponse(action: HostAction.Continue, gas: wrong.gas,
-      registers: wrong.registers, memory: memoryOf(suspended.machine).value)
-  assert applyHostResponse(forged, reply).error == StepError.InvalidHostSuspension
+  let snapshot = suspended.machine
+  let cpu = machineInfo(snapshot).value
+  let reply = HostResponse(action: HostAction.Continue, gas: cpu.gas,
+      registers: cpu.registers, memory: memoryOf(snapshot).value)
+  let resumed = applyHostResponse(suspended, reply).value
+  assert resumed.backend == selected and resumed.exit == StepExit.Continued
+  assert uint64(machineInfo(resumed.machine).value.pc) == 2
+  assert uint64(machineInfo(snapshot).value.pc) == 0
+  assert programOf(resumed.machine).value == programOf(snapshot).value
   let zero = execute(source(0), ExecutionStepLimit(1), GasCycleLimit(1000), selected)
   assert zero.error == StepError.None and zero.value.exit == StepExit.OutOfGas
   assert uint64(machineInfo(zero.value.machine).value.gas) == 0

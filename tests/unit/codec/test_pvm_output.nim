@@ -112,10 +112,6 @@ proc cycle() =
   assert uint64(machineInfo(source).value.gas) == 100
 
 cycle()
-# Public machine-handle replacement is validated before even the empty-interval path.
-var broken = halted(pages, 0, 0)
-broken.machine = default(Machine)
-assert captureOutput(broken, OutputByteLimit(0)).error == OutputError.InvalidMachine
 let unfinished = default(StepOutcome)
 assert captureOutput(unfinished, OutputByteLimit(0)).error == OutputError.NotHalted
 

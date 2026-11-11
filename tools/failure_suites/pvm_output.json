@@ -28,17 +28,6 @@
     },
     {
       "identity": {
-        "origin": "invalid"
-      },
-      "arguments": [
-        "invalid"
-      ],
-      "name": "pvm-output-invalid",
-      "diagnostic": "r.status == None",
-      "description": "PVM output failure payload invalid"
-    },
-    {
-      "identity": {
         "origin": "limit"
       },
       "arguments": [

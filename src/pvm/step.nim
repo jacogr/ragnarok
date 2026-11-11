@@ -4,7 +4,8 @@
 ## Immutable stepping, bounded execution and trusted host resumption.
 ##
 ## The machine supplies the exact program and paid-block flag. Prepared owners
-## bind reusable pricing and execution facts to that program. Invocation registers,
+## bind reusable pricing and execution facts to that program. An outcome binds its
+## immutable machine snapshot to the selected exit metadata. Invocation registers,
 ## mutable memory staging and attempt budgets stay local to the call.
 ##
 ## Guest exits are completed outcomes, including OutOfGas. Local refusal exposes
@@ -34,7 +35,7 @@ type
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
   StepOutcome* = object ## Normal and terminal guest outcomes are completed evaluations with an inspectable snapshot.
-    machine*: Machine
+    machine: Machine   ## Retain the snapshot paired with this exit.
     engine: PvmBackend # The actual selected engine survives host suspension and terminal responses.
     case kind: StepExit
     of Fault:
@@ -194,6 +195,11 @@ func terminalExit(kind: StepExit): bool {.inline.} =
   ## Final panic/halt alone normalize PC; direct comparisons avoid a runtime enum-set shift on every transition.
   kind == StepExit.Panic or kind == StepExit.Halt
 
+func machine*(outcome: StepOutcome): Machine {.inline.} =
+  ## Retain the immutable snapshot paired with this outcome. A default outcome
+  ## returns a default handle. The snapshot can outlive the outcome.
+  outcome.machine
+
 func exit*(outcome: StepOutcome): StepExit =
   ## Read the guest reason without permitting an outcome to be retagged into a fabricated fault.
   outcome.kind
@@ -254,8 +260,11 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   ## Continue uses the decoded successor. Panic and OutOfGas keep the causing PC.
   ## A successful reply keeps the program and paid-block flag and publishes a fresh
   ## immutable machine with the supplied unsigned gas, registers and memory.
-  ## No host callback, guest step or gas charge occurs here. The checks bind the
-  ## reply structurally to the suspension. The caller owns host trust and replay policy.
+  ## The outcome retains its original snapshot and private causing PC. A single-step
+  ## Host outcome has already advanced, including when the next instruction is
+  ## an identical host call. Only the recursive suspension accepts a reply.
+  ## The caller chooses the trusted reply and may reuse a suspension with independent
+  ## replies. Application calls no host, attempts no guest step and charges no gas.
 
   # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
   if suspension.exit != StepExit.Host:
@@ -263,13 +272,13 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   let original = machineInfo(suspension.machine)
   let program = programOf(suspension.machine)
   if original.error != MachineError.None or program.error != MachineError.None:
-    # Public outcome handles may be replaced by callers; never dereference invalid machine roots.
+    # Check snapshot ownership before reading CPU or code.
     return StepResult(status: StepError.InvalidMachine)
   if uint64(original.value.pc) != uint64(suspension.callAddress):
     # Single-step Host carries the following PC, even when it names an identical ecalli.
     return StepResult(status: StepError.InvalidHostSuspension)
   if uint64(original.value.gasDeficit) != 0:
-    # A replaced terminal snapshot cannot authorize another host response.
+    # A terminal gas deficit cannot authorize another host response.
     return StepResult(status: StepError.InvalidMachine)
   if uint64(response.gasDeficit) != 0:
     # Host gas is unsigned for every action; reserved nonzero deficit values are invalid.

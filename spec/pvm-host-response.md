@@ -21,10 +21,14 @@ dispatch have their own [execution record](pvm-host-execution.md).
 Original release witnesses cover all then-supported actions, every posterior register, replaced
 memory, zero and maximum unsigned gas, charged continuation without recharging,
 host termination with output capture, variable immediate widths and skip lengths,
-adjacent identical host calls, malformed roots and independent successor ownership.
+adjacent identical host calls and independent successor ownership.
 The suite records 1,000 complete lifetimes through the normal ARC evidence validator.
 Compiler probes enforce nominal gas/action types and private causing-PC metadata;
 isolated runtime probes enforce failed-result and exit-metadata selection.
+The [host-response suite](../tests/unit/codec/test_pvm_host_response.nim) checks at
+compile time that an outcome's machine snapshot is read-only. The earlier host
+response and output probes that replaced the snapshot with a default handle have
+been retired.
 
 The original adapter composed initialization, bounded execution, host-response
 application and output capture. The [bounded host dispatcher](pvm-host-execution.md)
