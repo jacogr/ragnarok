@@ -5,15 +5,26 @@
 
 from pathlib import Path
 import platform
+import subprocess
 import sys
+from urllib.parse import urlsplit
 
 
 KEYRING = Path('/usr/share/keyrings/ubuntu-archive-keyring.gpg')
 FALLBACK = 'https://mirrors.edge.kernel.org/ubuntu/'
 
 
+def primary_resolves(host):
+    """Bound the runner's DNS lookup before APT can repeat it per archive object."""
+    try:
+        return subprocess.run(['getent', 'ahosts', host], timeout=5,
+                              stdout=subprocess.DEVNULL, check=False).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
 def write_sources(directory, release=None, keyring=KEYRING):
-    """Write signed lists inside a temporary directory owned by the current Make invocation."""
+    """Write signed lists for both APT commands in a Make-owned temporary directory."""
     release = platform.freedesktop_os_release() if release is None else release
     if release.get('ID') != 'ubuntu' or release.get('VERSION_CODENAME') != 'resolute':
         return None
@@ -31,7 +42,13 @@ def write_sources(directory, release=None, keyring=KEYRING):
     for name, (primary, suites) in mirrors.items():
         # Keep the original Ubuntu signing key and pockets across both mirrors.
         destination = directory / name
-        destination.write_text(f'{primary}\tpriority:1\n{FALLBACK}\n')
+        host = urlsplit(primary).hostname
+        if primary_resolves(host):
+            contents = f'{primary}\tpriority:1\n{FALLBACK}\n'
+        else:
+            print(f'Ubuntu APT primary {host} did not resolve. Using {FALLBACK}', file=sys.stderr)
+            contents = f'{FALLBACK}\n'
+        destination.write_text(contents)
         destination.chmod(0o644)
         for suite in suites:
             lines.append(f'deb [signed-by={keyring}] mirror+{destination.as_uri()} '

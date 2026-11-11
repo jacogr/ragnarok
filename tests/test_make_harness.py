@@ -173,6 +173,9 @@ if name == 'dpkg-query':
         print('install ok installed')
         sys.exit(0)
     sys.exit(1)
+if name == 'getent':
+    # Exercise a healthy archive primary and a security primary that fails to resolve.
+    sys.exit(1 if args[-1] == 'security.ubuntu.com' else 0)
 with Path('calls').open('a') as output:
     output.write(json.dumps([name, *args])+'\n')
 if name == 'sudo':
@@ -197,7 +200,7 @@ if os.environ['FIXTURE_FAILURE'] == stage:
     print('deliberate '+stage+' failure', file=sys.stderr)
     sys.exit(7)
 """
-                for name in ('uname', 'dpkg-query', 'sudo', 'timeout', 'apt-get'):
+                for name in ('uname', 'dpkg-query', 'getent', 'sudo', 'timeout', 'apt-get'):
                     # PATH resolves to these fixtures before any host executable, including sudo.
                     command = binary/name
                     command.write_text(stub)
@@ -244,11 +247,12 @@ if os.environ['FIXTURE_FAILURE'] == stage:
                                       'resolute-security'])
                     for line in lines:
                         self.assertIn('signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg', line)
-                    for scope in ('archive', 'security'):
-                        mirror = evidence['files'][f'ubuntu-ci-{scope}.mirrors'][1]
-                        self.assertEqual(mirror.splitlines(),
-                                         [f'https://{scope}.ubuntu.com/ubuntu/\tpriority:1',
-                                          'https://mirrors.edge.kernel.org/ubuntu/'])
+                    self.assertEqual(evidence['files']['ubuntu-ci-archive.mirrors'][1].splitlines(),
+                                     ['https://archive.ubuntu.com/ubuntu/\tpriority:1',
+                                      'https://mirrors.edge.kernel.org/ubuntu/'])
+                    self.assertEqual(evidence['files']['ubuntu-ci-security.mirrors'][1].splitlines(),
+                                     ['https://mirrors.edge.kernel.org/ubuntu/'])
+                    self.assertIn('security.ubuntu.com did not resolve', result.stderr)
                 update = (folder/'build/ci/host-tools-update.log').read_text()
                 if timeout or failure == 'update':
                     # A timed-out or failed update cannot be hidden by tee or proceed to installation.
