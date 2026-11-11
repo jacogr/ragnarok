@@ -17,7 +17,8 @@ proc appendNatural(wire: var seq[byte], value: uint64) =
   let encoded = encode(JamNatural(value))
   for index in 0..<encoded.len: wire.add(encoded.bytes[index])
 
-proc pattern(pc: uint32, variant: PatternVariant, prefixMisses: int = 0): Program =
+proc pattern(pc: uint32, variant: PatternVariant, prefixMisses: int = 0,
+    prefixMatches = false): Program =
   ## Construct genuine branch targets and explicit instruction-start bits.
   var code: seq[byte] = @[]
   var starts: seq[int] = @[]
@@ -27,7 +28,8 @@ proc pattern(pc: uint32, variant: PatternVariant, prefixMisses: int = 0): Progra
   for _ in 0..<int(pc): emit([0'u8])
   for index in 0..prefixMisses:
     # Near misses fall through into the next complete original loop.
-    let form = if index < prefixMisses: PatternVariant.WrongStore else: variant
+    let form = if index < prefixMisses and not prefixMatches:
+        PatternVariant.ReadAfterStore else: variant
     let loopPc = code.len
     let fused = form in {PatternVariant.FusedShift, PatternVariant.FusedAddImmediate,
         PatternVariant.FusedAddPair}
@@ -87,7 +89,7 @@ proc pattern(pc: uint32, variant: PatternVariant, prefixMisses: int = 0): Progra
   var mask = newSeq[byte]((code.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for item in mask: wire.add(item)
-  let decoded = decodeProgram(wire, CodeAddress(uint64(pc)), ProgramByteLimit(1024),
+  let decoded = decodeProgram(wire, CodeAddress(uint64(pc)), ProgramByteLimit(4096),
     JumpCountLimit(0))
   assert decoded.error == ProgramError.None
   decoded.value
@@ -109,6 +111,16 @@ proc runMixedLoopSource*() =
   witnessFlatMixedLoop(pattern(37, PatternVariant.WrongTarget), 37, false)
   witnessFlatMixedLoop(pattern(37, PatternVariant.ReadAfterStore), 37, false)
   witnessFlatMixedLoop(pattern(37, PatternVariant.OverBound), 37, false)
+  # Refused source proofs consume checks independently of the accepted inventory.
+  witnessFlatMixedDiscovery(pattern(0, PatternVariant.Exact, 8), 9, 1, true)
+  witnessFlatMixedDiscovery(pattern(0, PatternVariant.Exact,
+      NativeMixedLoopReconstructionLimit-1), NativeMixedLoopReconstructionLimit, 1, true)
+  witnessFlatMixedDiscovery(pattern(0, PatternVariant.Exact,
+      NativeMixedLoopReconstructionLimit), NativeMixedLoopReconstructionLimit, 0, false)
+  # Filling the eight accepted slots stops discovery even when check credits remain.
+  witnessFlatMixedDiscovery(pattern(0, PatternVariant.Exact,
+      NativeMixedLoopCandidateLimit, true), NativeMixedLoopCandidateLimit,
+      NativeMixedLoopCandidateLimit, false)
   for variant in [PatternVariant.FusedShift, PatternVariant.FusedAddImmediate,
       PatternVariant.FusedAddPair]:
     let owner = pattern(19, variant)

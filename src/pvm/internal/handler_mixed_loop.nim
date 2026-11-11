@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bind a complete original self-loop to its cached edges, decoded operands and block price.
-## The visit has a guarded scalar/read prefix, one relative byte store, a scalar suffix
-## and the original BNE with a distinct checked exit. Folded no-ops still count toward gas
-## and the original attempt span. Cold branch resolution reconstructs at most eight plausible
-## candidates per stream epoch. The frame ranks their checked visits only beside a ready Read owner.
+## A transactional visit has a guarded read prefix, byte Store and infallible suffix;
+## a paid visit preserves earlier writes before a later guard resumes checked execution.
+## Folded no-ops still count toward gas and the original attempt span. Cold branch
+## resolution retains at most eight accepted candidates from sixteen bounded source
+## reconstructions per stream epoch. The frame ranks their checked visits beside a ready Read owner.
 
 when declared(FlatFrame):
   proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64,
@@ -66,13 +67,17 @@ when declared(FlatFrame):
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
     ## Bound exact source reconstruction to cold resolved BNEs with a plausible byte store.
+    ## Refused early loops consume reconstruction work without occupying the accepted
+    ## inventory. A separate ceiling permits later useful loops after those refusals:
+    ## at most sixteen cold attempts, each spanning at most NativeReadFactLimit facts,
+    ## per stream epoch. Revalidation of retained certificates is a separate segment step.
     if terminal <= header or terminal-header < NativeMixedLoopMinimum or
         terminal-header > NativeReadFactLimit: return
     let epoch = nativeEpoch(f.nativeSession)
     if epoch == 0: return
     if f.mixedSource.epoch != epoch: f.mixedSource = FlatMixedLoopSource(epoch: epoch)
     if f.mixedSource.count == uint8(NativeMixedLoopCandidateLimit) or
-        f.mixedSource.checks == uint8(NativeMixedLoopCandidateLimit): return
+        f.mixedSource.checks == uint8(NativeMixedLoopReconstructionLimit): return
     let token = pc+1
     for index in 0..<int(f.mixedSource.count):
       if f.mixedSource.candidates[index] == token: return
@@ -281,6 +286,36 @@ when declared(FlatFrame):
     returnNativeMixedLoop(f.nativeSession)
 
   when defined(pvmSharedAsyncWitness) or defined(pvmMixedLoopEntryWitness):
+    proc witnessFlatMixedDiscovery*(program: Program, checks, accepted: int,
+        lastAccepted: bool) =
+      ## Resolve genuine checked branches to exercise both independent discovery ceilings.
+      var prepared = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+      assert prepared.error == FlatError.None
+      let plan = takeValue(prepared)
+      let runtime = newNativeRuntime()
+      var frame = newFlatFrame(plan, [], MachineInfo(gas: MachineGas(1000000)))
+      frame.nativeSession = newNativeSession(runtime)
+      var lastPc = 0'u32
+      for ordinal in 0..<plan.facts.len:
+        let fact = plan.facts[ordinal]
+        if fact.opcode != 171: continue
+        let original = flatSourcePayload(plan, fact)
+        lastPc = uint32(original.args.x shr 32)
+        let header = flatResolve(frame, lastPc)
+        assert header != flatStop
+        var source = default(FlatSourceInterval)
+        var walk = default(FlatSourceSummary)
+        assert flatSourceIntervalAt(frame, header, NativeReadFactLimit, source)
+        assert flatWalkCompleteSource(frame, header, source, walk)
+        assert frame.handlers[int(walk.terminal)] == flatUnresolvedBranch[171]
+        assert flatUnresolvedBranch[171](frame, walk.terminal) == walk.terminal
+      assert int(frame.mixedSource.checks) == checks and int(frame.mixedSource.count) == accepted
+      var foundLast = false
+      for index in 0..<int(frame.mixedSource.count):
+        if frame.mixedSource.candidates[index] == lastPc+1: foundLast = true
+      assert foundLast == lastAccepted
+      assert runtimeInfo(runtime).registered == 0 and close(runtime)
+
     proc witnessFlatMixedLoop*(program: Program, pc: uint32, matches: bool) =
       ## Rebuild the same proof from genuine checked emission, then challenge each authority.
       let cycles = GasCycleLimit(100000)

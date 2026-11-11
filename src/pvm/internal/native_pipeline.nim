@@ -9,6 +9,8 @@
 ## for primary work. The worker claims queued primary work first. Pressure may cancel the
 ## auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
+## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
+## Another source can retain a ready primary while its auxiliary offer waits for retirement.
 ## Deferred identities hold no credit; only eligible work that can queue claims one.
 ## Installed owners retain credits while idle, so a serialized second consumer can still
 ## exhaust the table. Consumer reservations, fairness and aggregate prepared-memory limits
@@ -948,6 +950,9 @@ when NativeReadCycleEnabled:
       requested: NativeMixedLoopSet): NativeMixedLoopBorrow =
     ## Try once for the exact completed ticket and proof in the current owner epoch.
     ## Pressure may revoke the image during the segment. Unmapping waits for its return.
+    ## Compare the primary owner key and the complete ordered proof set before exposing
+    ## the image or mask. Equal occupancy masks can select different source PCs in
+    ## different sets, so a mask alone never grants source or executable authority.
     result = default(NativeMixedLoopBorrow)
     if not mixedLoopPrimaryReady(session) or requested.count == 0 or
         requested.count > uint8(NativeMixedLoopEntryLimit): return
