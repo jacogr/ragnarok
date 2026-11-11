@@ -60,9 +60,9 @@ env:
   # Exercise the shipped minified JS/CSS in every native/browser verification job.
   UI_MINIFY: "1"
 
-# Smoke and full verification share the fixture gate before starting build jobs.
+# Independent checks become eligible together when selected.
 jobs:
-  # A stale fixture pin stops Smoke or full verification before compilation.
+  # Verify pinned fixtures alongside the other selected checks.
   fixture-provenance:
     name: Build / Provenance
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm' || github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
@@ -84,8 +84,7 @@ jobs:
   # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
   # Build group: named workloads report their own results.
   build:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled')) }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:
@@ -351,8 +350,7 @@ jobs:
 
   # Unit group: named workloads report their own results.
   unit:
-    needs: fixture-provenance
-    if: &requested ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    if: &requested ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     name: Unit / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -417,16 +415,15 @@ jobs:
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   # Contract group: named workloads report their own results.
   failures:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
     name: Contract / Test (${{ matrix.shard }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 5
       matrix:
         os: *ci-os
-        shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
+        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     env:
       FAILURE_MEASURE_BUNDLES: ${{ (inputs.contract_measure_bundles || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) && '1' || '0' }}
       FAILURE_SHARD: ${{ matrix.shard }}
@@ -473,8 +470,7 @@ jobs:
   # Preserve the stable contract gate and require every partition, including specialized controls.
   # E2E group: named workloads report their own results.
   e2e:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
     name: E2E / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -576,8 +572,7 @@ jobs:
 
   # Interop group: named workloads report their own results.
   interop:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     name: Interop / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -648,8 +643,7 @@ jobs:
 
   # Real shared-adapter gameplay parity belongs to Interop; each native architecture must execute DOOM.
   pvm-doom-backends:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-backends' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     name: Interop / PVM Backends (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -707,8 +701,7 @@ jobs:
 
   # Storage retains its existing performance panels; PVM has one native architecture path below.
   perf:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     name: Perf / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -819,8 +812,7 @@ jobs:
   # Every merge measures the same complete current-source PVM cohort on both native CPUs.
   # Focused manual requests reuse this runner/report protocol, without diagnostic benchmark paths.
   pvm-comparison:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     # Reports retain the actual API job name without maintaining a separate display-name selector.
     name: &pvm-performance-name ${{ format('Perf / PVM ({0})', matrix.family.name) }}
     timeout-minutes: *ci-job-timeout
@@ -877,8 +869,7 @@ jobs:
             build/ci/*.log
 
   pvm-fuzz:
-    needs: fixture-provenance
-    if: ${{ !cancelled() && (needs['fixture-provenance'].result == 'success' || needs['fixture-provenance'].result == 'skipped') && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
     name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:

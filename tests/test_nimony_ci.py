@@ -193,29 +193,20 @@ class NimonyCISafeguards(unittest.TestCase):
                         self.assertTrue(host.startswith('ubuntu-'), host)
                         self.assertEqual(host.endswith('-arm'), family['platform'] == 'linux-arm64', host)
 
-    def test_fixture_gate_stops_smoke_and_full_fanout(self):
-        """Smoke and full jobs wait for the shared gate, while other focused requests can skip it."""
-        text = (ROOT/'.github/workflows/ci.yml').read_text()
-        full = event_context()
-        gate = 'fixture-provenance'
-        self.assertTrue(expression(job_condition(text, gate), full))
-        failed = dict(full, needs={gate: {'result': 'failure'}})
-        for name, job in workflow(text)['jobs'].items():
-            if name != gate and expression(job.get('if', True), full):
-                self.assertEqual(job.get('needs'), gate)
-                self.assertFalse(expression(job.get('if', True), failed), name)
-        for smoke in (event_context('pull_request', 'opened'),
-                      event_context('pull_request', 'labeled', 'lgtm'),
-                      event_context('workflow_dispatch', suite='smoke')):
-            self.assertTrue(expression(job_condition(text, gate), smoke))
-            self.assertTrue(expression(job_condition(text, 'build'), smoke))
-            self.assertFalse(expression(job_condition(text, 'unit'), smoke))
-            smoke['needs'][gate]['result'] = 'failure'
-            self.assertFalse(expression(job_condition(text, 'build'), smoke))
-        tooling = event_context('workflow_dispatch', suite='tooling')
-        tooling['needs'][gate]['result'] = 'skipped'
-        self.assertFalse(expression(job_condition(text, gate), tooling))
-        self.assertTrue(expression(job_condition(text, 'build'), tooling))
+    def test_fixture_provenance_runs_independently(self):
+        """A provenance failure must fail CI while leaving other jobs eligible to run."""
+        jobs = workflow((ROOT/'.github/workflows/ci.yml').read_text())['jobs']
+        provenance = 'fixture-provenance'
+        self.assertFalse(jobs[provenance].get('continue-on-error', False))
+        for name, job in jobs.items():
+            # Provenance and the workloads must be eligible independently.
+            needs = job.get('needs', [])
+            if isinstance(needs, str):
+                needs = [needs]
+            if name == provenance:
+                self.assertFalse(needs)
+            else:
+                self.assertNotIn(provenance, needs)
 
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
@@ -226,7 +217,12 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         families = selected_families(text, 'unit', event_context())
         shards = [parse_unit_shard(row['shard']) for row in families if row['group'] == 'suites']
-        names = [name for shard in shards for _, members, _ in unit_partition(shard, 'audit', 'suites')[0] for name in members]
+        # The CI matrix runs on Linux x86-64, including when we test its coverage from macOS.
+        with patch('native_tests.platform.system', return_value='Linux'), \
+                patch('native_tests.platform.machine', return_value='x86_64'):
+            names = [name for shard in shards
+                     for _, members, _ in unit_partition(shard, 'audit', 'suites')[0]
+                     for name in members]
         self.assertEqual(Counter(names), Counter(UNIT_SUITES))
         # Corpus plan tasks include their dependency owners; compare whole scheduled task identities.
         from corpus_catalog import parse_corpus_shard, corpus_partition
