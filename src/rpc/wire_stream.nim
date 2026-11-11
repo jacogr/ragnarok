@@ -9,7 +9,7 @@ import std/[assertions, atomics, ioring, streamio, threadpool]
 
 type
   StreamExchange = object
-    stopping, done, inputReady, outputReady: bool
+    stopping, done, inputReady, inputEof, outputReady: bool
     input, output: string
     outputDeadline: Deadline
   RpcWireStream* = object
@@ -24,7 +24,7 @@ proc pollRpcStreams*() =
   discard pollCompletions(completions)
 
 proc yieldRpcIo() {.passive.} =
-  ## Yield briefly when the dispatcher owns a full input mailbox.
+  ## Yield briefly while waiting for the dispatcher to take input or publish output.
   let continuation = delay()
   discard submitTimeout(afterMs(1), continuation)
   suspend()
@@ -33,6 +33,7 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
   ## The single owner can safely change the shared stream deadline between operations.
   var (reader, writer) = openStreams(fd)
   var bytes = default(array[4096, char])
+  var atEof = false
   try:
     while not atomicLoad(s.stopping, moAcquire):
       if atomicLoad(s.outputReady, moAcquire):
@@ -42,7 +43,7 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
         writer.flush()
         s.output = ""
         atomicStore(s.outputReady, false, moRelease)
-      elif not atomicLoad(s.inputReady, moAcquire):
+      elif not atEof and not atomicLoad(s.inputReady, moAcquire):
         reader.renew(afterMs(10))
         var count = 0
         try:
@@ -51,7 +52,11 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
           # The plain stream has delivered no bytes when a read times out.
           if error == TimeoutError: continue
           break
-        if count == 0: break
+        if count == 0:
+          # FIN ends input only. The dispatcher may still be building a reply for the last chunk.
+          atEof = true
+          atomicStore(s.inputEof, true, moRelease)
+          continue
         for index in 0..<count: s.input.add(bytes[index])
         atomicStore(s.inputReady, true, moRelease)
       else:
@@ -113,6 +118,11 @@ proc takeInput*(stream: var RpcWireStream, chunk: var string): bool =
   chunk = move(s.input)
   atomicStore(s.inputReady, false, moRelease)
   true
+
+proc inputEnded*(stream: RpcWireStream): bool =
+  ## Orderly EOF follows the last inbox transfer. The writer remains available until stop.
+  let s = stream.exchange
+  s != nil and atomicLoad(s.inputEof, moAcquire)
 
 proc writing*(stream: RpcWireStream): bool =
   ## Output credit includes the bytes currently being written by the task.

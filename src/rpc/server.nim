@@ -601,6 +601,10 @@ proc tick*(server: var Server, peers: uint32) =
         continue
       if slot.input.len == 0 and not slot.fragmented:
         slot.deadline = now + 30000
+    # Observe EOF before taking input. If EOF is visible, the worker has already
+    # seen the last mailbox transfer, so only dispatcher-owned bytes remain.
+    let inputEnded = slot.stream.inputEnded
+    var consumedInput = false
     if slot.output.len == 0 and not slot.closing:
       var chunk = ""
       if slot.stream.active:
@@ -624,14 +628,21 @@ proc tick*(server: var Server, peers: uint32) =
             slot.deadline = now + 5000
           slot.input.add(chunk)
       if slot.opened and slot.output.len == 0:
+        let before = slot.input.len
         slot.process(tags, info, now, server.uiPort)
+        consumedInput = slot.input.len < before
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:
         slot.output = frame(update) # Request replies precede queued notifications on this connection.
         slot.offset = 0
         slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
-    if not slot.opened or slot.output.len == 0:
+    if not slot.opened:
+      continue
+    if slot.output.len == 0:
+      # A consumed frame may have produced no reply, so give subsequent buffered
+      # frames a turn. With EOF and no progress, an incomplete tail cannot finish.
+      if inputEnded and not consumedInput: slot.close()
       continue
     if slot.stream.active:
       slot.stream.send(slot.output)

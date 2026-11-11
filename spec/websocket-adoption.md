@@ -162,8 +162,9 @@ Nimony upgrade; keep this implementation PR draft until replacement qualificatio
 Run `make unit SUITE=rpc_transport_bridge` for byte bounds, ownership on refusal, output credit,
 late acknowledgements, concurrent producers and frozen shutdown admission. Run `make unit SUITE=rpc`
 for the actual dispatcher/session integration, including lease exclusion, generation reuse,
-reply ordering, slow-peer isolation and overflow. Run `make unit SUITE=rpc_stock_websocket` for
-an independent masked wire client exercising admission refusal, real subscription/publication,
-unsubscribe, ping/pong and close reason preservation through the stock task adapters. Its peer
-cooperatively releases the reader; it does not prove local cancellation or leak-free HttpMsg
-retirement. Keep the original eight-peer and isolated peer-close assessments as separate witnesses.
+reply ordering, slow-peer isolation and overflow. The original eight-peer and isolated peer-close
+assessments remain separate witnesses for the split-half prototype.
+
+Run `make unit SUITE=rpc_stock_websocket` for the production listener. An independent masked
+client exercises subscription delivery, unsubscribe, ping/pong, and replies after a peer
+half-closes its write side. The suite also checks shutdown with an idle client and a blocked writer.
