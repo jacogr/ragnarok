@@ -1203,9 +1203,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         cycleEdge(code, fixes, 0x87, commit)
         put(code, [0x89'u8, 0xd0, 0x25]) # MOV EAX,EDX; AND EAX,0xfffff000.
         cycleWord(code, 0xfffff000'u32)
-        put(code, [0x3d'u8]) # CMP EAX,0xfffff000. The stock low bound is page aligned.
+        put(code, [0x3d'u8]) # CMP EAX,0xfffff000. Offset 4092 would admit 0xfffffffc.
         cycleWord(code, 0xfffff000'u32)
-        cycleEdge(code, fixes, 0x84, commit)
+        cycleEdge(code, fixes, 0x84, commit) # The original upper bound is 0xfffffffb.
         put(code, [0x49'u8, 0x3b, 0x42, stack]) # CMP RAX,[R10+stack.first].
         cycleEdge(code, fixes, 0x83, stackPage)
         put(code, [0x48'u8, 0x8d, 0x90]) # LEA RDX,[RAX+4096].

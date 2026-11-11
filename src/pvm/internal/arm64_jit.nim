@@ -2747,9 +2747,9 @@ when NativeReadCycleEnabled:
     cycleCompareImmediate(words, 0, 4092)
     cycleEdge(words, fixes, armStorePageCommit, 8)
     words.add(0x12144c63'u32) # AND W3,W3,#0xfffff000.
-    armCompactImmediate(words, 2, 0xfffff000'u64)
+    armCompactImmediate(words, 2, 0xfffff000'u64) # A hit at offset 4092 would admit 0xfffffffc.
     cycleCompare(words, 3, 2)
-    cycleEdge(words, fixes, armStorePageCommit, 0)
+    cycleEdge(words, fixes, armStorePageCommit, 0) # The original upper bound is 0xfffffffb.
     # The stock low bound is page aligned. A threshold inside the page prevents a fill.
     cycleLoad(words, 1, 20, uint32(NativeCycleWritableOffset))
     cycleCompare(words, 3, 1)
