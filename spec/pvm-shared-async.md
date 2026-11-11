@@ -384,3 +384,9 @@ with their complete goldens and fresh numeric proofs under checked ARC/Clang/Thi
 generated C confirms one acquire/release pair and POD cleanup before lease release. Mac ARM and
 Linux x86 semantic checks pass; Linux runtime qualification and performance remain pending.
 This architectural change does not establish the cause of the earlier shared-witness timeout.
+
+## Later Read replacement
+
+The [native session](../src/pvm/internal/native_pipeline.nim#L617) and
+[read probe](../src/pvm/internal/read_admission_probe.nim#L292) document the replacement contract.
+The [shared Async history](../tests/support/pvm_shared_async.nim#L1374) covers both ISAs.

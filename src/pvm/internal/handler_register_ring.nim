@@ -80,9 +80,15 @@ when declared(FlatFrame):
     let a: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     let b: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     let c: FlatHandler = flatChargedShape[151, 152, 173, Ring]
-    f.handlers[int(headers[0])] = a
-    f.handlers[int(headers[1])] = b
-    f.handlers[int(headers[2])] = c
+    when Ring:
+      flatInstallNativePatch(f, headers[0], a)
+      flatInstallNativePatch(f, headers[1], b)
+      flatInstallNativePatch(f, headers[2], c)
+    else:
+      # Cold nomination changes only checked shape routing; no image owns these handlers.
+      f.handlers[int(headers[0])] = a
+      f.handlers[int(headers[1])] = b
+      f.handlers[int(headers[2])] = c
 
   proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.} =
     ## Nominate a checked round once, then dispatch the stock checked worker until publication.
@@ -106,7 +112,9 @@ when declared(FlatFrame):
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =
     ## A full unpaid entry may run natively. The original header handles partial, paid and gas stops.
-    if f.info.blockCharged or f.barrier != flatStop or f.pricingKind != 0: return false
+    if f.info.blockCharged or f.barrier != flatStop or f.pricingKind != 0 or
+        not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.RegisterRing):
+      return false
     let charge = f.arguments[int(header)]
     if f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x: return false
     let rotation = nativeRingRotation(f.nativeSession, header)

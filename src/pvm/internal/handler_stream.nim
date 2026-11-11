@@ -29,7 +29,8 @@ when defined(pvmX86Jit):
 
 when NativeCheckedReadEnabled:
   const
-    ReadProbeSlots = 4 ## Fixed ordinary call-local candidate capacity.
+    ReadProbeSlots = 4                            ## Fixed ordinary call-local candidate capacity.
+    ReadProbeWalkLimit = NativeReadProbeWalkLimit ## Whole-call certificate attempts.
     ReadProbeCapacity = when NativeReadCycleEnabled: ReadProbeSlots+1 else: ReadProbeSlots
   type
     ReadProbeCandidate = object ## Exact sealed terminal and its invocation-local evidence.
@@ -41,9 +42,10 @@ when NativeCheckedReadEnabled:
       candidates: array[ReadProbeCapacity, ReadProbeCandidate]
       count, inspected: int
       epoch, segmentBudget: uint64
-      observing: bool
+      priorWork: uint64
+      observing, callActive, later: bool
       when NativeReadCycleEnabled:
-        protectedTried, protectedInstalled: bool
+        protectedTried, protectedInstalled, protectedActive, protectedCountable: bool
         protectedRemainingLimit: uint64
 
 type
@@ -70,6 +72,13 @@ type
     y: uint32
     slots: RegisterSlots
   FlatHandler = proc(f: var FlatFrame, off: uint32): uint32 {.nimcall, raises: [].}
+  FlatNativePatch = object ## One exact installed slot and its original checked handler.
+    offset: uint32
+    checked, installed: nil FlatHandler
+  FlatNativeInstallation = object ## At most three bridge patches belong to one full immutable image key.
+    key: NativeImageKey
+    patches: array[3, FlatNativePatch]
+    count: byte
   FlatFact = object ## Immutable whole-program coordinates and quotas, captured by eager source decoding.
     pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
@@ -158,6 +167,7 @@ type
       readContextReady: bool
       readProbe: ReadProbeState
     nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
+    nativeInstallation: FlatNativeInstallation
     nativeOriginal: nil FlatHandler
     when NativeCheckedReadEnabled:
       nativeRingInstalled: bool   # Ready image rebound to this invocation's checked handlers.
@@ -249,6 +259,11 @@ func error*[T](outcome: FlatResult[T]): FlatError =
   ## Inspect a default/refused result without exposing a partial owner.
   outcome.status
 
+proc borrowFrame*(outcome: var FlatResult[FlatFrame]): var FlatFrame {.inline,
+    requires: outcome.status == FlatError.None.} =
+  ## Use the admitted frame in place while its enclosing result owns cleanup.
+  outcome.completed
+
 proc takeValue*[T](outcome: var FlatResult[T]): T {.inline, requires: outcome.status ==
     FlatError.None.} =
   ## Transfer an admitted owner once without deep-copying frame regions; consumed results lose success authority.
@@ -278,6 +293,54 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32)
 when NativeCheckedReadEnabled:
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32)
     ## Classify one bounded candidate without generating any native bytes.
+  proc observeReadProbeHeader(f: var FlatFrame, header: uint32)
+    ## Replacement discovery also sees cached checked headers under fixed whole-call budgets.
+
+proc flatRestoreNativeInstallation(f: var FlatFrame) =
+  ## Restore every old bridge and control field before source revalidation or physical retirement.
+  when NativeCheckedReadEnabled:
+    assert not f.readProbe.observing
+  assert int(f.nativeInstallation.count) <= f.nativeInstallation.patches.len
+  for index in 0..<int(f.nativeInstallation.count):
+    let patch = f.nativeInstallation.patches[index]
+    let checked = patch.checked
+    let installed = patch.installed
+    assert int(patch.offset) < f.handlers.len
+    if checked != nil and installed != nil:
+      assert f.handlers[int(patch.offset)] == installed
+      f.handlers[int(patch.offset)] = checked
+    else:
+      # A default slot has no authority; only fully captured entries may be restored.
+      assert false, "native installation contains an empty patch"
+  f.nativeInstallation = default(FlatNativeInstallation)
+  f.nativeOriginal = nil
+  f.nativeEntry = 0
+  f.nativeInstalledEpoch = 0
+  when NativeCheckedReadEnabled:
+    f.nativeRingInstalled = false
+    f.readContext = default(NativeReadContext)
+    f.readContextReady = false
+
+proc flatInstallNativePatch(f: var FlatFrame, offset: uint32, selected: FlatHandler) =
+  ## Capture an original once; repeated same-key installation never overwrites its checked fallback.
+  let key = nativeInstalledKey(f.nativeSession)
+  assert key.ticket != 0 and key.epoch == nativeEpoch(f.nativeSession)
+  assert int(offset) < f.handlers.len
+  if f.nativeInstallation.count != 0:
+    assert f.nativeInstallation.key == key
+  else:
+    f.nativeInstallation.key = key
+  for index in 0..<int(f.nativeInstallation.count):
+    if f.nativeInstallation.patches[index].offset == offset:
+      assert f.nativeInstallation.patches[index].installed == selected
+      f.handlers[int(offset)] = selected
+      return
+  let count = int(f.nativeInstallation.count)
+  assert count < f.nativeInstallation.patches.len
+  f.nativeInstallation.patches[count] = FlatNativePatch(offset: offset,
+    checked: f.handlers[int(offset)], installed: selected)
+  f.nativeInstallation.count += 1'u8
+  f.handlers[int(offset)] = selected
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -307,7 +370,8 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
-template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static[bool]) =
+template flatReserveImpl(f: var FlatFrame, off: uint32,
+    observeProtected, observeLater: static[bool]) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
   if f.remaining == 0:
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
@@ -318,6 +382,9 @@ template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static
     f.info.gas = MachineGas(uint64(f.info.gas)-a.x)
     f.info.blockCharged = true
   if f.remaining >= uint64(a.y):
+    when NativeCheckedReadEnabled and observeLater:
+      # Only the selected observing dispatcher reaches this complete ordinary reservation.
+      observeReadProbeHeader(f, off)
     f.remaining-=uint64(a.y)
     # Whole-block exits are rare: retain its stable header instead of reading the source index on every entry.
     # Emitted offsets are below2^31; raw source ends are at most the four-MiB fact ceiling.
@@ -325,7 +392,7 @@ template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static
     when NativeReadCycleEnabled:
       when observeProtected:
         # This header owns disjoint complete reservations in one checked segment.
-        if f.remaining <= f.readProbe.protectedRemainingLimit:
+        if f.readProbe.protectedCountable and f.remaining <= f.readProbe.protectedRemainingLimit:
           inc f.readProbe.candidates[ReadProbeSlots].eligible
   else:
     let reserved = f.remaining
@@ -345,11 +412,12 @@ template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static
 
 template flatReserve(f: var FlatFrame, off: uint32) =
   ## Ordinary headers reserve without read observation.
-  flatReserveImpl(f, off, false)
+  flatReserveImpl(f, off, false, false)
 
-proc flatReserveHeader(f: var FlatFrame, off: uint32): uint32 {.alwaysInline.} =
-  ## The dispatch loop reserves ordinary headers with the exact shared checks, then selects the patched body.
-  flatReserve(f, off)
+proc flatReserveHeader[ObserveLater: static[bool]](f: var FlatFrame,
+    off: uint32): uint32 {.alwaysInline.} =
+  ## Both dispatch modes reserve through the same checks before selecting a possibly patched body.
+  flatReserveImpl(f, off, false, ObserveLater)
   off+1
 
 proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
@@ -1761,7 +1829,9 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   let original = f.nativeOriginal
   assert original != nil and off == f.nativeEntry
   let span = nativeSpanInfo(f.nativeSession)
-  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0 or
+  if not nativeSpanReady(f.nativeSession) or
+      not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.PurePrefix) or
+      f.pricingKind != 0 or
       f.barrier != flatStop or not f.info.blockCharged or
       span.epoch != f.nativeInstalledEpoch:
     return original(f, off)
@@ -1863,6 +1933,8 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
   assert original != nil
   let loop = nativeLoopInfo(f.nativeSession)
   if not nativeSpanReady(f.nativeSession) or loop.kind != NativeKind.ClosedRegisterLoop or
+      not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
+          NativeKind.ClosedRegisterLoop) or
       nativeEpoch(f.nativeSession) != f.nativeInstalledEpoch or f.pricingKind != 0 or
       f.barrier != flatStop or
       not f.info.blockCharged or off != f.nativeEntry or off != loop.header+1 or
@@ -1884,7 +1956,11 @@ when NativeReadCycleEnabled:
 
 proc installNative(f: var FlatFrame) =
   ## Only the caller mutates its exclusively held stream; each image uses its own certificate.
-  if f.pricingKind != 0 or f.nativeOriginal != nil: return
+  if f.pricingKind != 0: return
+  if f.nativeInstallation.count != 0 and
+      f.nativeInstallation.key != nativeInstalledKey(f.nativeSession):
+    flatRestoreNativeInstallation(f)
+  if f.nativeOriginal != nil: return
   when NativeReadCycleEnabled:
     let cycle = nativeReadCycleInfo(f.nativeSession)
     if cycle.epoch != 0:
@@ -1914,7 +1990,7 @@ proc installNative(f: var FlatFrame) =
     f.nativeOriginal = f.handlers[int(span.entry)]
     f.nativeEntry = span.entry
     f.nativeInstalledEpoch = span.epoch
-    f.handlers[int(span.entry)] = flatNativeLoop
+    flatInstallNativePatch(f, span.entry, flatNativeLoop)
     return
   if span.epoch != nativeEpoch(f.nativeSession) or int(span.entry) >= f.handlers.len or
       int(span.past) >= f.handlers.len or span.past <= span.entry: return
@@ -1941,7 +2017,7 @@ proc installNative(f: var FlatFrame) =
     f.nativeOriginal = f.handlers[int(span.entry)]
     f.nativeEntry = span.entry
     f.nativeInstalledEpoch = span.epoch
-    f.handlers[int(span.entry)] = flatNativePure
+    flatInstallNativePatch(f, span.entry, flatNativePure)
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
   ## Shared structural classification precedes any native cache/byte allocation and all ISA decisions.
@@ -2886,6 +2962,31 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
     f.handlers[int(boundary)] = flatBudget
   body
 
+template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[bool]) =
+  ## The checked loop is shared by the ordinary and observed segments. Only the latter can discover.
+  var node = entry
+  while node != flatStop:
+    assert int(node) < f.handlers.len
+    let selected = f.handlers[int(node)]
+    if selected == flatCharge:
+      # Preserve temporary barriers: select the first operation only after complete reservation/patching.
+      when ObserveLater:
+        node = flatReserveHeader[true](f, node)
+      else:
+        node = flatReserveHeader[false](f, node)
+      if node != flatStop:
+        let body = f.handlers[int(node)]
+        node = body(f, node)
+    else:
+      # Specialized charged/native/failure workers retain their existing entry and complete fallback behavior.
+      node = selected(f, node)
+
+when NativeCheckedReadEnabled:
+  proc runFlatObservedLoop(f: var FlatFrame, entry: uint32) {.noinline.} =
+    ## The armed segment selects this loop once. Read certificates require the ordinary charge
+    ## identity; fused shapes cannot nominate, and the protected slot already owns its observation.
+    flatDispatchLoop(f, entry, true)
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   f.hostReady = false
@@ -2933,18 +3034,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if offset == flatStop:
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
-  while offset != flatStop:
-    assert int(offset) < f.handlers.len
-    let selected = f.handlers[int(offset)]
-    if selected == flatCharge:
-      # Preserve temporary barriers: select the first operation only after complete reservation/patching.
-      offset = flatReserveHeader(f, offset)
-      if offset != flatStop:
-        let body = f.handlers[int(offset)]
-        offset = body(f, offset)
+  when NativeCheckedReadEnabled:
+    if f.readProbe.observing and f.readProbe.later:
+      runFlatObservedLoop(f, offset)
     else:
-      # Specialized charged/native/failure workers retain their existing entry and complete fallback behavior.
-      offset = selected(f, offset)
+      flatDispatchLoop(f, offset, false)
+  else:
+    flatDispatchLoop(f, offset, false)
   if f.barrier != flatStop:
     let saved = f.savedHandler
     assert saved != nil
@@ -3148,6 +3244,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
   replacement.nativeSession = move(f.nativeSession)
+  replacement.nativeInstallation = f.nativeInstallation
   replacement.nativeOriginal = f.nativeOriginal
   replacement.nativeEntry = f.nativeEntry
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
@@ -3335,6 +3432,7 @@ type FlatStream* = object
   sites, compiledForPc: seq[uint32]
   sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
   nativeOriginal: nil FlatHandler
+  nativeInstallation: FlatNativeInstallation
   nativeEntry: uint32
   nativeInstalledEpoch: uint64
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
@@ -3354,7 +3452,7 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     compiledForPc: move(f.compiledForPc), sourcePlan: f.plan, pricingKind: f.pricingKind,
     failure: f.preparationFailure,
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
-    nativeInstalledEpoch: f.nativeInstalledEpoch)
+    nativeInstalledEpoch: f.nativeInstalledEpoch, nativeInstallation: f.nativeInstallation)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Restore an executable stream only for the exact immutable plan.
@@ -3381,6 +3479,7 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.nativeOriginal = stream.nativeOriginal
   f.nativeEntry = stream.nativeEntry
   f.nativeInstalledEpoch = stream.nativeInstalledEpoch
+  f.nativeInstallation = stream.nativeInstallation
   flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.
   when NativeCheckedReadEnabled:
     # Restored original facts authorize a deferred read retry without discovering another candidate.

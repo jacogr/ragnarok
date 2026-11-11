@@ -160,6 +160,8 @@ when declared(FlatFrame):
     assert original != nil and off == f.nativeEntry
     let read = nativeReadCycleInfo(f.nativeSession)
     if read.epoch == 0 or read.epoch != f.nativeInstalledEpoch or off != read.header+1 or
+        not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
+            NativeKind.ConnectedReadCycle) or
         f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
         f.reservation != (read.header or flatReservationHeaderFlag):
       return original(f, off)
@@ -198,4 +200,4 @@ when declared(FlatFrame):
     f.nativeOriginal = f.handlers[int(entry)]
     f.nativeEntry = entry
     f.nativeInstalledEpoch = info.epoch
-    f.handlers[int(entry)] = flatNativeReadCycle
+    flatInstallNativePatch(f, entry, flatNativeReadCycle)

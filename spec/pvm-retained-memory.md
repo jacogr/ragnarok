@@ -287,6 +287,11 @@ restore it correctly, with fresh construction for changed mappings. Continue res
 the existing checked synchronization and dirty-epoch reset. Local/fallible exits retain no CPU or
 callback state and follow the same complete byte-restoration rule if their storage is retained.
 
+## Plain prepared frame lifetime
+
+See the [prepared frame routines](../src/pvm/step.nim#L563) and the
+[cross-page reuse regression](../tests/unit/codec/test_pvm_memory_reuse.nim#L151).
+
 ## Validation
 
 The registered `pvm_memory_reuse` suite compares full fresh/reused machine snapshots and direct

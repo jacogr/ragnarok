@@ -159,11 +159,27 @@ block crossing_unpublished_reuse:
       image.bytes[offset] = byte((offset*7+int(physical)) mod 251)
     crossingImages.add(image)
   let crossingOriginal = captureMemory(crossingImages, PageLimit(2)).value
-  let crossingPrepared = newPreparedProgram(crossingOwner,
-    defaultPreparedLimits(GasCycleLimit(10000))).value
+  var crossingLimits = defaultPreparedLimits(GasCycleLimit(10000))
+  crossingLimits.resources.pages = PageLimit(2)
+  let crossingPrepared = newPreparedProgram(crossingOwner, crossingLimits).value
   let stopped = execute(input(crossingOwner, crossingOriginal, 11), ExecutionStepLimit(1),
     crossingPrepared)
   assert stopped.error == StepError.StepLimitExceeded
+
+  # An oversized map refuses before borrowing the idle lease. Zero attempts take precedence.
+  let idle = preparedInfo(crossingPrepared).value
+  let oversized = captureMemory([crossingImages[0], crossingImages[1],
+    PageImage(index: PageIndex(65), access: PageAccess.ReadWrite)], PageLimit(3)).value
+  let oversizedSource = input(crossingOwner, oversized, 11)
+  assert execute(oversizedSource, ExecutionStepLimit(0), crossingPrepared).error ==
+    StepError.StepLimitExceeded
+  assert execute(oversizedSource, ExecutionStepLimit(100), crossingPrepared).error ==
+    StepError.InvalidPreparedProgram
+  let afterRefusal = preparedInfo(crossingPrepared).value
+  assert afterRefusal.memoryReuses == idle.memoryReuses and
+    afterRefusal.retainedMemoryPayloadBytes == idle.retainedMemoryPayloadBytes and
+    afterRefusal.streamNodes == idle.streamNodes and afterRefusal.preparationUnits ==
+        idle.preparationUnits
 
   # Reuse the unchanged source after an unpublished store, then compare every CPU and page byte.
   let firstSource = input(crossingOwner, crossingOriginal, 12)
