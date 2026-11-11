@@ -219,87 +219,86 @@ when declared(X86Block):
         code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
     takeX86Instructions(code)
 
-  when defined(pvmPaidMixedLoopWitness):
-    proc x86PaidMixedLoopInstructions*(operations: openArray[NativeOperation],
-        guards: uint32): seq[byte] =
-      ## Publish every successful operation before the next guard. A guard names the
-      ## first uncommitted physical operation and leaves its checked worker the live prefix.
-      ## The caller binds the original source interval, edges and funded visit ceiling.
-      const
-        visit = 0'u8
-        capped = 1'u8
-        outside = 2'u8
-      result = @[]
-      if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
-        return
-      let terminal = operations.len-1
-      let branch = operations[terminal]
-      if branch.opcode != 171 or guards == 0: return
+  proc x86PaidMixedLoopInstructions*(operations: openArray[NativeOperation],
+      guards: uint32): seq[byte] =
+    ## Publish every successful operation before the next guard. A guard names the
+    ## first uncommitted physical operation and leaves its checked worker the live prefix.
+    ## The caller binds the original source interval, edges and funded visit ceiling.
+    const
+      visit = 0'u8
+      capped = 1'u8
+      outside = 2'u8
+    result = @[]
+    if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
+      return
+    let terminal = operations.len-1
+    let branch = operations[terminal]
+    if branch.opcode != 171 or guards == 0: return
 
-      var code = default(X86Block)
-      var fixes: seq[X86CycleFixup] = @[]
-      var labels = default(X86MixedLoopLabels)
-      var guardLabels = default(array[int(NativeReadFactLimit)-1, byte])
-      var nextLabel = 3'u8
-      var emittedGuards = 0'u32
-      let access = X86CanonicalAccess()
-      # RDI stays canonical. All body operations preserve R9, R10 and R11.
-      put(code, [0x49'u8, 0x89, 0xf2, 0x45, 0x31, 0xc9]) # Context R10, visits R9D.
-      readCycleContextOp(code, [0x4d'u8, 0x8b, 0x9a], NativeMixedLoopVisitLimitOffset) # Cap R11.
-      put(code, [0x4d'u8, 0x85, 0xdb]) # TEST R11,R11.
-      cycleEdge(code, fixes, 0x84, capped)
-      put(code, [0x49'u8, 0x81, 0xfb]) # CMP R11,256.
-      cycleWord(code, NativeMixedLoopVisitLimit)
-      cycleEdge(code, fixes, 0x87, capped)
+    var code = default(X86Block)
+    var fixes: seq[X86CycleFixup] = @[]
+    var labels = default(X86MixedLoopLabels)
+    var guardLabels = default(array[int(NativeReadFactLimit)-1, byte])
+    var nextLabel = 3'u8
+    var emittedGuards = 0'u32
+    let access = X86CanonicalAccess()
+    # RDI stays canonical. All body operations preserve R9, R10 and R11.
+    put(code, [0x49'u8, 0x89, 0xf2, 0x45, 0x31, 0xc9]) # Context R10, visits R9D.
+    readCycleContextOp(code, [0x4d'u8, 0x8b, 0x9a], NativeMixedLoopVisitLimitOffset) # Cap R11.
+    put(code, [0x4d'u8, 0x85, 0xdb]) # TEST R11,R11.
+    cycleEdge(code, fixes, 0x84, capped)
+    put(code, [0x49'u8, 0x81, 0xfb]) # CMP R11,256.
+    cycleWord(code, NativeMixedLoopVisitLimit)
+    cycleEdge(code, fixes, 0x87, capped)
 
-      labels[int(visit)] = code.bytes.len
-      for index in 0..<terminal:
-        let op = operations[index]
-        let encoding = nativeReadEncodingOpcode(op.opcode)
-        let width = nativeMixedLoopStoreWidth(op.opcode)
-        if width != 0 or nativeReadOpcode(encoding):
-          let guard = nextLabel
-          inc nextLabel
-          guardLabels[index] = guard
-          emittedGuards = emittedGuards or (1'u32 shl index)
-          if width != 0:
-            mixedLoopStore(code, fixes, labels, op, byte(width), guard, nextLabel)
-          else:
-            mixedLoopLoad(code, fixes, labels, op, encoding, guard, nextLabel)
-        elif supportedScalarOpcode(op.opcode):
-          emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
+    labels[int(visit)] = code.bytes.len
+    for index in 0..<terminal:
+      let op = operations[index]
+      let encoding = nativeReadEncodingOpcode(op.opcode)
+      let width = nativeMixedLoopStoreWidth(op.opcode)
+      if width != 0 or nativeReadOpcode(encoding):
+        let guard = nextLabel
+        inc nextLabel
+        guardLabels[index] = guard
+        emittedGuards = emittedGuards or (1'u32 shl index)
+        if width != 0:
+          mixedLoopStore(code, fixes, labels, op, byte(width), guard, nextLabel)
         else:
-          return # The source certificate omits folded no-ops and binds the unique terminal.
-      if emittedGuards != guards: return
+          mixedLoopLoad(code, fixes, labels, op, encoding, guard, nextLabel)
+      elif supportedScalarOpcode(op.opcode):
+        emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
+      else:
+        return # The source certificate omits folded no-ops and binds the unique terminal.
+    if emittedGuards != guards: return
 
-      put(code, [0x41'u8, 0xff, 0xc1]) # INC R9D after the complete original body.
-      readAccess(code, access, branch.slots.aIndex, false)
-      readAccess(code, access, branch.slots.bIndex, true)
-      put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX selects the original BNE edge.
-      cycleEdge(code, fixes, 0x84, outside)
-      put(code, [0x45'u8, 0x39, 0xd9]) # CMP R9D,R11D retries only while funded.
-      cycleEdge(code, fixes, 0x82, visit)
+    put(code, [0x41'u8, 0xff, 0xc1]) # INC R9D after the complete original body.
+    readAccess(code, access, branch.slots.aIndex, false)
+    readAccess(code, access, branch.slots.bIndex, true)
+    put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX selects the original BNE edge.
+    cycleEdge(code, fixes, 0x84, outside)
+    put(code, [0x45'u8, 0x39, 0xd9]) # CMP R9D,R11D retries only while funded.
+    cycleEdge(code, fixes, 0x82, visit)
 
-      labels[int(capped)] = code.bytes.len
-      put(code, [0x44'u8, 0x89, 0xc8, 0xc3]) # MOV EAX,R9D; RET at the original header.
-      labels[int(outside)] = code.bytes.len
-      put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,checked outside bit.
-      cycleWord(code, NativeMixedLoopExitBit)
-      put(code, [0xc3'u8])
-      for index in 0..<terminal:
-        let guard = guardLabels[index]
-        if guard != 0:
-          labels[int(guard)] = code.bytes.len
-          put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,one-based guard.
-          cycleWord(code, uint32(index+1) shl NativeMixedLoopGuardShift)
-          put(code, [0xc3'u8])
+    labels[int(capped)] = code.bytes.len
+    put(code, [0x44'u8, 0x89, 0xc8, 0xc3]) # MOV EAX,R9D; RET at the original header.
+    labels[int(outside)] = code.bytes.len
+    put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,checked outside bit.
+    cycleWord(code, NativeMixedLoopExitBit)
+    put(code, [0xc3'u8])
+    for index in 0..<terminal:
+      let guard = guardLabels[index]
+      if guard != 0:
+        labels[int(guard)] = code.bytes.len
+        put(code, [0x44'u8, 0x89, 0xc8, 0x0d]) # MOV EAX,R9D; OR EAX,one-based guard.
+        cycleWord(code, uint32(index+1) shl NativeMixedLoopGuardShift)
+        put(code, [0xc3'u8])
 
-      if code.bytes.len > NativeImageByteLimit: return
-      for fix in fixes:
-        # The self-edge may patch backward. All targets and fixups remain image-local.
-        let target = labels[int(fix.target)]
-        assert target > 0 and target < code.bytes.len
-        let delta = cast[uint32](int32(target-(fix.at+4)))
-        for shift in 0..<4:
-          code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
-      result = takeX86Instructions(code)
+    if code.bytes.len > NativeImageByteLimit: return
+    for fix in fixes:
+      # The self-edge may patch backward. All targets and fixups remain image-local.
+      let target = labels[int(fix.target)]
+      assert target > 0 and target < code.bytes.len
+      let delta = cast[uint32](int32(target-(fix.at+4)))
+      for shift in 0..<4:
+        code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
+    result = takeX86Instructions(code)

@@ -15,7 +15,7 @@ import ./[native_control, native_ir]
 import ./native_read_body
 when NativeReadCycleEnabled:
   import ./[native_read_cycle, native_read_window]
-  when defined(pvmPaidMixedLoopWitness): import ./native_mixed_loop
+  import ./native_mixed_loop
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -3226,136 +3226,135 @@ when NativeReadCycleEnabled:
       result = emitArmReadCycle(cycle, storePage = false, allowWindow = false,
           allowStoreTail = false)
 
-  when defined(pvmPaidMixedLoopWitness):
-    proc armPaidLoopStore(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
-        operation: NativeOperation, refusal: int) =
-      ## Prove the full selected extent and every dirty page before one store.
-      ## X4..X16 hold the live guest bank and X17 holds the checked byte pointer.
-      let width = nativeMixedLoopStoreWidth(operation.opcode)
-      assert width == 1 or width == 4
-      let byteStore = width == 1
-      let displacement = uint32(operation.immediate and 0xffffffff'u64)
-      if byteStore:
-        let base = uint32(operation.slots.bIndex)+4
-        if not armSmallIndirectAddress(words, base, displacement, false):
-          armCompactImmediate(words, 2, uint64(displacement))
-          words.add(0x0b020003'u32 or (base shl 5)) # ADD W3,Wbase,W2.
-      else:
-        armCompactImmediate(words, 3, uint64(displacement))
-      words.add(0xf140407f'u32) # CMP X3,#65536.
-      cycleEdge(words, fixes, refusal, 3)
-      armCompactImmediate(words, 2, uint64(high(uint32))-uint64(width))
-      cycleCompare(words, 3, 2)
-      cycleEdge(words, fixes, refusal, 8)
+  proc armPaidLoopStore(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      operation: NativeOperation, refusal: int) =
+    ## Prove the full selected extent and every dirty page before one store.
+    ## X4..X16 hold the live guest bank and X17 holds the checked byte pointer.
+    let width = nativeMixedLoopStoreWidth(operation.opcode)
+    assert width == 1 or width == 4
+    let byteStore = width == 1
+    let displacement = uint32(operation.immediate and 0xffffffff'u64)
+    if byteStore:
+      let base = uint32(operation.slots.bIndex)+4
+      if not armSmallIndirectAddress(words, base, displacement, false):
+        armCompactImmediate(words, 2, uint64(displacement))
+        words.add(0x0b020003'u32 or (base shl 5)) # ADD W3,Wbase,W2.
+    else:
+      armCompactImmediate(words, 3, uint64(displacement))
+    words.add(0xf140407f'u32) # CMP X3,#65536.
+    cycleEdge(words, fixes, refusal, 3)
+    armCompactImmediate(words, 2, uint64(high(uint32))-uint64(width))
+    cycleCompare(words, 3, 2)
+    cycleEdge(words, fixes, refusal, 8)
 
-      # The original stack base selects its descriptor even when it is empty.
-      cycleAddImmediate(words, 17, 20, uint32(NativeCycleWritableOffset))
-      cycleLoad(words, 1, 17, 0)
-      cycleAddImmediate(words, 2, 17, 24)
-      cycleCompare(words, 3, 1)
-      words.add(0x9a822231'u32) # CSEL X17,X17,X2,HS.
-      words.add(0xa9400a21'u32) # LDP X1,X2,[X17].
-      words.add(0xf1000042'u32 or (width shl 10)) # SUBS X2,X2,#width.
-      cycleEdge(words, fixes, refusal, 3)
-      words.add(0xcb010061'u32) # SUB X1,X3,X1.
-      cycleCompare(words, 1, 2)
-      cycleEdge(words, fixes, refusal, 8)
-      cycleLoad(words, 2, 17, 16)
-      cycleCompareImmediate(words, 2, 0)
-      cycleEdge(words, fixes, refusal, 0)
-      cycleAddRegister(words, 17, 2, 1)
+    # The original stack base selects its descriptor even when it is empty.
+    cycleAddImmediate(words, 17, 20, uint32(NativeCycleWritableOffset))
+    cycleLoad(words, 1, 17, 0)
+    cycleAddImmediate(words, 2, 17, 24)
+    cycleCompare(words, 3, 1)
+    words.add(0x9a822231'u32) # CSEL X17,X17,X2,HS.
+    words.add(0xa9400a21'u32) # LDP X1,X2,[X17].
+    words.add(0xf1000042'u32 or (width shl 10)) # SUBS X2,X2,#width.
+    cycleEdge(words, fixes, refusal, 3)
+    words.add(0xcb010061'u32) # SUB X1,X3,X1.
+    cycleCompare(words, 1, 2)
+    cycleEdge(words, fixes, refusal, 8)
+    cycleLoad(words, 2, 17, 16)
+    cycleCompareImmediate(words, 2, 0)
+    cycleEdge(words, fixes, refusal, 0)
+    cycleAddRegister(words, 17, 2, 1)
+    armCycleDirtyPage(words, fixes, refusal)
+    if not byteStore:
+      # Check the last byte's page before mutation, including a split word.
+      cycleAddImmediate(words, 3, 3, width-1)
       armCycleDirtyPage(words, fixes, refusal)
-      if not byteStore:
-        # Check the last byte's page before mutation, including a split word.
-        cycleAddImmediate(words, 3, 3, width-1)
-        armCycleDirtyPage(words, fixes, refusal)
-      let encoding = if byteStore: 0x39000000'u32 else: 0xb9000000'u32
-      words.add(encoding or (17'u32 shl 5) or (uint32(operation.slots.aIndex)+4))
+    let encoding = if byteStore: 0x39000000'u32 else: 0xb9000000'u32
+    words.add(encoding or (17'u32 shl 5) or (uint32(operation.slots.aIndex)+4))
 
-    proc armPaidMixedLoopInstructions*(operations: openArray[NativeOperation], guards: uint32): seq[uint32] =
-      ## Keep guest lanes resident across funded visits. Every memory guard
-      ## returns the exact first uncommitted operation after prior effects.
-      const
-        repeatVisit = 0
-        atCap = 1
-        commit = 2
-        firstGuard = 3
-      result = @[]
-      if operations.len < 4 or operations.len > int(NativeReadFactLimit): return
-      let branch = operations[operations.len-1]
-      if branch.opcode != 171: return
+  proc armPaidMixedLoopInstructions*(operations: openArray[NativeOperation], guards: uint32): seq[uint32] =
+    ## Keep guest lanes resident across funded visits. Every memory guard
+    ## returns the exact first uncommitted operation after prior effects.
+    const
+      repeatVisit = 0
+      atCap = 1
+      commit = 2
+      firstGuard = 3
+    result = @[]
+    if operations.len < 4 or operations.len > int(NativeReadFactLimit): return
+    let branch = operations[operations.len-1]
+    if branch.opcode != 171: return
 
-      # The borrowed register array and invocation context occupy X19/X20.
-      # X21 holds the visit cap and X22 counts completed original visits.
-      var words = @[0xd10083ff'u32, 0xa90053f3'u32, 0xa9015bf5'u32]
-      var labels = default(array[firstGuard+int(NativeReadFactLimit), int])
-      var fixes: seq[ArmMemoryCycleFixup] = @[]
-      cycleMove(words, 19, 0)
-      cycleMove(words, 20, 1)
-      cycleLoad(words, 21, 20, uint32(NativeMixedLoopVisitLimitOffset))
-      words.add(0xd2800016'u32) # MOVZ X22,#0.
-      for slot in 0..<13:
-        cycleLoad(words, uint32(slot+4), 19, uint32(slot*8))
-      cycleCompareImmediate(words, 21, NativeMixedLoopVisitLimit)
-      cycleEdge(words, fixes, atCap, 8)
-      labels[repeatVisit] = words.len
-      cycleCompare(words, 22, 21)
-      cycleEdge(words, fixes, atCap, 2)
+    # The borrowed register array and invocation context occupy X19/X20.
+    # X21 holds the visit cap and X22 counts completed original visits.
+    var words = @[0xd10083ff'u32, 0xa90053f3'u32, 0xa9015bf5'u32]
+    var labels = default(array[firstGuard+int(NativeReadFactLimit), int])
+    var fixes: seq[ArmMemoryCycleFixup] = @[]
+    cycleMove(words, 19, 0)
+    cycleMove(words, 20, 1)
+    cycleLoad(words, 21, 20, uint32(NativeMixedLoopVisitLimitOffset))
+    words.add(0xd2800016'u32) # MOVZ X22,#0.
+    for slot in 0..<13:
+      cycleLoad(words, uint32(slot+4), 19, uint32(slot*8))
+    cycleCompareImmediate(words, 21, NativeMixedLoopVisitLimit)
+    cycleEdge(words, fixes, atCap, 8)
+    labels[repeatVisit] = words.len
+    cycleCompare(words, 22, 21)
+    cycleEdge(words, fixes, atCap, 2)
 
-      var written = 0'u32
-      var emitted = 0'u32
-      for index in 0..<operations.len-1:
-        let op = operations[index]
-        let guard = firstGuard+index
-        let encoding = nativeReadEncodingOpcode(op.opcode)
-        if nativeMixedLoopStoreWidth(op.opcode) != 0:
-          # Prove the exact current destination before committing the Store.
-          armPaidLoopStore(words, fixes, op, guard)
-          emitted = emitted or (1'u32 shl index)
-        elif encoding >= 124 and encoding <= 130:
-          # Keep the Load after all preceding Stores and observe the live bytes.
-          var span = default(ArmReadSpan)
-          span.body = newArmRegionBody()
-          emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
-            range[124..130](encoding), encoding != op.opcode)
-          appendArmCycleRead(words, fixes, span, guard)
-          emitted = emitted or (1'u32 shl index)
-          written = written or span.body.writes
-        elif supportedScalarOpcode(op.opcode):
-          # A scalar result is available to every following operation in source order.
-          var scalar = newArmRegionBody()
-          emitArmOperation(scalar, op.opcode, op.slots, op.immediate)
-          for instruction in scalar.words:
-            words.add(instruction)
-          written = written or scalar.writes
-        else:
-          return
-      if emitted == 0 or emitted != guards: return
+    var written = 0'u32
+    var emitted = 0'u32
+    for index in 0..<operations.len-1:
+      let op = operations[index]
+      let guard = firstGuard+index
+      let encoding = nativeReadEncodingOpcode(op.opcode)
+      if nativeMixedLoopStoreWidth(op.opcode) != 0:
+        # Prove the exact current destination before committing the Store.
+        armPaidLoopStore(words, fixes, op, guard)
+        emitted = emitted or (1'u32 shl index)
+      elif encoding >= 124 and encoding <= 130:
+        # Keep the Load after all preceding Stores and observe the live bytes.
+        var span = default(ArmReadSpan)
+        span.body = newArmRegionBody()
+        emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
+          range[124..130](encoding), encoding != op.opcode)
+        appendArmCycleRead(words, fixes, span, guard)
+        emitted = emitted or (1'u32 shl index)
+        written = written or span.body.writes
+      elif supportedScalarOpcode(op.opcode):
+        # A scalar result is available to every following operation in source order.
+        var scalar = newArmRegionBody()
+        emitArmOperation(scalar, op.opcode, op.slots, op.immediate)
+        for instruction in scalar.words:
+          words.add(instruction)
+        written = written or scalar.writes
+      else:
+        return
+    if emitted == 0 or emitted != guards: return
 
-      cycleAddImmediate(words, 22, 22, 1)
-      armCycleBranch(words, fixes, branch, repeatVisit)
-      armCompactImmediate(words, 0, uint64(NativeMixedLoopExitBit))
-      cycleAddRegister(words, 0, 0, 22)
-      cycleEdge(words, fixes, commit, 16)
-      for index in 0..<operations.len-1:
-        if (guards and (1'u32 shl index)) != 0:
-          # A one-based body position distinguishes the paid guard from a cap return.
-          labels[firstGuard+index] = words.len
-          armCompactImmediate(words, 0, uint64((index+1) shl NativeMixedLoopGuardShift))
-          cycleAddRegister(words, 0, 0, 22)
-          cycleEdge(words, fixes, commit, 16)
-      labels[atCap] = words.len
-      cycleMove(words, 0, 22)
-      labels[commit] = words.len
-      for slot in 0..<13:
-        if (written and (1'u32 shl slot)) != 0:
-          cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
-      words.add(0xa94053f3'u32) # LDP X19,X20,[SP].
-      words.add(0xa9415bf5'u32) # LDP X21,X22,[SP,#16].
-      words.add(0x910083ff'u32) # ADD SP,SP,#32.
-      words.add(0xd65f03c0'u32) # RET.
-      if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
-        result = move(words)
+    cycleAddImmediate(words, 22, 22, 1)
+    armCycleBranch(words, fixes, branch, repeatVisit)
+    armCompactImmediate(words, 0, uint64(NativeMixedLoopExitBit))
+    cycleAddRegister(words, 0, 0, 22)
+    cycleEdge(words, fixes, commit, 16)
+    for index in 0..<operations.len-1:
+      if (guards and (1'u32 shl index)) != 0:
+        # A one-based body position distinguishes the paid guard from a cap return.
+        labels[firstGuard+index] = words.len
+        armCompactImmediate(words, 0, uint64((index+1) shl NativeMixedLoopGuardShift))
+        cycleAddRegister(words, 0, 0, 22)
+        cycleEdge(words, fixes, commit, 16)
+    labels[atCap] = words.len
+    cycleMove(words, 0, 22)
+    labels[commit] = words.len
+    for slot in 0..<13:
+      if (written and (1'u32 shl slot)) != 0:
+        cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
+    words.add(0xa94053f3'u32) # LDP X19,X20,[SP].
+    words.add(0xa9415bf5'u32) # LDP X21,X22,[SP,#16].
+    words.add(0x910083ff'u32) # ADD SP,SP,#32.
+    words.add(0xd65f03c0'u32) # RET.
+    if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
+      result = move(words)
 
   proc armMixedLoopInstructions*(operations: openArray[NativeOperation]): seq[uint32] =
     ## Lower a funded chunk with ordered reads, one already-dirty store and a pure suffix.
