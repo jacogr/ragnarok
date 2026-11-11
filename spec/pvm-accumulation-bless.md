@@ -2,8 +2,8 @@
 
 ## Scope and authority
 
-Qualify bless (16), Omega_B, against the [owned-role amendment](https://github.com/gavofyork/graypaper/pull/558)
-at `068d88c6` (merged after the repository's Gray Paper pin). Charge
+Qualify bless (16), Omega_B, against the [owned-role amendment](https://github.com/gavofyork/graypaper/blob/068d88c6f6a97e5294afa8619b24de947788733a/text/pvm_invocations.tex)
+at the repository's pinned revision `068d88c6`. Charge
 `422 + 20*r12` before capture, including when r11 keeps the current allowance
 dictionary. A full-width all-ones role register or input pointer keeps the
 corresponding current value. An all-ones E4 assigner keeps that core's owner.
@@ -11,7 +11,8 @@ Other inputs use the existing E4 assigner array and E4-service/E8-gas pairs.
 
 The current manager may replace all fields. Each current delegator, registrar
 and assigner may transfer the role or core they hold. Any caller may submit an
-unchanged proposal. Only the manager can change the allowance dictionary.
+unchanged proposal. It returns OK without adding publication work or discarding
+an earlier change. Only the manager can change the allowance dictionary.
 Unreadable supplied memory panics. Unauthorized proposals and repeated service
 keys return HUH before a permitted out-of-domain role returns WHO. Unique keys
 publish in numeric order. Identical repeated keys also return HUH.
@@ -28,28 +29,10 @@ Completion witnesses cover role and pointer sentinels, owned and foreign role
 proposals, dictionary equality and refusal, manager precedence, original queue
 and staging producers, and checkpoint ownership.
 
-## Ownership and bounded work
-
-The protocol parameter core count must match the prepared privilege profile;
-otherwise the host refuses locally rather than guessing a memory layout. Copy
-policy applies independently to the positional assigner array and raw pair array.
-PrivilegeConfig bounds raw record capture/sorting as well as encoded C(12) size,
-including every duplicate pair before refusal. Gas uses the full raw
-input count, before the uniqueness decision. Funded item cost proves the subsequent
-12*n byte extent cannot wrap; successful memory preflight and explicit typed
-allocation ceilings precede every native index conversion and allocation.
-
-The effect API checks field ownership against the current snapshot before
-narrowing guest role IDs. It owns canonical snapshot bytes and replaces serialized
-C(12) on a fork with inherited store ceilings. Default/failed results expose no
-map, privileges or partial execution. Subsequent yield/provide/storage operations
-preserve accepted privileges; checkpoint and outcome normalization retain/select
-the exact corresponding account/privilege version. No underlying guest memory,
-initial roles, original map or caller-owned role arrays are mutated.
-
-Authored fixture inputs now support a bounded writable payload and explicit initial
-manager. Their raw-program ceiling includes the opcode mask/framing for code that
-was already separately bounded below 128 bytes; production policy is unchanged.
+The implementation contracts live with [guest capture and refusal ordering](../src/state/accumulation/dispatch.nim#L461),
+[effect authorization and ownership](../src/state/accumulation/effects.nim#L1429),
+and the role and queue mergers for [complete batches](../src/state/accumulation/batch.nim#L253)
+and [annulled outcomes](../src/state/accumulation/global/roles.nim#L84).
 
 ## Historical old-pin verification (2026-10-19)
 
@@ -115,5 +98,6 @@ independent Python allowance checks also passed.
 
 The current `gp-next` vector head is four commits ahead of the pinned
 `a49f241a791f559d1502dc1b0b5328372995e375`. The range includes changes to the
-assurance and preimage codecs and STF witnesses. The pinned corpus and protocol
-sources retain their existing revisions during this scoped qualification.
+assurance and preimage codecs and STF witnesses. The vector pin stays at
+`a49f241a791f559d1502dc1b0b5328372995e375`. The Gray Paper pin advances through
+the owned-role and empty-export amendments.

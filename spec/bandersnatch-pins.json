@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "graypaper_commit": "519504c363f2bfcc1f6371ebffe3d2adaaa58e44",
+  "graypaper_commit": "068d88c6f6a97e5294afa8619b24de947788733a",
   "rust": "1.99.0",
   "nim": "2.2.12",
   "suite": "Bandersnatch-SHA512-ELL2-v1",

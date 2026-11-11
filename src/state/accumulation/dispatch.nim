@@ -460,7 +460,13 @@ func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
 
 proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
-  ## Charge bless's complete 69-bit item cost before memory, authorization and role validation.
+  ## Charge the full 69-bit `422 + 20*r12` cost before capture, including when r11 keeps the table.
+  ## The configured core count fixes the E4 assigner array. The copy budget applies to each
+  ## input range independently, and the privilege profile bounds the count of raw E4/E8 pairs.
+  ## A funded charge proves `12*r12` fits before forming the pair extent. Pointer sentinels
+  ## skip guest reads, and an all-ones E4 assigner keeps that core's current owner.
+  ## An unreadable supplied range panics before the effect API checks ownership, duplicate keys
+  ## or role width. Local capture and allocation limits return a dispatch failure.
   let count = uint64(cpu.registers[12])
   let lowProduct = (count and 0xffffffff'u64)*20+422 # Below 2^37; retain its carry into the upper product.
   let highProduct = (count shr 32)*20+(lowProduct shr 32) # Below 2^37, preserving the complete item charge.
@@ -530,7 +536,7 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     context.privileges)
   case changed.error
   of AccumulationEffectError.None:
-    context.effects = changed.value # Both typed roles and serialized C(12) become one immutable successor.
+    context.effects = changed.value # Real changes publish one immutable successor; a no-op retains the current effects.
     response.registers[7] = RegisterValue(0) # OK, including handoff to another manager.
   of AccumulationEffectError.LimitExceeded:
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No fabricated protocol resource code.

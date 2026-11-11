@@ -164,10 +164,14 @@ assert uint32(changed.privilegeAssignerAt(PrivilegeCoreIndex(0)).value) == 83
 assert uint32(changed.privilegeAssignerAt(PrivilegeCoreIndex(1)).value) == 42
 
 # A caller with no privileges may preserve the entire proposal without reading either pointer.
-let unchanged = run(source(manager = high(uint64), assigners = high(uint64),
-  delegator = high(uint64), registrar = high(uint64), address = high(uint64),
-  initialManager = 17), limit = 0)
+let noop = source(manager = high(uint64), assigners = high(uint64),
+  delegator = high(uint64), registrar = high(uint64), address = high(uint64), initialManager = 17)
+failHash(1)
+let unchanged = run(noop, limit = 0)
 assert uint64(machineInfo(unchanged.value.machine).value.registers[7]) == 0
+assert hashCalls() == 0, "an unchanged proposal does not Merklize C(12)"
+assert not context(unchanged).effectInfo.value.hasPrivileges
+failHash(0)
 let invalidOwned = run(source(manager = high(uint64), assigners = high(uint64),
   delegator = 0x100000000'u64, registrar = high(uint64), address = high(uint64),
   initialManager = 17, initialOwner = 42))

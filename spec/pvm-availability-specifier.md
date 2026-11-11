@@ -59,7 +59,7 @@ first/last validator hash pairs and exact observed hash-call/preimage-byte facts
 for empty/single/mixed/65 exports at 6/1023 validators. Exact buffer/hash-call/
 hash-byte caps succeed; one-unit-short caps refuse before hashing. Empty export
 roots are zero for every validator without extra hashes, matching the
-[empty-export clarification](https://github.com/gavofyork/graypaper/pull/583)
+[empty-export clarification](https://github.com/gavofyork/graypaper/blob/068d88c6f6a97e5294afa8619b24de947788733a/text/work_packages_and_reports.tex)
 at `27b64a6a`. The six-validator empty-export witness passed on 2026-11-11.
 Failed initial bundle hashes, export roots,
 later validators, first outer nodes and final root hashes expose no successful

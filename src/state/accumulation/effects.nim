@@ -211,7 +211,7 @@ type
     transfers*, provisions*: int
     hasYield*: bool
     hasStaging*: bool ## A selected successful designate requires bounded original-delegator roster publication.
-    hasPrivileges*: bool   ## A selected successful bless requires bounded manager-role/dictionary publication.
+    hasPrivileges*: bool   ## A selected bless changed C(12) and requires bounded privilege publication.
     hasAssignments*: bool  ## A selected successful assign requires bounded positional queue/assigner publication.
   AccumulationEffectResult*[T] = object ## Successful alternatives alone carry complete retained handles, facts or a present yield value.
     case status: AccumulationEffectError
@@ -1432,8 +1432,13 @@ proc recordAccumulationBless*(effects: AccumulationEffects, proposed: array[3, u
   ## Apply a guest privilege proposal in manager, delegator, registrar order.
   ## A full-width all-ones ID keeps the corresponding current role. The caller resolves
   ## memory sentinels before passing the exact proposed assigner array and allowance table.
-  ## Accepted roles and canonical allowance bytes are owned independently of the input.
-  # No partially encoded map or privilege owner escapes refusal.
+  ## Only the manager may change the manager role or allowance dictionary. Each other role
+  ## may also be changed by its current holder. Duplicates and unauthorized changes return
+  ## HUH before checking the E4 width of role IDs for WHO.
+  ## Bound and sort the raw table before comparing canonical entries. A validated no-op
+  ## returns the current effects, including any prior bless and checkpoint. A real change
+  ## independently owns the new roles and replaces C(12) on a fork under codec and store
+  ## ceilings. Refusals expose no partial effect.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)
   let data = effects.data
@@ -1460,28 +1465,38 @@ proc recordAccumulationBless*(effects: AccumulationEffects, proposed: array[3, u
       fail(AccumulationEffectError.DuplicatePrivilege) # All repeated keys return HUH before role narrowing.
   let service = uint32(previous.initial.contextInfo.value.service)
   let prior = [uint32(info.manager), uint32(info.delegator), uint32(info.registrar)]
+  let isManager = service == prior[0]
+  var privilegesChanged = ordered.len != info.always
+  if privilegesChanged and not isManager:
+    fail(AccumulationEffectError.UnauthorizedPrivilege) # Only the manager can change the table's cardinality.
   var roles = proposed
   for index in 0..<prior.len:
     if roles[index] == high(uint64):
       roles[index] = uint64(prior[index]) # Resolve the sentinel against this invocation's current snapshot.
-  if service != prior[0]:
-    # The manager and the whole allowance dictionary are reserved to the manager.
-    if roles[0] != uint64(prior[0]) or ordered.len != info.always:
-      fail(AccumulationEffectError.UnauthorizedPrivilege)
-    for index in 1..<prior.len:
-      if roles[index] != uint64(prior[index]) and service != prior[index]:
-        fail(AccumulationEffectError.UnauthorizedPrivilege) # A supervisor has no role authority.
-    for core, assigner in assigners:
-      let owner = currentSnapshot.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value
-      if uint32(assigner) != uint32(owner) and service != uint32(owner):
+    if roles[index] != uint64(prior[index]):
+      if not isManager and (index == 0 or service != prior[index]):
+        fail(AccumulationEffectError.UnauthorizedPrivilege) # Supervisor authority cannot transfer a role.
+      privilegesChanged = true
+  for core, assigner in assigners:
+    let owner = currentSnapshot.privilegeAssignerAt(PrivilegeCoreIndex(uint64(core))).value
+    if uint32(assigner) != uint32(owner):
+      if not isManager and service != uint32(owner):
         fail(AccumulationEffectError.UnauthorizedPrivilege) # Ownership is independent for every core.
+      privilegesChanged = true
+  if ordered.len == info.always:
     for index, pair in ordered:
       let old = currentSnapshot.alwaysAccumulateAt(PrivilegeEntryIndex(uint64(index))).value
       if uint32(pair.service) != uint32(old.service) or uint64(pair.gas) != uint64(old.gas):
-        fail(AccumulationEffectError.UnauthorizedPrivilege) # Compare the canonical dictionary, including gas.
+        if not isManager:
+          fail(AccumulationEffectError.UnauthorizedPrivilege) # The manager also owns changes to existing entries.
+        privilegesChanged = true
+        break # A single difference already establishes a changed dictionary.
   for role in roles:
     if role > uint64(high(uint32)):
       fail(AccumulationEffectError.InvalidPrivilegeService) # WHO follows every HUH predicate.
+  if not privilegesChanged:
+    return AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+      completed: effects) # Preserve prior changes without adding a write or publication requirement.
   let canonical = PrivilegeState(manager: ServiceIndex(uint32(roles[0])),
     delegator: ServiceIndex(uint32(roles[1])), registrar: ServiceIndex(uint32(roles[2])),
     assigners: assigners, always: ordered)

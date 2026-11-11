@@ -9,8 +9,8 @@ made about whether a later paper revision already fixes them.
 
 ## November 11 owned-role and empty-export amendments
 
-The pinned Gray Paper `519504c363f2bfcc1f6371ebffe3d2adaaa58e44` uses a
-manager-only bless predicate. The scoped implementation adopts
+Gray Paper revision `519504c363f2bfcc1f6371ebffe3d2adaaa58e44` used a
+manager-only bless predicate. The pin now includes
 [the owned-role amendment](https://github.com/gavofyork/graypaper/pull/558)
 at `068d88c6`. See the [bless contract](pvm-accumulation-bless.md) for host
 authorization, block precedence, and replay evidence.
