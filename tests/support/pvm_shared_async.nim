@@ -1325,6 +1325,107 @@ when defined(pvmSharedAsyncWitness):
       verify(closedC, sourceC, 2048)
       verify(readyNew, sourceNew, 2048, 5)
 
+when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
+  proc lateReadOwner(): Program =
+    ## Prefix at PC 0, refused store loop at PC 14, then a supported Read body at PC 31.
+    ## The refused header repeats 1,000 times before the disjoint Read runs 40,000 times.
+    let wire = @[0'u8, 0, 51,
+      131, 0x77, 3, 131, 0xaa, 1, 172, 0xba, 0xfa, 0xff, 0xff, 0xff, 50, 0,
+      2, 124, 0x51, 124, 0x62, 120, 0x87, 1, 131, 0xaa, 1,
+      172, 0xba, 0xf5, 0xff, 0xff, 0xff,
+      2, 124, 0x51, 124, 0x62, 149, 0x99, 1, 1, 131, 0x33, 1,
+      172, 0x43, 0xf4, 0xff, 0xff, 0xff, 50, 0,
+      0x49, 0xd0, 0x6a, 0x82, 0x95, 0x09, 0x02]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None, "late Read wire decodes"
+    decoded.value
+
+  proc verifyLateReadCall(source: Machine, native, checked: PreparedProgram): PvmBackend =
+    ## Compare complete terminal state with checked execution and preserve the immutable input.
+    let initial = machineInfo(source).value
+    let memory = memoryOf(source).value
+    let before = pageImage(memory, PageIndex(32)).value
+    let expected = execute(source, ExecutionStepLimit(1000000), checked)
+    let actual = execute(source, ExecutionStepLimit(1000000), native)
+    assert expected.error == StepError.None and expected.value.exit == StepExit.Halt, "checked late Read halts"
+    assert actual.error == StepError.None and actual.value.exit == StepExit.Halt, "native late Read halts"
+    let left = actual.value.machine
+    let right = expected.value.machine
+    assert machineInfo(left).value == machineInfo(right).value, "late Read CPU parity"
+    assert programOf(left).value == programOf(source).value, "late Read source identity"
+    let actualMemory = memoryOf(left).value
+    let expectedMemory = memoryOf(right).value
+    assert pageIndices(actualMemory).value == @[PageIndex(32)], "native late Read map"
+    assert pageIndices(expectedMemory).value == @[PageIndex(32)], "checked late Read map"
+    let actualPage = pageImage(actualMemory, PageIndex(32)).value
+    assert actualPage == pageImage(expectedMemory, PageIndex(32)).value, "late Read page parity"
+    assert actualPage.access == PageAccess.ReadWrite, "late Read permissions"
+    for index in 0..<4096:
+      # The later store clears the first byte; the rest of the original page remains literal.
+      let literal = if uint64(initial.pc) == 14 and index == 0: 0'u8 else: before.bytes[index]
+      assert actualPage.bytes[index] == literal, "late Read literal bytes"
+    assert machineInfo(source).value == initial, "late Read input CPU stays immutable"
+    assert pageImage(memoryOf(source).value, PageIndex(32)).value == before, "late Read input page stays immutable"
+    actual.value.backend
+
+  proc lateReadReplacement() =
+    ## One unused call arms observation, two matching later calls retire the prefix, and Read executes.
+    let runtime = newNativeRuntime()
+    assert launch(runtime), "late Read worker starts"
+    block:
+      # Retire the prepared owner before closing its shared runtime.
+      let owner = lateReadOwner()
+      let limits = defaultPreparedLimits(GasCycleLimit(1000000))
+      let native = newPreparedProgram(owner, limits, PvmBackend.Jit, runtime).value
+      let checked = newPreparedProgram(owner, limits, PvmBackend.Interpreted).value
+      var page = PageImage(index: PageIndex(32), access: PageAccess.ReadWrite)
+      for index in 0..<4096:
+        # Nonzero first byte makes the store and fresh immutable input observable.
+        page.bytes[index] = byte((index*17+0x42) and 255)
+      let memory = captureMemory([page], PageLimit(1)).value
+      var cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000000))
+      cpu.registers[0] = RegisterValue(0xffff0000)
+      cpu.registers[4] = RegisterValue(40000)
+      cpu.registers[5] = RegisterValue(0x20000)
+      cpu.registers[6] = RegisterValue(0x20000)
+      cpu.registers[8] = RegisterValue(0x20000)
+      cpu.registers[11] = RegisterValue(2048)
+      let prefix = captureMachine(owner, memory, cpu).value
+      assert verifyLateReadCall(prefix, native, checked) == PvmBackend.Interpreted, "prefix starts checked"
+      assert runtime.runtimeInfo.submitted == 1, "prefix submission"
+      waitNativeCompiler(runtime)
+      assert runtime.runtimeInfo.completed == 1, "prefix completion"
+
+      cpu.pc = CodeAddress(14)
+      cpu.registers[7] = RegisterValue(0x20000)
+      cpu.registers[11] = RegisterValue(1000)
+      let later = captureMachine(owner, memory, cpu).value
+      for unused in 0..<2:
+        # Install and bypass the prefix, then observe the same later Read once.
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
+          "later observation stays checked until publication"
+        assert preparedNativeState(native).value == NativeState.Ready, "incumbent remains ready"
+        assert runtime.runtimeInfo.submitted == 1 and runtime.runtimeInfo.registered == 1, "one observation cannot replace the incumbent"
+        let incumbent = preparedInfo(native).value
+        assert incumbent.nativeFragments == 1 and incumbent.nativeCalls == 0, "late path leaves incumbent unused"
+
+      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+      assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
+          "later observation stays checked until publication"
+      assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
+          NativeState.Pending, "two observations submit Read"
+      let lowered = waitNativeCompilerGate(runtime)
+      assert lowered.hasImage and lowered.kind == NativeKind.CheckedReadBody, "worker lowers the Read image"
+      releaseNativeCompilerGate(runtime)
+      waitNativeCompiler(runtime)
+      assert runtime.runtimeInfo.completed == 2 and runtime.runtimeInfo.registered == 1, "replacement completion owns the only credit"
+      assert verifyLateReadCall(later, native, checked) == PvmBackend.Jit, "replacement executes natively"
+      let installed = preparedInfo(native).value
+      assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
+      assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
+          NativeState.Ready, "installed Read settles three original operations per call"
+    assert runtime.runtimeInfo.registered == 0 and runtime.close(), "late Read retirement returns the credit"
+
 proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
   diagnosticPhase("checkedReceipts")
@@ -1359,6 +1460,9 @@ proc runSharedAsync*() =
     immediateLoops()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
+    when NativeCheckedReadEnabled:
+      diagnosticPhase("lateReadReplacement")
+      lateReadReplacement()
     diagnosticPhase("doneFinalDrop")
     doneFinalDrop()
   echo "PVM shared async passed"

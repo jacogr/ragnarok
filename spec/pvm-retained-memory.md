@@ -287,6 +287,15 @@ restore it correctly, with fresh construction for changed mappings. Continue res
 the existing checked synchronization and dirty-epoch reset. Local/fallible exits retain no CPU or
 callback state and follow the same complete byte-restoration rule if their storage is retained.
 
+## Plain prepared frame lifetime
+
+Plain prepared execution borrows the admitted frame from its successful result through policy
+selection, execution, publication and return of the stream and optional idle bytes. The tagged
+result owns the remaining frame until cleanup. Admission refusals occur before the borrow and
+leave the existing idle lease available to a later call. The memory reuse suite checks that a
+zero attempt limit takes precedence over page admission after an unpublished cross-page store,
+and that both refusals preserve the retained stream and lease for a subsequent successful call.
+
 ## Validation
 
 The registered `pvm_memory_reuse` suite compares full fresh/reused machine snapshots and direct

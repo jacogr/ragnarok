@@ -560,6 +560,35 @@ func frameCreationError(error: FlatError): StepError =
   if error == FlatError.ResidentAllocationRefused: StepError.ResidentAllocationRefused
   else: StepError.InvalidPreparedProgram
 
+proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine, owner: Program,
+    original: CodeAddress, limit: ExecutionStepLimit, plan: GasPlan, memo: GasMemo,
+    single: bool): StepResult {.alwaysInline.} =
+  ## Borrow the admitted frame through execution, publication and return of its reusable buffers.
+  let policy = selectFlatPrices(frame, plan, memo)
+  if policy != StepError.None: return StepResult(status: policy)
+  frame.nativeSession = data.native
+  restoreFlatStream(frame, data.stream)
+  when NativeCheckedReadEnabled:
+    # Plain execution preserves initial selection and observes only an already armed later phase.
+    if nativeReplacementObservation(frame.nativeSession): beginReadProbe(frame, uint64(limit))
+  let nativeBaseline = nativeOperations(frame)
+  runFlat(frame, uint64(limit))
+  when NativeCheckedReadEnabled:
+    endReadProbeSegment(frame)
+  recordNativeWork(data.native, settledNativeWork(frame, uint64(limit)))
+  let answer = if single and frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
+    StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
+        kind: StepExit.OutOfGas, machine: source))
+    elif frame.reason == StepError.None or (single and frame.reason == StepError.StepLimitExceeded):
+    publishFrame(frame, owner, single, original, nativeBaseline)
+    else: StepResult(status: frame.reason)
+  when NativeCheckedReadEnabled:
+    finishReadProbe(frame, answer.error == StepError.None)
+    finishNativeReadObservation(frame, answer.error == StepError.None)
+  data.stream = takeFlatStream(frame)
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  answer
+
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
   ## Lease code and optional idle bytes; initialize CPU and restore complete input memory before execution.
@@ -590,24 +619,8 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   var reusedMemory = false
   var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None: return StepResult(status: frameCreationError(created.error))
-  var frame = takeValue(created)
   if reusedMemory: inc data.memoryReuses
-  let policy = selectFlatPrices(frame, plan, memo)
-  if policy != StepError.None: return StepResult(status: policy)
-  frame.nativeSession = data.native
-  restoreFlatStream(frame, data.stream)
-  let nativeBaseline = nativeOperations(frame)
-  runFlat(frame, uint64(limit))
-  recordNativeWork(data.native, settledNativeWork(frame, uint64(limit)))
-  let answer = if single and frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
-    StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
-        kind: StepExit.OutOfGas, machine: source))
-    elif frame.reason == StepError.None or (single and frame.reason == StepError.StepLimitExceeded):
-    publishFrame(frame, owner, single, cpu.pc, nativeBaseline)
-    else: StepResult(status: frame.reason)
-  data.stream = takeFlatStream(frame)
-  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
-  answer
+  runAdmittedFrame(borrowFrame(created), data, source, owner, cpu.pc, limit, plan, memo, single)
 
 proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram,
     plan: GasPlan = default(GasPlan), memo: GasMemo = default(GasMemo),
@@ -814,6 +827,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
   while true:
     # The engine counts attempted source instructions across every host continuation.
     let segmentBudget = remaining
+    when NativeCheckedReadEnabled:
+      resumeReadProbeSegment(frame, segmentBudget)
     runFlat(frame, segmentBudget)
     when NativeCheckedReadEnabled:
       endReadProbeSegment(frame)
@@ -946,6 +961,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
       context, callbacks, steps, calls, data.limits.resources.pages)
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
+    finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
