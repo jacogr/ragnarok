@@ -129,14 +129,15 @@ Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-4/`,
 native shard reports and the other corpus shard. Artifact retention includes each shard's logs/results.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
-the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
-on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SCOPE=suites make check-unit` (or
+the same GitHub run preserves its assignment. A new run ID reshuffles it. To reproduce a partition,
+use the same source revision and run ID, and copy the shard index and count from the original job.
+For example, use `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/15 UNIT_SCOPE=suites make check-unit` (or
 `--shard-seed` on the underlying runner). Unseeded local partitions use a balanced lexical
 stride; plain `make check-unit` remains complete and keeps its original execution order.
 Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
 other's verdict, and corpus-only runs reject a unit-shard selection. To reproduce a corpus partition,
-use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/3 make check-corpus`, followed by
-`CORPUS_SHARD=1/3 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
+use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/4 make check-corpus`, followed by
+`CORPUS_SHARD=1/4 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
 partial reports retain `corpus_shard` and `shard_seed` and cannot borrow sibling-shard results.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
 requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.
