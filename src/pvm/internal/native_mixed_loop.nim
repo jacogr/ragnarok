@@ -7,7 +7,8 @@ import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
 
 const
-  NativeMixedLoopCandidateLimit* = 8 ## Source checks and deterministic refusals are bounded per epoch/ticket.
+  NativeMixedLoopCandidateLimit* = 8 ## Accepted source inventory and per-ticket refusals stay bounded.
+  NativeMixedLoopReconstructionLimit* = 16 ## Cold source proof attempts per stream epoch, including refusals.
   NativeMixedLoopEntryLimit* = NativeMixedLoopCandidateLimit ## One arena preserves the ranked inventory's slot identities.
   NativeMixedLoopMinimum* = 3'u32 ## Ordered read, byte store and checked terminal.
   NativeMixedLoopVisitLimit* = 256'u32
@@ -134,6 +135,8 @@ func nativeMixedLoopReceipt*(proof: NativeMixedLoop, funded, raw: uint32,
 
 type NativeMixedLoopSet* = object
   ## Ordered exact proofs share one auxiliary arena and one runtime credit.
+  ## Occupancy bits identify slots only inside this complete source-bound set.
+  ## Equal masks from different sets do not identify equal source or entry authority.
   count*: uint8
   proofs*: array[NativeMixedLoopEntryLimit, NativeMixedLoop]
 
