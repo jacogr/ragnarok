@@ -384,7 +384,7 @@ type
     backend*: PvmBackend
     nativeFragments*: uint64                ## Cumulative successful physical publications, including replacements.
     nativeCalls*, nativeOperations*: uint64 ## Cumulative activity across invocations of this owner.
-    nativeBranchCalls*, nativeHeaderCalls*: uint64 ## Physical calls with a branch or native backedge.
+    nativeBranchCalls*, nativeHeaderCalls*: uint64 ## Physical calls with a branch or a visit completed after a native backedge.
     nativeCompilationMeasured*: bool ## False means the supplementary process-based compilation duration is unavailable.
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool

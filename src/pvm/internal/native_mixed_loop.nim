@@ -7,7 +7,8 @@ import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
 
 const
-  NativeMixedLoopMinimum* = 3'u32 ## Ordered read, byte store and checked terminal.
+  NativeMixedLoopCandidateLimit* = 8 ## Bounded source checks and per-ticket deterministic refusals.
+  NativeMixedLoopMinimum* = 3'u32    ## Ordered read, byte store and checked terminal.
   NativeMixedLoopVisitLimit* = 256'u32
   NativeMixedLoopVisitLimitOffset* = NativeCycleGasOffset
   NativeMixedLoopContextBytes* = NativeMixedLoopVisitLimitOffset+8

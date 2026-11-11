@@ -291,9 +291,10 @@ when NativeCheckedReadEnabled:
     status == NativeReadSuccess
 
 when NativeReadCycleEnabled:
-  proc lowerNativeMixedLoop*(proof: NativeMixedLoop): NativeImage =
-    ## Publish one optional image under the ordinary byte ceiling, independent of the renderer.
+  proc lowerNativeMixedLoop*(proof: NativeMixedLoop, refused: var bool): NativeImage =
+    ## A bad proof or oversized encoding is deterministic. Arena failures can be transient.
     result = default(NativeImage)
+    refused = true
     if not proof.complete: return
     when defined(pvmX86Jit):
       var encoded = x86MixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
@@ -303,6 +304,7 @@ when NativeReadCycleEnabled:
       const unitBytes = 4
     let count = encoded.len
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
+    refused = false
     let handle = createNativeArena()
     if handle == nil: return
     let offset = arenaPublish(handle, addr encoded[0], uint32(count))
