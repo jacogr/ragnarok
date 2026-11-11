@@ -367,6 +367,15 @@ proc fullPrefixCycle() =
     access: PageAccess.ReadWrite, source: InitializationSource.First, offset: 0, length: input.len)]
   let original = captureInitializationMemory(regions, input, [], PageLimit(3)).value
   input[0] = 0 # The full prefix must own its bytes before caller input changes.
+  let tailOnly = store(original, MemoryAddress(65536+3584), AccessWidth(1), RegisterValue(0x9a)).value
+  var tailCopy = default(array[4096, byte])
+  let copiedTailPage = copyMemoryPage(tailOnly, MemoryPageSlot(0), tailCopy)
+  assert copiedTailPage.error == MachineError.None
+  assert copiedTailPage.value.index == PageIndex(16) and copiedTailPage.value.access ==
+      PageAccess.ReadWrite
+  for offset in 0..<4096:
+    # An unchanged contiguous prefix must still select the current separate tail.
+    assert tailCopy[offset] == (if offset == 3584: 0x9a'u8 else: byteAt(offset))
   let writer = newScalarMemoryWriter(original).value
   let alias = writer
   var middle = original

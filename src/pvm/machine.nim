@@ -669,9 +669,19 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
   if uint64(slot) >= uint64(data.pages.len) or output.len != 4096:
     return MachineResult[PageDescription](status: MachineError.InvalidRange)
   let page {.cursor.} = data.pages[int(uint32(slot))]
-  for chunk in 0..<8:
-    # Each effective512-byte span copies completely into its disjoint portion of the output page.
-    copyMem(addr output[chunk*512], borrowPageChunk(page, chunk), 512)
+  let backing {.cursor.} = page.backing
+  if backing != nil and
+      (page.chunks[0] == nil and page.chunks[1] == nil and page.chunks[2] == nil) and
+      (page.chunks[3] == nil and page.chunks[4] == nil and page.chunks[5] == nil) and
+      page.chunks[6] == nil:
+    # The first seven effective spans are contiguous only when every override is absent.
+    # The retained page owns that complete prefix and the separately selected tail.
+    copyMem(addr output[0], unsafeAddr backing.bytes[0], 3584)
+    copyMem(addr output[3584], borrowPageChunk(page, 7), 512)
+  else:
+    # Each effective span copies into its disjoint portion of the validated output.
+    for chunk in 0..<8:
+      copyMem(addr output[chunk*512], borrowPageChunk(page, chunk), 512)
   MachineResult[PageDescription](status: MachineError.None,
     completed: PageDescription(index: page.index, access: page.access))
 
