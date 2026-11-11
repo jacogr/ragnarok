@@ -48,11 +48,16 @@ complete Nim/Rust formatting and unoptimized semantic compilation of every produ
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. Each named workload reports its own result, without separate aggregate jobs.
 Automatic PR updates and manual
-`smoke` requests run Smoke alone. Master/full requests add Tooling and all four platform/container builds.
+`smoke` requests select Smoke and Provenance. Master/full requests add Tooling and all four platform/container builds.
 Linux x86-64 reuses native packaging setup for the checked-release every-source audit. Tooling
 runs Python references, lifecycle model verification and compiler rejection guards, retaining separate
 summaries/artifacts and independent failures. Smoke remains unchanged. Source audits apply no formatting and link no native libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
 coverage without adding binary packaging or Docker. Manual `build` selects Linux x86-64, Linux ARM64, macOS ARM64 and Docker.
+
+On master and full requests, Provenance, Build, Tooling, Unit, Corpus and Contract are eligible
+immediately. E2E, Interop, Perf and Fuzz become eligible when Smoke, the three platform builds and Docker
+finish. Build failures still count against the workflow, and the second wave runs after
+completion so its checks can report their own verdicts.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:
 
@@ -76,7 +81,7 @@ gh pr edit <number> --remove-label ci:full
 gh pr edit <number> --add-label ci:full
 ```
 
-Unit and Contract use 16 and 5 shards respectively. Each run shuffles discovered work with its
+Unit and Contract use 15 and 5 shards respectively. Each run shuffles discovered work with its
 shared GitHub run ID, without historical timing weights or maintained assignments. Unit batches
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for

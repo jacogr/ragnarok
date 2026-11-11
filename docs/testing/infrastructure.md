@@ -93,7 +93,7 @@ the exact build profile; workers reuse only their own compatible intermediates. 
 advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
-CI partitions discovered unit work across sixteen bounded jobs, keeping each job's
+CI partitions discovered unit work across fifteen bounded jobs, keeping each job's
 linked/resource work sequential.
 Selected PVM AddressSanitizer replays are distinct `asan:<suite>` tasks in that same plan.
 Their dependency weights are doubled to account for instrumented lowering and calibration;
@@ -118,7 +118,7 @@ shards, including the final partial block, then each shard's execution order is 
 mains are independent single-suite items in multi-shard runs, with their existing checked flags,
 private compatible caches, fixtures, expected outputs and fresh ARC observations. An unsharded
 run keeps the reusable directory batch; CI never places the whole directory under one child deadline. The corpus
-work runs once across four `Unit / Corpus (i/4)` matrix jobs alongside all sixteen suite-only shards.
+work runs once across four `Unit / Corpus (i/4)` matrix jobs alongside all fifteen suite-only shards.
 Corpus dependency-connected bundles are shuffled with the same run seed and dealt round-robin;
 there are no timing weights or maintained assignments. Each shard executes its assigned cases in
 original feature/task order and reuses its own compatible driver builds. Consumers that read a
@@ -129,14 +129,15 @@ Corpus shard logs, caches and results live under `build/tests/corpus/<i>-of-4/`,
 native shard reports and the other corpus shard. Artifact retention includes each shard's logs/results.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
-the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
-on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SCOPE=suites make check-unit` (or
+the same GitHub run preserves its assignment. A new run ID reshuffles it. To reproduce a partition,
+use the same source revision and run ID, and copy the shard index and count from the original job.
+For example, use `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/15 UNIT_SCOPE=suites make check-unit` (or
 `--shard-seed` on the underlying runner). Unseeded local partitions use a balanced lexical
 stride; plain `make check-unit` remains complete and keeps its original execution order.
 Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
 other's verdict, and corpus-only runs reject a unit-shard selection. To reproduce a corpus partition,
-use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/3 make check-corpus`, followed by
-`CORPUS_SHARD=1/3 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
+use `CI_SHARD_SEED=<run-id> CORPUS_SHARD=1/4 make check-corpus`, followed by
+`CORPUS_SHARD=1/4 make summary-corpus`. Omitting `CORPUS_SHARD` still runs the full corpus locally;
 partial reports retain `corpus_shard` and `shard_seed` and cannot borrow sibling-shard results.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
 requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.

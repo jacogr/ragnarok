@@ -110,7 +110,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(set(selected) & required,
                          {'check-python', 'check-models', 'check-guards'})
         self.assertEqual(selected.count('check-python'), 1)
-        families = selected_families(text, 'build', tooling)
+        families = selected_families(text, 'tooling', tooling)
         self.assertEqual(len(families), 1)
         self.assertEqual(families[0]['group'], 'python')
         focused = {
@@ -207,6 +207,21 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertFalse(needs)
             else:
                 self.assertNotIn(provenance, needs)
+
+    def test_full_run_releases_the_second_wave_after_short_builds(self):
+        """Unit and Contract start immediately, and cancellation stops deferred checks."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = workflow(text)['jobs']
+        for name in ('build', 'tooling', 'fixture-provenance', 'unit', 'failures'):
+            self.assertFalse(jobs[name].get('needs'), name)
+        for event in (event_context(), event_context('pull_request', 'labeled', 'ci:full')):
+            self.assertCountEqual(
+                (row['group'] for row in selected_families(text, 'build', event)),
+                ['smoke', 'binary', 'binary', 'binary', 'docker'])
+            for name in ('e2e', 'interop', 'pvm-doom-backends', 'perf', 'pvm-comparison', 'pvm-fuzz'):
+                self.assertEqual(jobs[name].get('needs'), 'build', name)
+                self.assertTrue(expression(jobs[name]['if'], event), name)
+                self.assertFalse(expression(jobs[name]['if'], dict(event, cancelled=True)), name)
 
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
