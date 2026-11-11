@@ -19,10 +19,11 @@
 ## copied startup and OS data while canonical graph access is excluded.
 ##
 ## Full-state Jit startup owns one shared compiler runtime. The accumulation residency
-## context retains four service/version/backend workers. Managed work completion lends
-## the same runtime to one package worker through StateProofWorker and runInputRefinement;
-## that worker retains one source/policy cache across sequential package items and retires
-## before Done. Proof and preparation turns exclude each other through collection or join,
+## context retains four service/version/backend workers. Managed work completion passes
+## the runtime through StateProofWorker and runInputRefinement to refinePackage.
+## The package worker leaves the runtime unbound for one-item packages. It retains
+## one source/policy cache across sequential items and retires before Done.
+## Proof and preparation turns exclude each other through collection or join,
 ## including host-side ARC access to runtime anchors. stopPreparation preserves residency.
 ## Full close joins both consumers, drops accumulation workers, then closes the runtime.
 ##
