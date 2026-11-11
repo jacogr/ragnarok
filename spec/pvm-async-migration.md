@@ -68,14 +68,10 @@ compiler jobs never retain them.
 
 ## Selection and resource work
 
-Each session selects one immutable request/image per source epoch, with no later region
-replacement or expansion. Only eligible work that can queue claims one of the runtime's four
-image credits. Queued, running, parked, installed and retiring images retain those credits;
-cold/deferred identities do not. These are deliberate initial limits. Whole-invocation eligibility
-does not prove that the first materialized pure prefix is profitable. Future multi-region admission
-must separate candidate evidence, source identity lifetime, outstanding compilation capacity and
-installed-code budgets.
-Increasing the constants alone does not establish useful coverage or fairness.
+The [shared scheduler](../src/pvm/internal/native_pipeline.nim) owns image credits and selection.
+[#2122](https://github.com/jacogr/ragnarok/pull/2122) added a bounded exception to the initial
+single-image policy: one hot later Read can replace an unused image per stream epoch.
+General region expansion, fairness and aggregate retention remain separate work.
 
 The first bounded selection change preserves a qualified read nomination across an occupied
 compiler work slot. Retention must not rescan an already emitted stream, create a readiness wait,
@@ -186,8 +182,9 @@ macro source executed through checked handlers. The frame and stream no longer r
 ARM64 owner or fallback handler table. The shared worker, checked histories, and charged
 register-loop handlers keep their source and ownership contracts.
 
-The direct ARM64 publishers still cover raw regions, the five-word region ABI, capacity and
-refusal, and the distinct mixed-memory and macro ABIs. The raw cycle witness still checks
+The [direct ARM64 publishers](../src/pvm/internal/arm64_jit.nim) still cover raw regions,
+the five-word region ABI, capacity and refusal, and the distinct mixed-memory and macro ABIs.
+The raw cycle witness still checks
 that an overlarge resident image leaves the same owner available for linked publication. The macro
 frame witness continues to check partial budgets and fresh checked stream reentry, with its receipt
 identified as checked reentry.
@@ -206,8 +203,9 @@ separate ARM64 trace all 251 unpaid Store returns came from a clean first dirty 
 native entry at Gate or at a checked Store continuation remains a separate capability question.
 [Installed x86-64 image and receipts](https://github.com/jacogr/ragnarok/actions/runs/42853746772)
 
-The direct x86 test preserves the source-seal negatives and checked histories. It exercises a
-parent refusal after a real dormant child append, then a separate positive linked parent and child
+The [direct x86 publisher](../src/pvm/internal/x86_jit.nim) has its own tests for source-seal
+negatives and checked histories. They exercise a parent refusal after a real dormant child
+append, then a separate positive linked parent and child
 with exact gas, attempts, complete memory and checked continuation. Raw image, ABI and capacity
 controls retain their own profiles.
 

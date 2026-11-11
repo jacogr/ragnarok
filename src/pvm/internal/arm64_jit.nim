@@ -3,6 +3,9 @@
 
 ## ARM64 scalar, guarded-memory and connected-block lowering with prepared source proofs.
 ## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
+## Prepared execution publishes through the shared asynchronous worker. The direct region,
+## mixed-memory and macro owners still exercise the former ARM64 ABIs in native tests.
+## A direct publisher does not grant admission to a prepared frame.
 
 import std/assertions
 import ../[program, machine]
@@ -3229,6 +3232,8 @@ proc armResidentMacroImage(shape: ArmMacroShape, cycle: ArmMemoryCycleBlock,
 proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
     cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
   ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
+  ## This direct publisher checks the copied shape against the owner's installed children.
+  ## Resident refusal leaves those children available for a linked macro.
   if (cycle.tailRead.clippedReads or read.clippedReads) and not jit.clippedReads:
     return false
   when defined(pvmArmMacroResidentRefuse):
@@ -3294,6 +3299,8 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
 
 proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
   ## Link the three existing same-owner children and source-derived scalar controls.
+  ## A failed append leaves the children intact. The macro has one publication record
+  ## and uses the existing arena capacity and branch reach checks.
   if jit.macroRoute.status != 0: return false
   if jit.unavailable or jit.fragments >= 8192 or jit.codeBytes > 1048576 or
       not armMacroShapeValid(jit, shape):
@@ -3460,6 +3467,9 @@ proc callArmMacroCore(jit: ArmJit, registers: var RegisterFile,
     descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var ArmMacroState): uint32 =
   ## One outer bridge borrows fresh pointers; all nested semantic work is checked on return.
+  ## The caller supplies fresh counters and both last-header sentinels. The cycle child
+  ## uses word 13 and the enclosing macro uses word 24, so a child return cannot erase
+  ## the continuation of the enclosing route.
   assert jit.macroRoute.status == 2 and sizeof(RegisterFile) == 104 and
       descriptorPointer != nil and sizeof(state) == 208
   for index in 2..12: assert state[index] == 0

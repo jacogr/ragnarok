@@ -1,19 +1,11 @@
-# ARM native macro regions
+# Former synchronous ARM native macro regions
 
-A hot resident memory cycle currently returns to C for a static jump, a pure conditional block, a signed scalar branch and a guarded read block. This change keeps that source-derived graph inside one native entry, linking the three existing same-owner children and lowering the scalar controls. It preserves an independent checked return at every source block boundary.
-
-## Admission and ownership
-
-- The existing resident cycle owns prefix, dirty and tail blocks. Its exit must lead through a cached opcode40 to an existing whole pure 131/149/81 child. One pure arm exits to checked code; the other reaches a genuine scalar88 whose arms return to pure or enter the full guarded-read block. The read terminal1 returns to the cycle. Register numbers, immediates, source PCs and code addresses come from admitted source; none are benchmark constants.
-- Seven internal source headers must be distinct. Frame admission proves complete source spans, including folded leading noops, matching prices, cached targets and the three installed handler ABIs. The current conservative Frame limit is 64 source instructions per block. Custom pricing, paid entry and temporary barriers use the existing checked paths.
-- Publication appends one separate macro image and scalar cache record. It does not overwrite the resident cycle, pure or read entry. The existing 1,024-fragment/1MiB limits, aligned/range-checked same-arena branches and W^X publication remain in force. Failed discovery/publication retires only macro observation.
-- Current invocation registers, descriptors, dirty words and the 26-word state are borrowed for one call. No frame or memory address is retained. All Frame mutation and checked fallback occur after the JIT cursor scope. Code-only transfer uses fresh registers and memory mappings.
-
-## Charging and returns
-
-Each block tests zero attempts before price, then the full source span before mutation. Partial entries return to the unstarted canonical header. A late read refusal refunds exactly the unread block, preserving earlier stores, registers and completed work. State word13 is the cycle child's last completed header; separate word24 is the global last completed header across the full graph. Returning to the root invokes its saved canonical handler rather than recursively re-entering the macro.
-
-Global calls/branches/headers count one C-to-arena entry. Native operations include genuine scalar40/88/1 work and completed child operations; folded noops count only source attempts. Nested cycle calls have separate counters. Existing memoryCycle.calls continues to count C-to-arena cycle entries. Return-time gas and attempt conservation checks cover every semantic category.
+The [ARM64 lowerer](../src/pvm/internal/arm64_jit.nim) owns the direct macro publication
+and return contracts exercised by the [native witnesses](../tests/support/pvm_arm_macro_backend.nim).
+The synchronous frame route was [retired in #2116](pvm-async-migration.md#arm64-synchronous-region-retirement).
+Prepared execution uses the [shared worker](../src/pvm/internal/native_pipeline.nim) and the
+[shared Read cycle](../src/pvm/internal/native_read_cycle.nim). The measurements and production
+descriptions below refer to the former route at the revisions shown.
 
 ## Final fixed-head Linux ARM qualification
 
@@ -114,7 +106,8 @@ preserved as measured evidence; they do not qualify the follow-up source.
 
 ## Final default-path qualification
 
-The production source enables the admitted graph in the regular ARM path. Copied Frame/stream/prepared activity diagnostics are guarded by pvmArmMacroReceipt; no Prototype behavior define is required. Runtime SHA256:
+At this historical revision, the regular ARM path enabled the admitted graph. Copied
+Frame/stream/prepared activity diagnostics used `pvmArmMacroReceipt`. Runtime SHA256:
 
 - arm64_jit.nim: `5cc2046b7d526c4308d7226ad1c0fb1891438cf22657ead093db51c54d058c82`
 - handler_stream.nim: `4d3c7f0cd3f16eace31ade85cc563e5fc3cc5a63e60c7deaafbbcae9c9c5d586`
@@ -191,7 +184,7 @@ Cold CPU diagnostics below retain every group. Values are milliseconds in min / 
 
 Private evidence pointers: build/pvm-arm-macro-pilot-audit/{audit.json,timed-image-controls.json,broad-audit.json}, build/pvm-arm-macro-prototype/{stage2-frame-results.json,stage3-public-audit.json}; the speed worktree retains original raw cohorts and source/image inventories.
 
-## Remaining architectural work
+## Follow-up at the time
 
 The three child ABIs still write back and reload guest registers at their boundaries. A future resident variant needs an explicit new ABI and independent lifecycle, partial-budget and refund evidence; it cannot jump to guessed interior code offsets. Pure-family generalization is likewise separate from this measured change. x86-64 is unchanged.
 
