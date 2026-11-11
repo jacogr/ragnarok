@@ -607,26 +607,26 @@ proc tick*(server: var Server, peers: uint32) =
     var consumedInput = false
     if slot.output.len == 0 and not slot.closing:
       var chunk = ""
-      if slot.stream.active:
-        discard slot.stream.takeInput(chunk)
-      else:
-        when declared(rpcDirectTestSockets):
-          # Directly injected descriptors are used by the native dispatcher fixtures.
-          var bytes = default(array[4096, char])
-          let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
-          if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
-            slot.close()
-            continue
-          if count > 0:
-            for i in 0..<count: chunk.add(bytes[i])
-      if chunk.len > 0:
-        # The scanner owns the HTTP limit until the upgrade has succeeded.
-        if slot.upgraded and chunk.len > MaxMessage + 14 - slot.input.len:
-          slot.reject(1009, now)
+      # An incomplete head or frame fits below this threshold. Once the buffer
+      # reaches it, consume the leading frame before accepting another chunk.
+      # This bounds the buffer to one head or frame plus one receive chunk.
+      if slot.input.len < max(MaxHeader, MaxMessage + MaxClientFrameHeader):
+        if slot.stream.active:
+          discard slot.stream.takeInput(chunk)
         else:
-          if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
-            slot.deadline = now + 5000
-          slot.input.add(chunk)
+          when declared(rpcDirectTestSockets):
+            # Directly injected descriptors are used by the native dispatcher fixtures.
+            var bytes = default(array[4096, char])
+            let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
+            if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
+              slot.close()
+              continue
+            if count > 0:
+              for i in 0..<count: chunk.add(bytes[i])
+      if chunk.len > 0:
+        if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
+          slot.deadline = now + 5000
+        slot.input.add(chunk)
       if slot.opened and slot.output.len == 0:
         let before = slot.input.len
         slot.process(tags, info, now, server.uiPort)

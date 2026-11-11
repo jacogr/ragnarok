@@ -7,7 +7,7 @@ import std/[assertions, syncio, strutils, base64, ioring, monotimes]
 import std/socket as tcp
 import std/posix/posix as posix
 import ../../../src/lib/socket_io as native_io
-import ../../../src/rpc/[server, protocol, wire_stream]
+import ../../../src/rpc/[server, protocol, wire, wire_stream]
 import ../../../src/chain/[genesis, parameters, provider]
 from ../../../src/codec/state/layout import chapterKey, StateChapter
 from ../../../src/codec/state/trie import StateEntry
@@ -154,6 +154,23 @@ proc blockedWriter(owner: var Server, client: var tcp.Socket) =
 
 const UpgradeRequest = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
 
+proc coalescedFrames(owner: var Server, port: uint16) {.raises.} =
+  ## A maximum-size request and the following ping can share one receive chunk.
+  var peer = tcp.connect("127.0.0.1", port, afterMs(5000))
+  defer: peer.close()
+  peer.write(UpgradeRequest)
+  assert owner.awaitWire(peer, "\r\n\r\n").startsWith("HTTP/1.1 101 ")
+  const request = "{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\",\"id\":75}"
+  let ping = repeat('p', 64)
+  let pong = "\x8a\x40" & ping
+  peer.write(clientFrame(request & repeat(' ', MaxMessage - request.len)) & clientFrame(ping, 9))
+  let output = owner.awaitWire(peer, pong)
+  # Read the independently encoded reply length to verify the exact frame boundary and order.
+  assert output.len >= 4 and output[0] == '\x81' and output[1] == '\x7e'
+  let replyEnd = 4 + ord(output[2]) * 256 + ord(output[3])
+  assert replyEnd < output.len and "\"id\":75," in output[4..<replyEnd]
+  assert output[replyEnd..^1] == pong
+
 proc halfClosedClient(owner: var Server, port: uint16) {.raises.} =
   ## A no-reply frame ahead of the final batch must not retire the dispatcher before the batch.
   var peer = tcp.connect("127.0.0.1", port, afterMs(5000))
@@ -223,6 +240,7 @@ proc main() {.raises.} =
   discard owner.awaitWire(client, event)
   client.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"unsubscribeBestBlock\",\"params\":[1],\"id\":8}")
   discard owner.awaitWire(client, "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":true}")
+  coalescedFrames(owner, port)
   halfClosedClient(owner, port)
   replyAfterEof()
   blockedWriter(owner, client)

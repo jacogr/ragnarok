@@ -18,6 +18,7 @@ export utf8
 
 const MaxMessage* = 16384
 const MaxHeader* = http_parse.MaxHeadLen
+const MaxClientFrameHeader* = 8 # Two base bytes, two length bytes and four mask bytes.
 
 proc frame*(payload: string, opcode = 1): string =
   ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
