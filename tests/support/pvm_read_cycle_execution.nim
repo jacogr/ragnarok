@@ -93,7 +93,9 @@ when NativeReadCycleEnabled:
       outer: [operation(131, 0x88, 1), outerUpdate, outerBranch],
       gate: operation(88, 0x4a))
 
-  when defined(pvmX86Jit):
+  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    import ../../src/pvm/internal/native_read_window
+
     type WindowCase {.pure.} = enum ## Literal extent and continuation choices for the same Read.
       Full, Short, Earlier, Wrapped, LaterMiss, PriorStore, ChangedBase
 
@@ -258,11 +260,12 @@ when NativeReadCycleEnabled:
       assert dirty == 1'u64 shl (wordBase shr 12), "window dirty bitmap"
 
     proc checkReadWindow() =
-      ## Exercise the same literal native checks with the window define on or off.
+      ## Check both lowerers against the same native entry and descriptor cases.
       let cycle = windowFixture()
-      let proof = nativeReadWindow(cycle.read)
+      let proof = entryReadWindow(cycle)
       assert proof.operations == 0x000a1104'u32 and proof.first == 32 and proof.baseLane == 10
-      assert nativeReadWindow(windowFixture(writeBase = true).read).operations == 0
+      assert entryReadWindow(windowFixture(writeBase = true)).operations == 0
+      assert entryReadWindow(windowFixture(outerWritesBase = true)).operations == 0
       var image = lowerNativeReadCycle(cycle)
       assert image.ready and image.kind == NativeKind.ConnectedReadCycle
       for mode in WindowCase:
@@ -748,7 +751,7 @@ proc runReadCycleExecution*() =
     when defined(pvmX86Jit):
       checkStoreDirtyBoundary()
       assert nativePlatformSupported()
-      checkReadWindow()
+    checkReadWindow()
   echo "PASS shared native read cycle execution"
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):

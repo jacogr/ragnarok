@@ -116,8 +116,8 @@ func operation*(body: NativeReadBody, index: int): NativeOperation {.requires:
   body.operations[index]
 
 func nativeReadWindow*(body: NativeReadBody): NativeReadWindow =
-  ## Derive a shared address proof from the copied Read only, excluding the separate Setup.
-  ## A lowerer must prove the full window in the first descriptor at each Read entry.
+  ## Prove the copied Read shape. Before use, the lowerer checks the first descriptor.
+  ## Reuse needs a cycle-wide invariant base and the same invocation-local descriptors.
   result = default(NativeReadWindow)
   if not body.complete: return
   let count = int(body.geometry.terminal-body.geometry.header-1)

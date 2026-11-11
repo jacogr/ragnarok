@@ -14,7 +14,7 @@ import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
 when NativeReadCycleEnabled:
-  import ./native_read_cycle
+  import ./[native_read_cycle, native_read_window]
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -2705,9 +2705,12 @@ when NativeReadCycleEnabled:
     armStorePageMiss = 12
     armStorePageExtent = 13
     armStorePageCommit = 14
+    armReadWindowReady = 15
+    armReadWindowMiss = 16
+    armReadWindowComplete = 17
 
-  type ArmReadCycleLabels = array[armStorePageCommit+1, int]
-    ## Seven role edges, checked exits, and the optional Store proof's local joins.
+  type ArmReadCycleLabels = array[armReadWindowComplete+1, int]
+    ## Seven role edges, checked exits, and the optional Store and Read proof joins.
 
   proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       span: ArmReadSpan, refusal: int) =
@@ -2720,6 +2723,29 @@ when NativeReadCycleEnabled:
       # The checked extent emitter uses an unconditional edge after all descriptors miss.
       assert not guard.conditional
       fixes.add(ArmMemoryCycleFixup(at: start+guard.at, target: refusal, condition: 16))
+
+  proc emitArmEntryReadWindow(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      window: NativeReadWindow, done: int) =
+    ## Prove all five qwords in descriptor zero before forming their borrowed pointer.
+    ## Leave X0 zero on a miss so Read can use the original ordered search.
+    words.add(0xaa1f03e0'u32) # MOV X0,XZR.
+    let source = uint32(window.baseLane)+4
+    if not armSmallIndirectAddress(words, source, window.first, false):
+      armCompactImmediate(words, 2, uint64(window.first))
+      words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
+    armCompactImmediate(words, 2, uint64(high(uint32)-39'u32))
+    cycleCompare(words, 3, 2)
+    cycleEdge(words, fixes, done, 8) # HI: the window would wrap inside its 40 bytes.
+    words.add(0xa9400a81'u32) # LDP X1,X2,[X20]: first descriptor's base and true length.
+    words.add(0xf100a042'u32) # SUBS X2,X2,#40.
+    cycleEdge(words, fixes, done, 3) # LO: a short extent cannot supply the whole window.
+    cycleAddRegister(words, 1, 3, 1, subtract = true)
+    cycleCompare(words, 1, 2)
+    cycleEdge(words, fixes, done, 8) # HI: outside the first descriptor.
+    cycleLoad(words, 2, 20, 16)
+    cycleCompareImmediate(words, 2, 0)
+    cycleEdge(words, fixes, done, 0)
+    cycleAddRegister(words, 0, 2, 1)
 
   proc armCycleDirtyPage(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       refusal: int) =
@@ -2848,12 +2874,19 @@ when NativeReadCycleEnabled:
       words.add(instruction)
     cycleEdge(words, fixes, target, condition)
 
-  proc emitArmReadCycle(cycle: NativeReadCycle, storePage: bool): seq[uint32] =
+  proc emitArmReadCycle(cycle: NativeReadCycle, storePage, allowWindow: bool): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
     ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
     ## readable extent once. Tail checks for a missing extent after gas and quota, and loads
     ## the current signed word after preceding Stores.
+    ##
+    ## The invariant-base proof permits five ordered qword loads from the
+    ## current bytes. ARM64 keeps their descriptor pointer in caller-saved D31.
+    ## This leaf makes no calls and checkpoints guest writes in D18..D30. Read
+    ## uses X0 for the pointer and X1..X3/X17 as scratch. D31 survives Store,
+    ## which can reuse X0 and keeps its separate page proof in X27/X28.
+    ## A miss selects the ordered read bank after the same paid checkpoint.
     const
       readCount = 22
       readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,
@@ -2885,8 +2918,12 @@ when NativeReadCycleEnabled:
         # A word projection needs the five distinct lanes of the checked proof.
         if lanes[i] == lanes[j]: return
 
+    let window = if allowWindow: entryReadWindow(cycle) else: default(NativeReadWindow)
+    let hasWindow = window.operations != 0
     var readBank = default(ArmReadSpan)
     readBank.body = newArmRegionBody()
+    var windowBank = default(ArmReadSpan)
+    windowBank.body = newArmRegionBody()
     var setupBank = newArmRegionBody()
     for index in 0..<cycle.read.len:
       let op = cycle.read.operation(index)
@@ -2898,8 +2935,18 @@ when NativeReadCycleEnabled:
           assert opcode >= 124 and opcode <= 130
           emitArmCheckedRead(readBank, op.slots, uint32(op.immediate and 0xffffffff'u64),
               range[124..130](opcode), absolute = false)
+          if hasWindow:
+            if (window.operations and (1'u32 shl index)) != 0:
+              let offset = uint32(op.immediate and 0xffffffff'u64)-window.first
+              let destination = armWrite(windowBank.body, op.slots.aIndex)
+              cycleLoad(windowBank.body.words, destination, 0, offset)
+            else:
+              emitArmCheckedRead(windowBank, op.slots, uint32(op.immediate and 0xffffffff'u64),
+                  range[124..130](opcode), absolute = false)
         else:
           emitArmOperation(readBank.body, op.opcode, op.slots, op.immediate)
+          if hasWindow:
+            emitArmOperation(windowBank.body, op.opcode, op.slots, op.immediate)
       else:
         # The copied continuation executes only after its separate original header is paid.
         emitArmOperation(setupBank, op.opcode, op.slots, op.immediate)
@@ -2921,6 +2968,7 @@ when NativeReadCycleEnabled:
     let base = uint32(word.baseLane)+4
     let bound = uint32(word.boundLane)+4
     let readWrites = readBank.body.writes
+    assert not hasWindow or windowBank.body.writes == readWrites
     let written = readWrites or setupBank.writes or tailStep.writes or outer.writes or
         (1'u32 shl tailSlot) or (1'u32 shl int(word.shiftLane)) or
         (1'u32 shl int(word.byteLane)) or (1'u32 shl int(word.baseLane))
@@ -2954,6 +3002,10 @@ when NativeReadCycleEnabled:
     for slot in 0..<13:
       # Initialize the entire resident bank before any guard can publish a dirty union.
       cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
+    if hasWindow:
+      emitArmEntryReadWindow(words, fixes, window, armReadWindowReady)
+      labels[armReadWindowReady] = words.len
+      words.add(0x9e67001f'u32) # FMOV D31,X0.
     cycleEdge(words, fixes, paidBody, 16)
 
     for role in NativeCycleRole:
@@ -2973,7 +3025,14 @@ when NativeReadCycleEnabled:
           # These caller-saved lanes checkpoint only the current read's prospective writes.
           if (readWrites and (1'u32 shl slot)) != 0:
             words.add(0x9e670000'u32 or ((uint32(slot)+4) shl 5) or uint32(slot+18))
-        appendArmCycleRead(words, fixes, readBank, readMiss)
+        if hasWindow:
+          words.add(0x9e6603e0'u32) # FMOV X0,D31.
+          cycleCompareImmediate(words, 0, 0)
+          cycleEdge(words, fixes, armReadWindowMiss, 0)
+          appendArmCycleRead(words, fixes, windowBank, readMiss)
+          labels[armReadWindowComplete] = words.len
+        else:
+          appendArmCycleRead(words, fixes, readBank, readMiss)
       of NativeCycleRole.StoreSetup:
         for instruction in setupBank.words: words.add(instruction)
       of NativeCycleRole.Store:
@@ -3041,15 +3100,22 @@ when NativeReadCycleEnabled:
           ((first+1) shl 10) or (31'u32 shl 5) or first)
     words.add(if storePage: 0x910143ff'u32 else: 0x910103ff'u32) # ADD SP,SP,#80 or #64.
     words.add(0xd65f03c0'u32) # RET.
+    if hasWindow:
+      # Share the checkpoint, paid refusal and Read completion accounting.
+      labels[armReadWindowMiss] = words.len
+      appendArmCycleRead(words, fixes, readBank, readMiss)
+      cycleEdge(words, fixes, armReadWindowComplete, 16)
     if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
       result = move(words)
 
   proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
-    ## Try the entry-local Store page proof within the normal image ceiling.
-    result = emitArmReadCycle(cycle, true)
+    ## Prefer both proofs. Drop the extra Read body first if the image exceeds
+    ## the ceiling, then preserve admission with the original ordered probes.
+    result = emitArmReadCycle(cycle, storePage = true, allowWindow = true)
     if result.len == 0:
-      # Preserve admission of an image whose original probes fit the ceiling.
-      result = emitArmReadCycle(cycle, false)
+      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false)
+    if result.len == 0:
+      result = emitArmReadCycle(cycle, storePage = false, allowWindow = false)
 
 func armWindowInstructionSafe(instruction: uint32): bool =
   ## Admit only present integer emitter families and the dirty byte body's exact
