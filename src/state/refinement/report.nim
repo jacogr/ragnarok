@@ -164,8 +164,11 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
     parameters: Parameters, trace: openArray[byte], inputs: RefinementInputs,
     limits: RefinementReportLimits, nativeRuntime: NativeRuntime = default(
         NativeRuntime)): RefinementReportResult[RefinedPackage] =
-  ## Borrow trace and inputs synchronously. An optional runtime serves only this package worker.
-  ## Publish only after every original item completes locally.
+  ## Borrow trace and inputs synchronously. Publish only after every original item completes locally.
+  ## One worker retains code across the package's independently initialized items.
+  ## Native submission follows an eligible invocation. A one-item worker retires
+  ## before any later invocation can use its image, so it leaves the optional runtime
+  ## unbound. The invocation's requested backend still selects execution.
   template fail(reason: RefinementReportError) =
     return RefinementReportResult[RefinedPackage](status: reason)
   let described = package.workPackageInfo
@@ -183,7 +186,7 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
   var savedTrace = newSeq[byte](trace.len)
   for index in 0..<trace.len: savedTrace[index] = trace[
       index] # Isolate future extraction from borrowed caller storage.
-  let worker = newExecutionWorker(nativeRuntime) # One package worker retains code across its independently initialized items.
+  let worker = newExecutionWorker(if count == 1: default(NativeRuntime) else: nativeRuntime)
   var items = newSeqOfCap[RefinedWorkItem](count)
   var offset = 0'u64
   var blobs = uint64(trace.len)

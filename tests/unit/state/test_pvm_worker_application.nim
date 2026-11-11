@@ -15,6 +15,50 @@ import ../../../src/state/accumulation/[machine as accumulation_machine,
 import ../../../src/codec/[bounded, composite, c2_records]
 import ../../support/[pvm_refinement_outcome, pvm_accumulation_context, pvm_accumulation_program]
 
+when defined(pvmArm64Jit) and defined(arm64) and (defined(linux) or defined(macosx)):
+  import ../../../src/state/refinement/report as refinement_report
+  import ../../../src/codec/work/report as work_report
+  import ../../support/pvm_report_results
+
+  proc packageRuntimeWitness() =
+    ## A package that can reuse its code submits once. A singleton with the same
+    ## eligible program completes without a compiler submission.
+    let guest = reportGuest([
+      # Split setup at jumps so the first eligible pure span is the loop.
+      refinementImmediate(7, 65536), @[40'u8, 2],
+      @[51'u8, 8, 3], @[10'u8, 8], @[40'u8, 2],
+      refinementImmediate(7, 178176), @[40'u8, 2],
+      @[51'u8, 10, 0], @[40'u8, 2],
+      refinementImmediate(11, 6144), @[40'u8, 2],
+      # Each of 6,144 iterations adds three to R7 and one to R10.
+      # R7 ends at the writable return address 196608.
+      @[131'u8, 0x77, 3], @[131'u8, 0xaa, 1], @[172'u8, 0xba, 0xfa, 0xff, 0xff, 0xff],
+      @[51'u8, 8, 3], @[50'u8, 0]], declared = 1, credit = 1000000)
+    var limits = reportLimits()
+    limits.invocation.backend = PvmBackend.Jit
+    limits.invocation.steps = ExecutionStepLimit(20000)
+    for count in [1, 2]:
+      # Fresh runtimes make the submission count independent of compiler readiness.
+      let fixture = if count == 1: reportFixture([guest]) else: reportFixture([guest, guest])
+      let runtime = newNativeRuntime()
+      try:
+        assert runtime.start()
+      except:
+        assert false, "package compiler startup failed"
+      let report = refinePackage(fixture.state, fixture.package, CoreIndex(5),
+        fixture.parameters, [], fixture.inputs, limits, runtime)
+      let submitted = runtime.runtimeInfo.submitted
+      assert runtime.close()
+      assert report.error == RefinementReportError.None
+      assert report.value.reportInfo.value.items == count
+      for index in 0..<count:
+        # Check the literal result and gas before examining the native receipt.
+        let item = report.value.reportItem(FetchItemIndex(uint64(index))).value
+        assert item.refinedOutput.value == @[21'u8, 22, 23]
+        assert uint64(item.refinedInfo.value.gasUsed) == 138872
+      let expected = if count == 1: 0'u64 else: 1'u64
+      assert submitted == expected, "package runtime submissions for " & $count & " items: " & $submitted
+
 proc refinementWitness(selected: PvmBackend) =
   ## Distinct complete state/package captures share only exact guest code; literal result bytes distinguish invocation RAM.
   let worker = newExecutionWorker()
@@ -147,6 +191,9 @@ proc checkedMemoryWitness(selected: PvmBackend) =
   if selected == PvmBackend.Interpreted: assert observed.prepared.nativeOperations == 0
   # Positive asynchronous pure execution is qualified separately with a real runtime/worker barrier.
   assert observed.prepared.nativeOperations == 0 and current.value.backend == PvmBackend.Interpreted
+
+when defined(pvmArm64Jit) and defined(arm64) and (defined(linux) or defined(macosx)):
+  packageRuntimeWitness()
 
 refinementWitness(PvmBackend.Interpreted)
 refinementWitness(PvmBackend.Jit)
