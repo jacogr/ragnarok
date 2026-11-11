@@ -4,6 +4,7 @@
 ## Listener routing binds completions to original sessions and isolates slow consumers without canonical access.
 
 import std/[assertions, syncio, base64]
+const rpcDirectTestSockets = true # These fixtures inject and retire native descriptors.
 include ../../../src/rpc/server
 
 proc descriptor(): cint =
