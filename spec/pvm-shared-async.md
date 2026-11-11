@@ -404,6 +404,7 @@ normal invocations keep their existing no-wait behavior.
 
 The shared ARM and x86 Async suites exercise one retained owner across prefix submission, an
 unused completion, two observations of a later Read behind a repeated refused store header, and
-ready native execution. They use the existing worker gate between public calls and check both
-publication and actual native work. Each call preserves complete CPU, gas, permissions and
+ready native execution. A second disjoint Read runs three times in the same epoch and leaves the
+replacement installed. The suites use the existing worker gate between public calls and check
+both publication and actual native work. Each call preserves complete CPU, gas, permissions and
 memory parity with an interpreted owner and leaves the input snapshot immutable.

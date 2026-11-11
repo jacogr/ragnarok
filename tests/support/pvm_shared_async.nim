@@ -1329,14 +1329,17 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
   proc lateReadOwner(): Program =
     ## Prefix at PC 0, refused store loop at PC 14, then a supported Read body at PC 31.
     ## The refused header repeats 1,000 times before the disjoint Read runs 40,000 times.
-    let wire = @[0'u8, 0, 51,
+    ## PC 51 starts a second disjoint Read loop to exercise the per-epoch replacement limit.
+    let wire = @[0'u8, 0, 71,
       131, 0x77, 3, 131, 0xaa, 1, 172, 0xba, 0xfa, 0xff, 0xff, 0xff, 50, 0,
       2, 124, 0x51, 124, 0x62, 120, 0x87, 1, 131, 0xaa, 1,
       172, 0xba, 0xf5, 0xff, 0xff, 0xff,
       2, 124, 0x51, 124, 0x62, 149, 0x99, 1, 1, 131, 0x33, 1,
       172, 0x43, 0xf4, 0xff, 0xff, 0xff, 50, 0,
-      0x49, 0xd0, 0x6a, 0x82, 0x95, 0x09, 0x02]
-    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+      2, 124, 0x51, 124, 0x62, 149, 0x99, 1, 1, 131, 0x33, 1,
+      172, 0x43, 0xf4, 0xff, 0xff, 0xff, 50, 0,
+      0x49, 0xd0, 0x6a, 0x82, 0x95, 0x09, 0x5a, 0x99, 0x20]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(96), JumpCountLimit(0))
     assert decoded.error == ProgramError.None, "late Read wire decodes"
     decoded.value
 
@@ -1424,6 +1427,17 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
       assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
       assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
           NativeState.Ready, "installed Read settles three original operations per call"
+      cpu.pc = CodeAddress(51)
+      let otherRead = captureMachine(owner, memory, cpu).value
+      for unused in 0..<3:
+        # Bypass the replacement enough times to arm and complete another streak without the limit.
+        assert verifyLateReadCall(otherRead, native, checked) == PvmBackend.Interpreted,
+          "second disjoint Read stays checked"
+        assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
+            NativeState.Ready,
+          "one replacement is allowed per stream epoch"
+      assert preparedInfo(native).value.nativeCalls == installed.nativeCalls,
+        "the second disjoint Read leaves the replacement unused"
     assert runtime.runtimeInfo.registered == 0 and runtime.close(), "late Read retirement returns the credit"
 
 proc runSharedAsync*() =

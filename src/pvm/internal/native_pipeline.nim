@@ -1132,7 +1132,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   when NativeCheckedReadEnabled:
     # Qualification is whole-call evidence. Short, failed or actually native calls cannot
     # keep a later-region streak, even when cumulative diagnostic counters have saturated.
-    let unused = data.state == NativeState.Ready and data.image.ready and
+    # Retirement marks this stream epoch as spent until the stream is invalidated.
+    let unused = not data.replacedRead and data.state == NativeState.Ready and data.image.ready and
       data.invocationImageKey.ticket != 0 and data.invocationImageKey == data.imageKey and
       data.invocationQualified and completedWork >= NativeInvocationFloor and
           not data.invocationUsed
