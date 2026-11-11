@@ -3,23 +3,26 @@
 
 ## UI, MCP, and management hand each accepted connection to one task that owns
 ## its Reader and Writer. The dispatcher checks the stream deadline before
-## handling a request or reading another asset chunk. One owned byte chunk at
-## a time crosses to the dispatcher, which retains policy, assets, and state.
+## handling a request or reading another asset chunk. The task scans one
+## bounded head. The dispatcher applies policy before authorizing any body
+## read and handles the completed request with the current application state.
 ##
 ## Joining the task keeps mailbox storage alive until both halves retire.
 ## std/ioring starts the process-wide worker pool on import. The executable
 ## shuts down that reactor after every service has joined its stream tasks.
 
 import std/[assertions, atomics, ioring, streamio, strutils, threadpool]
+import std/http/httpparse as http_parse
 import ./logging
 
 type
-  Phase = enum Read, Input, Write, Ready, Done
+  Phase = enum ReadHead, HeadReady, ReadBody, BodyReady, Write, Ready, Done
   Exchange = object
     phase: int
     stopping: bool
     data: string
-    limit: int
+    headBytes, bodyBytes, maxBodyBytes: int
+    hasSuffix: bool
     final: bool
     failure, cleanupFailure: ErrorCode
     operation: Phase
@@ -44,26 +47,44 @@ proc yieldIo() {.passive.} =
   discard submitTimeout(afterMs(1), continuation)
   suspend()
 
+proc fillRequest(reader: var Reader, deadline: Deadline) {.passive, raises.} =
+  ## Every read in this request shares the original deadline.
+  if expired(deadline): raise TimeoutError
+  if reader.fill() == 0: raise EndOfStreamError
+
 proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
   ## Both halves stay with this task, so the standing deadline is immutable.
   var (reader, writer) = openStreams(fd, deadline)
-  var bytes = default(array[16384, char])
+  var scanner = default(http_parse.HeadScanner)
   try:
     while not atomicLoad(s.stopping, moAcquire):
       case s.observedPhase
-      of Read:
-        s.operation = Read
-        if expired(deadline):
-          s.failure = TimeoutError
-          break
-        let limit = min(s.limit, bytes.len)
-        let count = reader.read(toOpenArray(bytes, 0, limit - 1))
-        if count == 0:
-          s.failure = EndOfStreamError
-          break
-        s.data = ""
-        for i in 0..<count: s.data.add(bytes[i])
-        s.publish(Input)
+      of ReadHead:
+        s.operation = ReadHead
+        # The scanner resumes over the reader's unread buffer. Any coalesced
+        # body bytes stay there until the dispatcher authorizes their length.
+        while true:
+          let extent = scanner.findHeadEnd(reader.peek)
+          if extent != http_parse.ParseIncomplete:
+            s.headBytes = extent
+            if extent > 0:
+              let bytes = reader.peek
+              for index in 0..<extent: s.data.add(bytes[index])
+              reader.consume(extent)
+            s.publish(HeadReady)
+            break
+          reader.fillRequest(deadline)
+      of ReadBody:
+        s.operation = ReadBody
+        # Stop filling as soon as the declared extent is present. A suffix
+        # already buffered with it is invalid for these single-request endpoints.
+        while reader.buffered < s.bodyBytes:
+          reader.fillRequest(deadline)
+        s.hasSuffix = reader.buffered > s.bodyBytes
+        if not s.hasSuffix:
+          for octet in reader.peek: s.data.add(octet)
+          reader.consume(s.bodyBytes)
+        s.publish(BodyReady)
       of Write:
         s.operation = Write
         if expired(deadline):
@@ -76,7 +97,7 @@ proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
           break
         writer.flush()
         s.publish(Ready)
-      of Input, Ready:
+      of HeadReady, BodyReady, Ready:
         yieldIo()
       of Done:
         break
@@ -103,7 +124,7 @@ proc release(s: ptr Exchange, logger: LogWriter, service: string) =
   if s.failure != default(ErrorCode):
     # EOF and timeouts are common client lifecycle events. Unexpected I/O failures are warnings.
     let level = if s.failure in {EndOfStreamError, TimeoutError}: LogLevel.Debug else: LogLevel.Warn
-    let operation = if s.operation == Read: "read" else: "write"
+    let operation = if s.operation == Write: "write" else: "read"
     log(logger, LogTarget.Rpc, level, service & " stream " & operation & " ended: " & $s.failure)
   elif ioring.expired(s.deadline):
     log(logger, LogTarget.Rpc, LogLevel.Debug, service & " connection deadline expired")
@@ -142,12 +163,12 @@ proc `=wasMoved`*(stream: var HttpStream) {.nodestroy.} =
   ## Transfer the pointer without moving the storage used by the task.
   stream.exchange = nil
 
-proc start*(stream: var HttpStream, fd: cint, limit: int, timeoutMs = 5000) =
-  ## Take ownership of a configured accepted descriptor and begin one request.
-  assert stream.exchange == nil and fd >= 0 and limit > 0 and timeoutMs > 0
+proc start*(stream: var HttpStream, fd: cint, maxBodyBytes = 0, timeoutMs = 5000) =
+  ## Take the descriptor and fix the request deadline and endpoint body ceiling.
+  assert stream.exchange == nil and fd >= 0 and maxBodyBytes >= 0 and timeoutMs > 0
   let s = cast[ptr Exchange](alloc0(sizeof(Exchange)))
   let deadline = afterMs(timeoutMs)
-  s[] = Exchange(phase: ord(Read), limit: limit, deadline: deadline)
+  s[] = Exchange(phase: ord(ReadHead), deadline: deadline, maxBodyBytes: maxBodyBytes)
   stream.exchange = s
   submit(delay(run(fd, deadline, s)), -1)
 
@@ -166,31 +187,40 @@ proc stop*(stream: var HttpStream) =
   let s = stream.exchange
   if s != nil: atomicStore(s.stopping, true, moRelease)
 
-proc receiveChunk*(stream: var HttpStream, input: var string): bool =
-  ## Transfer a received chunk to the dispatcher exactly once per request.
+proc receiveHead*(stream: var HttpStream, head: var string): int =
+  ## Transfer one complete head or the scanner's over-limit result.
   let s = stream.exchange
-  if s == nil or s.observedPhase != Input or ioring.expired(s.deadline): return false
-  input.add(s.data)
-  s.data = ""
+  if s == nil or s.observedPhase != HeadReady or ioring.expired(s.deadline):
+    return http_parse.ParseIncomplete
+  head = move(s.data)
+  result = s.headBytes
+  s.publish(Ready)
+
+proc requestBody*(stream: var HttpStream, length: int) =
+  ## The caller has validated the headers and bounded the declared body length.
+  let s = stream.exchange
+  assert s != nil and s.observedPhase == Ready and length >= 0 and length <= s.maxBodyBytes
+  s.bodyBytes = length
+  s.publish(ReadBody)
+
+proc receiveBody*(stream: var HttpStream, body: var string, hasSuffix: var bool): bool =
+  ## Take the complete authorized body or report a suffix buffered beyond it.
+  let s = stream.exchange
+  if s == nil or s.observedPhase != BodyReady or ioring.expired(s.deadline): return false
+  body = move(s.data)
+  hasSuffix = s.hasSuffix
+  s.publish(Ready)
   true
 
-proc requestChunk*(stream: var HttpStream, limit: int) =
-  ## Ask for more request bytes only after parsing the preceding chunk.
-  let s = stream.exchange
-  assert s != nil and limit > 0
-  if s.observedPhase == Input:
-    s.limit = limit
-    s.publish(Read)
-
 proc canSend*(stream: HttpStream): bool =
-  ## Only a waiting task can accept another output chunk.
+  ## The dispatcher can take a finished read or queue the next response chunk.
   let s = stream.exchange
-  s != nil and s.observedPhase in {Input, Ready}
+  s != nil and s.observedPhase in {HeadReady, BodyReady, Ready}
 
 proc sendChunk*(stream: var HttpStream, output: var string, final: bool) =
   ## Transfer one serialized response chunk. The task closes after the final chunk.
   let s = stream.exchange
-  assert s != nil and s.observedPhase in {Input, Ready}
+  assert s != nil and s.observedPhase == Ready
   s.data = move(output)
   s.final = final
   s.publish(Write)

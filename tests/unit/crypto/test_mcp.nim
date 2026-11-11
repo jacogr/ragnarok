@@ -12,6 +12,18 @@ import ../../support/rpc_socket as sockets
 import ../../support/mcp_context
 include ../../../src/mcp/server
 
+proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, context: QueryContext) =
+  ## Run the same header and body policy against an in-memory wire fixture.
+  var scanner = default(http_parse.HeadScanner)
+  let headBytes = scanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes == http_parse.ParseIncomplete: return
+  let length = slot.processHead(tags, headBytes, port)
+  if length >= 0 and slot.input.len >= headBytes + length:
+    let total = headBytes + length
+    let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
+    slot.processBody(body, slot.input.len > total, context)
+    slot.input = ""
+
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
 
 proc request(methodName: string, params = "{}", id = "1"): string =
@@ -131,7 +143,7 @@ assert "400 Bad Request" in processed(http(ping) & "suffix")
 assert "406 Not Acceptable" in processed(http(ping).replace(", text/event-stream", ""))
 assert "405 Method Not Allowed" in processed(http(ping).replace("POST", "GET"))
 assert processed(http(ping).substr(0, http(ping).len-2)) == ""
-assert "431 Request Header Fields Too Large" in processed(repeat("x", MaxHeader + 1))
+assert "431 Request Header Fields Too Large" in processed(repeat("x", http_parse.MaxHeadLen + 1))
 assert "413 Content Too Large" in processed(http(repeat("x", MaxMcpBody+1)))
 
 block loopback:

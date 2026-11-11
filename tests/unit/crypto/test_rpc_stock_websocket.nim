@@ -81,6 +81,8 @@ proc shutdownSocket(fd, how: cint): cint {.importc: "shutdown", header: "<sys/so
   ## Finish the sending half of the client while keeping its receiving half open.
 let shutdownWrite {.importc: "SHUT_WR", header: "<sys/socket.h>".}: cint
 
+const UpgradeRequest = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+
 proc replyAfterEof() =
   ## Force EOF to arrive after the inbox transfer and before the dispatcher publishes its reply.
   var pair = default(array[2, cint])
@@ -89,17 +91,42 @@ proc replyAfterEof() =
   assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
   var stream = default(RpcWireStream)
   stream.start(pair[0])
-  var incoming = clientFrame("\x03\xe8", 8)
+  # Arm readiness on a silent peer, then publish output without driving
+  # another dispatcher turn. send must wake the stream's parked task.
+  for attempt in 0..<30:
+    pollRpcStreams()
+    stream.pump()
+    discard pauseMicros(1000)
+  var idleOutput = "\x8a\x00"
+  stream.send(idleOutput)
+  for attempt in 0..<1000:
+    pollRpcStreams()
+    if not stream.writing: break
+    discard pauseMicros(1000)
+  assert not stream.writing
+  var idleReply = default(array[2, char])
+  assert native_io.receive(pair[1], addr idleReply[0], 2, 0) == 2
+  assert idleReply == ['\x8a', '\x00']
+  var incoming = UpgradeRequest & clientFrame("\x03\xe8", 8)
   assert native_io.sendBytes(pair[1], incoming.toCString(), csize_t(incoming.len), 0) == incoming.len
   assert shutdownSocket(pair[1], shutdownWrite) == 0
-  var chunk = ""
+  var input = default(WireInput)
   for attempt in 0..<1000:
     pollRpcStreams()
-    if stream.takeInput(chunk): break
+    stream.pump()
+    if stream.takeInput(input): break
     discard pauseMicros(1000)
-  assert chunk == incoming
+  assert input.kind == UpgradeHead and input.head == UpgradeRequest
   for attempt in 0..<1000:
     pollRpcStreams()
+    stream.pump()
+    if stream.takeInput(input): break
+    discard pauseMicros(1000)
+  assert input.kind == ClientFrame and input.frame.status == complete
+  assert input.frame.opcode == 8 and input.frame.payload == "\x03\xe8"
+  for attempt in 0..<1000:
+    pollRpcStreams()
+    stream.pump()
     if stream.inputEnded or stream.finished: break
     discard pauseMicros(1000)
   assert stream.inputEnded and not stream.finished, "FIN preserves the writer after the final inbox transfer"
@@ -108,6 +135,7 @@ proc replyAfterEof() =
   stream.send(output)
   for attempt in 0..<1000:
     pollRpcStreams()
+    stream.pump()
     if not stream.writing: break
     discard pauseMicros(1000)
   assert not stream.writing and not stream.finished
@@ -151,8 +179,6 @@ proc blockedWriter(owner: var Server, client: var tcp.Socket) =
   stream.stop()
   stream = default(RpcWireStream)
   assert (getMonoTime().ticks - started) div 1_000_000 < 6000
-
-const UpgradeRequest = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
 
 proc coalescedFrames(owner: var Server, port: uint16) {.raises.} =
   ## A maximum-size request and the following ping can share one receive chunk.
@@ -235,15 +261,26 @@ proc main() {.raises.} =
   let initialEvent = prefix & base64.encode(array[32, byte](initial.value.blockHash)) & "\",\"slot\":7}}}"
   let subscribed = owner.awaitWire(client, initialEvent)
   assert "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}" in subscribed
+  let splitPing = clientFrame("split", 9)
+  client.write(splitPing.substr(0, 2))
+  for attempt in 0..<20:
+    owner.tick(0) # Park with a partial frame and no further bytes from the client.
+    discard pauseMicros(1000)
   assert owner.publishBlock(next) == ViewAdvanceError.None
   let event = prefix & base64.encode(array[32, byte](next.value.blockHash)) & "\",\"slot\":9}}}"
   discard owner.awaitWire(client, event)
+  client.write(splitPing.substr(3))
+  assert owner.awaitWire(client, "split") == "\x8a\x05split"
   client.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"unsubscribeBestBlock\",\"params\":[1],\"id\":8}")
   discard owner.awaitWire(client, "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":true}")
   coalescedFrames(owner, port)
   halfClosedClient(owner, port)
   replyAfterEof()
   blockedWriter(owner, client)
+  # Give the dispatcher time to arm readiness before testing joined idle shutdown.
+  for attempt in 0..<30:
+    owner.tick(0)
+    discard pauseMicros(1000)
   let started = getMonoTime().ticks
   owner.close() # The idle client remains open until the dispatcher has joined its task.
   assert (getMonoTime().ticks - started) div 1_000_000 < 1000

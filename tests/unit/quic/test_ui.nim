@@ -13,6 +13,13 @@ include ../../../src/ui/server
 proc pauseUiMicros(us: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield to stream workers between fixture dispatcher turns.
 
+proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
+  ## Run the UI policy against an in-memory head.
+  var scanner = default(http_parse.HeadScanner)
+  let headBytes = scanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes != http_parse.ParseIncomplete:
+    slot.process(tags, root, headBytes)
+
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
 
 proc retireHttpRequest() =
