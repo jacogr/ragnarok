@@ -209,6 +209,63 @@ append, then a separate positive linked parent and child
 with exact gas, attempts, complete memory and checked continuation. Raw image, ABI and capacity
 controls retain their own profiles.
 
+## Connected Store and Tail completion
+
+The default connected Read renderers share the Store and Tail completion when their copied
+roles and invocation state prove that both will finish. The guest still observes the original
+Setup, four Store visits, and Tail boundaries in registers, memory, gas, attempts and receipts.
+See the [ARM64 emitter](../src/pvm/internal/arm64_jit.nim) and
+[x86-64 emitter](../src/pvm/internal/x86_jit.nim).
+
+ARM64 checks the Store's writable and dirty proof first. It then requires the nonwrapping next
+base to equal the bound, a mapped Tail word, and enough gas and attempts for the exact combined
+price and span. A short budget, absent Tail, Store backedge or overflowing combined price uses
+the original Store and Tail checks. The pair writes the Store before loading the live signed
+Tail word, so a Tail load aliased with Store observes the updated bytes.
+
+Credited x86-64 proves the copied Setup resets the shift and computes the bound from the Store
+base and an independent canonical addend. It requires addend 3, a mapped Tail, and three
+conservative credits. A failed guard uses original Setup with the original credit balance.
+The folded Setup writes the wrapping bound and publishes the original Setup receipt before
+testing carry. Carry returns to the unpaid Store. A nonwrapping Setup joins the original writable
+and dirty checks, and a refusal there also retains only the completed Setup. A committed Store
+reloads the entry-local Tail pointer and reads the live signed word before entering the shared Tail
+body. The existing receipt reconstruction accounts for every original completed role.
+
+Both renderers retry the original writable-page proof image if the enlarged image exceeds
+the 4,096-byte limit, before their earlier renderer fallbacks. The
+[shared native entry suite](../tests/support/pvm_read_cycle_execution.nim) exercises signed live
+aliasing, wrapping Setup, short gas and attempt budgets, short x86 credits, Store backedges,
+clean or unwritable destinations, unmapped Tail, aliased Setup inputs and combined price overflow.
+It compares the original continuation, complete registers and writable bytes, dirty state, and
+exact debit and receipt.
+
+### Paired Linux evidence
+
+The folded candidate `d1eff297` was measured against the exact #2127 sources at `6a62044f`.
+Both native jobs reproduced all 1,953 ordered historical DOOM receipts and recovered
+byte-identical #2127 images at the forced stock cap. The installed ARM64 image grew from
+2,272 to 2,352 bytes and its page-hit Setup-through-Tail path fell from 82 to 75 instructions.
+The x86-64 image grew from 3,830 to 3,950 bytes and its path fell from 68 to 54 instructions.
+Ordinary linked `.text` grew 4,032 bytes on ARM64 and 8,256 bytes on x86-64.
+The folded x86 emitter recovered 16,080 bytes of the first prototype's linked code growth.
+[Folded qualification and paired timing](https://github.com/jacogr/ragnarok/actions/runs/43011408267)
+
+The screen used 12 balanced stock, stock-repeat and candidate blocks per architecture.
+Retained JIT CPU time fell 1.80% for fresh DOOM tick and 2.14% for mixed DOOM on ARM64,
+with both clocks faster in all 12 blocks. On the AMD EPYC 9V74, retained mixed DOOM fell
+4.58% on both clocks, with 11 of 12 blocks faster. Fresh tick fell 1.21% CPU and 1.25% wall,
+with 10 of 12 blocks faster and below the paired threshold. Full 13-call JIT totals for
+fresh and mixed DOOM were below threshold on both architectures. All fresh and mixed JIT
+processes matched native work. Zero of the 560 timing cells met the slowdown threshold.
+
+The earlier candidate `025761b7` ran on AMD EPYC 7763 and slowed retained fresh JIT tick
+1.05% CPU, with all 12 blocks slower on both clocks. Retained mixed JIT CPU rose 0.92%
+below threshold. The zero-native alternating-block workload rose 9.79% interpreted and
+10.06% JIT-selected in retained CPU. The different host and candidate prevent attributing the
+between-run timing change to folding alone.
+[Earlier paired run](https://github.com/jacogr/ragnarok/actions/runs/43004567102)
+
 ## Initial disposition
 
 This contract records the migration architecture and required evidence. It does not qualify a new
