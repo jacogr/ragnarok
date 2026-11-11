@@ -29,6 +29,8 @@ export native_ir, native_read_body, native_register_ring
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   export native_read_cycle
+  when NativeReadCycleEnabled:
+    import ./native_mixed_loop
 
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
@@ -124,6 +126,10 @@ type
     key: JobKey
     request: NativeRequest
     submitted, completed: uint64
+    when NativeReadCycleEnabled:
+      mixedKey, mixedOwner: JobKey ## The auxiliary row and exact installed primary ticket.
+      mixedProof: NativeMixedLoop
+      mixedBorrowed: bool
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
       gate, followingGate: NativeCompilerPoint
@@ -156,6 +162,10 @@ type
     branchCalls, headerCalls: uint64
     nextScan: uint32
     workValid: bool
+    when NativeReadCycleEnabled:
+      mixedOffered: bool
+      mixedObserved: JobKey
+      mixedPublications, mixedCalls, mixedOperations: uint64
   NativeSessionData = ref NativeSessionStorage
   NativeSession* = object ## Shared prepared identity, used exclusively under PreparedStorage.busy.
     data: nil NativeSessionData
@@ -272,9 +282,50 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
   runtime.slots[index].location = CompletionLocation.Empty
   runtime.slots[index].key = default(JobKey)
   runtime.slots[index].cancelled = false
+  when NativeReadCycleEnabled:
+    if sameKey(runtime.mixedKey, key):
+      assert not runtime.mixedBorrowed
+      runtime.mixedKey = default(JobKey)
+      runtime.mixedOwner = default(JobKey)
+      runtime.mixedProof = default(NativeMixedLoop)
+      runtime.slots[index].state = Free
+      return
   if runtime.slots[index].state == Retiring:
     # A detached registration becomes reusable only after its host/worker image was destroyed.
     runtime.slots[index].state = Free
+
+when NativeReadCycleEnabled:
+  func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
+    ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
+    result = 0
+    for row in runtime.slots:
+      if row.state == Free and row.generation < high(uint64): inc result
+
+  proc retireMixedLoopLocked(runtime: ptr NativeRuntimeStorage) =
+    ## Cancel a queued or running owner, or detach a completed image after its last borrow.
+    let key = runtime.mixedKey
+    if key.generation == 0: return
+    assert matchesRow(runtime, key)
+    let slot = key.slot
+    runtime.slots[slot].cancelled = true
+    case runtime.slots[slot].location
+    of CompletionLocation.Queued:
+      assert not runtime.slots[slot].completion.ready
+      runtime.slots[slot].location = CompletionLocation.Reclaiming
+      finishRetirement(runtime, key)
+    of CompletionLocation.Complete:
+      if not runtime.mixedBorrowed:
+        var image = move(runtime.slots[slot].completion)
+        runtime.slots[slot].location = CompletionLocation.Reclaiming
+        release(runtime.lock)
+        image = default(NativeImage)
+        acquire(runtime.lock)
+        finishRetirement(runtime, key)
+    of CompletionLocation.Running, CompletionLocation.Reclaiming:
+      discard # The current worker or detached host owns physical retirement.
+    else:
+      abortNativeReceipt()
+    broadcast(runtime.changed)
 
 proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint64,
     finalDrop: bool, image: var NativeImage): Retirement =
@@ -284,6 +335,11 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint6
   if runtime.slots[slot].generation != generation or runtime.slots[slot].state != Live:
     release(runtime.lock)
     return NoWork
+  when NativeReadCycleEnabled:
+    if runtime.mixedKey.generation != 0 and sameKey(runtime.mixedOwner, runtime.slots[slot].key):
+      # Only the same serialized prepared owner can retire its installed primary row.
+      assert not runtime.mixedBorrowed
+      retireMixedLoopLocked(runtime)
   if finalDrop: runtime.slots[slot].state = Retiring
   case runtime.slots[slot].location
   of CompletionLocation.Queued, CompletionLocation.Running:
@@ -381,6 +437,39 @@ proc releaseCompilerClaim(runtime: ptr NativeRuntimeStorage, key: JobKey): bool 
   result = not runtime.stopping and not runtime.slots[key.slot].cancelled
   release(runtime.lock)
 
+when NativeReadCycleEnabled:
+  func mixedLoopQueued(runtime: ptr NativeRuntimeStorage): bool =
+    runtime.mixedKey.generation != 0 and
+      runtime.slots[runtime.mixedKey.slot].location == CompletionLocation.Queued
+
+  proc compileMixedLoop(runtime: ptr NativeRuntimeStorage) =
+    ## Copy the bounded certificate under the lock. The existing worker publishes its row.
+    let key = runtime.mixedKey
+    assert matchesRow(runtime, key) and mixedLoopQueued(runtime)
+    let proof = runtime.mixedProof
+    runtime.slots[key.slot].location = CompletionLocation.Running
+    var image = default(NativeImage)
+    if releaseCompilerClaim(runtime, key): image = lowerNativeMixedLoop(proof)
+    acquire(runtime.lock)
+    when defined(pvmSharedAsyncWitness):
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
+    assert sameKey(runtime.mixedKey, key) and matchesRow(runtime, key)
+    if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready:
+      runtime.slots[key.slot].location = CompletionLocation.Reclaiming
+      when defined(pvmSharedAsyncWitness):
+        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ready)
+      release(runtime.lock)
+      image = default(NativeImage)
+      acquire(runtime.lock)
+      finishRetirement(runtime, key)
+    else:
+      assert image.kind == NativeKind.MixedSelfLoop
+      runtime.slots[key.slot].completion = move(image)
+      runtime.slots[key.slot].location = CompletionLocation.Complete
+      when defined(pvmSharedAsyncWitness):
+        compilerGate(runtime, key, NativeCompilerPoint.AfterPublish, true)
+    broadcast(runtime.changed)
+
 proc compilerRun(raw: pointer) =
   ## Only the worker lowers copied POD requests; completions park in their own bounded credit rows.
   let runtime = cast[ptr NativeRuntimeStorage](raw)
@@ -390,14 +479,20 @@ proc compilerRun(raw: pointer) =
   broadcast(runtime.changed)
   while true:
     var runnable = runtime.work == WorkPhase.Queued
+    when NativeReadCycleEnabled: runnable = runnable or mixedLoopQueued(runtime)
     when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
     while not runnable and not runtime.stopping:
       wait(runtime.changed, runtime.lock)
       runnable = runtime.work == WorkPhase.Queued
+      when NativeReadCycleEnabled: runnable = runnable or mixedLoopQueued(runtime)
       when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
     if runtime.stopping:
       release(runtime.lock)
       return
+    when NativeReadCycleEnabled:
+      if runtime.work != WorkPhase.Queued:
+        compileMixedLoop(runtime)
+        continue
     let key = runtime.key
     assert requestMatches(runtime.request, key)
     assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
@@ -739,6 +834,95 @@ when NativeCheckedReadEnabled:
           first: site.first, last: site.first+span-1, epoch: candidate.read.info.epoch)
         if nativeReadObservationOverlaps(session, part): return true
       false
+
+when NativeReadCycleEnabled:
+  func mixedLoopPrimaryReady*(session: NativeSession): bool =
+    ## An auxiliary image is always subordinate to the current connected Read ticket.
+    matchesNativeImage(session, nativeInstalledKey(session), NativeKind.ConnectedReadCycle)
+
+  func mixedLoopDisjoint*(session: NativeSession, proof: NativeMixedLoop): bool =
+    ## Preserve original authority for every incumbent protected source interval.
+    not nativeReadObservationOverlaps(session, NativeReadBodyInfo(
+      header: proof.header, terminal: proof.terminal, first: proof.first,
+      last: proof.first+uint32(proof.span)-1, epoch: proof.epoch))
+
+  proc offerNativeMixedLoop*(session: NativeSession, proof: NativeMixedLoop): bool =
+    ## Leave one usable primary credit. The copied proof owns no guest or frame state.
+    if not mixedLoopPrimaryReady(session) or not proof.complete or not mixedLoopDisjoint(session, proof):
+      return false
+    let data {.cursor.} = session.data
+    assert data != nil and data.slot >= 0
+    let anchor {.cursor.} = data.runtime
+    assert anchor != nil
+    let runtime = addr anchor.storage
+    acquire(runtime.lock)
+    if runtime.stopping or runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2:
+      release(runtime.lock)
+      return false
+    var slot = 0
+    while runtime.slots[slot].state != Free or runtime.slots[slot].generation == high(uint64):
+      inc slot
+    assert runtime.slots[data.slot].location == CompletionLocation.Installed and
+      runtime.slots[slot].location == CompletionLocation.Empty
+    inc runtime.slots[slot].generation
+    inc runtime.nextTicket
+    let key = JobKey(slot: slot, generation: runtime.slots[slot].generation,
+      epoch: data.epoch, ticket: runtime.nextTicket, kind: NativeKind.MixedSelfLoop)
+    runtime.mixedKey = key
+    runtime.mixedOwner = runtime.slots[data.slot].key
+    runtime.mixedProof = proof
+    runtime.slots[slot].key = key
+    runtime.slots[slot].state = Live
+    runtime.slots[slot].location = CompletionLocation.Queued
+    data.mixedOffered = true
+    signal(runtime.changed)
+    release(runtime.lock)
+    true
+
+  proc observeMixedPublication(data: var NativeSessionStorage, key: JobKey) =
+    ## Record each exact physical publication on its first owner observation.
+    if sameKey(data.mixedObserved, key): return
+    data.mixedObserved = key
+    if data.mixedPublications < high(uint64): inc data.mixedPublications
+
+  proc borrowNativeMixedLoop*(session: NativeSession, proof: NativeMixedLoop): nil ptr NativeImage =
+    ## Pressure may revoke this exact image but cannot unmap it during the frame segment.
+    if not mixedLoopPrimaryReady(session): return nil
+    let data {.cursor.} = session.data
+    assert data != nil and data.slot >= 0
+    let anchor {.cursor.} = data.runtime
+    assert anchor != nil
+    let runtime = addr anchor.storage
+    if not tryAcquire(runtime.lock): return nil
+    let key = runtime.mixedKey
+    if not runtime.stopping and key.generation != 0 and not runtime.mixedBorrowed and
+        runtime.slots[key.slot].location == CompletionLocation.Complete and
+        not runtime.slots[key.slot].cancelled and
+        sameKey(runtime.mixedOwner, runtime.slots[data.slot].key) and runtime.mixedProof == proof:
+      assert matchesRow(runtime, key) and runtime.slots[key.slot].completion.ready
+      runtime.mixedBorrowed = true
+      observeMixedPublication(data[], key)
+      result = addr runtime.slots[key.slot].completion
+    else:
+      result = nil
+    release(runtime.lock)
+
+  proc returnNativeMixedLoop*(session: NativeSession) =
+    ## The frame restores the original checked handler before releasing the borrow.
+    let data {.cursor.} = session.data
+    assert data != nil and data.invocation and data.slot >= 0
+    let anchor {.cursor.} = data.runtime
+    assert anchor != nil
+    let runtime = addr anchor.storage
+    acquire(runtime.lock)
+    let key = runtime.mixedKey
+    assert key.generation != 0 and runtime.mixedBorrowed and
+      sameKey(runtime.mixedOwner, runtime.slots[data.slot].key) and
+      runtime.slots[key.slot].location == CompletionLocation.Complete
+    runtime.mixedBorrowed = false
+    if runtime.slots[key.slot].cancelled: retireMixedLoopLocked(runtime)
+    release(runtime.lock)
 
 proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
   ## Lease the runtime for the whole public call, even during unregistered checked execution.
@@ -1165,10 +1349,16 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Check admission under the mutex already required to release this invocation's lease.
   var submitted = false
   acquire(runtime.lock)
-  if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
+  template primaryCanQueue(): bool =
+    runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
       data.state == NativeState.Deferred and candidate and
       completedWork > 0 and data.provenWork >= NativeInvocationFloor and
-      runtime.nextTicket < high(uint64) and registerSession(runtime, data):
+      runtime.nextTicket < high(uint64)
+  when NativeReadCycleEnabled:
+    if primaryCanQueue() and runtime.mixedKey.generation != 0 and freeNativeCredits(runtime) <= 1:
+      retireMixedLoopLocked(runtime)
+  # A physical optional release drops and reacquires the lock. Recheck the full predicate.
+  if primaryCanQueue() and registerSession(runtime, data):
     inc runtime.nextTicket
     assert not data.image.ready and not runtime.slots[data.slot].completion.ready
     # Selection is fixed for this ticket. Only the selected ABI crosses the mailbox.
@@ -1428,6 +1618,51 @@ proc nativeStatistics*(session: NativeSession): array[5, uint64] =
   if data == nil: return default(array[5, uint64])
   [data.publications, data.calls, data.operations, data.image.codeBytes, 0'u64]
 
+when NativeReadCycleEnabled:
+  func addNativeCount(left, right: uint64): uint64 {.inline.} =
+    if right > high(uint64)-left: high(uint64) else: left+right
+
+  proc recordNativeMixedLoop*(session: NativeSession, operations: uint64) =
+    ## Only a validated nonempty native receipt is observable as execution.
+    let data {.cursor.} = session.data
+    if data == nil: return
+    assert data.invocation and operations > 0
+    if data.mixedCalls < high(uint64): inc data.mixedCalls
+    data.mixedOperations = addNativeCount(data.mixedOperations, operations)
+
+proc nativeOperationCount*(session: NativeSession): uint64 {.inline.} =
+  ## Actual execution detection needs only owner-local counters, even during a runtime borrow.
+  let data {.cursor.} = session.data
+  if data == nil: return 0
+  when NativeReadCycleEnabled: addNativeCount(data.operations, data.mixedOperations)
+  else: data.operations
+
+proc nativeOwnerStatistics*(session: NativeSession): array[5, uint64] =
+  ## Include observed auxiliary work and check current optional occupancy under the runtime lock.
+  result = nativeStatistics(session)
+  when NativeReadCycleEnabled:
+    let data {.cursor.} = session.data
+    if data == nil: return
+    result[1] = addNativeCount(result[1], data.mixedCalls)
+    result[2] = addNativeCount(result[2], data.mixedOperations)
+    if data.mixedOffered:
+      let anchor {.cursor.} = data.runtime
+      if anchor != nil and data.slot >= 0:
+        let runtime = addr anchor.storage
+        acquire(runtime.lock)
+        let key = runtime.mixedKey
+        if key.generation != 0 and sameKey(runtime.mixedOwner, runtime.slots[data.slot].key):
+          if runtime.slots[key.slot].location == CompletionLocation.Complete:
+            assert matchesRow(runtime, key) and runtime.slots[key.slot].completion.ready
+            observeMixedPublication(data[], key)
+            result[3] += runtime.slots[key.slot].completion.codeBytes
+        else:
+          data.mixedOffered = false
+        release(runtime.lock)
+      else:
+        data.mixedOffered = false
+    result[0] = addNativeCount(result[0], data.mixedPublications)
+
 when defined(pvmSharedAsyncWitness):
   proc pauseNativeCompiler*(runtime: NativeRuntime, paused: bool) =
     ## Deterministic qualification barrier, never a timing warmup or production readiness wait.
@@ -1462,7 +1697,14 @@ when defined(pvmSharedAsyncWitness):
     if anchor == nil: return
     let data = addr anchor.storage
     acquire(data.lock)
-    while data.started and data.work != WorkPhase.Idle:
+    template workPending(): bool =
+      when NativeReadCycleEnabled:
+        data.work != WorkPhase.Idle or (data.mixedKey.generation != 0 and
+          data.slots[data.mixedKey.slot].location in {CompletionLocation.Queued,
+            CompletionLocation.Running, CompletionLocation.Reclaiming})
+      else:
+        data.work != WorkPhase.Idle
+    while data.started and workPending():
       wait(data.changed, data.lock)
     release(data.lock)
 

@@ -795,6 +795,18 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(code, [0x49'u8, 0x8b, 0x4a, base+16]) # MOV RCX,[R10+extent.data].
       cycleEdge(code, fixes, 0, accepted) # JMP rel32 with the proved pointer and offset.
 
+    template emitCheckedReadValue(code: var X86Block, encoding: byte) =
+      ## Load exactly the proved width and extend the guest result into RAX.
+      case encoding
+      of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
+      of 125: put(code, [0x48'u8, 0x0f, 0xbe, 0x04, 0x01]) # MOVSX RAX,byte [RCX+RAX].
+      of 126: put(code, [0x0f'u8, 0xb7, 0x04, 0x01]) # MOVZX EAX,word [RCX+RAX].
+      of 127: put(code, [0x48'u8, 0x0f, 0xbf, 0x04, 0x01]) # MOVSX RAX,word [RCX+RAX].
+      of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX].
+      of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
+      of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
+      else: assert false # The common certificate admits only these seven load encodings.
+
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
         labels: untyped, body: NativeReadBody, access: untyped,
         count: int, refusal: byte, nextLabel: var byte,
@@ -833,15 +845,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             labels[int(nextRegion)] = code.bytes.len
           cycleEdge(code, fixes, 0, refusal) # JMP rel32 when all three extents miss.
           labels[int(accepted)] = code.bytes.len
-          case encoding
-          of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
-          of 125: put(code, [0x48'u8, 0x0f, 0xbe, 0x04, 0x01]) # MOVSX RAX,byte [RCX+RAX].
-          of 126: put(code, [0x0f'u8, 0xb7, 0x04, 0x01]) # MOVZX EAX,word [RCX+RAX] clears upper32.
-          of 127: put(code, [0x48'u8, 0x0f, 0xbf, 0x04, 0x01]) # MOVSX RAX,word [RCX+RAX].
-          of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX] clears upper32.
-          of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
-          of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-          else: assert false # The common certificate admits only these seven load encodings.
+          emitCheckedReadValue(code, encoding)
           writeAccess(code, access, op.slots.aIndex)
 
     proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],
@@ -1177,6 +1181,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         cycleEdge(code, fixes, 0x83, unpaid)
         put(code, [0x48'u8, 0x0f, 0xa3, 0x06]) # BT [RSI],RAX.
         cycleEdge(code, fixes, 0x83, unpaid) # JNC when the page is not already dirty.
+
+      include ./x86_mixed_loop
 
       proc readCycleAdvance(code: var X86Block, access: X86ResidentAccess,
           slot: range[0..12], delta: byte) =
