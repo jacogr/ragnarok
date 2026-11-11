@@ -59,7 +59,7 @@ func complete*(ring: NativeRegisterRing): bool =
   true
 
 const
-  NativeRingRoundSpan* = 8'u32 ## Total original attempts in the certified three blocks.
+  NativeRingRoundSpan* = 8'u32             ## Total original attempts in the certified three blocks.
   NativeRingRoundSuffixSpans* = [5'u32, 3] ## Attempts to refund after the first or second block.
 
 func nativeRingRoundBudget*(ring: NativeRegisterRing): NativeRingRoundBudget =
