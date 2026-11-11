@@ -6,11 +6,12 @@
 ## a paid visit preserves earlier writes before a later guard resumes checked execution.
 ## Folded no-ops still count toward gas and the original attempt span. Cold branch
 ## resolution retains at most eight accepted candidates from sixteen bounded source
-## reconstructions per stream epoch. The frame ranks their checked visits beside a ready Read owner.
+## reconstructions per stream epoch. The frame ranks checked visits beside a ready Read owner.
+## The signed173 route also uses an exact installed ring lease before its first current-call entry.
 
 when declared(FlatFrame):
   proc buildFlatMixedLoop(f: FlatFrame, pc: uint32, epoch: uint64,
-      allowPaid = true): NativeMixedLoop =
+      allowPaid = true, readOnly = false): NativeMixedLoop =
     ## Only an ordinary complete header with the original operands and price can certify a visit.
     result = default(NativeMixedLoop)
     if epoch == 0 or f.plan == nil or f.plan.allowNative or f.plan.singleStep or
@@ -21,8 +22,11 @@ when declared(FlatFrame):
     if not flatCompleteOriginalHeader(f, pc, NativeReadFactLimit, header, source) or
         source.span < NativeMixedLoopMinimum or f.handlers[int(header)] != flatCharge or
         not flatWalkCompleteSource(f, header, source, walk) or
-        walk.operations < NativeMixedLoopMinimum or walk.terminal >= NativeEntryLimit or
-        f.handlers[int(walk.terminal)] != flatBranch[171]: return
+        walk.operations < NativeMixedLoopMinimum or walk.terminal >= NativeEntryLimit: return
+    let readOnlyBody = readOnly or f.plan.facts[int(source.last)].opcode == 173
+    let terminalWorker = if readOnlyBody: flatBranch[173] else: flatBranch[171]
+    let unresolvedWorker = if readOnlyBody: flatUnresolvedBranch[173] else: flatUnresolvedBranch[171]
+    if f.handlers[int(walk.terminal)] != terminalWorker: return
     let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
     if price.error != GasError.None or uint64(price.value) != source.price: return
     let priceIndex = f.plan.facts[int(source.first)].priceIndex
@@ -39,7 +43,7 @@ when declared(FlatFrame):
       if node == walk.terminal:
         var exitSource = default(FlatSourceInterval)
         let immediateMask = 0xffffffff'u64
-        if original.handler != flatUnresolvedBranch[171] or uint32(original.args.x shr 32) != pc or
+        if original.handler != unresolvedWorker or uint32(original.args.x shr 32) != pc or
             uint32(actual.x shr 32) != header or
             (actual.x and immediateMask) != (original.args.x and immediateMask) or
             not flatCompleteOriginalHeader(f, original.args.y, high(uint32), proof.exitHeader,
@@ -62,11 +66,52 @@ when declared(FlatFrame):
         slots: original.args.slots, immediate: (if node ==
             walk.terminal: 0'u64 else: original.args.x))
       inc node
-    if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
+    if allowPaid and not readOnlyBody: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
     if proof.complete: result = proof
 
+  when defined(pvmReadOnlyMixedLoopWitness):
+    proc witnessFlatReadOnlyMixedSource*(program: Program, pc: uint32): NativeMixedLoop =
+      ## Reconstruct a copied read-only self-loop from original checked source and cached arms.
+      ## The returned proof is diagnostic geometry. A live frame binds it again before entry.
+      let cycles = GasCycleLimit(100000)
+      var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
+      assert prepared.error == FlatError.None
+      let plan = takeValue(prepared)
+      let info = MachineInfo(pc: CodeAddress(uint64(pc)), gas: MachineGas(1000000))
+      var frame = newFlatFrame(plan, [], info)
+      let header = flatResolve(frame, pc)
+      assert header != flatStop
+      var source = default(FlatSourceInterval)
+      var walk = default(FlatSourceSummary)
+      assert flatSourceIntervalAt(frame, header, NativeReadFactLimit, source)
+      assert flatWalkCompleteSource(frame, header, source, walk)
+      assert not buildFlatMixedLoop(frame, pc, 1, readOnly = true).complete
+      assert frame.handlers[int(walk.terminal)] == flatUnresolvedBranch[173]
+      assert flatUnresolvedBranch[173](frame, walk.terminal) == walk.terminal
+      let proof = buildFlatMixedLoop(frame, pc, 1, readOnly = true)
+      assert proof.complete and buildFlatMixedLoop(frame, pc, 1) == proof
+      assert not buildFlatMixedLoop(frame, pc, 0, readOnly = true).complete
+      let price = frame.arguments[int(header)].x
+      frame.arguments[int(header)].x = price+1
+      assert not buildFlatMixedLoop(frame, pc, 1, readOnly = true).complete
+      frame.arguments[int(header)].x = price
+      let span = frame.arguments[int(header)].y
+      frame.arguments[int(header)].y = span-1
+      assert not buildFlatMixedLoop(frame, pc, 1, readOnly = true).complete
+      frame.arguments[int(header)].y = span
+      let branch = frame.arguments[int(walk.terminal)]
+      frame.arguments[int(walk.terminal)].y = header
+      assert not buildFlatMixedLoop(frame, pc, 1, readOnly = true).complete
+      frame.arguments[int(walk.terminal)] = branch
+      let original = frame.arguments[int(header)+1]
+      frame.arguments[int(header)+1].x = original.x xor 1
+      assert not buildFlatMixedLoop(frame, pc, 1, readOnly = true).complete
+      frame.arguments[int(header)+1] = original
+      assert buildFlatMixedLoop(frame, pc, 1, readOnly = true) == proof
+      result = proof
+
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
-    ## Bound exact source reconstruction to cold resolved BNEs with a plausible byte store.
+    ## Bound source reconstruction to cold BNE Stores and privately qualified signed-LT Reads.
     ## Refused early loops consume reconstruction work without occupying the accepted
     ## inventory. A separate ceiling permits later useful loops after those refusals:
     ## at most sixteen cold attempts, each spanning at most NativeReadFactLimit facts,
@@ -84,15 +129,38 @@ when declared(FlatFrame):
     let first = int(f.sites[int(header)])
     let span = f.arguments[int(header)].y
     if span > NativeReadFactLimit or first+int(span) > f.plan.facts.len: return
+    # A backedge into another original block cannot form a complete self-loop certificate.
+    # Reject its boundary before charging the bounded reconstruction inventory.
+    if span == 0 or uint64(f.sites[int(terminal)]) != uint64(first)+uint64(span)-1:
+      when defined(pvmMixedLoopWitness):
+        echo "MIXED_LOOP_BOUNDARY_REFUSAL,", pc, ",", span, ",", f.sites[int(terminal)],
+          ",", uint64(first)+uint64(span)
+      return
     var store = false
+    let readOnly = f.plan.facts[int(f.sites[int(terminal)])].opcode == 173
+    # One initial read-only slot shares the eight-entry inventory with Store candidates.
+    # Low-work signed loops must not consume every slot before later Store discovery.
+    # This per-epoch selection cap accepts either operand orientation; it does not replace
+    # the initial read-only nomination adaptively when a later candidate becomes hotter.
+    if readOnly and f.mixedSource.readOnlySeen: return
+    var read = false
     for index in first..<first+int(span):
-      if f.plan.facts[index].opcode == 120:
+      let opcode = f.plan.facts[index].opcode
+      if opcode == 120:
         store = true
         break
-    if not store: return
+      if readOnly and nativeReadOpcode(nativeReadEncodingOpcode(opcode)): read = true
+    if readOnly:
+      if not read or store: return
+    elif not store: return
     inc f.mixedSource.checks
     let proof = buildFlatMixedLoop(f, pc, epoch)
-    if not proof.complete or proof.header != header or proof.terminal != terminal: return
+    let accepted = proof.complete and proof.header == header and proof.terminal == terminal
+    when defined(pvmMixedLoopWitness):
+      echo "MIXED_LOOP_DISCOVERY,", f.mixedSource.checks, ",", pc, ",", span, ",", accepted,
+        ",", f.sites[int(terminal)], ",", uint64(first)+uint64(span)-1
+    if not accepted: return
+    if readOnly: f.mixedSource.readOnlySeen = true
     f.mixedSource.candidates[int(f.mixedSource.count)] = token
     inc f.mixedSource.count
     when defined(pvmMixedLoopWitness):

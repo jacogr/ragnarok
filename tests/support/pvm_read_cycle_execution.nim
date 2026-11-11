@@ -854,10 +854,15 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   import ../../src/pvm/internal/native_mixed_loop
 
-  proc readyMixedLoopTestRenderer(runtime: NativeRuntime, session: NativeSession) =
+  import ./pvm_register_ring
+
+  proc readyMixedLoopTestRenderer(runtime: NativeRuntime, session: NativeSession, ring = false) =
     ## Publish an ordinary primary under its existing queue and collection rules.
     beginNativeInvocation(session, NativeInvocationFloor)
-    nominateNativeReadCycle(session, cycleFixture(epoch = nativeEpoch(session)))
+    if ring:
+      nominateNativeRing(session, registerRingFixture([3'u64, 2, 5]), nativeEpoch(session))
+    else:
+      nominateNativeReadCycle(session, cycleFixture(epoch = nativeEpoch(session)))
     finishNativeInvocation(session, NativeInvocationFloor)
     waitNativeCompiler(runtime)
     beginNativeInvocation(session, NativeInvocationFloor)
@@ -888,7 +893,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     result.proofs[1].first += 512
     assert result.complete
 
-  proc runMixedLoopMailboxCase[Paired: static[bool]]() =
+  proc runMixedLoopMailboxCase[Paired, Ring: static[bool]]() =
     ## Force the same real scheduler lifecycle for either one entry or a disjoint two-entry arena.
     template candidates(proof: NativeMixedLoop): NativeMixedLoopSet =
       when Paired: mixedLoopTestPair(proof)
@@ -906,11 +911,24 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     let renderer = newNativeSession(runtime)
     let other = newNativeSession(runtime)
     let priority = newNativeSession(runtime)
-    readyMixedLoopTestRenderer(runtime, renderer)
+    readyMixedLoopTestRenderer(runtime, renderer, ring = Ring)
 
     # Keep both jobs queued without pressure so a later primary can claim first.
     let queuedPriority = newNativeSession(runtime)
     let queuedProof = mixedLoopTestProof(nativeEpoch(renderer))
+    when Ring:
+      # Protect every installed ring block in both coordinate spaces before queueing.
+      let ring = registerRingFixture([3'u64, 2, 5])
+      for item in ring.blocks:
+        var physical = queuedProof
+        physical.header = item.header
+        physical.terminal = item.header+uint32(physical.count)
+        physical.exitHeader = physical.terminal+1
+        assert physical.complete and not mixedLoopDisjoint(renderer, physical)
+        var source = queuedProof
+        source.first = item.first
+        assert source.complete and not mixedLoopDisjoint(renderer, source)
+      assert mixedLoopDisjoint(renderer, queuedProof)
     let beforeAuxiliary = runtimeInfo(runtime)
     pauseNativeCompiler(runtime, true)
     beginNativeInvocation(renderer, NativeInvocationFloor)
@@ -967,7 +985,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     finishNativeInvocation(renderer, NativeInvocationFloor)
     invalidateNativeStream(queuedPriority)
     invalidateNativeStream(renderer)
-    readyMixedLoopTestRenderer(runtime, renderer)
+    readyMixedLoopTestRenderer(runtime, renderer, ring = Ring)
     readyMixedLoopTestRenderer(runtime, other)
     let original = mixedLoopTestProof(nativeEpoch(renderer))
 
@@ -1016,7 +1034,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     releaseNativeCompilerGate(runtime)
     waitNativeCompiler(runtime)
     assert runtimeInfo(runtime).registered == 1
-    readyMixedLoopTestRenderer(runtime, renderer)
+    readyMixedLoopTestRenderer(runtime, renderer, ring = Ring)
     let next = mixedLoopTestProof(nativeEpoch(renderer))
     assert next.epoch != original.epoch
     beginNativeInvocation(renderer, NativeInvocationFloor)
@@ -1127,7 +1145,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
       assert start(runtime)
     except:
       assert false, "native compiler thread restart failed"
-    readyMixedLoopTestRenderer(runtime, renderer)
+    readyMixedLoopTestRenderer(runtime, renderer, ring = Ring)
     let closing = mixedLoopTestProof(nativeEpoch(renderer))
     when defined(pvmX86Jit):
       var oversized = NativeMixedLoop(header: 160, first: 256, terminal: 192, exitHeader: 193,
@@ -1164,8 +1182,10 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
 
   proc runMixedLoopMailbox*() =
-    runMixedLoopMailboxCase[false]()
-    runMixedLoopMailboxCase[true]()
+    runMixedLoopMailboxCase[false, false]()
+    runMixedLoopMailboxCase[true, false]()
+    runMixedLoopMailboxCase[false, true]()
+    runMixedLoopMailboxCase[true, true]()
 
   proc runMixedArenaPublishRefusal*() =
     ## A real partial arena publication failure must never become a callable worker completion.

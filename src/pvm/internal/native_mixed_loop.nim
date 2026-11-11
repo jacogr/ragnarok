@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Copied source and invocation receipts for a bounded native mixed self-loop.
+## Copied source and invocation receipts for bounded transactional memory self-loops.
+## Source admission supports BNE171 with Stores. The signed-LT173 route admits
+## read-only bodies. Exact ordered proofs and target occupancy together identify arena entries;
+## the same byte ceiling can produce different resident subsets on ARM64 and x86-64.
 
 import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
@@ -10,7 +13,7 @@ const
   NativeMixedLoopCandidateLimit* = 8 ## Accepted source inventory and per-ticket refusals stay bounded.
   NativeMixedLoopReconstructionLimit* = 16 ## Cold source proof attempts per stream epoch, including refusals.
   NativeMixedLoopEntryLimit* = NativeMixedLoopCandidateLimit ## One arena preserves the ranked inventory's slot identities.
-  NativeMixedLoopMinimum* = 3'u32 ## Ordered read, byte store and checked terminal.
+  NativeMixedLoopMinimum* = 3'u32 ## A bounded memory/scalar body followed by its checked terminal.
   NativeMixedLoopVisitLimit* = 256'u32
   NativeMixedLoopVisitLimitOffset* = NativeCycleGasOffset
   NativeMixedLoopContextBytes* = NativeMixedLoopVisitLimitOffset+8
@@ -72,26 +75,33 @@ func nativeMixedLoopPaidGuards*(proof: NativeMixedLoop): uint32 =
 
 func complete*(proof: NativeMixedLoop): bool =
   ## Admit a transactional byte-store body or a sealed paid continuation body.
+  ## A read-only body requires one or more Reads and an original signed-LT terminal.
   let count = uint32(proof.count)
   let span = uint32(proof.span)
   if proof.epoch == 0 or count < NativeMixedLoopMinimum or count > span or
       span > NativeReadFactLimit or proof.terminal >= NativeEntryLimit or
       proof.header >= proof.terminal or proof.terminal-proof.header != count or
       proof.exitHeader >= NativeEntryLimit or proof.exitHeader in proof.header..proof.terminal or
-      proof.first > high(uint32)-(span-1) or proof.operations[int(count)-1].opcode != 171:
+      proof.first > high(uint32)-(span-1):
     return false
+  let terminal = proof.operations[int(count)-1].opcode
+  if terminal notin [171'u8, 173'u8]: return false
+  let readOnly = terminal == 173
+  if readOnly and proof.paidGuards != 0: return false
   if proof.paidGuards != 0: return proof.paidGuards == nativeMixedLoopPaidGuards(proof)
   var read = false
   var store = false
   for index in 0..<int(count)-1:
     let opcode = proof.operations[index].opcode
     if opcode == 120:
+      if readOnly: return false
       if store or not read: return false
       store = true
     elif nativeReadOpcode(nativeReadEncodingOpcode(opcode)):
       if store: return false
       read = true
     elif not supportedScalarOpcode(opcode): return false
+  if readOnly: return read and not store
   store
 
 func nativeMixedLoopBudget*(span: uint8, price, gas, remaining: uint64): uint32 =
@@ -120,6 +130,7 @@ func nativeMixedLoopReceipt*(proof: NativeMixedLoop, funded, raw: uint32,
   if funded > NativeMixedLoopVisitLimit or
       proof.count < uint8(NativeMixedLoopMinimum) or proof.count > uint8(
           NativeReadFactLimit): return
+  if proof.operations[int(proof.count)-1].opcode == 173 and not proof.complete: return
   let leavesLoop = (raw and NativeMixedLoopExitBit) != 0
   var visits = raw and not NativeMixedLoopExitBit
   if proof.paidGuards != 0:
@@ -136,8 +147,15 @@ func nativeMixedLoopReceipt*(proof: NativeMixedLoop, funded, raw: uint32,
   if visits == 0:
     if leavesLoop: return
   else:
-    let slots = proof.operations[int(proof.count)-1].slots
-    if leavesLoop != (registers[slots.aIndex] == registers[slots.bIndex]): return
+    let terminal = proof.operations[int(proof.count)-1]
+    let slots = terminal.slots
+    var continues = registers[slots.aIndex] != registers[slots.bIndex]
+    if terminal.opcode == 173:
+      # Flipping the sign bit preserves the checked signed order without narrowing the register bits.
+      const sign = 0x8000000000000000'u64
+      continues = (uint64(registers[slots.aIndex]) xor sign) <
+        (uint64(registers[slots.bIndex]) xor sign)
+    if leavesLoop == continues: return
   result = NativeMixedLoopReceipt(valid: true, visits: visits,
     next: (if leavesLoop: proof.exitHeader else: proof.header))
 

@@ -221,8 +221,8 @@ when declared(X86Block):
 
   proc x86MixedLoopInstructions*(operations: openArray[NativeOperation]): seq[byte] =
     ## Emit exact SysV (registers, context) -> (completed visits | checked-exit bit).
-    ## Only ordered reads and staged scalar writes may precede the sole byte Store.
-    ## Its suffix contains only infallible scalars or noops before the terminal BNE.
+    ## Ordered Reads and staged scalars precede a transactional byte Store and terminal BNE.
+    ## Read-only signed-LT loops contain guarded Reads and scalars without a Store.
     ## The caller proves source edges, dirty-list ownership and the funded visit cap.
     const
       visit = 0'u8
@@ -234,7 +234,8 @@ when declared(X86Block):
     if operations.len < 3 or operations.len > int(NativeReadFactLimit): return @[]
     let terminal = operations.len-1
     let branch = operations[terminal]
-    if branch.opcode != 171: return @[]
+    let readOnly = branch.opcode == 173
+    if branch.opcode != 171 and not readOnly: return @[]
 
     var writes = 0'u16
     var sawRead = false
@@ -245,7 +246,7 @@ when declared(X86Block):
       let op = operations[index]
       if op.opcode == 120:
         # At least one read precedes the unique Store.
-        if not sawRead or sawStore: return @[]
+        if readOnly or not sawRead or sawStore: return @[]
         sawStore = true
       elif nativeReadOpcode(nativeReadEncodingOpcode(op.opcode)):
         # A refused read must be able to leave the entire visit unpaid.
@@ -260,7 +261,7 @@ when declared(X86Block):
         writes = writes or (1'u16 shl int(op.slots.destinationIndex))
       elif op.opcode != 2:
         return @[]
-    if not sawStore: return @[]
+    if not sawRead or (not readOnly and not sawStore): return @[]
     assert sizeof(RegisterFile) == int(pointerSlots[0]) and NativeCycleGasOffset == 136
 
     var code = default(X86Block)
@@ -316,7 +317,8 @@ when declared(X86Block):
     readAccess(code, access, branch.slots.aIndex, false)
     readAccess(code, access, branch.slots.bIndex, true)
     put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX.
-    cycleEdge(code, fixes, 0x84, outside) # Equality takes the original false edge.
+    # Signed-LT exits on greater-or-equal. BNE keeps its original equality edge.
+    cycleEdge(code, fixes, (if readOnly: 0x8d'u8 else: 0x84'u8), outside)
     put(code, [0x45'u8, 0x39, 0xec]) # CMP R12D,R13D.
     cycleEdge(code, fixes, 0x82, visit) # The certified true edge retries while funded.
     labels[int(unpaid)] = code.bytes.len

@@ -5,11 +5,17 @@
 ## The host serializes handle operations. The worker receives copied IR and a scalar job key
 ## under the runtime lock. Parked completions belong to individual registrations and free
 ## the worker before the host collects them. Credits bound image owners through unmapping.
-## Only a ConnectedReadCycle owner can queue the runtime's one immutable mixed-entry arena,
-## leaving a primary credit usable. Queued primary work claims first. Pressure may cancel the
+## A connected Read or RegisterRing owner can queue one immutable mixed-entry arena, leaving
+## a usable credit for primary work. The worker claims queued primary work first. Pressure may cancel the
 ## auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
 ## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
+## A hot init Read can precede the ring's first current-call entry. Completed ranked source work and
+## the allowed installed ring lease permit that segment's offer under the same credit checks.
+## This also permits an already discovered Store auxiliary during unused-ring warmup before
+## Read replacement. Primary counters remain separate from the combined owner work and publications.
+## Connected Read remains a primary-only image kind. Running that whole Read graph beside
+## an actively used ring needs a later typed auxiliary contract and selection policy.
 ## Another source can retain a ready primary while its auxiliary offer waits for retirement.
 ## Deferred identities hold no credit; only eligible work that can queue claims one.
 ## Installed owners retain credits while idle, so a serialized second consumer can still
@@ -877,8 +883,12 @@ when NativeCheckedReadEnabled:
 
 when NativeReadCycleEnabled:
   func mixedLoopPrimaryReady*(session: NativeSession): bool =
-    ## An auxiliary image is always subordinate to the current connected Read ticket.
-    matchesNativeImage(session, nativeInstalledKey(session), NativeKind.ConnectedReadCycle)
+    ## Match the current installed primary before either offer or segment borrow.
+    ## Read-only and Store routes also admit RegisterRing under the same exact owner key.
+    ## Four credits, primary priority and delayed borrowed retirement remain shared.
+    let key = nativeInstalledKey(session)
+    if matchesNativeImage(session, key, NativeKind.RegisterRing): return true
+    matchesNativeImage(session, key, NativeKind.ConnectedReadCycle)
 
   func mixedLoopDisjoint*(session: NativeSession, proof: NativeMixedLoop): bool =
     ## Preserve original authority for every incumbent protected source interval.
@@ -887,7 +897,7 @@ when NativeReadCycleEnabled:
       last: proof.first+uint32(proof.span)-1, epoch: proof.epoch))
 
   proc offerNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet): bool =
-    ## Queue under the exact installed Read ticket and stream epoch. Require an idle primary
+    ## Queue under the exact eligible installed primary ticket and stream epoch. Require an idle primary
     ## mailbox and leave one usable primary credit. The proof copies source facts only.
     ## Source admission preserves rank slots, while the target publisher chooses the
     ## resident subset under its byte cap. Borrowers must use the published occupancy

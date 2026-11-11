@@ -26,6 +26,32 @@ const
     [3'u64, 2'u64, 5'u64], [0'u64, 0'u64, 0'u64],
     [0x8000000000000001'u64, 7'u64, 0x100000005'u64]]
 
+proc registerRingFixture*(prices: array[3, uint64]): NativeRegisterRing =
+  ## Copy the existing decoded three-block fixture for direct and shared-owner witnesses.
+  let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+  assert decoded.error == ProgramError.None
+  let program = decoded.value
+  result = default(NativeRegisterRing)
+  for index in 0..2:
+    var item = NativeRingBlock(header: CoordinateBase+Headers[index], first: First[index],
+      span: Spans[index], price: prices[index], yes: CoordinateBase+Yes[index],
+      no: CoordinateBase+No[index])
+    var pc = Headers[index]
+    for position in 0..<int(item.span):
+      let original = instruction(program, CodeAddress(pc))
+      assert original.error == ProgramError.None
+      let op = NativeOperation(opcode: original.value.opcode, slots: instructionRegisters(
+          original), immediate: uint64(original.value.x))
+      if position == int(item.span)-1:
+        assert uint32(int64(pc)+int64(original.value.displacement)) == Yes[index]
+        assert pc+uint32(original.value.skip)+1 == No[index]
+        item.branch = op
+      else:
+        item.body[position] = op
+      pc += uint32(original.value.skip)+1
+    result.blocks[index] = item
+  assert result.complete
+
 proc checkRing() =
   ## Use real decoded operands and compare every register and original continuation.
   let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
@@ -37,25 +63,7 @@ proc checkRing() =
   for profile in 0..2:
     let prices = Prices[profile]
     # Publish each price profile through the production direct lowering and image-size check.
-    var ring = default(NativeRegisterRing)
-    for index in 0..2:
-      var item = NativeRingBlock(header: CoordinateBase+Headers[index], first: First[index],
-        span: Spans[index], price: prices[index], yes: CoordinateBase+Yes[index],
-        no: CoordinateBase+No[index])
-      var pc = Headers[index]
-      for position in 0..<int(item.span):
-        let original = instruction(program, CodeAddress(pc))
-        assert original.error == ProgramError.None
-        let op = NativeOperation(opcode: original.value.opcode, slots: instructionRegisters(
-            original), immediate: uint64(original.value.x))
-        if position == int(item.span)-1:
-          assert uint32(int64(pc)+int64(original.value.displacement)) == Yes[index]
-          assert pc+uint32(original.value.skip)+1 == No[index]
-          item.branch = op
-        else:
-          item.body[position] = op
-        pc += uint32(original.value.skip)+1
-      ring.blocks[index] = item
+    let ring = registerRingFixture(prices)
     assert ring.complete
     var invalid = ring
     invalid.blocks[1].yes = invalid.blocks[2].header

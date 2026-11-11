@@ -90,15 +90,15 @@ not implied. Per-owner idle memory ceilings do not establish an aggregate prepar
 Future wiring requires explicit ownership/shutdown, aggregate retention budgets and a competition
 policy across the existing consumers before increasing availability or image capacity.
 
-## Bounded mixed byte-store loops
+## Bounded auxiliary memory loops
 
-Both shared native backends can run source-certified transactional and paid mixed self-loops
-beside a connected Read image. The [source certificate](../src/pvm/internal/handler_mixed_loop.nim)
+Both shared native backends can run source-certified transactional, paid and read-only signed-LT self-loops
+beside an exact connected Read or RegisterRing image. The [source certificate](../src/pvm/internal/handler_mixed_loop.nim)
 owns accepted geometry and bounded discovery; [worker and image ownership](../src/pvm/internal/native_pipeline.nim)
 owns the single global auxiliary arena and exact primary-ticket/proof-set authority.
 [Publication](../src/pvm/internal/native_platform.nim) preserves ranked slots within the common
-byte cap; target encoding sizes can leave different slots checked on each ISA. This does not
-provide arbitrary graph composition or auxiliary scheduling beside a register-ring primary.
+byte cap; target encoding sizes can leave different slots checked on each ISA. The source inventory shares eight slots and sixteen reconstructions, with
+one initial read-only candidate. General auxiliary graph composition remains separate work.
 The shared-async native suites cover source admission, primary priority, publication accounting,
 quota-bound handler restoration and borrowed retirement.
 

@@ -31,17 +31,19 @@ when NativeReadCycleEnabled:
 
   type
     FlatMixedLoopSource = object
-      ## Cold discovery retains only bounded source coordinates and their epoch.
+      ## Cold discovery retains a bounded source inventory, its family cap and source epoch.
       epoch: uint64
       chosen: array[NativeMixedLoopEntryLimit, uint32]
       count, checks, refused, chosenCount: uint8
       candidates: array[NativeMixedLoopCandidateLimit, uint32]
+      readOnlySeen: bool # One initial read-only nomination preserves room for the Store family.
     FlatMixedLoopProbe = object
       ## Temporary checked terminal handlers count completed visits within this segment.
       count: int
       terminals, tokens: array[NativeMixedLoopCandidateLimit, uint32]
       visits: array[NativeMixedLoopCandidateLimit, uint64]
       spans: array[NativeMixedLoopCandidateLimit, uint8]
+      opcodes: array[NativeMixedLoopCandidateLimit, uint8]
   when defined(pvmMixedLoopWitness):
     type FlatMixedArenaWitness = object
       entries, visits, refusals, paid, operations, branches, repeatedHeaders: uint64
@@ -942,7 +944,7 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
   f.arguments[int(off)].y = no
   let patched: FlatHandler = flatBranch[Code]
   f.handlers[int(off)] = patched
-  when NativeReadCycleEnabled and Code == 171:
+  when NativeReadCycleEnabled and Code in [171, 173]:
     observeFlatMixedLoop(f, uint32(a.x shr 32), yes, off)
   off
 
@@ -3076,14 +3078,14 @@ template flatDispatchSegment(f: var FlatFrame, entry: uint32) =
     flatDispatchLoop(f, entry, false)
 
 when NativeReadCycleEnabled:
-  proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =
-    ## A completed original BNE counts one full checked visit, including folded source facts.
+  proc flatProbeMixedLoop[Code: static[int]](f: var FlatFrame, terminal: uint32): uint32 =
+    ## A completed original branch counts one full checked visit, including folded source facts.
     let probe = f.mixedProbe
     assert probe != nil
     var index = 0
     while index < probe[].count and probe[].terminals[index] != terminal: inc index
     assert index < probe[].count
-    result = flatBranch[171](f, terminal)
+    result = flatBranch[Code](f, terminal)
     if f.reason == oracle.StepError.None: inc probe[].visits[index]
 
   proc runFlatMixedProbeSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
@@ -3099,17 +3101,36 @@ when NativeReadCycleEnabled:
       probe.terminals[slot] = proof.terminal
       probe.tokens[slot] = token
       probe.spans[slot] = proof.span
+      probe.opcodes[slot] = proof.operations[int(proof.count)-1].opcode
       inc probe.count
     if probe.count == 0:
       flatDispatchSegment(f, entry)
       return
     f.mixedProbe = addr probe
-    for index in 0..<probe.count: f.handlers[int(probe.terminals[index])] = flatProbeMixedLoop
+    for index in 0..<probe.count:
+      if probe.opcodes[index] == 173:
+        f.handlers[int(probe.terminals[index])] = flatProbeMixedLoop[173]
+        continue
+      f.handlers[int(probe.terminals[index])] = flatProbeMixedLoop[171]
     defer:
       f.mixedProbe = nil
       for index in 0..<probe.count:
-        restoreFlatTemporaryHandler(f, probe.terminals[index], flatProbeMixedLoop, flatBranch[171])
-      if f.reason == oracle.StepError.None and nativeInvocationUsed(f.nativeSession):
+        if probe.opcodes[index] == 173:
+          restoreFlatTemporaryHandler(f, probe.terminals[index], flatProbeMixedLoop[173],
+              flatBranch[173])
+          continue
+        restoreFlatTemporaryHandler(f, probe.terminals[index], flatProbeMixedLoop[171], flatBranch[171])
+      when defined(pvmMixedLoopWitness):
+        for index in 0..<probe.count:
+          if probe.visits[index] != 0:
+            echo "RING_AUX_PROBE_WORK,", probe.tokens[index]-1, ",", probe.visits[index], ",",
+              nativeInvocationUsed(f.nativeSession), ",", ord(f.reason)
+      # Init's hot read segment precedes the installed ring's first current-call entry.
+      # Its exact permitted primary lease is sufficient; ranking still requires 4096 observed attempts.
+      let selectionReady = f.reason == oracle.StepError.None and (
+        nativeInvocationUsed(f.nativeSession) or matchesNativeImage(
+          f.nativeSession, nativeInstalledKey(f.nativeSession), NativeKind.RegisterRing))
+      if selectionReady:
         var selected = default(NativeMixedLoopSet)
         var chosenTokens = default(array[NativeMixedLoopEntryLimit, uint32])
         var considered = 0'u8
@@ -4017,8 +4038,8 @@ when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
   include ./handler_mixed_pair_witness
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
-  proc witnessFlatMixedProbeBarrier*(program: Program, pc: uint32) =
-    ## Stop immediately before a profiled BNE, retain its stream, and resume the exact paid source PC.
+  proc witnessFlatMixedProbeBarrier*(program: Program, pc: uint32, readOnly = false) =
+    ## Stop immediately before a profiled branch, retain its stream, and resume the exact paid source PC.
     let cycles = GasCycleLimit(100000)
     var admitted = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
     assert admitted.error == FlatError.None
@@ -4029,6 +4050,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     info.registers[5] = RegisterValue(17*4096)
     info.registers[6] = RegisterValue(16*4096)
     info.registers[12] = RegisterValue(1)
+    if readOnly: info.registers[12] = RegisterValue(16*4096)
+    let originalBranch = if readOnly: flatBranch[173] else: flatBranch[171]
+    let unresolvedBranch = if readOnly: flatUnresolvedBranch[173] else: flatUnresolvedBranch[171]
     var observed = newFlatFrame(plan, [read, write], info)
     var checked = newFlatFrame(plan, [read, write], info)
     var header, terminal = 0'u32
@@ -4040,7 +4064,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
       assert flatSourceIntervalAt(frame[], header, NativeReadFactLimit, source)
       assert flatWalkCompleteSource(frame[], header, source, walk)
       terminal = walk.terminal
-      assert flatUnresolvedBranch[171](frame[], terminal) == terminal
+      assert unresolvedBranch(frame[], terminal) == terminal
     let proof = buildFlatMixedLoop(observed, pc, 1)
     assert proof.complete
     observed.mixedSource.epoch = 1
@@ -4055,7 +4079,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert observed.info.pc == CodeAddress(uint64(plan.facts[int(proof.first)+int(
         proof.span)-1].pc))
     assert observed.mixedProbe == nil and observed.barrier == flatStop and observed.savedHandler == nil
-    assert observed.handlers[int(terminal)] == flatBranch[171]
+    assert observed.handlers[int(terminal)] == originalBranch
     assert observed.remaining == checked.remaining and observed.dirtyPages == checked.dirtyPages
     assert observed.dirtyIndices == checked.dirtyIndices
     let snapshot = flatMemorySnapshot(observed)
@@ -4144,3 +4168,6 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
       assert access.error == MachineError.None
       flatMaterializeStore[1](frame, address)
       flatMarkStore[1](frame, address)
+
+when NativeReadCycleEnabled and defined(pvmReadOnlyMixedLoopWitness):
+  include ./handler_read_only_loop_witness

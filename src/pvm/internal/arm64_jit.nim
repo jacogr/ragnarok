@@ -3249,9 +3249,10 @@ when NativeReadCycleEnabled:
       result = move(words)
 
   proc armMixedLoopInstructions*(operations: openArray[NativeOperation]): seq[uint32] =
-    ## Lower a funded chunk with ordered reads, one already-dirty store and a pure suffix.
-    ## One byte store separates the staged prefix from the infallible suffix. A declined
-    ## visit restores its register checkpoint and leaves the entire visit unpaid.
+    ## Lower a funded transactional memory loop with a checkpoint for each speculative visit.
+    ## The ordinary byte Store separates staged reads from an infallible suffix. The private
+    ## read-only shape stages its complete scalar/read body before the signed-LT terminal.
+    ## A declined visit restores its checkpoint and leaves that entire visit unpaid.
     const
       repeatVisit = 0
       restoreVisit = 1
@@ -3260,7 +3261,8 @@ when NativeReadCycleEnabled:
     result = @[]
     if operations.len < 3 or operations.len > int(NativeReadFactLimit): return
     let branch = operations[operations.len-1]
-    if branch.opcode != 171: return
+    let readOnly = branch.opcode == 173
+    if branch.opcode != 171 and not readOnly: return
     var store = default(NativeOperation)
     var prefix = default(ArmReadSpan)
     prefix.body = newArmRegionBody()
@@ -3269,7 +3271,7 @@ when NativeReadCycleEnabled:
       let op = operations[index]
       if op.opcode == 2: continue # The copied source span still charges this no-op.
       if op.opcode == 120:
-        if store.opcode != 0: return
+        if readOnly or store.opcode != 0: return
         store = op
         continue
       if store.opcode != 0:
@@ -3285,7 +3287,7 @@ when NativeReadCycleEnabled:
         emitArmOperation(prefix.body, op.opcode, op.slots, op.immediate)
       else:
         return
-    if store.opcode == 0 or prefix.guards.len == 0: return
+    if (store.opcode == 0 and not readOnly) or prefix.guards.len == 0: return
 
     # Keep the complete register file resident and checkpoint only speculative writes.
     var words = @[0xd10083ff'u32, 0xa90053f3'u32, 0xa9015bf5'u32]
@@ -3308,38 +3310,40 @@ when NativeReadCycleEnabled:
         words.add(0x9e670000'u32 or (uint32(slot+4) shl 5) or uint32(slot+18))
     appendArmCycleRead(words, fixes, prefix, restoreVisit)
 
-    # Form the wrapped guest byte address and respect the checked stack/RW selection.
-    let base = uint32(store.slots.bIndex)+4
-    let displacement = uint32(store.immediate and 0xffffffff'u64)
-    if not armSmallIndirectAddress(words, base, displacement, false):
-      armCompactImmediate(words, 2, uint64(displacement))
-      words.add(0x0b020003'u32 or (base shl 5))
-    words.add(0xf140407f'u32) # CMP X3,#65536.
-    cycleEdge(words, fixes, restoreVisit, 3)
-    armCompactImmediate(words, 2, uint64(high(uint32)))
-    cycleCompare(words, 3, 2)
-    cycleEdge(words, fixes, restoreVisit, 2)
-    cycleAddImmediate(words, 17, 20, uint32(NativeCycleWritableOffset))
-    cycleLoad(words, 1, 17, 0)
-    cycleAddImmediate(words, 2, 17, 24)
-    cycleCompare(words, 3, 1)
-    words.add(0x9a822231'u32) # CSEL X17,X17,X2,HS.
-    words.add(0xa9400a21'u32) # LDP X1,X2,[X17]: selected base and length.
-    words.add(0xcb010061'u32) # SUB X1,X3,X1.
-    cycleCompare(words, 1, 2)
-    cycleEdge(words, fixes, restoreVisit, 2)
-    cycleLoad(words, 2, 17, 16)
-    cycleCompareImmediate(words, 2, 0)
-    cycleEdge(words, fixes, restoreVisit, 0)
-    cycleAddRegister(words, 1, 2, 1)
-    words.add(0x9e670030'u32) # FMOV D16,X1 retains the byte pointer across the dirty guard.
-    armCycleDirtyPage(words, fixes, restoreVisit)
+    if not readOnly:
+      # The original transactional Store keeps its checked dirty-page and suffix contract.
+      # Form the wrapped guest byte address and respect the checked stack/RW selection.
+      let base = uint32(store.slots.bIndex)+4
+      let displacement = uint32(store.immediate and 0xffffffff'u64)
+      if not armSmallIndirectAddress(words, base, displacement, false):
+        armCompactImmediate(words, 2, uint64(displacement))
+        words.add(0x0b020003'u32 or (base shl 5))
+      words.add(0xf140407f'u32) # CMP X3,#65536.
+      cycleEdge(words, fixes, restoreVisit, 3)
+      armCompactImmediate(words, 2, uint64(high(uint32)))
+      cycleCompare(words, 3, 2)
+      cycleEdge(words, fixes, restoreVisit, 2)
+      cycleAddImmediate(words, 17, 20, uint32(NativeCycleWritableOffset))
+      cycleLoad(words, 1, 17, 0)
+      cycleAddImmediate(words, 2, 17, 24)
+      cycleCompare(words, 3, 1)
+      words.add(0x9a822231'u32) # CSEL X17,X17,X2,HS.
+      words.add(0xa9400a21'u32) # LDP X1,X2,[X17]: selected base and length.
+      words.add(0xcb010061'u32) # SUB X1,X3,X1.
+      cycleCompare(words, 1, 2)
+      cycleEdge(words, fixes, restoreVisit, 2)
+      cycleLoad(words, 2, 17, 16)
+      cycleCompareImmediate(words, 2, 0)
+      cycleEdge(words, fixes, restoreVisit, 0)
+      cycleAddRegister(words, 1, 2, 1)
+      words.add(0x9e670030'u32) # FMOV D16,X1 retains the byte pointer across the dirty guard.
+      armCycleDirtyPage(words, fixes, restoreVisit)
 
-    # No refusal can follow the store before the current visit settles.
-    words.add(0x9e660201'u32) # FMOV X1,D16.
-    words.add(0x39000020'u32 or (uint32(store.slots.aIndex)+4))
-    for instruction in suffix.words:
-      words.add(instruction)
+      # No refusal can follow the store before the current visit settles.
+      words.add(0x9e660201'u32) # FMOV X1,D16.
+      words.add(0x39000020'u32 or (uint32(store.slots.aIndex)+4))
+      for instruction in suffix.words:
+        words.add(instruction)
     cycleAddImmediate(words, 22, 22, 1)
     armCycleBranch(words, fixes, branch, repeatVisit)
     armCompactImmediate(words, 0, 0x80000000'u64)
