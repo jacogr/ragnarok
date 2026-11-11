@@ -104,14 +104,14 @@ func final*(value: FrameResult): bool {.requires: value.state == complete.} =
   ## Report FIN only after complete frame validation.
   value.finished
 
-proc decodeFrame*(input: string): FrameResult =
+proc decodeFrame*(input: openArray[char]): FrameResult =
   ## Decode one masked client frame, checking length before allocation; caller retains incomplete input.
   if input.len < 2: return FrameResult(state: incomplete)
   if (ord(input[0]) and 112) != 0 or (ord(input[1]) and 128) == 0 or
       (ord(input[1]) and 127) == 127:
     return FrameResult(state: invalid) # No extensions, unmasked input or 64-bit lengths.
   var header = default(stock.WsFrame)
-  let start = stock.parseFrameHeader(toOpenArray(input, 0, input.len - 1), header)
+  let start = stock.parseFrameHeader(input, header)
   if start == http_parse.ParseIncomplete: return FrameResult(state: incomplete)
   if start < 0 or header.len > MaxMessage: return FrameResult(state: invalid)
   if input.len < start + header.len: return FrameResult(state: incomplete)
@@ -122,9 +122,13 @@ proc decodeFrame*(input: string): FrameResult =
     if bytes == nil:
       payload.endStore()
       return FrameResult(state: invalid)
-    copyMem(bytes, input.readRawData(start), header.len)
+    copyMem(bytes, addr input[start], header.len)
     var body = toOpenArray(bytes, 0, header.len - 1)
     stock.applyMask(body, header.key)
     payload.endStore()
   FrameResult(state: complete, body: move(payload), operation: ord(header.opcode),
       length: start + header.len, finished: header.fin)
+
+proc decodeFrame*(input: string): FrameResult =
+  ## Decode an owned wire buffer through the same bounded parser.
+  decodeFrame(toOpenArray(input, 0, input.len - 1))

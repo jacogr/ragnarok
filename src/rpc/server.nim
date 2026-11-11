@@ -462,34 +462,23 @@ proc reject(slot: var Connection, code: int, now: int64) =
   slot.closing = true
   slot.deadline = now + 5000
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, info: ClientInfo, now: int64,
-    uiPort: uint16 = 0) =
-  ## Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
-  if not slot.upgraded: # The only HTTP operation is an explicit WebSocket upgrade, never RPC over POST.
-    let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-    if headBytes == http_parse.ParseIncomplete: return
-    if headBytes < 0:
-      slot.close() # The library's scanner refuses an oversized incomplete upgrade.
-      return
-    let response = upgrade(slot.input.substr(0, headBytes - 1), uiPort, tags)
-    if response.len == 0:
-      # Invalid upgrades close without dispatching their body.
-      slot.close()
-      return
-    slot.input = slot.input.substr(headBytes)
-    slot.output = response
-    slot.upgraded = true
-    slot.deadline = now + 5000
+proc processHead(slot: var Connection, header: string, tags: http_msg.HttpTags, now: int64,
+    uiPort: uint16) =
+  ## The task supplies a complete head. Upgrade selectors remain dispatcher policy.
+  let response = upgrade(header, uiPort, tags)
+  if response.len == 0:
+    slot.close() # Invalid upgrades close without dispatching buffered frames.
     return
-  let parsed = decodeFrame(slot.input)
-  if parsed.status == incomplete:
-    # Retain bytes until the fixed deadline.
-    return
+  slot.output = response
+  slot.upgraded = true
+  slot.deadline = now + 5000
+
+proc processFrame(slot: var Connection, parsed: FrameResult, info: ClientInfo, now: int64) =
+  ## Apply control and message-assembly policy to one detached framing result.
   if parsed.status == invalid:
-    # Fail the connection on framing violations.
     slot.reject(1002, now)
     return
-  slot.input = slot.input[parsed.consumed..^1]
+  assert parsed.status == complete
   case parsed.opcode
   of 8: # A close body is either empty or a legal status code followed by UTF-8 text.
     let payload = parsed.payload
@@ -547,8 +536,27 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, info: ClientInfo, no
     # Idle keepalive window.
     slot.deadline = now + 30000
 
+when declared(rpcDirectTestSockets):
+  proc process(slot: var Connection, tags: http_msg.HttpTags, info: ClientInfo, now: int64,
+      uiPort: uint16 = 0) =
+    ## Direct-descriptor fixtures use the same upgrade and frame policy synchronously.
+    if not slot.upgraded:
+      let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+      if headBytes == http_parse.ParseIncomplete: return
+      if headBytes < 0:
+        slot.close()
+        return
+      let header = slot.input.substr(0, headBytes - 1)
+      slot.input = slot.input.substr(headBytes)
+      slot.processHead(header, tags, now, uiPort)
+    else:
+      let parsed = decodeFrame(slot.input)
+      if parsed.status == incomplete: return
+      if parsed.status == complete: slot.input = slot.input[parsed.consumed..^1]
+      slot.processFrame(parsed, info, now)
+
 proc tick*(server: var Server, peers: uint32) =
-  ## One accept, one bounded read, one frame and one write per slot per turn; called by the existing peer loop.
+  ## One accept, one input handoff and one write handoff per slot per dispatcher turn.
   if not server.opened or server.lease != nil or server.transportMode:
     # Default peer operation does no additional syscall or clock work.
     return
@@ -562,6 +570,7 @@ proc tick*(server: var Server, peers: uint32) =
       vocabulary
   pollRpcStreams()
   for slot in mitems(server.connections):
+    slot.stream.pump()
     if slot.stream.finished:
       slot.close()
       slot.stream = default(RpcWireStream)
@@ -589,8 +598,11 @@ proc tick*(server: var Server, peers: uint32) =
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
     if not slot.opened or slot.bridgeEpoch != 0:
       continue
-    if now >= slot.deadline or (slot.fragmented and now >= slot.messageDeadline):
-      # Partial headers/messages and blocked writes expire.
+    # A partial frame in the worker uses its own receive deadline instead of
+    # the dispatcher idle window. Upgrade, write and fragment budgets still apply.
+    if (slot.fragmented and now >= slot.messageDeadline) or
+        (now >= slot.deadline and (not slot.upgraded or slot.streamWriting or
+          slot.closing or not slot.stream.hasBufferedInput)):
       slot.close()
       continue
     if slot.streamWriting:
@@ -601,36 +613,31 @@ proc tick*(server: var Server, peers: uint32) =
         continue
       if slot.input.len == 0 and not slot.fragmented:
         slot.deadline = now + 30000
-    # Observe EOF before taking input. If EOF is visible, the worker has already
-    # seen the last mailbox transfer, so only dispatcher-owned bytes remain.
+    # FIN is published only after the final framing result has been taken.
     let inputEnded = slot.stream.inputEnded
-    var consumedInput = false
     if slot.output.len == 0 and not slot.closing:
-      var chunk = ""
-      # An incomplete head or frame fits below this threshold. Once the buffer
-      # reaches it, consume the leading frame before accepting another chunk.
-      # This bounds the buffer to one head or frame plus one receive chunk.
-      if slot.input.len < max(MaxHeader, MaxMessage + MaxClientFrameHeader):
-        if slot.stream.active:
-          discard slot.stream.takeInput(chunk)
-        else:
-          when declared(rpcDirectTestSockets):
-            # Directly injected descriptors are used by the native dispatcher fixtures.
+      if slot.stream.active:
+        var input = default(WireInput)
+        if slot.stream.takeInput(input):
+          case input.kind
+          of BadHead: slot.close() # An oversized upgrade cannot reach HTTP policy.
+          of UpgradeHead: slot.processHead(input.head, tags, now, server.uiPort)
+          of ClientFrame: slot.processFrame(input.frame, info, now)
+      else:
+        when declared(rpcDirectTestSockets):
+          # Directly injected descriptors are used by the native dispatcher fixtures.
+          # The same bounded lookahead applies when the fixture owns raw reads.
+          if slot.input.len < max(MaxHeader, MaxMessage + MaxClientFrameHeader):
             var bytes = default(array[4096, char])
             let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
             if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
               slot.close()
               continue
             if count > 0:
-              for i in 0..<count: chunk.add(bytes[i])
-      if chunk.len > 0:
-        if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
-          slot.deadline = now + 5000
-        slot.input.add(chunk)
-      if slot.opened and slot.output.len == 0:
-        let before = slot.input.len
-        slot.process(tags, info, now, server.uiPort)
-        consumedInput = slot.input.len < before
+              if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
+                slot.deadline = now + 5000
+              for i in 0..<count: slot.input.add(bytes[i])
+          slot.process(tags, info, now, server.uiPort)
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:
@@ -640,9 +647,8 @@ proc tick*(server: var Server, peers: uint32) =
     if not slot.opened:
       continue
     if slot.output.len == 0:
-      # A consumed frame may have produced no reply, so give subsequent buffered
-      # frames a turn. With EOF and no progress, an incomplete tail cannot finish.
-      if inputEnded and not consumedInput: slot.close()
+      # Orderly input EOF leaves the writer alive until pending replies retire.
+      if inputEnded: slot.close()
       continue
     if slot.stream.active:
       slot.stream.send(slot.output)
