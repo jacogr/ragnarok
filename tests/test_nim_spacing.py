@@ -45,6 +45,21 @@ class NimSpacingTests(unittest.TestCase):
         self.assertEqual(normalize_spacing(source), expected)
         self.assertEqual(normalize_spacing(expected), expected)
 
+    def test_attached_block_comments(self):
+        """Place the separator before a mixed comment group and after any trailing block."""
+        for opener, closer in (('#[', ']#'), ('##[', ']##')):
+            with self.subTest(opener=opener):
+                previous = f'import std/options {opener} Explains the import.\n{closer}\n'
+                comments = (f'# Explain the limit.\n{opener} More detail.\n'
+                            f'\n\n{opener} Nested detail. {closer}\n{closer}\n'
+                            '# End of the explanation.\n')
+                declaration = 'const limit = 8\n'
+                expected = previous + '\n' + comments + declaration
+                self.assertEqual(normalize_spacing(previous + comments + declaration), expected)
+                self.assertEqual(normalize_spacing(expected), expected)
+                self.assertEqual(normalize_spacing(previous + declaration),
+                                 previous + '\n' + declaration)
+
     def test_routine_sections_and_attached_comments(self):
         """One separator precedes a routine and its explanatory comments, including forward declarations."""
         source = ('proc first() =\n  discard\n\n\nproc second() = discard\n'
