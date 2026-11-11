@@ -990,3 +990,249 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert final.registered == 0 and final.submitted == 4 and final.completed == 3
     assert nativeState(waiting) == NativeState.Deferred and close(runtime)
     echo "PASS connected read mailbox reuse and retirement"
+
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+  import ../../src/pvm/internal/native_mixed_loop
+
+  proc readyMixedLoopTestRenderer(runtime: NativeRuntime, session: NativeSession) =
+    ## Publish an ordinary primary under its existing queue and collection rules.
+    beginNativeInvocation(session, NativeInvocationFloor)
+    nominateNativeReadCycle(session, cycleFixture(epoch = nativeEpoch(session)))
+    finishNativeInvocation(session, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(session, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(session)
+    finishNativeInvocation(session, NativeInvocationFloor)
+
+  proc mixedLoopTestProof(epoch: uint64): NativeMixedLoop =
+    ## Use an independently decoded test shape disjoint from the primary's stream geometry.
+    result = NativeMixedLoop(header: 128, first: 192, terminal: 143, exitHeader: 144,
+      price: 102, epoch: epoch, span: 15, count: 15)
+    let operations = [operation(152, 0x57, 4),
+        operation(210, 0x97, 7), operation(58, 10, uint32(wordAddress)),
+        operation(139, 0x58, 26), operation(212, 0x87, 7),
+        operation(58, 8, uint32(wordAddress+8)), operation(200, 0xa7, 7),
+        operation(124, 0x77), operation(200, 0x87, 7), operation(124, 0x77),
+        operation(149, 0xb8, 1), operation(120, 0xb7), operation(190, 0x25, 5),
+        operation(100, 0xb8), operation(171, 0x38)]
+    for index, item in operations: result.operations[index] = item
+
+  proc runMixedLoopMailbox*() =
+    ## Force actual cancellation, pressure, idle/active retirement and close ordering.
+    assert nativePlatformSupported()
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread startup failed"
+    let renderer = newNativeSession(runtime)
+    let other = newNativeSession(runtime)
+    let priority = newNativeSession(runtime)
+    readyMixedLoopTestRenderer(runtime, renderer)
+
+    # Keep both jobs queued without pressure so a later primary can claim first.
+    let queuedPriority = newNativeSession(runtime)
+    let queuedProof = mixedLoopTestProof(nativeEpoch(renderer))
+    pauseNativeCompiler(runtime, true)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert offerNativeMixedLoop(renderer, queuedProof)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    beginNativeInvocation(queuedPriority, NativeInvocationFloor)
+    nominateNativeReadCycle(queuedPriority, cycleFixture())
+    finishNativeInvocation(queuedPriority, NativeInvocationFloor)
+    assert nativeState(queuedPriority) == NativeState.Pending and runtimeInfo(runtime).registered == 3,
+      "both optional and primary jobs must be queued"
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterClaim)
+    pauseNativeCompiler(runtime, false)
+    let firstClaim = waitNativeCompilerGate(runtime)
+    assert firstClaim.kind == NativeKind.ConnectedReadCycle and not firstClaim.hasImage,
+      "queued primary must claim before queued optional work"
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(queuedPriority, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(queuedPriority)
+    finishNativeInvocation(queuedPriority, NativeInvocationFloor)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    let parked = nativeOwnerStatistics(renderer)
+    assert parked[0] == 2 and parked[3] > nativeStatistics(renderer)[3]
+    assert nativeOwnerStatistics(renderer) == parked
+    let queuedImage = borrowNativeMixedLoop(renderer, queuedProof)
+    assert queuedImage != nil and queuedImage[].ready, "optional work must resume after primary"
+    assert nativeOwnerStatistics(renderer) == parked
+    returnNativeMixedLoop(renderer)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    invalidateNativeStream(queuedPriority)
+    invalidateNativeStream(renderer)
+    readyMixedLoopTestRenderer(runtime, renderer)
+    readyMixedLoopTestRenderer(runtime, other)
+    let original = mixedLoopTestProof(nativeEpoch(renderer))
+
+    # The optional job owns its image at the publication gate. A primary must still queue.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    assert offerNativeMixedLoop(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let optional = waitNativeCompilerGate(runtime)
+    assert optional.kind == NativeKind.MixedSelfLoop and optional.hasImage
+    beginNativeInvocation(priority, NativeInvocationFloor)
+    nominateNativeReadCycle(priority, cycleFixture())
+    finishNativeInvocation(priority, NativeInvocationFloor)
+    assert nativeState(priority) == NativeState.Pending
+    assert runtimeInfo(runtime).registered == 4 and runtimeInfo(runtime).phase == NativePhase.Queued
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let retiring = waitNativeCompilerGate(runtime)
+    assert retiring.ticket == optional.ticket and retiring.hasImage and
+      runtimeInfo(runtime).registered == 4
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    let primary = waitNativeCompilerGate(runtime)
+    assert primary.kind == NativeKind.ConnectedReadCycle and primary.hasImage and
+      primary.ticket > optional.ticket and runtimeInfo(runtime).registered == 3
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(priority, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(priority)
+    finishNativeInvocation(priority, NativeInvocationFloor)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(renderer) and not offerNativeMixedLoop(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    invalidateNativeStream(priority)
+
+    # Cancel a pending optional payload by invalidating its exact primary epoch.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterClaim)
+    assert offerNativeMixedLoop(renderer, original)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let pending = waitNativeCompilerGate(runtime)
+    assert pending.kind == NativeKind.MixedSelfLoop and not pending.hasImage
+    invalidateNativeStream(renderer)
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let cancelled = waitNativeCompilerGate(runtime)
+    assert cancelled.ticket == pending.ticket and not cancelled.hasImage
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).registered == 1
+    readyMixedLoopTestRenderer(runtime, renderer)
+    let next = mixedLoopTestProof(nativeEpoch(renderer))
+    assert next.epoch != original.epoch
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert not offerNativeMixedLoop(renderer, original)
+    assert offerNativeMixedLoop(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(other, NativeInvocationFloor)
+    assert borrowNativeMixedLoop(other, next) == nil
+    finishNativeInvocation(other, NativeInvocationFloor)
+
+    # A borrowed runtime-owned mapping stays charged during pressure. Its next owner
+    # boundary releases it while the already queued primary retains its own credit.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeMixedLoop(renderer, original) == nil
+    let image = borrowNativeMixedLoop(renderer, next)
+    assert image != nil and image[].ready and image[].codeBytes > 0
+    assert not close(runtime)
+    let entrant = newNativeSession(runtime)
+    beginNativeInvocation(entrant, NativeInvocationFloor)
+    nominateNativeReadCycle(entrant, cycleFixture())
+    finishNativeInvocation(entrant, NativeInvocationFloor)
+    assert runtimeInfo(runtime).registered == 4 and nativeState(entrant) == NativeState.Pending
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(entrant, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(entrant)
+    finishNativeInvocation(entrant, NativeInvocationFloor)
+
+    # Let the first primary finish while the revoked borrowed image still holds the fourth credit.
+    let delayed = newNativeSession(runtime)
+    let delayedProof = cycleFixture()
+    let beforeDelay = runtimeInfo(runtime)
+    assert beforeDelay.phase == NativePhase.Done and beforeDelay.registered == 4
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    nominateNativeReadCycle(delayed, delayedProof)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeState(delayed) == NativeState.Deferred
+    assert runtimeInfo(runtime).submitted == beforeDelay.submitted
+    assert runtimeInfo(runtime).registered == 4
+
+    # Retry after the original borrow returns and the owner finishes, without another owner entry.
+    var registers = default(RegisterFile)
+    var emptyContext = NativeMixedLoopContext(visitLimit: 1)
+    assert enterNativeMixedLoop(image[], registers, emptyContext) == 0
+    assert registers == default(RegisterFile)
+    returnNativeMixedLoop(renderer)
+    assert runtimeInfo(runtime).registered == 3 and mixedLoopPrimaryReady(renderer)
+    let afterPressure = nativeOwnerStatistics(renderer)
+    assert afterPressure[0] > nativeStatistics(renderer)[0] and afterPressure[3] ==
+        nativeStatistics(renderer)[3]
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeCycleNominated(delayed) and validateNativeRead(delayed, delayedProof.read)
+    validateNativeCycleNomination(delayed, delayedProof)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    assert nativeState(delayed) == NativeState.Pending and nativeState(entrant) == NativeState.Ready
+    assert runtimeInfo(runtime).submitted == beforeDelay.submitted+1 and
+      runtimeInfo(runtime).registered == 4
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(delayed, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(delayed)
+    finishNativeInvocation(delayed, NativeInvocationFloor)
+    invalidateNativeStream(delayed)
+    invalidateNativeStream(entrant)
+
+    # An unrelated primary can reclaim a parked optional mapping while its owner is idle.
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert offerNativeMixedLoop(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    let idlePressure = newNativeSession(runtime)
+    beginNativeInvocation(idlePressure, NativeInvocationFloor)
+    nominateNativeReadCycle(idlePressure, cycleFixture())
+    finishNativeInvocation(idlePressure, NativeInvocationFloor)
+    assert runtimeInfo(runtime).registered == 3 and nativeState(idlePressure) == NativeState.Pending
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(idlePressure, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(idlePressure)
+    finishNativeInvocation(idlePressure, NativeInvocationFloor)
+    invalidateNativeStream(idlePressure)
+
+    # An unrelated primary with a spare credit left over need not revoke a parked optional image.
+    invalidateNativeStream(other)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert offerNativeMixedLoop(renderer, next)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    readyMixedLoopTestRenderer(runtime, other)
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeMixedLoop(renderer, next) != nil
+    returnNativeMixedLoop(renderer)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+
+    # A parked optional mapping can retire at close without another call from its owner.
+    assert runtimeInfo(runtime).registered == 3 and close(runtime)
+    assert runtimeInfo(runtime).registered == 2
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    assert borrowNativeMixedLoop(renderer, next) == nil
+    finishNativeInvocation(renderer, 0)
+    invalidateNativeStream(renderer)
+    invalidateNativeStream(other)
+    assert runtimeInfo(runtime).registered == 0
+    # Under host serialization close may overlap worker retirement, not another host handle call.
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread restart failed"
+    readyMixedLoopTestRenderer(runtime, renderer)
+    let closing = mixedLoopTestProof(nativeEpoch(renderer))
+    beginNativeInvocation(renderer, NativeInvocationFloor)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    assert offerNativeMixedLoop(renderer, closing)
+    finishNativeInvocation(renderer, NativeInvocationFloor)
+    let closingImage = waitNativeCompilerGate(runtime)
+    assert closingImage.hasImage
+    invalidateNativeStream(renderer)
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
+    let closingRetirement = waitNativeCompilerGate(runtime)
+    assert closingRetirement.ticket == closingImage.ticket and closingRetirement.hasImage
+    assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 1
+    # Stop bypasses the worker gate. Close joins before it inspects or returns that credit.
+    assert close(runtime)
+    assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
+    echo "PASS auxiliary priority, epoch, cancellation, retirement and close"
