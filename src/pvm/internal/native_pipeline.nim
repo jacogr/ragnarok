@@ -5,8 +5,8 @@
 ## The host serializes handle operations. The worker receives copied IR and a scalar job key
 ## under the runtime lock. Parked completions belong to individual registrations and free
 ## the worker before the host collects them. Credits bound image owners through unmapping.
-## A connected Read owner can also queue one immutable mixed-entry arena, leaving a usable credit
-## for primary work. The worker claims queued primary work first. Pressure may cancel the
+## Only a ConnectedReadCycle owner can queue the runtime's one immutable mixed-entry arena,
+## leaving a primary credit usable. Queued primary work claims first. Pressure may cancel the
 ## auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
 ## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
