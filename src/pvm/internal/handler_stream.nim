@@ -10,6 +10,9 @@
 ## across calls. The executable cache retains no invocation pointers. Idle byte
 ## scratch has a separate lease and is restored before another invocation uses it.
 ##
+## Node and preparation-work refusals stay with the active frame. A prepared
+## owner retains admitted entries and cumulative occupancy under the same ceilings.
+##
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
@@ -1695,7 +1698,10 @@ proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
   offset
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
-  ## A dense positive map and monotone stream preserve stable offset links; interior resume creates a prepaid suffix header once.
+  ## Reuse admitted headers and keep offset links stable. For a new suffix, check
+  ## the node ceiling and then the work ceiling before the first node or map write.
+  ## Admission is atomic per suffix, including each arm of a conditional prelink.
+  ## Interior resume can create a prepaid suffix header.
   if f.preparationFailure != FlatError.None: return flatStop
   if f.plan.singleStep: return flatSingleResolve(f, pc)
   if uint64(pc) >= uint64(f.plan.factAt.len): return flatStop
@@ -2989,6 +2995,8 @@ when NativeCheckedReadEnabled:
 
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
+  ## A zero budget returns StepLimitExceeded before the frame's preparation failure
+  ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -3447,8 +3455,11 @@ when defined(pvmArm64Jit) or defined(pvmX86Jit):
     ## Reject duplication of an owner that contains exclusive native JIT resources.
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
-  ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.
-  # A quota refusal stays in the active frame. An absent saved status also leaves a same-frame restore sticky.
+  ## Return the exclusive cache to the prepared owner with its admitted entries,
+  ## cumulative preparation usage and native restoration state. Generated leaves
+  ## retain no invocation pointers.
+  ## Omit node and preparation-work refusals from the saved cache so a fresh frame
+  ## can use those entries. The active frame keeps its failure.
   let savedFailure = if f.preparationFailure in {FlatError.StreamLimitExceeded,
       FlatError.PreparationLimitExceeded}: FlatError.Uninitialized else: f.preparationFailure
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
@@ -3462,6 +3473,9 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Sealed prices and errors belong to their emitting policy. If either side uses
   ## complete-plan or memo pricing, discard the stream and reemit under the new
   ## frame's policy. This also preserves stricter cycle limits on a fresh memo.
+  ## An absent saved failure leaves the receiving frame's status intact, including
+  ## a sticky refusal on a same-frame restore. A fresh frame can use the admitted
+  ## entries. Any new suffix must fit the remaining node and preparation-work quota.
   if stream.sourcePlan != nil and stream.sourcePlan != f.plan:
     # Refuse before consuming another owner's price, executable capability or scalar coordinates.
     f.preparationFailure = FlatError.InvalidProgram
