@@ -39,6 +39,7 @@ import ../../src/state/current/logical as current_logical
 import ../../src/state/planned/proof as planned_proof
 import ../../src/state/proof/view as proof_view
 import ../../src/state/store
+
 type LogicalPreparation = object ## Only scalar receiver/ticket identities cross native wait/cancel/collection boundaries.
   ticket: PreparationTicket
   input: CurrentBlockInputId

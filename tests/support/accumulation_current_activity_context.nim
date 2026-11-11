@@ -15,6 +15,7 @@ import ./[accumulation_activity_context, accumulation_current_finalization_conte
   accumulation_current_round_context, accumulation_current_driver_context,
   accumulation_execution_context, accumulation_recent_witnesses, accumulation_ready_witnesses,
   pvm_accumulation_provision]
+
 type CurrentActivityFixture* = object ## Full authored parent keys support independent selected-state reconstruction.
   source*: PreparedCurrentAccumulationValidators
   entries*: seq[StateEntry]

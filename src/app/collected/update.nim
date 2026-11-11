@@ -7,6 +7,7 @@ import ../[chain, preparation_worker]
 import "../current/block/input" as current_block_input
 import ../candidate
 import ../../state/accumulation/current/update as accumulation_current_update
+
 type
   CollectedUpdateError* {.pure.} = enum ## Receipt lifecycle and genuine preparation failure remain distinct from stale canonical provenance.
     Uninitialized, None, NoCompletion, Cancelled, WrongOperation, PreparationFailure, StaleUpdate

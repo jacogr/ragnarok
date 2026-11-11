@@ -9,6 +9,7 @@ import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validat
 import ../../../src/codec/[bounded, assurances]
 import ../../../src/codec/state/[consensus as state_consensus, layout as state_layout,
     trie as state_trie, composition as state_composition]
+
 const
   mapLimits = StateTrieLimits(items: ElementLimit(20), nodes: TrieNodeLimit(4096),
     perValue: ByteLimit(2000000), totalValueBytes: ByteLimit(8000000))

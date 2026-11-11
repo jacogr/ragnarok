@@ -14,6 +14,7 @@ import ../[profile as current_profile, globals as current_globals, state as curr
 import ../../accumulation/current/update as accumulation_current_update
 import ../../global_snapshot
 import ../../../codec/bounded
+
 type
   CurrentLogicalRefreshLimits* = object ## Component decoders, full logical matching/capture, complete scans and newly retained compact/raw-key arrays have independent ceilings.
     profile*: CurrentProfileLimits

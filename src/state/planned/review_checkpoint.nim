@@ -9,6 +9,7 @@ import ../[validated_checkpoint, inventory]
 import ../account/review/plan as account_review_plan
 import ../account/review as account_review
 import ../economic_profile
+
 type
   PlannedReviewCheckpointLimits* = object ## Restoration, compact capture and complete report preparation keep independent policies.
     serialization*: StateCheckpointLimits

@@ -12,6 +12,7 @@ import ../../src/state/current/logical/refresh as current_logical_refresh
 import ../../src/state/current/logical as current_logical
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/app/[chain, candidate]
+
 type CurrentRepeatedLogicalFixture* = object ## Public test descriptors hold only genuinely produced immutable opaque owners.
   first*: CurrentNamespaceTransition
   logical*: CurrentLogicalState

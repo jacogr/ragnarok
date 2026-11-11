@@ -11,6 +11,7 @@ import ../../management/file_status
 import ../../lib/utf8
 
 const IoBytes = 4096 ## Each dispatcher turn performs at most one read and one write of this extent.
+
 type
   LocalAddress = object
     ## POSIX local-address prefix uses a common 104-byte pathname extent; Linux accepts this shorter bounded address.

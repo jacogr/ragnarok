@@ -13,6 +13,7 @@ const
   HistoryRowBytes* = 240    ## Fixed ordinal index; complete states and bodies live in independent records.
   CursorMagic = "RAGNAROK-HISTORY-CURSOR-V1\n"
   RowMagic = "RAGNAROK-HISTORY-ROW-V1\n"
+
 type
   HistoryError* {.pure.} = enum ## Refusals never expose a partial selection, record or successful IO prefix.
     Uninitialized, None, InvalidPolicy, InvalidFormat, LimitExceeded, CounterExhausted,

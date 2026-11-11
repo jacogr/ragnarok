@@ -11,6 +11,7 @@ import ../../../src/storage/record_codec
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 type Stage = object ## Preparation/delivery observations never grant integrity to provisional callback prefixes.
   prepared, delivered: int
 

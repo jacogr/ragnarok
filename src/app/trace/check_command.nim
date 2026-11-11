@@ -22,6 +22,7 @@ from ../../rpc/protocol import configuredParameters, configuredGenesis
 const
   TraceCheckConfigBytes = 8388608 ## Existing strict chainspec JSON transport cap is independent of every binary file's resource policy.
   TraceCheckFileBytes = 16777216 ## One finite complete Genesis/TraceStep file is read at a time.
+
 type
   TraceCheckCommandError* {.pure.} = enum ## Process-level refusals describe validation progress and expose no installable update or canonical owner.
     Uninitialized, None, InvalidArguments, InvalidPolicy, FileFailure, InvalidChain,

@@ -27,6 +27,7 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/state/store
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/report/admission as report_admission
+
 type RetainedHistoryPlan = object ## Only actual successful opaque plan construction grants this test descriptor; mutable fields grant no State authority.
   plan: CurrentLogicalRefreshPlan
   state: StateStoreSnapshot

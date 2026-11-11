@@ -12,11 +12,13 @@ import ../../src/state/supplied/services as supplied_services
 import ../../src/state/current/logical as current_logical
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/bounded
+
 type NamespaceRefreshStages* = object ## Test descriptors hold only genuine successful opaque stages; no raw mutable declaration grants producer authority.
   identities*: PreservedCurrentIdentities
   keys*: CurrentRequestKeys
   reconstruction*: CurrentRefreshPlan
   complete*: CurrentLogicalRefreshPlan
+
 const namespaceRequestLimits* = CurrentRequestKeyLimits(services: ElementLimit(2),
     requests: ElementLimit(16), bytes: ByteLimit(4096))
 const namespaceRefreshLimits* = CurrentRefreshLimits(projection: SuppliedServicesLimits(

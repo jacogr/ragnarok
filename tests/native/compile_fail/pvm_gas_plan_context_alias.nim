@@ -7,6 +7,7 @@
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, plan as gas_plan]
 import ../../../src/pvm/step
+
 type Context = object ## The mutable callback context can replace its policy field.
   plan: GasPlan
 

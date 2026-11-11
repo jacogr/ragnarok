@@ -21,6 +21,7 @@ import ../../../src/chain/[genesis, provider]
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/[application_recovery_execution, block_download_transport]
+
 const ChainPath = "application-recovery-download-chain"
 const CheckpointPath = "application-recovery-download-map"
 const TrustPath = "application-recovery-download-identity"
@@ -29,6 +30,7 @@ const PolicyPath = "application-recovery-download-policy"
 const StopPath = "application-recovery-download-stop"
 const CountPath = "application-recovery-download-count"
 const DiskPath = "application-recovery-download.db" # Import creates this exclusively; later runs resume it without trust files.
+
 type Scenario = enum ## Each case changes only import validity or actual guest preparation budget.
   Valid, InvalidImport, GuestRefusal, DiskInvalidImport, DiskValid, DiskExistingImport
 

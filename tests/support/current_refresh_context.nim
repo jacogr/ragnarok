@@ -8,6 +8,7 @@ import ../../src/state/current/refresh/plan as current_refresh_plan
 import ../../src/state/current/request_keys as current_request_keys
 import ../../src/state/supplied/services as supplied_services
 import ../../src/codec/[bounded, report_owned]
+
 const currentRefreshTestLimits* = CurrentRefreshLimits(projection: SuppliedServicesLimits(
     services: ElementLimit(2), facts: ElementLimit(14), perValue: ByteLimit(3), bytes: ByteLimit(
     65536)), checks: ElementLimit(14), wireBytes: ByteLimit(230))

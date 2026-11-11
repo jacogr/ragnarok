@@ -14,6 +14,7 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const IdentityPath = "application-recovery-operator-identity"
 const HeaderPath = "application-recovery-operator-header"
 

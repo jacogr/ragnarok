@@ -28,6 +28,7 @@ import ../../support/[current_application_context, current_services_disk_samples
   accumulation_current_chain_context, accumulation_current_candidate_context,
   block_download_transport,
   proof_query_context, managed_storage_samples, rpc_socket]
+
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   Adopt, CancelDone, Joined, LostHandoff
 

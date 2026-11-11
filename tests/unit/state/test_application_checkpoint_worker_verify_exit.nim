@@ -13,9 +13,11 @@ import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context]
+
 const
   Directory = "application-checkpoint-worker-verify-exit"
   FileName = Directory & "/checkpoint"
+
 type VerificationCase = enum ## Every refused verification remains an actual completed read operation, never a publication or cancellation.
   Valid, Context, ContextBeforeBudget, MapBudget, ByteBudget, IdentityDamage
 

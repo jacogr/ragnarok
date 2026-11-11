@@ -8,6 +8,7 @@ import ../../src/state/proof/view as proof_view
 import ../../src/state/trie_proof
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 const
   mapLimits* = StateTrieLimits(items: ElementLimit(16), perValue: ByteLimit(4096),
     totalValueBytes: ByteLimit(16384), nodes: TrieNodeLimit(31))

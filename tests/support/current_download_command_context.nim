@@ -21,6 +21,7 @@ import "../../src/state/block/admission" as block_admission
 import ../../src/state/report/admission as report_admission
 import ./[accumulation_current_chain_context, accumulation_current_candidate_context,
   current_application_context, current_services_disk_samples, block_download_transport]
+
 type CurrentDownloadExchange* = object ## Scalar outcomes retain no canonical map or live native owner.
   outcome*: CurrentDownloadCommandOutcome
   firstRequests*, secondRequests*: int

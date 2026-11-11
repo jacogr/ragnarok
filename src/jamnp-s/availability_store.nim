@@ -9,6 +9,7 @@ import ../codec/bounded
 import ../state/availability/specifier
 
 const MaxAvailabilityEntries = 64 ## Fixed small metadata storage never scales the caller's stack with shard payload geometry.
+
 type
   AvailabilityStoreLimits* = object ## Explicit logical retained payload and entry ceilings never enable storage by default.
     entries*: ElementLimit

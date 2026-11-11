@@ -14,6 +14,7 @@ import ../../../src/state/store
 import ../../../src/storage/managed/[manifest as managed_manifest, io as managed_io]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/[bounded, report_owned]
+
 const
   ChainPath = "managed-download-chain.json"
   PolicyPath = "managed-download-policy.conf"

@@ -11,6 +11,7 @@ import ../../state/store
 import ../../lib/atomic/file as atomic_file
 
 const MaxRecoveryHeaderBytes* = 256 * 1024 ## Match structural chain capture's existing sealed-header ceiling.
+
 type
   TrustedApplicationCheckpoint* = object ## Private immutable inputs prevent header replacement after trust capture.
     initialized: bool

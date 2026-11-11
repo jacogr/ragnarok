@@ -16,6 +16,7 @@ import ../../../src/state/[store, disk_store]
 import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../../src/storage/file/repository as file_repository
 import ../../../src/codec/report_owned
+
 type
   ResourceLimit {.importc: "struct rlimit", header: "<sys/resource.h>", bycopy.} = object
     ## Exact supported 64-bit SDK fields constrain only the forked writer.

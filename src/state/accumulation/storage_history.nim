@@ -7,6 +7,7 @@ import ./current/[driver as accumulation_current_driver, sequence as accumulatio
 import ./[coverage as accumulation_coverage, annulment as accumulation_annulment,
     effects as accumulation_effects]
 import ../../codec/bounded
+
 type
   StorageHistoryLimits* = object ## Whole entry/outcome traversal and retained fact descriptors/raw bytes have independent ceilings.
     entries*, outcomes*, facts*: ElementLimit

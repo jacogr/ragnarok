@@ -15,6 +15,7 @@ import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-verification"
 
 proc cycle(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpointIdentity) =

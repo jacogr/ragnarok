@@ -23,6 +23,7 @@ import ../../src/state/report/admission as report_admission
 import "../../src/state/block/transition" as block_transition
 import "../../src/state/block/admission" as block_admission
 import ../../src/app/[chain, candidate]
+
 type CurrentNamespaceTransition* = object ## Test descriptors retain actual source inputs, complete original logical selection and genuine current update independently.
   source*: ExecutionFixture
   parent*: SelectedLogicalParent

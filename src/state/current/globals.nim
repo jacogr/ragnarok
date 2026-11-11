@@ -7,6 +7,7 @@
 import ./profile as current_profile
 import ../accumulation/current/update as accumulation_current_update
 import ../global_snapshot
+
 type
   CurrentGlobalSerialization* = object ## Private same-source owners prevent a foreign profile or equal-root map substitution.
     initialized: bool

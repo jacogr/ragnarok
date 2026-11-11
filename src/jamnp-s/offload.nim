@@ -7,6 +7,7 @@
 ## submission, cancellation and polling API.
 
 const OffloadEnabled* = defined(offload)
+
 # Nominal generations cannot be confused with native stream handles or fixture indices.
 type
   JobId* = distinct uint64

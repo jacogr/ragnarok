@@ -21,6 +21,7 @@ import ../../support/[current_application_context, current_services_disk_samples
   block_download_transport, current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
   current_download_command_context, managed_storage_samples]
+
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   CancelDone, Joined, LostHandoff
 

@@ -9,6 +9,7 @@ import ../../state/parent/[profile as parent_profile, globals as parent_globals,
 import ../../state/global_snapshot
 import ../../state/supplied/logical_inventory as supplied_logical_inventory
 import ../../codec/state/composition as state_composition
+
 type
   LogicalSeedLimits* = object ## Selected-view retention, all globals and supplied logical arrays retain independent ceilings.
     profile*: ParentProfileLimits

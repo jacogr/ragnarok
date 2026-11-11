@@ -16,6 +16,7 @@ import ../../src/storage/database_identity
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 const ValueBytes = 1048576 ## Identical per-value policy for shallow small/large and maximum-depth cases.
 
 proc descriptors(): cint {.importc: "ragnarok_paged_descriptors",

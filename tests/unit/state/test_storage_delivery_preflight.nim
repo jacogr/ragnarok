@@ -10,6 +10,7 @@ import ../../../src/storage/node/records as node_records
 import ../../../src/storage/record_codec
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 type Trace = object ## Callback counters remain independent of codec metadata and native hash counters.
   starts, records: int
 

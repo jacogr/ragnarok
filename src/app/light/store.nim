@@ -19,9 +19,11 @@ import ../../storage/state_proof as nativeproof
 import ../../storage/light/state_cache as nativecache
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, trie as state_trie]
+
 const
   ContextMagic = "RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n"
   ContextPrefix = ContextMagic.len+9 # One explicit predecessor tag and E8 inner byte length.
+
 type
   LightPagedLimits* = object ## Native, state-proof retention, inventory and application context quotas remain independent.
     native*: PagedNativeConfig

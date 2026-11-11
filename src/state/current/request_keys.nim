@@ -9,6 +9,7 @@ import ../supplied/logical_inventory as supplied_logical_inventory
 import ../inventory
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, requests as state_requests]
+
 type
   CurrentRequestKeyLimits* = object ## Whole native row/key arrays and primitive call count are admitted before allocation or hashing.
     services*, requests*: ElementLimit

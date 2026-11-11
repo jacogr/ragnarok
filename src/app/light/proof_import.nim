@@ -10,6 +10,7 @@ import ../checkpoint/identity as checkpoint_identity
 import ../../state/trie_proof
 import ../../state/proof/view as proof_view
 import ../../codec/bounded
+
 type
   LightProofImportLimits* = object ## Retained wire, per-proof, aggregate, view and primitive hash-call ceilings remain independent.
     proof*: StateProofLimits

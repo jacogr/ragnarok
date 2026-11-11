@@ -17,6 +17,7 @@ import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type
   LightJournalFixture* = object ## Detached proof images and transitions retain no complete trie or native lease.
     config*: LightJournalConfig

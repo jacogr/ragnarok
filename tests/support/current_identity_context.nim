@@ -5,5 +5,6 @@
 
 import ../../src/state/current/identities as current_identities
 import ../../src/codec/bounded
+
 const currentIdentityTestLimits* = CurrentIdentityLimits(blocks: ElementLimit(32),
     keys: ElementLimit(128), viewBytes: ByteLimit(33554432))

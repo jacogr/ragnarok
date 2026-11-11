@@ -27,6 +27,7 @@ type ArmReadContext* = array[6, array[3, uint64]]
   ## One frame-owned full context: raw descriptor triplets first, clipped read triplets second.
 
 const armMacroStateWords* = 26
+
 type ArmMacroState* = array[armMacroStateWords, uint64]
 
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}

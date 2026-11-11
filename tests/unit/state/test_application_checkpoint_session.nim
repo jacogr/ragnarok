@@ -11,6 +11,7 @@ import ../../../src/app/checkpoint/[session as checkpoint_session, worker as che
     file as checkpoint_file, transfer as checkpoint_transfer, identity as checkpoint_identity]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-session"
 
 proc waitDone(session: var ApplicationCheckpointSession) =

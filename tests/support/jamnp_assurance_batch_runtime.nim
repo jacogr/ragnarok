@@ -15,6 +15,7 @@ import ../../src/state/erasure/words
 import "../../src/state/export/erasure" as export_erasure
 import ./[jamnp_assurance_fixture, pvm_computed_report, jamnp_segment_batch_fixture,
   jamnp_assurance_read_runtime, storage_io]
+
 type BatchFixture = object ## Original full erasure sources and expected bytes never enter the root-only serving job.
   source: AvailabilityCommitment
   packets: array[3, VerifiedAvailabilityTransfer]

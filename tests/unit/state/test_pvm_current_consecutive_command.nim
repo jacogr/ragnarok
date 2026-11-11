@@ -10,6 +10,7 @@ import ../../../src/codec/[report_owned, bounded]
 import ../../support/[current_consecutive_context, current_rotated_sequence_context,
   current_consecutive_download_context,
   current_download_command_context, block_download_transport]
+
 const
   ChainPath = "pvm-current-consecutive-command-chain"
   PolicyPath = "pvm-current-consecutive-command-policy"

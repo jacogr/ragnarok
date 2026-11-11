@@ -16,6 +16,7 @@ import ../../storage/file/errors as file_errors
 import ../../codec/bounded
 
 const DefaultHistoricalRecordBytes* = ByteLimit(16*1024*1024) ## Per-record working-set ceiling; archive length has no resident count ceiling.
+
 type
   PreparedHistoricalRecord* = object ## Passive exact append and source snapshot travel with the existing exclusive IO-owner lease.
     ready: bool

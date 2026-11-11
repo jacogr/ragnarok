@@ -17,6 +17,7 @@ export proof_plan, BlockHash, StateKey
 
 const MaxRpcProofImportBytes* = 8192 ## Base64 evidence fits the existing 16 KiB JSON-RPC request bound.
 const MaxRpcProofKeys* = 16 ## One immutable request retains at most sixteen exact serialized selectors.
+
 type
   ProofNamespace = ref object ## Retained host-only identity prevents connection-reset ABA without wrapping counters.
     marker: uint8

@@ -8,6 +8,7 @@ import ./accumulation/current/[driver as accumulation_current_driver,
 import ./accumulation/[coverage as accumulation_coverage, annulment as accumulation_annulment,
     effects as accumulation_effects]
 import ../codec/bounded
+
 type
   RequestIdentityHistoryLimits* = object ## Original entries/outcomes, selected fixed facts and native row storage are independent policies.
     entries*, outcomes*, facts*: ElementLimit

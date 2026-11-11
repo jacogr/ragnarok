@@ -12,6 +12,7 @@ import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot
 import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
+
 type LightReplacementAction* = enum ## One coherent namespace transition is observed after its setup completes.
   ReplaceCheckpoint, RetirePrevious, DiscardCandidate
 

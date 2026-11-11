@@ -18,6 +18,7 @@ import ../../../src/chain/[provider, genesis]
 import ../../../src/app/proof/query as proof_query
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type Detached = object ## Only independent scalar expectation, detached transport response and semantic request survive; no logical/view/snapshot owner escapes.
   expected: StateRoot
   response: ProofResponse

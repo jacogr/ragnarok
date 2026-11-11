@@ -9,6 +9,7 @@ import ../jamnp-s/assurance_distribution
 import ../codec/assurances
 
 const MaxPendingAssurances* = 1023 ## Full GP validator coverage fits a production quorum; a hostile backlog still cannot exceed the protocol population.
+
 type
   AssurancePool* = object ## Rows and expanded validator positions have independent explicit admission ceilings; no canonical graph or key owner is retained.
     entries: array[MaxPendingAssurances, CheckedAssurance]

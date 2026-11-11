@@ -13,6 +13,7 @@ import ../../../src/rpc/server
 import ../../../src/codec/bounded
 import ../../../src/chain/genesis
 import ../../support/application_checkpoint_services_context
+
 const
   SeedPath = "application-checkpoint-services-verify-chain.json"
   FileName = "application-checkpoint-services-verify"

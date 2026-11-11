@@ -23,6 +23,7 @@ import ../../src/state/computed/assurances
 import "../../src/state/block/admission"
 import ../../src/state/assured/[chain, composition, execution, queue]
 import ./[pvm_assured_chain, pvm_computed_assurances]
+
 type OriginalAuditBundle* = object ## Raw test bytes and canonical report identity derive only from original genuine executed/guaranteed publication.
   reportHash*: WorkReportHash
   wire*: seq[byte]

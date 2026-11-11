@@ -33,6 +33,7 @@ import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/[service_values as state_service_values, accounts as state_accounts]
 import ../../src/chain/[provider, genesis]
 import ../../src/storage/managed/manifest as managed_manifest
+
 type Witness {.pure.} = enum ## Independently selected legal ownership boundaries require no probabilistic sleep or guessed worker timing.
   Pending, NativeDone, Finished, Observed, Raw, Refused
 

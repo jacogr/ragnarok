@@ -15,6 +15,7 @@ import ../../../src/lib/atomic/file as atomic_file
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution
+
 const ChainPath = "application-recovery-exit-chain"
 const FileName = "application-recovery-exit"
 

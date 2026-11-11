@@ -11,6 +11,7 @@ import ../../codec/bounded
 const
   ContextMagic = "RAGNAROK-DISK-HISTORY-V1\n"
   HistoricalContextPrefixBytes* = ContextMagic.len+HistoryCursorBytes+8
+
 type HistoricalContext* = object ## Private copied bytes contain only the bounded live context, never a resident archive list.
   cursor: HistoryCursor
   live: seq[byte]

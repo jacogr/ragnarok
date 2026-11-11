@@ -19,6 +19,7 @@ import ./accumulation/annulment as accumulation_annulment
 import ../codec/bounded
 import ../codec/state/[layout as state_layout, composition as state_composition,
     accounts as state_accounts, requests as state_requests, service_values as state_service_values]
+
 type
   LogicalContinuationLimits* = object ## Original binding, admitted identity scratch, bounded planning and whole output/current qualification retain independent policies.
     identity*: CurrentIdentityLimits

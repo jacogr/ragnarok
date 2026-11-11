@@ -15,6 +15,7 @@ const
   WorkPolicyBytes* = 32768 ## Independent startup input ceiling includes comments and final newline.
   WorkPolicyHeader = "ragnarok-work-policy-v1"
   WorkPolicyFields = 86    ## Eighty-five declared fields plus one bounded unknown-key diagnostic.
+
 type
   WorkPolicyResult* = object ## Private alternatives prevent a failed file from exposing partially configured execution limits.
     case status: WorkPolicyError

@@ -10,11 +10,13 @@ import ../node/repository as node_repository
 import ../../codec/bounded
 import ../../codec/state/trie as state_trie
 import ../../crypto/primitives
+
 const
   Magic = "RAGNAROK-MANIFEST-V1\n"
   JournalMagic = "RAGNAROK-JOURNAL-V1\n"
   ManagedManifestBytes* = Magic.len+145
   ManagedJournalHeaderBytes* = JournalMagic.len+32
+
 type
   ManagedEpoch* = distinct uint64 ## Monotonic physical file epoch; compaction does not consume a state generation.
   ManagedManifest* = object ## Checked scalar selection of one independently verified snapshot and its journal.

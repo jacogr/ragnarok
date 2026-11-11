@@ -13,6 +13,7 @@ import ../accumulation/current/update as accumulation_current_update
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, accounts as state_accounts,
     composition as state_composition, requests as state_requests]
+
 type
   CurrentRefreshError* {.pure.} = enum ## Invalid plans, missing actual data, exact codec reasons and unconsumed histories remain distinct.
     Uninitialized, None, InvalidPlan, MissingValue, MetadataFailure, RequestFailure, TrailingRequest

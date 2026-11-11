@@ -9,6 +9,7 @@ import ../../../state/current/[profile as current_profile, globals as current_gl
 import ../../../state/accumulation/current/update as accumulation_current_update
 import ../../../state/global_snapshot
 import ../../../state/supplied/logical_inventory as supplied_logical_inventory
+
 type
   CollectedSuppliedLimits* = object ## Profile/global decoding and complete supplied logical matching retain separate quotas.
     profile*: CurrentProfileLimits

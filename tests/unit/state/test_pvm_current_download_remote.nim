@@ -23,6 +23,7 @@ import ../../support/[accumulation_current_chain_context,
 
 type RemoteWitness {.pure.} = enum ## Refusal mode remains independent of the command's actual result.
   Adopt, WrongParent, Timeout
+
 const
   ChainPath = "pvm-current-download-remote-chain"
   PolicyPath = "pvm-current-download-remote-policy"

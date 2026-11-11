@@ -17,6 +17,7 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/application_candidate_context as candidate_context
 import ../../support/application_recovery_execution
+
 const ChainPath = "application-recovery-export-chain"
 const FileName = "application-recovery-export"
 

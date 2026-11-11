@@ -5,6 +5,7 @@
 
 import std/assertions
 import ../../src/pvm/program
+
 const ProgramFuzzBytes* = 1024 ## Includes the test-only profile/resource selector; no file or callback may allocate from a larger untrusted extent.
 
 proc sameInstruction(actual, expected: Instruction) =

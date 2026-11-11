@@ -13,6 +13,7 @@ import ./[logical as current_logical, state as current_state, globals as current
 import ../../chain/[provider, genesis, parameters]
 import ../../codec/bounded
 import ../../codec/state/layout as state_layout
+
 type
   CurrentIdentityLimits* = object ## Full prior/posterior view copies and sorted key inspections require independent upfront admission.
     blocks*, keys*: ElementLimit

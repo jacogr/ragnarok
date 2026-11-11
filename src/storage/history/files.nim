@@ -13,6 +13,7 @@ import ../../codec/bounded
 import ../../crypto/primitives
 
 const IdentityMagic = "RAGNAROK-FULL-HISTORY-V1\n"
+
 type
   HistoryFiles* = object ## Passive namespace capability owns no native descriptor, callback or resident archive list.
     ready: bool

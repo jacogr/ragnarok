@@ -8,10 +8,12 @@ import std/assertions
 import ../codec/[bounded, header]
 import ../codec/state/trie as state_trie
 from ../chain/genesis import BlockHash
+
 const
   MaxRpcLightHeaders* = 8           ## Metadata retention remains finite independently of proof/state retention.
   MaxRpcLightHeaderBytes* = 1048576 ## Complete sealed metadata transport, before any copy.
   MaxRpcLightFacts* = 256           ## Local fact coverage is never a complete-state entry count.
+
 type
   RpcLightHeaderInput* = object ## Stable caller-supplied metadata; capture validates structure, never consensus or posterior-root authority.
     blockHash*: BlockHash

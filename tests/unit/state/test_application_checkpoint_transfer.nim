@@ -13,6 +13,7 @@ import ../../../src/app/checkpoint/[transfer as checkpoint_transfer, codec as ch
 import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-transfer"
 
 proc detached(): PreparedApplicationCheckpoint {.raises.} =

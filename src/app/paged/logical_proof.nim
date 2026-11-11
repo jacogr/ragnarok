@@ -10,6 +10,7 @@ import ../../state/current/logical as current_logical
 import ../../state/proof/plan as proof_plan
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, trie as state_trie]
+
 type
   LogicalProofPageIndex* = distinct uint64 ## Page ordinals are neither physical entry indices nor key limits.
   LogicalProofPageLimits* = object ## Each page admits copied input/retained/sort key storage separately from whole-source selector capture.

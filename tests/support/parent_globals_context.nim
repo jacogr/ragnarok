@@ -6,5 +6,6 @@
 import ../../src/state/global_snapshot
 import ../../src/codec/bounded
 import ../../src/codec/state/composition as state_composition
+
 const parentGlobalsTestLimits* = GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(
     10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))

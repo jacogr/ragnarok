@@ -4,6 +4,7 @@
 ## Explicit moves of noncopyable sequence elements remain valid alongside rejection guards.
 
 import std/[assertions, syncio]
+
 type SequenceOwner = object ## Scalar-only owner mirrors the negative fixtures without fake cleanup.
   token: int
 

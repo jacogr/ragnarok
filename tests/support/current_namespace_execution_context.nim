@@ -20,6 +20,7 @@ import "../../src/state/block/transition" as block_transition
 import "../../src/state/block/admission" as block_admission
 import ../../src/chain/[genesis, provider]
 import ../../src/app/[chain, candidate]
+
 type NamespaceExecutionFixture* = object ## Explicit authored namespaces/code belong to the same real admitted original parent and current update.
   source*: ExecutionFixture
   seeds*: seq[ServiceNamespaceSeed]

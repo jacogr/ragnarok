@@ -11,6 +11,7 @@ import ../../preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../[invariants as account_invariants, review as account_review]
 import ../../service/directory as service_directory
 import ../../[supervision_table, economics_table, economic_profile]
+
 type
   AccountReviewPlanLimits* = object ## Caller-selected independent bounds are copied into a private immutable plan.
     audit*: AccountAuditLimits

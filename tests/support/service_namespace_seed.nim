@@ -8,6 +8,7 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie,
     accounts as state_accounts, service_values as state_service_values, requests as state_requests,
     composition as state_composition]
+
 type ServiceNamespaceSeed* = object ## Author only children; original executable metadata stays authoritative.
   service*: ServiceIndex
   storage*: seq[StateStorageItem]

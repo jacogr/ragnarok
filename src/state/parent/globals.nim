@@ -5,6 +5,7 @@
 
 import ./profile as parent_profile
 import ../global_snapshot
+
 type
   SelectedParentGlobals* = object ## Private original profile/view and all-global evidence are distinct from transition completion.
     initialized: bool

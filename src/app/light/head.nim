@@ -14,6 +14,7 @@ import ../../state/proof/view as proof_view
 import ../../state/trie_proof
 
 const MaxLightHeaders* = 8 ## Header retention is independent of finality, complete state and physical storage generations.
+
 type
   LightHeadLimits* = object ## Caller-selected header geometry is independent of fetch parameters and partial proof contents.
     header*: HeaderConfig

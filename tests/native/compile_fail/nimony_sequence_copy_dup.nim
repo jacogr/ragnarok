@@ -5,6 +5,7 @@
 
 # @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <seq[SequenceOwner]>","build_name":"nimony-sequence-copy-dup","rationale":"Sequence duplication used to bypass even explicit error copy AND dup hooks; preserve this second original #2737 reproduction rather than infer it from the copy-only case.","reference":"spec/nimony-nightly-2026-10-21.md"}
 import std/syncio
+
 type SequenceOwner = object ## A scalar-only exclusive element requires no artificial destructor.
   token: int
 

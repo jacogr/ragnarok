@@ -5,6 +5,7 @@
 
 import ../../state/current/[logical as current_logical, review as current_review]
 import ../../state/account/review/plan as account_review_plan
+
 type
   LogicalReviewPlan* = object ## The original logical owner and current review admission cannot be rebound independently.
     initialized: bool

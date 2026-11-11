@@ -19,6 +19,7 @@ from ../pvm/host/fetch import FetchSegment
 import "../state/export/erasure" as export_erasure
 
 const MaxAvailabilityBundleBytes* = 13904950'u64 ## GP full-bundle ceiling also bounds untrusted availability geometry before native allocation.
+
 type
   AvailabilityTransferKind* {.pure.} = enum ## NP selectors distinguish all-data, bundle-only and one selected row evidence.
     Distribution, Audit, Segment

@@ -5,6 +5,7 @@
 import re
 
 ROUTINE = re.compile(r'^(?:proc|func|method|iterator|template|macro|converter)\s')
+SECTION = re.compile(r'^(import|from|const|type)(?:\s|$)')
 CHARACTER = re.compile(r"'(?:\\(?:[0-9]+|x[0-9a-fA-F]{2}|.)|[^'\\\n])'")
 
 
@@ -74,14 +75,15 @@ def source_lines(source):
 
 
 def normalize_spacing(source):
-    """Separate the license, module docs and top-level routines; allow one blank between sections.
+    """Separate the header, module docs, and top-level imports, consts, types and routines.
 
     Preserve indented declaration groups and all multiline token contents. Attached line comments
-    stay with their routine. This pass supplements nimpretty, which retains input blank-line runs.
+    stay with the section they introduce. Nimpretty retains input blank-line runs.
     """
     rows = list(source_lines(source))
     boundaries = set()
     preamble = True
+    previous_section = None
     # Determine section starts using lexical code, rather than text embedded in strings/comments.
     for index, (line, code, protected) in enumerate(rows):
         if not protected:
@@ -93,9 +95,19 @@ def normalize_spacing(source):
                     boundaries.add(index + 1)
             if code.strip():
                 preamble = False
-            if ROUTINE.match(code):
+            new_section = False
+            # Indented bodies and unindented closing delimiters belong to the preceding statement.
+            if code.strip() and not code[0].isspace() and code[0] not in ')]},':
+                match = SECTION.match(code)
+                section = match[1] if match else None
+                if section == 'from':
+                    section = 'import'
+                new_section = (section is not None and previous_section is not None
+                               and section != previous_section)
+                previous_section = section
+            if new_section or ROUTINE.match(code):
                 start = index
-                # Move the boundary before explanatory comments attached directly to the routine.
+                # Move the boundary before explanatory comments attached directly to the declaration.
                 while start and rows[start - 1][0].startswith('#') and not rows[start - 1][2]:
                     start -= 1
                 boundaries.add(start)

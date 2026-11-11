@@ -8,6 +8,7 @@ import ../../src/state/current/logical/refresh as current_logical_refresh
 import ../../src/state/current/refresh/plan as current_refresh_plan
 import ../../src/state/current/profile as current_profile
 import ../../src/codec/[bounded, report_owned]
+
 const currentLogicalRefreshTestLimits* = CurrentLogicalRefreshLimits(profile: CurrentProfileLimits(
     validators: ElementLimit(1024), bytes: ByteLimit(65536)), globals: parentGlobalsTestLimits,
     logical: suppliedLogicalTestLimits, checks: ElementLimit(36), retainedBytes: ByteLimit(262144))

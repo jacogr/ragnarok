@@ -9,6 +9,7 @@ import ../managed/repository as managed_repository
 import ../node/repository as node_repository
 import ../database_identity
 import ../../codec/state/trie as state_trie
+
 type
   MigrationSeed = object ## One exact legacy revision retains its validated root selection and detached context.
     selection: RepositorySelection

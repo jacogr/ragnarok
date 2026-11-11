@@ -8,6 +8,7 @@ import ../../codec/state/composition as state_composition
 import ./globals as parent_globals
 import ../[global_snapshot, manifest]
 import ../supplied/logical_inventory as supplied_logical_inventory
+
 type
   SelectedLogicalParent* = object ## Private original selected-global owner and revalidated logical inventory cannot be paired unchecked.
     initialized: bool
