@@ -3157,10 +3157,12 @@ when NativeReadCycleEnabled:
       # The ordered Read body may leave room for the pair when the window did not fit.
       result = emitArmReadCycle(cycle, storePage = true, allowWindow = false, allowStoreTail = true)
     if result.len == 0:
-      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false, allowStoreTail = false)
+      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false,
+          allowStoreTail = false)
     if result.len == 0:
       # Preserve admission of an image whose original probes fit the ceiling.
-      result = emitArmReadCycle(cycle, storePage = false, allowWindow = false, allowStoreTail = false)
+      result = emitArmReadCycle(cycle, storePage = false, allowWindow = false,
+          allowStoreTail = false)
 
 func armWindowInstructionSafe(instruction: uint32): bool =
   ## Admit only present integer emitter families and the dirty byte body's exact
