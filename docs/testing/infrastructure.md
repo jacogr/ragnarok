@@ -391,8 +391,10 @@ bounded to 60 seconds. Index updates additionally have a five-minute wall-clock 
 ten-second termination grace, and any failed index makes setup fail. Installation begins only
 after a successful update; package configuration retains its normal completion semantics.
 Both stages save stdout/stderr in `build/ci/host-tools-{update,install}.log`, covered by the existing
-CI artifact globs even when compiler setup never starts. Provisioned and non-APT hosts skip this
-path. The workflow uses one shared 60-minute limit for every job.
+CI artifact globs even when compiler setup never starts. Ubuntu 26.04 GitHub runners use
+a [command-local signed mirror list](../../tools/ci_ubuntu_apt.py) for this step. DOOM asset
+jobs request the decompressor through the same target. Provisioned and non-APT hosts skip
+package setup. The workflow uses one shared 60-minute limit for every job.
 
 E2E builds opt into the same serial, source-epoch/native-ABI/profile-isolated compiler cache,
 retaining ThinLTO, runtime checks and separate production feature defines. Full peer builds

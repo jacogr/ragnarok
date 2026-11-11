@@ -70,7 +70,9 @@ class NimonyCISafeguards(unittest.TestCase):
         ci = workflow((ROOT/'.github/workflows/ci.yml').read_text())
         target = 'bench-pvm-polkavm'
         self.assertEqual(set(workflow(text)['on']), {'workflow_dispatch'})
-        self.assertEqual(scheduled_targets(text, event_context('workflow_dispatch')), [target])
+        # The decompressor setup precedes the only scheduled calibration workload.
+        self.assertEqual(scheduled_targets(text, event_context('workflow_dispatch')),
+                         ['host-tools', target])
         self.assertNotIn('polkavm-ratios', ci['on']['workflow_dispatch']['inputs']['suite']['options'])
         self.assertFalse(any(target in command for job in ci['jobs'].values()
                              for command in commands(job)))

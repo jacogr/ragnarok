@@ -679,9 +679,7 @@ jobs:
       - *quic-built-cache
       - *polkavm-built-cache
       - name: Install DOOM asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
+        run: make host-tools PVM_ASSET_TOOLS=1
       - name: Compare continuing DOOM through CLI-selected shared backends
         run: make check-pvm-doom-backends
       - name: Show per-frame parity and first mismatch
@@ -848,9 +846,7 @@ jobs:
       - *quic-built-cache
       - *polkavm-built-cache
       - name: Install pinned asset decompression prerequisite
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
+        run: make host-tools PVM_ASSET_TOOLS=1
       - name: Qualify and compare current PVM backends
         run: make bench-pvm-performance
       - name: Show complete current-source comparison
