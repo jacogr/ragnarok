@@ -6,14 +6,24 @@
 FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS ubuntu-base
 
-# Prefer Ubuntu's default archive and security hosts. APT can fetch the same signed
-# release and package data from a second mirror when the primary is unavailable.
+# Prefer Ubuntu's default archive and security hosts when DNS resolves promptly.
+# Omitting an unresolvable host avoids a resolver wait for every archive object.
+# The second mirror publishes the same signed Ubuntu release and package data.
 # A partial index update must fail so the retry repeats update before install.
-RUN printf '%s\tpriority:1\n%s\n' http://archive.ubuntu.com/ubuntu http://mirrors.edge.kernel.org/ubuntu \
-      > /etc/apt/archive-mirrors.list \
-    && printf '%s\tpriority:1\n%s\n' http://security.ubuntu.com/ubuntu http://mirrors.edge.kernel.org/ubuntu \
-      > /etc/apt/security-mirrors.list \
-    && sed -i \
+RUN set -eu; \
+    fallback=http://mirrors.edge.kernel.org/ubuntu; \
+    for scope in archive security; do \
+      host="$scope.ubuntu.com"; \
+      { \
+        if timeout 5s getent ahosts "$host" >/dev/null; then \
+          printf 'http://%s/ubuntu\tpriority:1\n' "$host"; \
+        else \
+          printf 'Ubuntu APT primary %s did not resolve. Using %s\n' "$host" "$fallback" >&2; \
+        fi; \
+        printf '%s\n' "$fallback"; \
+      } > "/etc/apt/$scope-mirrors.list"; \
+    done; \
+    sed -i \
       -e 's|^URIs: http://archive[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/archive-mirrors.list|' \
       -e 's|^URIs: http://security[.]ubuntu[.]com/ubuntu/*$|URIs: mirror+file:/etc/apt/security-mirrors.list|' \
       /etc/apt/sources.list.d/ubuntu.sources \
