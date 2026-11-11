@@ -53,7 +53,7 @@ proc payload(pairs: openArray[AlwaysAccumulate]): seq[byte] =
 proc source(manager = 42'u64, assigners = 65536'u64, delegator = 99'u64,
     registrar = uint64(high(uint32)), address = 196608'u64, count = 1'u64,
     initialManager = 42'u32, credit = 100000'u64,
-    data: seq[byte] = @[81'u8], suffix: seq[seq[byte]] = @[@[50'u8,
+    data: seq[byte] = @[81'u8], initialOwner = 0'u32, suffix: seq[seq[byte]] = @[@[50'u8,
         0]]): PreparedAccumulationMachine =
   var instructions = @[registerImmediate(7, manager), registerImmediate(8, assigners),
     registerImmediate(9, delegator), registerImmediate(10, registrar), registerImmediate(11,
@@ -61,7 +61,8 @@ proc source(manager = 42'u64, assigners = 65536'u64, delegator = 99'u64,
     registerImmediate(12, count), @[10'u8, 16]]
   for instruction in suffix:
     instructions.add(instruction) # Every host call executes through the real decoded guest stream.
-  guestProgram(instructions, credit, manager = initialManager, writable = data, spareEntries = 1)
+  guestProgram(instructions, credit, manager = initialManager, assigner = initialOwner,
+    delegator = initialOwner, registrar = initialOwner, writable = data, spareEntries = 1)
 
 ## Capture and execution policies stay distinct from guest gas; no provision capacity is inferred.
 proc run(prepared: PreparedAccumulationMachine, limit = 64'u64,
@@ -130,23 +131,55 @@ checkRoles(context(empty), 42, @[])
 for manager in [0'u64, uint64(high(uint32))]:
   let handed = run(source(manager = manager))
   assert handed.error == AccumulationDispatchError.None, "handed.error == AccumulationDispatchError.None"
-  checkRoles(context(handed), uint32(manager), singleton) # No existence check or self sentinel is invented for role IDs.
+  checkRoles(context(handed), uint32(manager), singleton) # The full E4 role domain includes its maximum service ID.
 for index in [7, 9, 10]:
   # Every proposed role is validated at full width only after authorized input capture.
-  let proposed = (if index == 7: high(uint64) else: 42'u64)
-  let failed = run(source(manager = proposed, delegator = (if index == 9: high(
-      uint64) else: 99'u64),
+  let proposed = (if index == 7: 0x100000000'u64 else: 42'u64)
+  let failed = run(source(manager = proposed, delegator = (if index ==
+      9: 0x100000000'u64 else: 99'u64),
     registrar = (if index == 10: 0x100000000'u64 else: uint64(high(uint32)))))
   assert uint64(machineInfo(failed.value.machine).value.registers[7]) == high(uint64)-3, "uint64(machineInfo(failed.value.machine).value.registers[7"
 for initial in [0'u32, high(uint32)]:
   let failed = run(source(initialManager = initial, manager = high(uint64)))
   assert failed.value.exit == StepExit.Halt and uint64(machineInfo(
       failed.value.machine).value.registers[7]) == high(uint64)-8, "failed.value.exit == StepExit.Halt and uint64(machineInfo("
-for address in [0'u64, 196608'u64+8192-4, 0x100000000'u64, high(uint64)]:
+for address in [0'u64, 196608'u64+8192-4, 0x100000000'u64]:
   let failed = run(source(assigners = address, initialManager = 0))
   assert failed.value.exit == StepExit.Panic, "failed.value.exit == StepExit.Panic # Core-array read prec" # Core-array read precedes even a known unauthorized caller.
   let pairFailed = run(source(address = address, initialManager = 0))
   assert pairFailed.value.exit == StepExit.Panic, "pairFailed.value.exit == StepExit.Panic # Full pair-array " # Full pair-array memory likewise precedes HUH.
+# A non-manager may hand over each role it holds while keeping the manager and allowance table.
+let owned = source(manager = high(uint64), assigners = 196608, delegator = 81,
+  registrar = 82, address = high(uint64), count = 101, initialManager = 17, initialOwner = 42,
+  data = @[83'u8, 0, 0, 0, 255, 255, 255, 255])
+let transferred = run(owned, limit = 8)
+let transferredCpu = machineInfo(transferred.value.machine).value
+assert uint64(transferredCpu.registers[7]) == 0
+assert uint64(transferredCpu.gas) == 100000-price(owned)-2442, "the kept table still charges r12"
+let changed = context(transferred).effectPrivileges.value
+let changedInfo = changed.privilegeInfo.value
+assert uint32(changedInfo.manager) == 17 and uint32(changedInfo.delegator) == 81 and
+  uint32(changedInfo.registrar) == 82 and changedInfo.always == 0
+assert uint32(changed.privilegeAssignerAt(PrivilegeCoreIndex(0)).value) == 83
+assert uint32(changed.privilegeAssignerAt(PrivilegeCoreIndex(1)).value) == 42
+
+# A caller with no privileges may preserve the entire proposal without reading either pointer.
+let noop = source(manager = high(uint64), assigners = high(uint64),
+  delegator = high(uint64), registrar = high(uint64), address = high(uint64), initialManager = 17)
+failHash(1)
+let unchanged = run(noop, limit = 0)
+assert uint64(machineInfo(unchanged.value.machine).value.registers[7]) == 0
+assert hashCalls() == 0, "an unchanged proposal does not Merklize C(12)"
+assert not context(unchanged).effectInfo.value.hasPrivileges
+failHash(0)
+let invalidOwned = run(source(manager = high(uint64), assigners = high(uint64),
+  delegator = 0x100000000'u64, registrar = high(uint64), address = high(uint64),
+  initialManager = 17, initialOwner = 42))
+assert uint64(machineInfo(invalidOwned.value.machine).value.registers[7]) == high(uint64)-3
+let foreign = run(source(manager = high(uint64), assigners = high(uint64),
+  delegator = 0x100000000'u64, registrar = high(uint64), initialManager = 17, initialOwner = 42))
+assert uint64(machineInfo(foreign.value.machine).value.registers[7]) == high(uint64)-8,
+  "an allowance change by a non-manager precedes WHO"
 assert run(source(), limit = 7).error == AccumulationDispatchError.LimitExceeded, "run(source(), limit = 7).error == AccumulationDispatchErro"
 assert run(source(), limit = 11).error == AccumulationDispatchError.LimitExceeded, "run(source(), limit = 11).error == AccumulationDispatchErr"
 assert run(source(count = 101)).error == AccumulationDispatchError.LimitExceeded, "run(source(count = 101)).error == AccumulationDispatchErro"
@@ -159,7 +192,7 @@ let conflicting = @[AlwaysAccumulate(service: ServiceIndex(high(uint32)), gas: P
 for pairs in [identical, conflicting]:
   for invalidRole in [false, true]:
     let prepared = source(count = 2, data = payload(pairs),
-      manager = (if invalidRole: high(uint64) else: 42'u64))
+      manager = (if invalidRole: 0x100000000'u64 else: 42'u64))
     failHash(1)
     let denied = run(prepared)
     assert denied.error == AccumulationDispatchError.None, "duplicate keys are a protocol HUH"
@@ -267,6 +300,25 @@ let independent = recorded.value.effectContext(AccumulationDimension.Regular).va
 checkRoles(independent, 42, @[AlwaysAccumulate(service: ServiceIndex(7), gas: PrivilegeGas(9))])
 assert original.effectContext(AccumulationDimension.Regular).value.effectPrivileges.value.privilegeInfo.value.always ==
     0, "prior owner remains empty"
+# Canonical allowance equality permits an owned-role transfer even when the source order differs.
+let allowance = AlwaysAccumulate(service: ServiceIndex(7), gas: PrivilegeGas(9))
+let otherAllowance = AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(3))
+let holderRoles = PrivilegeState(manager: ServiceIndex(17), delegator: ServiceIndex(42),
+  registrar: ServiceIndex(0), assigners: @[ServiceIndex(73), ServiceIndex(0)],
+  always: @[otherAllowance, allowance])
+let holder = recordAccumulationBless(original, holderRoles, config().privileges).value
+var proposal = holderRoles
+proposal.delegator = ServiceIndex(81)
+proposal.always = @[allowance, otherAllowance]
+let handoff = recordAccumulationBless(holder, proposal, config().privileges)
+assert handoff.error == AccumulationEffectError.None, "equal dictionaries may use a different order"
+proposal.always[0].gas = PrivilegeGas(10)
+assert recordAccumulationBless(holder, proposal, config().privileges).error ==
+    AccumulationEffectError.UnauthorizedPrivilege, "non-manager cannot change the gas of an existing key"
+proposal.always = holderRoles.always
+proposal.assigners[1] = ServiceIndex(81)
+assert recordAccumulationBless(holder, proposal, config().privileges).error ==
+    AccumulationEffectError.UnauthorizedPrivilege, "owning a role gives no authority over a foreign core"
 # The state API independently rejects both forms before any map or role successor is constructed.
 for pairs in [identical, conflicting]:
   var duplicateRoles = roles

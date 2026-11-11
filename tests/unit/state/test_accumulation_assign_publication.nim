@@ -207,6 +207,66 @@ proc checkManagerGate() =
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
       HeaderSlot(128), policy()).error == AccumulationBatchError.LimitExceeded
 
+proc checkOwnedBlessPublication(managerChanges: bool) =
+  ## Publish a real assigner's bless through the complete batch and exercise both sides of manager precedence.
+  var payload = @[255'u8, 255, 255, 255, 255, 255, 255, 255]
+  if managerChanges:
+    for i, octet in [88'u8, 0, 0, 0]:
+      payload[i] = octet # The original manager explicitly replaces core zero.
+  let managerProgram = guestEnvelope([registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196608), registerImmediate(9, high(uint64)),
+    registerImmediate(10, high(uint64)), registerImmediate(11, high(uint64)),
+    registerImmediate(12, 0), @[10'u8, 16], @[50'u8, 0]],
+    writable = payload)
+  # Encode an explicit core zero handoff, and use the E4 sentinel for core one.
+  let ownerProgram = guestEnvelope([registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196608), registerImmediate(9, high(uint64)),
+    registerImmediate(10, high(uint64)), registerImmediate(11, high(uint64)),
+    registerImmediate(12, 0), @[10'u8, 16],
+    registerImmediate(7, high(uint64)), registerImmediate(8, high(uint64)),
+    @[10'u8, 16], @[50'u8, 0]],
+    writable = @[77'u8, 0, 0, 0, 255, 255, 255, 255])
+  let fixture = batchFixture(firstEnvelope = managerProgram, secondEnvelope = ownerProgram,
+    assigners = @[ServiceIndex(99), ServiceIndex(42)], manager = 42)
+  let prior = fixture.state.snapshot.value
+  let manager = batchExecution(fixture, 0, parameters = parameters())
+  let owner = batchExecution(fixture, 1, parameters = parameters())
+  assert uint64(machineInfo(owner.value.machine).value.registers[7]) == 0, "the later no-op succeeds"
+  assert normalizeAccumulationOutcome(owner).value.outcomeContext.value.effectInfo.value.hasPrivileges,
+    "the later no-op retains the earlier handoff"
+  var limits = policy()
+  limits.managerBytes = ByteLimit(42)
+  let plan = prepareCompleteAccumulationBatch(fixture.inputs, prior, [owner, manager], [],
+    HeaderSlot(128), limits).value
+  var working = forkStateStore(prior).value
+  let published = applyAccumulationBatch(working, plan)
+  assert published.error == AccumulationBatchError.None
+  let roles = working.snapshot.value.lookup(chapterKey(StateChapter(12))).value.bytes
+  assert roles[4] == (if managerChanges: 88'u8 else: 77'u8), "manager changes win per core"
+  assert roles[8] == 42, "the unrelated core retains its original owner"
+
+proc checkUnprivilegedNoopBless() =
+  ## A halt and an unprivileged no-op bless both complete with zero privilege publication budget.
+  let halt = guestEnvelope([@[50'u8, 0]])
+  let noop = guestEnvelope([registerImmediate(7, high(uint64)),
+    registerImmediate(8, high(uint64)), registerImmediate(9, high(uint64)),
+    registerImmediate(10, high(uint64)), registerImmediate(11, high(uint64)),
+    registerImmediate(12, 0), @[10'u8, 16], @[50'u8, 0]])
+  for withBless in [false, true]:
+    let fixture = batchFixture(firstEnvelope = halt,
+      secondEnvelope = (if withBless: noop else: halt),
+      assigners = @[ServiceIndex(42), ServiceIndex(42)], manager = 42, delegator = 42)
+    let a = batchExecution(fixture, 0, parameters = parameters())
+    let b = batchExecution(fixture, 1, parameters = parameters())
+    assert a.error == AccumulationDispatchError.None and b.error == AccumulationDispatchError.None
+    if withBless:
+      assert uint64(machineInfo(b.value.machine).value.registers[7]) == 0, "the no-op returns OK"
+    let prepared = prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value,
+      [a, b], [], HeaderSlot(128), policy())
+    assert prepared.error == AccumulationBatchError.None,
+      "an unchanged privilege proposal should not require global publication"
+    assert prepared.value.batchInfo.value.assignmentWrites == 0
+
 proc main() =
   ## Exercise both original core owners, distinct terminal branches and restored-equal provenance.
   check(Halt, Halt)
@@ -218,6 +278,9 @@ proc main() =
   checkSubset()
   checkStoreLimit()
   checkManagerGate()
+  checkOwnedBlessPublication(false)
+  checkOwnedBlessPublication(true)
+  checkUnprivilegedNoopBless()
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     let source = batchFixture()

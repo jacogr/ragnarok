@@ -70,11 +70,14 @@ proc managerProgram(changed, cancelManager, cancelOwner: bool, pairs: int): seq[
   guestEnvelope(code, writable = payload)
 
 proc ownerProgram(cancelManager, cancelOwner: bool): seq[byte] =
-  ## Original owner changes core zero and staging; its successor never becomes this round's source.
+  ## The original owner changes its queue and staging, then transfers its delegator role.
   var payload = newSeq[byte](96)
   for index in 64..<96: payload[index] = byte(index) # Observable queue slot two.
   var code = @[registerImmediate(7, 0), registerImmediate(8, 196608), registerImmediate(9, 77),
-    @[10'u8, 17], registerImmediate(7, 196608), registerImmediate(8, 6), @[10'u8, 18]]
+    @[10'u8, 17], registerImmediate(7, 196608), registerImmediate(8, 6), @[10'u8, 18],
+    registerImmediate(7, high(uint64)), registerImmediate(8, high(uint64)),
+    registerImmediate(9, 78), registerImmediate(10, high(uint64)),
+    registerImmediate(11, high(uint64)), registerImmediate(12, 0), @[10'u8, 16]]
   if cancelOwner: code.selfWrite() # Cancel all global effects from this genuine owner together.
   if cancelManager: code.foreignWrite(42, 99) # Reciprocal prior supervision tests original outcome decisions.
   code.add(@[50'u8, 0])
@@ -115,6 +118,7 @@ proc selected(changed, cancelManager, cancelOwner: bool, pairs: int,
   let first = normalizeAccumulationOutcome(a).value
   let second = normalizeAccumulationOutcome(b).value
   assert first.outcomeContext.value.effectInfo.value.hasPrivileges, "bless actually executed"
+  assert second.outcomeContext.value.effectInfo.value.hasPrivileges, "the original delegator transferred its role"
   assert second.outcomeContext.value.effectInfo.value.hasAssignments, "assign actually executed"
   assert second.outcomeContext.value.effectInfo.value.hasStaging, "designate actually executed"
   let originals = if reverse: @[second, first] else: @[first, second]
@@ -132,7 +136,8 @@ proc check(changed, canceledManager, canceledOwner: bool, pairs: int, reverse = 
   expected.put(if canceledManager: 42'u64 else: 99'u64, 4)
   expected.put(if not canceledManager and changed: 88'u64 elif canceledOwner: 99'u64 else: 77'u64, 4)
   expected.put(if canceledManager: 99'u64 else: 89'u64, 4)
-  expected.put(if canceledManager: 99'u64 else: uint64(high(uint32))-1, 4)
+  expected.put(if not canceledManager: uint64(high(
+      uint32))-1 elif canceledOwner: 99'u64 else: 78'u64, 4)
   expected.put(if canceledManager: 0'u64 else: 17'u64, 4)
   let activePairs = if canceledManager: 0 else: pairs
   expected.add(byte(activePairs))

@@ -7,6 +7,16 @@ This register records findings encountered during implementation, not an exhaust
 paper audit. Entries below have not been filed upstream by this work; no claim is
 made about whether a later paper revision already fixes them.
 
+## November 11 owned-role and empty-export amendments
+
+Gray Paper revision `519504c363f2bfcc1f6371ebffe3d2adaaa58e44` used a
+manager-only bless predicate. The pin now includes
+[the owned-role amendment](https://github.com/gavofyork/graypaper/pull/558)
+at `068d88c6`. See the [bless contract](pvm-accumulation-bless.md) for host
+authorization, block precedence, and replay evidence.
+[The empty-export amendment](https://github.com/gavofyork/graypaper/pull/583)
+at `27b64a6a` matches the existing [availability commitment](pvm-availability-specifier.md).
+
 ## Current upgrade disposition — 2026-10-21
 
 The authorized current target is unreleased Gray Paper

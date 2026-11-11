@@ -6,8 +6,6 @@
 ## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
-import std/algorithm
-
 import ./residency
 import ../../pvm/worker
 
@@ -460,26 +458,15 @@ func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
   for i in 0..<width:
     result = result or (uint64(bytes[offset+i]) shl (8*i)) # Callers prove each complete four/eight-byte field.
 
-func comparePrivilegeService(left, right: uint32): int =
-  ## Sort unsigned service identities without subtraction overflow or signed narrowing.
-  if left < right: return -1 # Numeric ordering keeps every repeated key adjacent.
-  if left > right: return 1 # Gas values never distinguish repeated keys.
-  0
-
-proc repeatedPrivilegeService(pairs: seq[byte]): bool =
-  ## A complete captured12-byte table bounds key scratch to one third of its already-bounded byte extent.
-  var keys = newSeq[uint32](pairs.len div 12)
-  for index in 0..<keys.len:
-    keys[index] = uint32(privilegeNumber(pairs, index*12,
-        4)) # Four octets prove the E4 narrowing and indexed extent.
-  keys.sort(comparePrivilegeService)
-  for index in 1..<keys.len:
-    if keys[index-1] == keys[index]: return true # Identical or different gas values have the same duplicate identity.
-  false
-
 proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
-  ## Charge bless's complete 69-bit item cost before memory, authorization and role validation.
+  ## Charge the full 69-bit `422 + 20*r12` cost before capture, including when r11 keeps the table.
+  ## The configured core count fixes the E4 assigner array. The copy budget applies to each
+  ## input range independently, and the privilege profile bounds the count of raw E4/E8 pairs.
+  ## A funded charge proves `12*r12` fits before forming the pair extent. Pointer sentinels
+  ## skip guest reads, and an all-ones E4 assigner keeps that core's current owner.
+  ## An unreadable supplied range panics before the effect API checks ownership, duplicate keys
+  ## or role width. Local capture and allocation limits return a dispatch failure.
   let count = uint64(cpu.registers[12])
   let lowProduct = (count and 0xffffffff'u64)*20+422 # Below 2^37; retain its carry into the upper product.
   let highProduct = (count shr 32)*20+(lowProduct shr 32) # Below 2^37, preserving the complete item charge.
@@ -493,8 +480,12 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   let cores = context.parameters.get(coreCount)
   if cores != uint64(context.privileges.cores):
     return hostFailure(AccumulationDispatchError.InvalidContext) # Protocol core count must match prepared privilege layout.
-  let assigners = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(4*cores),
-      context.copyLimit)
+  let assignerAddress = uint64(cpu.registers[8])
+  let allowanceAddress = uint64(cpu.registers[11])
+  let keepAssigners = assignerAddress == high(uint64)
+  let keepAllowances = allowanceAddress == high(uint64)
+  let assigners = readBytes(memory, MemoryAddress(assignerAddress),
+    MemoryLength(if keepAssigners: 0'u64 else: 4*cores), context.copyLimit)
   case assigners.error
   of MachineError.None:
     discard # The complete positional core array is captured before authorization.
@@ -505,12 +496,12 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture bounds are not guest codes.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid memory owner authorizes roles.
-  if count > uint64(context.privileges.maxAlways) or count > uint64(high(int) div sizeof(
-      AlwaysAccumulate)):
+  if not keepAllowances and (count > uint64(context.privileges.maxAlways) or
+      count > uint64(high(int) div sizeof(AlwaysAccumulate))):
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Bound input record work before reading/sorting.
   # Funded 422+20*count<=UINT64_MAX proves 12*count fits uint64 before forming the guest byte extent.
-  let pairs = readBytes(memory, MemoryAddress(uint64(cpu.registers[11])), MemoryLength(12*count),
-      context.copyLimit)
+  let pairs = readBytes(memory, MemoryAddress(allowanceAddress),
+    MemoryLength(if keepAllowances: 0'u64 else: 12*count), context.copyLimit)
   case pairs.error
   of MachineError.None:
     discard # All record bytes are captured before authority or role-domain checks.
@@ -521,40 +512,40 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No partial execution on capture policy failure.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # No fabricated successful input.
-  let current = context.effects.effectContext(AccumulationDimension.Regular).value
-  if uint32(current.effectInfo.value.service) != uint32(
-      current.effectPrivileges.value.privilegeInfo.value.manager):
-    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes all proposed role-domain checks.
-    return hostSuccess[AccumulationDispatchError](response)
-  if repeatedPrivilegeService(pairs.value):
-    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes proposed role-domain checks, including identical pairs.
-    return hostSuccess[AccumulationDispatchError](response)
-  for index in [7, 9, 10]:
-    if uint64(cpu.registers[index]) > uint64(high(uint32)):
-      response.registers[7] = RegisterValue(high(uint64)-3) # WHO; no self sentinel or low-bit truncation exists here.
-      return hostSuccess[AccumulationDispatchError](response)
-  var roles = PrivilegeState(manager: ServiceIndex(uint32(uint64(cpu.registers[7]))),
-    delegator: ServiceIndex(uint32(uint64(cpu.registers[9]))), registrar: ServiceIndex(uint32(
-        uint64(cpu.registers[10]))),
-    assigners: newSeq[ServiceIndex](int(cores)), always: newSeq[AlwaysAccumulate](int(count)))
-  for i in 0..<roles.assigners.len:
-    roles.assigners[i] = ServiceIndex(uint32(privilegeNumber(assigners.value, i*4, 4))) # Complete E4 domain.
-  for i in 0..<roles.always.len:
-    roles.always[i] = AlwaysAccumulate(service: ServiceIndex(uint32(privilegeNumber(pairs.value,
-        i*12, 4))),
-      gas: PrivilegeGas(privilegeNumber(pairs.value, i*12+4,
-          8))) # Proven captured extents bound every field index.
-  let changed = recordAccumulationBless(context.effects, roles, context.privileges)
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value.effectPrivileges.value
+  let allowanceCount = if keepAllowances: uint64(current.privilegeInfo.value.always) else: count
+  if allowanceCount > uint64(context.privileges.maxAlways) or
+      allowanceCount > uint64(high(int) div sizeof(AlwaysAccumulate)):
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # Retaining the table also has a local copy ceiling.
+  var proposedAssigners = newSeq[ServiceIndex](int(cores))
+  for i in 0..<proposedAssigners.len:
+    let raw = if keepAssigners: high(uint32) else: uint32(privilegeNumber(assigners.value, i*4, 4))
+    proposedAssigners[i] = if raw == high(uint32):
+      current.privilegeAssignerAt(PrivilegeCoreIndex(uint64(i))).value # Keep this core's current owner.
+    else: ServiceIndex(raw) # The captured E4 field proves narrowing.
+  var proposedAllowances = newSeq[AlwaysAccumulate](int(allowanceCount))
+  for i in 0..<proposedAllowances.len:
+    proposedAllowances[i] = if keepAllowances:
+      current.alwaysAccumulateAt(PrivilegeEntryIndex(uint64(
+          i))).value # The pointer sentinel bypasses guest capture.
+    else:
+      AlwaysAccumulate(service: ServiceIndex(uint32(privilegeNumber(pairs.value, i*12, 4))),
+        gas: PrivilegeGas(privilegeNumber(pairs.value, i*12+4, 8))) # Capture bounds every field.
+  let changed = recordAccumulationBless(context.effects, [uint64(cpu.registers[7]),
+    uint64(cpu.registers[9]), uint64(cpu.registers[10])], proposedAssigners, proposedAllowances,
+    context.privileges)
   case changed.error
   of AccumulationEffectError.None:
-    context.effects = changed.value # Both typed roles and serialized C(12) become one immutable successor.
+    context.effects = changed.value # Real changes publish one immutable successor; a no-op retains the current effects.
     response.registers[7] = RegisterValue(0) # OK, including handoff to another manager.
   of AccumulationEffectError.LimitExceeded:
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No fabricated protocol resource code.
   of AccumulationEffectError.BackendFailure:
     return hostFailure(AccumulationDispatchError.BackendFailure) # No partial roles on failed Merklization.
-  of AccumulationEffectError.DuplicatePrivilege:
-    response.registers[7] = RegisterValue(high(uint64)-8) # The state boundary independently protects the same HUH invariant.
+  of AccumulationEffectError.DuplicatePrivilege, AccumulationEffectError.UnauthorizedPrivilege:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers duplicate keys and foreign changes.
+  of AccumulationEffectError.InvalidPrivilegeService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO covers authorized out-of-domain roles.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # No inconsistent state/authority may publish.
   hostSuccess[AccumulationDispatchError](response)
@@ -1298,7 +1289,7 @@ proc dispatchHostCall(context: var DispatchContext, stopped: StepOutcome): HostR
   of 6:
     infoResponse(context, cpu, memory) # Fixed account facts observe the current regular map.
   of 16:
-    blessResponse(context, cpu, memory) # Manager-authorized immutable role and allowance replacement.
+    blessResponse(context, cpu, memory) # Transfer owned roles or replace privileges as the manager.
   of 17:
     assignResponse(context, cpu, memory) # Current assigner replaces its ordered queue and authority together.
   of 18:
