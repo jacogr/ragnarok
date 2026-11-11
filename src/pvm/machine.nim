@@ -801,7 +801,13 @@ proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
 
 proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlot,
     expected: PageDescription, bytes: openArray[byte]): MachineError =
-  ## Read a checked resident span synchronously; no pointer is stored in the batch.
+  ## Stage a 4096-byte view for an existing writable slot whose description
+  ## matches expected. Slots must increase strictly. A refusal is sticky and
+  ## prevents finishResidentReplacements from publishing the batch.
+  ## An unchanged page advances the slot without staging a replacement. If
+  ## all eight spans changed, copy them into one backing for the first seven
+  ## spans and a separate tail. Otherwise copy the changed chunks and retain
+  ## the immutable owners of the unchanged bytes. The input borrow ends here.
   if batch.status != MachineError.None: return batch.status
   let data {.cursor.} = batch.source.data
   assert data != nil
