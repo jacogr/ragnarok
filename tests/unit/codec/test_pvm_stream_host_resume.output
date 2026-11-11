@@ -3,3 +3,4 @@ PASS folded source budgets / zero-partial-exact / paid gas / unchanged sticky re
 PASS checked prefix / partial stops / no eager native / paid source-PC guards
 PASS branch and dynamic target prelink / exact attempt budgets / unchanged resolver
 PASS public prepared host owner / callback-attempt limits / fresh immutable inputs
+PASS public quota refusals / fresh host callbacks / retained cache and occupancy

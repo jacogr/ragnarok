@@ -971,7 +971,10 @@ proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; 
     callbacks: Callbacks, steps: ExecutionStepLimit,
     calls: HostCallLimit, plan: GasPlan = default(GasPlan), memo: GasMemo = default(
         GasMemo)): HostExecutionResult[Reason] =
-  ## A shared owner remains busy throughout callbacks; every return path retires invocation state and releases it.
+  ## Lease the prepared owner throughout callbacks and release it on return.
+  ## After a node or preparation-work refusal, a fresh invocation may reach and
+  ## invoke its callback again before another local refusal. The prepared owner
+  ## retains the earlier admitted entries and their cumulative occupancy.
   let data = prepared.data
   if data == nil: return executionResult[Reason](StepResult(
       status: StepError.InvalidPreparedProgram))
@@ -1042,7 +1045,8 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         prepared: PreparedProgram): StepResult =
-  ## Active CPU and callbacks stay local; idle source/byte storage is bounded by the prepared policy.
+  ## Active CPU and callbacks stay local. The prepared policy bounds idle source and byte storage.
+  ## See hostSelected for the shared prepared-host retry contract.
   responseResult(hostSelected[Context, ResponseOnly, false, false, HostCallbacks[Context,
       ResponseOnly]](source, prepared, context,
 

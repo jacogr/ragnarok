@@ -54,11 +54,10 @@ bounded by 1,048,576. Default emitted nodes are bounded by 8,388,608 (representa
 allowance reserves suffix length plus containing-price-block length before emission/pricing.
 It is separate from guest gas, source attempts and each pricing call's cycle limit.
 
-Stable offsets are never recycled or evicted during a call. A whole suffix must fit before its
-first node/map write; cached entries remain usable at a full budget. New suffix refusal is sticky
-with that cache and returns local `InvalidPreparedProgram`, never a guest panic/out-of-gas or a
-successful partial snapshot. Reconstruct an owner to choose a different policy. Zero attempts
-retain ordinary `StepLimitExceeded`. Admission is atomic per suffix, not per conditional graph.
+The [handler stream](../src/pvm/internal/handler_stream.nim) documents quota refusal and
+cache handback. The [prepared host adapter](../src/pvm/step.nim) documents callback retries.
+The [host-resume regression](../tests/unit/codec/test_pvm_stream_host_resume.nim) checks repeated
+callbacks, retained occupancy and cached entry reuse under independent node and work ceilings.
 
 Overlapping suffix emission preserves every existing complete entry-header mapping. Emitting an
 earlier source entry may add operation nodes and update interior-only coordinates, but cannot

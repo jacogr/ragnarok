@@ -334,3 +334,33 @@ require(retained.pc == publicInfo.pc and retained.gas == publicInfo.gas and uint
     retained.registers[7]) == 0,
   "public-immutable-input")
 echo "PASS public prepared host owner / callback-attempt limits / fresh immutable inputs"
+
+# The host jumps past the independently cached trap at PC 3 to an oversized suffix.
+let retrySource = owner([@[10'u8], @[40'u8, 3], @[0'u8], @[51'u8, 7, 7], @[0'u8]])
+let retryMemory = captureMemory([], PageLimit(0)).value
+let retryInput = captureMachine(retrySource, retryMemory, publicInfo).value
+let trapInput = captureMachine(retrySource, retryMemory,
+    MachineInfo(pc: CodeAddress(3), gas: publicInfo.gas)).value
+for quota in [(nodes: 5'u64, work: 10'u64), (nodes: 8'u64, work: 6'u64)]:
+  var limits = defaultPreparedLimits()
+  limits.resources.nodes = ExecutionNodeLimit(quota.nodes)
+  limits.resources.preparation = ExecutionPreparationLimit(quota.work)
+  let admission = newPreparedProgram(retrySource, limits)
+  require(admission.error == PreparationError.None, "public-refusal-prepare")
+  let retryPrepared = admission.value
+  let warm = execute(trapInput, ExecutionStepLimit(1), retryPrepared)
+  require(warm.error == StepError.None and warm.value.exit == StepExit.Panic, "public-refusal-warm-trap")
+  for attempt in 0..<2:
+    var retryContext = default(Context)
+    let refused = executeWithHost(retryInput, retryContext, reply, ExecutionStepLimit(8),
+      HostCallLimit(1), retryPrepared)
+    require(refused.error == StepError.InvalidPreparedProgram, "public-refusal-error")
+    require(retryContext.calls == 1, "public-refusal-retry-callback")
+    let occupied = preparedInfo(retryPrepared).value
+    require(occupied.streamNodes == 5 and occupied.preparationUnits == 6, "public-refusal-stable-occupancy")
+  let cached = execute(trapInput, ExecutionStepLimit(1), retryPrepared)
+  require(cached.error == StepError.None and cached.value.exit == StepExit.Panic, "public-refusal-cached-trap")
+  let before = machineInfo(warm.value.machine).value
+  let after = machineInfo(cached.value.machine).value
+  require(after.pc == before.pc and after.gas == before.gas, "public-refusal-cached-state")
+echo "PASS public quota refusals / fresh host callbacks / retained cache and occupancy"
