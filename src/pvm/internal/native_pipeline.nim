@@ -980,10 +980,14 @@ proc releaseNativeCredit(data: NativeSessionData) =
   data.imageKey = default(NativeImageKey)
 
 when NativeCheckedReadEnabled:
-  proc discardNativeReplacement*(session: NativeSession) =
-    ## A refused candidate loses only its observation streak, never the installed image's authority.
+  proc clearLaterRead(candidate: var NativeReadCandidate) {.noinline.} =
+    ## Release a populated observation; keep full proof clearing off the empty-candidate path.
+    candidate = default(NativeReadCandidate)
+
+  proc discardNativeReplacement*(session: NativeSession) {.inline.} =
+    ## A zero streak already denotes the default candidate, with no proof to discard.
     let data {.cursor.} = session.data
-    if data != nil: data.laterRead = default(NativeReadCandidate)
+    if data != nil and data.laterRead.streak != 0: clearLaterRead(data.laterRead)
 
   proc retireNativeForReadReplacement*(session: NativeSession, key: NativeImageKey): bool =
     ## Require the exact incumbent key and a candidate revalidated on the restored frame.
@@ -1137,12 +1141,9 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
       data.invocationImageKey.ticket != 0 and data.invocationImageKey == data.imageKey and
       data.invocationQualified and completedWork >= NativeInvocationFloor and
           not data.invocationUsed
-    if unused:
-      data.replacementArmed = true
-      if not data.laterRead.observed: data.laterRead = default(NativeReadCandidate)
-    else:
-      data.replacementArmed = false
-      data.laterRead = default(NativeReadCandidate)
+    data.replacementArmed = unused
+    if data.laterRead.streak != 0 and (not unused or not data.laterRead.observed):
+      clearLaterRead(data.laterRead)
   let anchor {.cursor.} = data.runtime
   assert anchor != nil
   let runtime = addr anchor.storage
