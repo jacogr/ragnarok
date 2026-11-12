@@ -418,10 +418,13 @@ type
     header*, span*, operations*, yes*, no*: uint32
     price*: uint64
     body*: X86Block
+  X86RegionSection {.pure.} = enum ## A source target, a reserved role or its refund stub.
+    Source, Round, Refund
   X86RegionFixup = object ## Bounded rel32 branch, distinguishing guard exits from native successors.
     at: int
     target: uint32
     guard: bool
+    section: X86RegionSection
 
 func x86RegionStatus*(jit: X86Jit): uint8 =
   ## Global capacity/storage refusal never retries; local candidate negatives retain bounded header probes.
@@ -449,11 +452,11 @@ proc regionWord(fragment: var X86Block, value: uint32) =
   for shift in 0..<4: fragment.bytes.add(byte((value shr (shift*8)) and 255))
 
 proc regionEdge(fragment: var X86Block, fixes: var seq[X86RegionFixup], target: uint32,
-    condition: byte, guard: bool) =
+    condition: byte, guard: bool, section = X86RegionSection.Source) =
   ## Conditional and unconditional edges reserve four displacement bytes for bounded relocation.
   if condition == 0: put(fragment, [0xe9'u8])
   else: put(fragment, [0x0f'u8, condition])
-  fixes.add(X86RegionFixup(at: fragment.bytes.len, target: target, guard: guard))
+  fixes.add(X86RegionFixup(at: fragment.bytes.len, target: target, guard: guard, section: section))
   regionWord(fragment, 0)
 
 type X86LoopFixup = object ## One little-endian rel32 displacement in the shared action stream.
@@ -543,50 +546,94 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       fragment.bytes[fix.at+part] = byte((displacement shr (part*8)) and 255)
   takeX86Instructions(fragment)
 
-proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool): seq[byte] =
-  ## Emit full guards and canonical guest accesses using SysV caller-saved registers.
+proc x86RegionReserve(code: var X86Block, fixes: var seq[X86RegionFixup],
+    span: uint32, price: uint64, target: uint32, guard: bool) =
+  ## Both affordability tests precede either debit; the caller selects checked or local refusal.
+  put(code, [0x49'u8, 0x81, 0xfa]) # CMP R10,source span.
+  regionWord(code, span)
+  regionEdge(code, fixes, target, 0x82, guard)
+  immediate(code, 0xb8, price)
+  put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX.
+  regionEdge(code, fixes, target, 0x82, guard)
+  put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea]) # SUB gas; SUB quota.
+  regionWord(code, span)
+
+proc x86RegionSuccessor(code: var X86Block, fixes: var seq[X86RegionFixup],
+    blocks: openArray[X86RegionBlock], index: int, target: uint32, condition: byte,
+    round, prepaid: bool) =
+  ## Route the same predicate at emission time, with no native phase check.
+  if prepaid:
+    let next = if index == 2: 0 else: index+1
+    if target == blocks[next].header:
+      regionEdge(code, fixes, uint32(next), condition, false, X86RegionSection.Round)
+      return
+    if index < 2:
+      regionEdge(code, fixes, uint32(index), condition, false, X86RegionSection.Refund)
+      return
+  elif round and index == 2 and target == blocks[0].header:
+    regionEdge(code, fixes, 0, condition, false, X86RegionSection.Round)
+    return
+  regionEdge(code, fixes, target, condition, false)
+
+proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
+    round = default(NativeRingRoundBudget)): seq[byte] =
+  ## Emit guarded source blocks and, for an eligible Ring, one reserved A/B/C path.
   let count = blocks.len
-  assert count in 1..3
+  assert count in 1..3 and (not round.enabled or (rotating and count == 3))
   var code = default(X86Block)
   # RDI is the guest array, RSI the fresh context, and bodies only touch RAX/RCX/RDX/R8.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
-  var labels = default(array[3, int])
+  var labels, roundLabels = default(array[3, int])
+  var refundLabels = default(array[2, int])
   var fixes: seq[X86RegionFixup] = @[]
   if rotating:
     # Entry zero falls through after the wrapper validates the complete rotation index.
     for index in 1..2:
       put(code, [0x48'u8, 0x83, 0x7e, 40, byte(index)]) # CMP QWORD [RSI+40],index.
       regionEdge(code, fixes, blocks[index].header, 0x84, false) # JE guarded header.
-  for index in 0..<count:
-    let item = blocks[index]
-    if item.header >= 262144 or item.span < 2 or item.span > 65 or
-        item.operations != item.span or item.body.bytes.len < 16: return @[]
-    let terminal = item.body.bytes.len
-    # Only the existing emitter's MOV/MOV/CMOV scalar-selection tail can be replaced by native edges.
-    if item.body.bytes[terminal-13] != 0xb8 or item.body.bytes[terminal-8] != 0xba or
-        item.body.bytes[terminal-3] != 0x0f or item.body.bytes[terminal-1] != 0xc2: return @[]
-    let condition = item.body.bytes[terminal-2]
-    if condition notin {0x42'u8..0x47, 0x4c..0x4f}: return @[]
-    labels[index] = code.bytes.len
-    put(code, [0x49'u8, 0x81, 0xfa]) # CMP R10,wholeSourceSpan; partial blocks return before debit.
-    regionWord(code, item.span)
-    regionEdge(code, fixes, item.header, 0x82, true)
-    immediate(code, 0xb8, item.price)
-    put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX is an unsigned full64 gas guard.
-    regionEdge(code, fixes, item.header, 0x82, true)
-    put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x81, 0xea])
-    regionWord(code, item.span)
-    # Count each complete visit. The legacy ABI also publishes its last completed header.
-    put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8)])
-    if not rotating:
-      put(code, [0x48'u8, 0xc7, 0x46, 32])
-      regionWord(code, item.header)
-    for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
-    regionEdge(code, fixes, item.yes, condition+0x40'u8, false)
-    regionEdge(code, fixes, item.no, 0, false)
+  # The first rotation falls into reserved A; B/C still enter the original guarded prefix.
+  for prepaid in [true, false]:
+    if prepaid and not round.enabled: continue
+    for index in 0..<count:
+      let item = blocks[index]
+      if item.header >= 262144 or item.span < 2 or item.span > 65 or
+          item.operations != item.span or item.body.bytes.len < 16: return @[]
+      let terminal = item.body.bytes.len
+      # Only the existing emitter's MOV/MOV/CMOV scalar-selection tail can be replaced by native edges.
+      if item.body.bytes[terminal-13] != 0xb8 or item.body.bytes[terminal-8] != 0xba or
+          item.body.bytes[terminal-3] != 0x0f or item.body.bytes[terminal-1] != 0xc2: return @[]
+      let condition = item.body.bytes[terminal-2]
+      if condition notin {0x42'u8..0x47, 0x4c..0x4f}: return @[]
+      if prepaid:
+        roundLabels[index] = code.bytes.len
+        if index == 0:
+          # A declined round enters the original guarded A without spending anything.
+          x86RegionReserve(code, fixes, NativeRingRoundSpan, uint64(round.price), item.header, false)
+      else:
+        labels[index] = code.bytes.len
+        x86RegionReserve(code, fixes, item.span, item.price, item.header, true)
+      # Count each complete visit. The legacy ABI also publishes its last completed header.
+      put(code, [0x48'u8, 0xff, 0x46, byte(16+index*8)])
+      if not rotating:
+        put(code, [0x48'u8, 0xc7, 0x46, 32])
+        regionWord(code, item.header)
+      for position in 0..<terminal-13: code.bytes.add(item.body.bytes[position])
+      x86RegionSuccessor(code, fixes, blocks, index, item.yes, condition+0x40'u8, round.enabled, prepaid)
+      x86RegionSuccessor(code, fixes, blocks, index, item.no, 0, round.enabled, prepaid)
+  if round.enabled:
+    for index in 0..1:
+      refundLabels[index] = code.bytes.len
+      # Refund only the roles that were never executed, then use the original unpaid exit.
+      put(code, [0x49'u8, 0x81, 0xc1]) # ADD R9,small unsigned suffix price.
+      regionWord(code, round.suffixPrices[index])
+      put(code, [0x49'u8, 0x83, 0xc2, byte(NativeRingRoundSuffixSpans[index])])
+      let item = blocks[index]
+      let outside = if item.yes == blocks[index+1].header: item.no else: item.yes
+      regionEdge(code, fixes, outside, 0, true)
   var exits: seq[uint32] = @[]
   var exitLabels: seq[int] = @[]
   for fix in fixes:
+    if fix.section != X86RegionSection.Source: continue
     var internal = false
     if not fix.guard:
       for index in 0..<count:
@@ -611,8 +658,11 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool): seq[byte
     let relative = uint32(epilogue-at-4)
     for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
   for fix in fixes:
-    var target = -1
-    if not fix.guard:
+    var target = case fix.section
+      of X86RegionSection.Source: -1
+      of X86RegionSection.Round: roundLabels[int(fix.target)]
+      of X86RegionSection.Refund: refundLabels[int(fix.target)]
+    if target < 0 and not fix.guard:
       for index in 0..<count:
         if blocks[index].header == fix.target: target = labels[index]
     if target < 0:
@@ -637,7 +687,11 @@ proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
     emitX86Branch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
     blocks[index] = X86RegionBlock(header: item.header, span: item.span,
       operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
-  x86RegionBytes(blocks, true)
+  let round = nativeRingRoundBudget(ring)
+  if round.enabled:
+    result = x86RegionBytes(blocks, true, round)
+    if result.len != 0: return
+  result = x86RegionBytes(blocks, true)
 
 proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
   ## Preserve the legacy publisher and its two-block receipt.

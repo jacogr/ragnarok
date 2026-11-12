@@ -1350,15 +1350,19 @@ type
     dirtyDisplacement*: uint32
     dirtyWord*: ArmDirtyWordShape
     tailRead*: ArmReadSpan
+  ArmRegionSection {.pure.} = enum ## A source target, a reserved role or its refund stub.
+    Source, Round, Refund
   ArmRegionFixup = object ## Code-relative branch relocation, with guard returns kept distinct from internal edges.
     at: int
     target, condition: uint32
     guard: bool
+    section: ArmRegionSection
 
 proc armRegionEdge(words: var seq[uint32], fixes: var seq[ArmRegionFixup], target: uint32,
-    condition: uint32, guard: bool) =
+    condition: uint32, guard: bool, section = ArmRegionSection.Source) =
   ## Capture only immutable scalar destinations; patch signed instruction-relative distances before publication.
-  fixes.add(ArmRegionFixup(at: words.len, target: target, condition: condition, guard: guard))
+  fixes.add(ArmRegionFixup(at: words.len, target: target, condition: condition, guard: guard,
+    section: section))
   words.add(0)
 
 func armRegionStatus*(jit: ArmJit): uint8 =
@@ -1392,14 +1396,50 @@ func armRegionChargeMatches*(jit: ArmJit, index: range[0..2], header, span: uint
   jit.region.status == 2 and jit.region.headers[index] == header and
     jit.region.spans[index] == span and jit.region.prices[index] == price
 
+proc armRegionReserve(words: var seq[uint32], fixes: var seq[ArmRegionFixup],
+    span: uint32, price: uint64, target: uint32, guard: bool) =
+  ## Both affordability tests precede either debit; the caller selects checked or local refusal.
+  words.add(0xf100007f'u32 or (span shl 10)) # CMP Xremaining,source span.
+  armRegionEdge(words, fixes, target, 3, guard)
+  if price <= 4095:
+    words.add(0xf100005f'u32 or (uint32(price) shl 10)) # CMP Xgas,price.
+    armRegionEdge(words, fixes, target, 3, guard)
+    words.add(0xd1000042'u32 or (uint32(price) shl 10)) # SUB Xgas,price.
+  else:
+    # Retain the complete unsigned price for ordinary guarded entries.
+    armImmediate(words, 1, price)
+    words.add(0xeb01005f'u32) # CMP Xgas,Xprice.
+    armRegionEdge(words, fixes, target, 3, guard)
+    words.add(0xcb010042'u32) # SUB Xgas,Xgas,Xprice.
+  words.add(0xd1000063'u32 or (span shl 10)) # SUB Xremaining,source span.
+
+proc armRegionSuccessor(words: var seq[uint32], fixes: var seq[ArmRegionFixup],
+    blocks: array[3, ArmRegionBlock], index: int, target, condition: uint32,
+    round, prepaid: bool) =
+  ## Route the same predicate at emission time, with no native phase check.
+  if prepaid:
+    let next = if index == 2: 0 else: index+1
+    if target == blocks[next].header:
+      armRegionEdge(words, fixes, uint32(next), condition, false, ArmRegionSection.Round)
+      return
+    if index < 2:
+      armRegionEdge(words, fixes, uint32(index), condition, false, ArmRegionSection.Refund)
+      return
+  elif round and index == 2 and target == blocks[0].header:
+    armRegionEdge(words, fixes, 0, condition, false, ArmRegionSection.Round)
+    return
+  armRegionEdge(words, fixes, target, condition, false)
+
 proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
-    rotating: bool): seq[uint32] =
-  ## Emit one resident loop with a whole-source guard at each original header.
+    rotating: bool, round = default(NativeRingRoundBudget)): seq[uint32] =
+  ## Emit guarded resident blocks and, for an eligible Ring, one reserved A/B/C path.
+  assert not round.enabled or (rotating and count == 3)
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
   var fixes: seq[ArmRegionFixup] = @[]
-  var labels = default(array[3, int])
+  var labels, roundLabels = default(array[3, int])
+  var refundLabels = default(array[2, int])
   var exits: seq[uint32] = @[]
   var exitLabels: seq[int] = @[]
   # Union all block reads/writes; block-local live-in inference alone is insufficient across loop paths.
@@ -1419,49 +1459,56 @@ proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
     armRegionEdge(words, fixes, blocks[1].header, 0, false)
     words.add(0xf100083f'u32) # CMP X1,#2.
     armRegionEdge(words, fixes, blocks[2].header, 0, false)
-  for index in 0..<count:
-    # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
-    let item = blocks[index]
-    if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
-      return @[]
-    if item.body.terminal.len notin [6, 10]:
-      # Only our explicit regional policy can shorten the compare constant; the final five return words remain fixed.
-      if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
+  # The first rotation falls into reserved A; B/C still enter the original guarded prefix.
+  for prepaid in [true, false]:
+    if prepaid and not round.enabled: continue
+    for index in 0..<count:
+      # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
+      let item = blocks[index]
+      if item.span < 2 or item.span > 4095 or item.operations < 2 or item.operations > item.span:
         return @[]
-    labels[index] = words.len
-    words.add(0xf100007f'u32 or (item.span shl 10)) # CMP Xremaining,#wholeSourceSpan.
-    armRegionEdge(words, fixes, item.header, 3, true) # LO returns before charging a partial block.
-    if item.price <= 4095:
-      # A sealed twelve-bit charge fits the ISA immediate field without materializing a scratch constant per visit.
-      words.add(0xf100005f'u32 or (uint32(item.price) shl 10)) # CMP Xgas,#price, including zero.
-      armRegionEdge(words, fixes, item.header, 3, true) # LO leaves the unpaid block entirely untouched.
-      words.add(0xd1000042'u32 or (uint32(item.price) shl 10)) # SUB Xgas,Xgas,#price.
-    else:
-      # Wider prices keep the full unsigned 64-bit guard and subtraction with no truncation or sign extension.
-      armImmediate(words, 1, item.price)
-      words.add(0xeb01005f'u32) # CMP Xgas,Xprice.
-      armRegionEdge(words, fixes, item.header, 3, true)
-      words.add(0xcb010042'u32) # SUB Xgas,Xgas,Xprice after the unsigned sufficiency check.
-    words.add(0xd1000063'u32 or (item.span shl 10)) # SUB Xremaining,Xremaining,#wholeSourceSpan.
-    # One exact integer SIMD add replaces a context load/add/store; no FP arithmetic, flags or callee-saved state changes.
-    let counter = uint32(index+16)
-    words.add(0x5ef38400'u32 or (counter shl 5) or counter) # ADD Dcounter,Dcounter,D19 (integer scalar).
-    for word in item.body.words: words.add(word)
-    # Reuse the verified operand/compare prefix; omit its five scalar-return selection instructions.
-    for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
-    let condition = (item.body.terminal[item.body.terminal.len-1] shr 12) and 15
-    let following = if index+1 < count: blocks[index+1].header else: high(uint32)
-    if item.no == following:
-      # The false edge reaches the next guarded block by layout, retaining the original conditional transfer.
-      armRegionEdge(words, fixes, item.yes, condition, false)
-    elif item.yes == following:
-      # ARM condition pairs differ in their low bit; invert only to make the true edge fall through its original guard.
-      armRegionEdge(words, fixes, item.no, condition xor 1'u32, false)
-    else:
-      # Backedges and external destinations keep explicit transfers and the same guarded-return relocation.
-      armRegionEdge(words, fixes, item.yes, condition, false)
-      armRegionEdge(words, fixes, item.no, 16, false)
+      if item.body.terminal.len notin [6, 10]:
+        # Only our explicit regional policy can shorten the compare constant; the final five return words remain fixed.
+        if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
+          return @[]
+      if prepaid:
+        roundLabels[index] = words.len
+        if index == 0:
+          # A declined round enters the original guarded A without spending anything.
+          armRegionReserve(words, fixes, NativeRingRoundSpan, uint64(round.price), item.header, false)
+      else:
+        labels[index] = words.len
+        armRegionReserve(words, fixes, item.span, item.price, item.header, true)
+      # One exact integer SIMD add replaces a context load/add/store; no FP arithmetic, flags or callee-saved state changes.
+      let counter = uint32(index+16)
+      words.add(0x5ef38400'u32 or (counter shl 5) or counter) # ADD Dcounter,Dcounter,D19 (integer scalar).
+      for word in item.body.words: words.add(word)
+      # Reuse the verified operand/compare prefix; omit its five scalar-return selection instructions.
+      for position in 0..<item.body.terminal.len-5: words.add(item.body.terminal[position])
+      let condition = (item.body.terminal[item.body.terminal.len-1] shr 12) and 15
+      let following = if index+1 < count: blocks[index+1].header else: high(uint32)
+      if item.no == following:
+        # The false edge reaches the next guarded block by layout, retaining the original conditional transfer.
+        armRegionSuccessor(words, fixes, blocks, index, item.yes, condition, round.enabled, prepaid)
+      elif item.yes == following:
+        # ARM condition pairs differ in their low bit; invert only to make the true edge fall through its original guard.
+        armRegionSuccessor(words, fixes, blocks, index, item.no, condition xor 1'u32,
+          round.enabled, prepaid)
+      else:
+        # Backedges and external destinations keep explicit transfers and the same guarded-return relocation.
+        armRegionSuccessor(words, fixes, blocks, index, item.yes, condition, round.enabled, prepaid)
+        armRegionSuccessor(words, fixes, blocks, index, item.no, 16, round.enabled, prepaid)
+  if round.enabled:
+    for index in 0..1:
+      refundLabels[index] = words.len
+      # Refund only the roles that were never executed, then use the original unpaid exit.
+      words.add(0x91000042'u32 or (round.suffixPrices[index] shl 10)) # ADD Xgas,price.
+      words.add(0x91000063'u32 or (NativeRingRoundSuffixSpans[index] shl 10))
+      let item = blocks[index]
+      let outside = if item.yes == blocks[index+1].header: item.no else: item.yes
+      armRegionEdge(words, fixes, outside, 16, true)
   for fix in fixes:
+    if fix.section != ArmRegionSection.Source: continue
     # Every guarded return needs a stub, including guards whose header is also an internal branch destination.
     var internal = false
     if not fix.guard:
@@ -1496,8 +1543,11 @@ proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
     # Stub branches are forward and bounded by the same 1,024-word image ceiling.
     words[at] = 0x14000000'u32 or uint32(epilogue-at)
   for fix in fixes:
-    var destination = -1
-    if not fix.guard:
+    var destination = case fix.section
+      of ArmRegionSection.Source: -1
+      of ArmRegionSection.Round: roundLabels[int(fix.target)]
+      of ArmRegionSection.Refund: refundLabels[int(fix.target)]
+    if destination < 0 and not fix.guard:
       # Native successors return to their guarded block label without another Nim/C transition.
       for index in 0..<count:
         if blocks[index].header == fix.target: destination = labels[index]
@@ -1525,7 +1575,12 @@ proc encodeArmRegisterRing*(ring: NativeRegisterRing): seq[uint32] =
     emitArmBranch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
     blocks[index] = ArmRegionBlock(header: item.header, span: item.span,
       operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
-  result = armRegionWords(blocks, 3, true)
+  let round = nativeRingRoundBudget(ring)
+  result = @[]
+  if round.enabled:
+    result = armRegionWords(blocks, 3, true, round)
+  if result.len == 0:
+    result = armRegionWords(blocks, 3, true)
   if result.len != 0:
     # Direct shared publication expects a complete image including the leaf return.
     result.add(0xd65f03c0'u32)

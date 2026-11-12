@@ -22,9 +22,9 @@ const
   First = [0'u32, 3, 5]
   CoordinateBase = 257'u32
   Cycles = GasCycleLimit(1000000)
-  Prices: array[3, array[3, uint64]] = [
-    [3'u64, 2'u64, 5'u64], [0'u64, 0'u64, 0'u64],
-    [0x8000000000000001'u64, 7'u64, 0x100000005'u64]]
+  Prices: array[6, array[3, uint64]] = [
+    [3'u64, 2, 5], [0'u64, 0, 0], [0'u64, 4095, 0], [4095'u64, 1, 0],
+    [0x8000000000000001'u64, 7, 0x100000005'u64], [high(uint64), 1, 2]]
 
 proc checkRing() =
   ## Use real decoded operands and compare every register and original continuation.
@@ -34,7 +34,7 @@ proc checkRing() =
   let memory = captureMemory([], PageLimit(0))
   assert memory.error == MachineError.None
   var cases = 0
-  for profile in 0..2:
+  for profile in 0..<Prices.len:
     let prices = Prices[profile]
     # Publish each price profile through the production direct lowering and image-size check.
     var ring = default(NativeRegisterRing)
@@ -57,6 +57,12 @@ proc checkRing() =
         pc += uint32(original.value.skip)+1
       ring.blocks[index] = item
     assert ring.complete
+    let round = nativeRingRoundBudget(ring)
+    assert round.enabled == (profile <= 2)
+    if profile == 0:
+      assert round.price == 10 and round.suffixPrices == [7'u32, 5]
+    elif profile == 2:
+      assert round.price == 4095 and round.suffixPrices == [4095'u32, 0]
     var invalid = ring
     invalid.blocks[1].yes = invalid.blocks[2].header
     assert not lowerNativeRegisterRing(invalid).ready
@@ -77,7 +83,8 @@ proc checkRing() =
         initial.registers[7] = RegisterValue(if exitAt == 2: high(uint64)-1 else: 1'u64)
         initial.registers[8] = RegisterValue(uint64(ord(exitAt == 0)))
         for quota in [0'u64, 1, 2, 3, 7, 8, 9, 24]:
-          for gas in [0'u64, 2, 9, 31, 0x8000000000000000'u64, high(uint64)]:
+          for gas in [0'u64, 2, 9, 10, 31, 4094, 4095, 4096,
+              0x8000000000000000'u64, high(uint64)]:
             # Use public one-step execution to decide original effects and branch destinations.
             let captured = captureMachine(program, memory.value, initial)
             assert captured.error == MachineError.None
@@ -103,7 +110,7 @@ proc checkRing() =
             assert destination == CoordinateBase+pc and context == expectedContext
             assert registers == machineInfo(expected).value.registers
             inc cases
-  assert cases == 1728
+  assert cases == 5760
 
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   proc noHost(called: var bool, stop: StepOutcome): HostResponse {.raises: [].} =

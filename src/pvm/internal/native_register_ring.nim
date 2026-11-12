@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copied certificate and checked receipt for a bounded three-header register loop.
+##
+## Both lowerers can reserve a complete round at the first header. A side exit
+## refunds the gas and attempts of the unexecuted suffix. Entry at either later
+## header and a failed whole-round reservation use the original per-header guards.
 
 import ../machine
 import ./native_ir
@@ -15,6 +19,10 @@ type
     branch*: NativeOperation
   NativeRegisterRing* = object ## Immutable copied worker input without program or invocation borrows.
     blocks*: array[NativeRingIndex, NativeRingBlock]
+  NativeRingRoundBudget* = object ## Copied immediate costs for one complete pure round.
+    enabled*: bool
+    price*: uint32
+    suffixPrices*: array[2, uint32]
   NativeRingContext* = object ## Two-borrow ABI with an unpaid rotating entry.
     gas*, remaining*: uint64
     visits*: array[NativeRingIndex, uint64]
@@ -49,6 +57,24 @@ func complete*(ring: NativeRegisterRing): bool =
       let low = uint32(item.branch.immediate and 0xffffffff'u64)
       if cast[uint64](int64(cast[int32](low))) != item.branch.immediate: return false
   true
+
+const
+  NativeRingRoundSpan* = 8'u32             ## Total original attempts in the certified three blocks.
+  NativeRingRoundSuffixSpans* = [5'u32, 3] ## Attempts to refund after the first or second block.
+
+func nativeRingRoundBudget*(ring: NativeRegisterRing): NativeRingRoundBudget =
+  ## Require one shared 12-bit immediate ceiling for the total and both suffixes.
+  ## Subtract from the ceiling to reject wide or overflowing totals before narrowing.
+  ## A refusal preserves the ordinary guarded image.
+  if not ring.complete: return default(NativeRingRoundBudget)
+  const limit = 4095'u64
+  var left = limit
+  for item in ring.blocks:
+    if item.price > left: return default(NativeRingRoundBudget)
+    left -= item.price
+  let price = uint32(limit-left)
+  NativeRingRoundBudget(enabled: true, price: price,
+    suffixPrices: [price-uint32(ring.blocks[0].price), uint32(ring.blocks[2].price)])
 
 func successor(item: NativeRingBlock, registers: RegisterFile): uint32 =
   ## Validate the actual final predicate from its committed register checkpoint.
