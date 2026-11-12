@@ -7,6 +7,8 @@ import std/[assertions, syncio]
 import ../../src/pvm/[machine, program, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[native_ir, native_platform, native_register_ring]
+when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+  import ../../src/pvm/internal/x86_jit
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   import ../../src/pvm/internal/[handler_stream, native_pipeline]
 
@@ -26,36 +28,46 @@ const
     [3'u64, 2, 5], [0'u64, 0, 0], [0'u64, 4095, 0], [4095'u64, 1, 0],
     [0x8000000000000001'u64, 7, 0x100000005'u64], [high(uint64), 1, 2]]
 
-proc checkRing() =
+proc ringFixture(wire: openArray[byte], prices: array[3, uint64]): NativeRegisterRing =
+  ## Copy the decoded source and original successors for each operand fixture.
+  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+  assert decoded.error == ProgramError.None
+  let program = decoded.value
+  result = default(NativeRegisterRing)
+  for index in 0..2:
+    var item = NativeRingBlock(header: CoordinateBase+Headers[index], first: First[index],
+      span: Spans[index], price: prices[index], yes: CoordinateBase+Yes[index],
+      no: CoordinateBase+No[index])
+    var pc = Headers[index]
+    for position in 0..<int(item.span):
+      let original = instruction(program, CodeAddress(pc))
+      assert original.error == ProgramError.None
+      let op = NativeOperation(opcode: original.value.opcode, slots: instructionRegisters(
+          original), immediate: uint64(original.value.x))
+      if position == int(item.span)-1:
+        assert uint32(int64(pc)+int64(original.value.displacement)) == Yes[index]
+        assert pc+uint32(original.value.skip)+1 == No[index]
+        item.branch = op
+      else:
+        item.body[position] = op
+      pc += uint32(original.value.skip)+1
+    result.blocks[index] = item
+  assert result.complete
+
+proc checkRing(wire: openArray[byte] = Wire, signedRight = 7, addLane = 2,
+    addStart = high(uint64)-6, wordStart = 1'u64, profileCount = Prices.len) =
   ## Use real decoded operands and compare every register and original continuation.
-  let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
   assert decoded.error == ProgramError.None
   let program = decoded.value
   let memory = captureMemory([], PageLimit(0))
   assert memory.error == MachineError.None
   var cases = 0
-  for profile in 0..<Prices.len:
+  assert profileCount in 1..Prices.len
+  for profile in 0..<profileCount:
     let prices = Prices[profile]
     # Publish each price profile through the production direct lowering and image-size check.
-    var ring = default(NativeRegisterRing)
-    for index in 0..2:
-      var item = NativeRingBlock(header: CoordinateBase+Headers[index], first: First[index],
-        span: Spans[index], price: prices[index], yes: CoordinateBase+Yes[index],
-        no: CoordinateBase+No[index])
-      var pc = Headers[index]
-      for position in 0..<int(item.span):
-        let original = instruction(program, CodeAddress(pc))
-        assert original.error == ProgramError.None
-        let op = NativeOperation(opcode: original.value.opcode, slots: instructionRegisters(
-            original), immediate: uint64(original.value.x))
-        if position == int(item.span)-1:
-          assert uint32(int64(pc)+int64(original.value.displacement)) == Yes[index]
-          assert pc+uint32(original.value.skip)+1 == No[index]
-          item.branch = op
-        else:
-          item.body[position] = op
-        pc += uint32(original.value.skip)+1
-      ring.blocks[index] = item
+    let ring = ringFixture(wire, prices)
     assert ring.complete
     let round = nativeRingRoundBudget(ring)
     assert round.enabled == (profile <= 2)
@@ -76,11 +88,11 @@ proc checkRing() =
         initial.gas = MachineGas(100000)
         for lane in 0..<13:
           initial.registers[lane] = RegisterValue(0x1234567800000100'u64+uint64(lane))
-        initial.registers[2] = RegisterValue(high(uint64)-6)
+        initial.registers[addLane] = RegisterValue(addStart)
         initial.registers[3] = RegisterValue(12)
-        initial.registers[4] = RegisterValue(if exitAt == 1: high(uint64)-1 else: 1'u64)
+        initial.registers[4] = RegisterValue(if exitAt == 1: high(uint64)-1 else: wordStart)
         initial.registers[6] = RegisterValue(high(uint64))
-        initial.registers[7] = RegisterValue(if exitAt == 2: high(uint64)-1 else: 1'u64)
+        initial.registers[signedRight] = RegisterValue(if exitAt == 2: high(uint64)-1 else: 1'u64)
         initial.registers[8] = RegisterValue(uint64(ord(exitAt == 0)))
         for quota in [0'u64, 1, 2, 3, 7, 8, 9, 24]:
           for gas in [0'u64, 2, 9, 10, 31, 4094, 4095, 4096,
@@ -110,7 +122,7 @@ proc checkRing() =
             assert destination == CoordinateBase+pc and context == expectedContext
             assert registers == machineInfo(expected).value.registers
             inc cases
-  assert cases == 5760
+  assert cases == profileCount*960
 
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   proc noHost(called: var bool, stop: StepOutcome): HostResponse {.raises: [].} =
@@ -285,10 +297,116 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
     assert close(runtime), "close register ring worker"
     assert runtimeInfo(runtime).registered == 0, "retire register ring image"
 
+func sixLaneWire(): array[38, byte] =
+  ## Fit six lanes by saturating the ADD/SHR aliases to r12 and reusing r3 in the final branch.
+  result = Wire
+  result[4] = 0x3f
+  result[5] = 0x0f
+  result[7] = 0xff
+  result[26] = 0x36
+
+when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+  proc checkResidentRing() =
+    ## Prove selected direct paths and retained capacity/extent fallbacks through the native ABI.
+    let six = sixLaneWire()
+    var seven = six
+    seven[26] = Wire[26]
+    let fitted = ringFixture(six, Prices[0])
+    let oversized = ringFixture(seven, Prices[0])
+    let resident = encodeX86RegisterRing(fitted)
+    let canonical = x86CanonicalRingProof(fitted)
+    assert resident.len > 0 and resident != canonical and resident.len < NativeImageByteLimit
+    assert x86ResidentRingLimitProof(fitted, resident.len+1) == resident
+    assert x86ResidentRingLimitProof(fitted, resident.len) == canonical
+    assert encodeX86RegisterRing(oversized) == x86CanonicalRingProof(oversized)
+    checkRing(six, signedRight = 3, addLane = 12)
+    checkRing(seven, addLane = 12)
+
+    # Distinct destinations reuse other mapped lanes. Masked-zero SHR32 must extend a negative word.
+    var distinctWire = six
+    distinctWire[5] = 5
+    distinctWire[7] = 0x5f
+    distinctWire[8] = 32
+    distinctWire[13] = 0x46
+    let distinctRing = ringFixture(distinctWire, Prices[0])
+    assert encodeX86RegisterRing(distinctRing) != x86CanonicalRingProof(distinctRing)
+    checkRing(distinctWire, signedRight = 3, addLane = 12,
+      addStart = 0xfffffff0'u64, wordStart = 0x7fffffff'u64)
+
+    # A destination aliasing B consumes B before writing the sum.
+    var rightAlias = six
+    rightAlias[5] = 3
+    rightAlias[7] = 0x3f
+    let aliasRing = ringFixture(rightAlias, Prices[0])
+    assert encodeX86RegisterRing(aliasRing) != x86CanonicalRingProof(aliasRing)
+    checkRing(rightAlias, signedRight = 3, addLane = 12)
+
+  proc checkResidentAddWordImmediate() =
+    ## Cross both signed imm8 bounds on the mapped ADDW path and check the full signed results.
+    const edges = [127'i16, 128, -128, -129]
+    var lengths = default(array[edges.len, int])
+    for index in 0..<edges.len:
+      let immediate = edges[index]
+      var wire = sixLaneWire()
+      # Use two immediate bytes by shortening the following branch's compare operand to zero.
+      # Only the branch moves within its block, so the block targets and prices still match.
+      let encoded = cast[uint16](immediate)
+      wire[14] = byte(encoded and 255)
+      wire[15] = byte(encoded shr 8)
+      wire[16] = 88
+      wire[17] = 4
+      wire[18] = 16
+      wire[35] = 0x22
+      let ring = ringFixture(wire, Prices[0])
+      let add = ring.blocks[1].body[0]
+      assert (add.immediate and 0xffffffff'u64) == uint64(cast[uint32](int32(immediate)))
+      let resident = encodeX86RegisterRing(ring)
+      assert resident.len > 0 and resident != x86CanonicalRingProof(ring)
+      lengths[index] = resident.len
+      let start = if immediate > 0: 0x7fffff81'u64 else: 0x8000007f'u64
+      checkRing(wire, signedRight = 3, addLane = 12, wordStart = start, profileCount = 1)
+    # Each wider immediate adds three bytes in both the reserved and guarded copies.
+    assert lengths[1] == lengths[0]+6 and lengths[3] == lengths[2]+6
+
+when NativeCheckedReadEnabled:
+  proc checkRingShiftPairs() =
+    ## Run actual reserved and guarded C bodies against original checked steps on both ISAs.
+    const counts: array[6, array[2, byte]] = [
+      [0'u8, 64], [1'u8, 65], [32'u8, 96], [40'u8, 104], [63'u8, 127], [40'u8, 41]]
+    for index in 0..<counts.len:
+      var wire = sixLaneWire()
+      wire[21] = counts[index][0]
+      wire[24] = counts[index][1]
+      let body = ringFixture(wire, Prices[0]).blocks[2].body
+      assert matchesNativeRingShiftPair(body[0], body[1]) == (index != counts.len-1)
+      checkRing(wire, signedRight = 3, addLane = 12, profileCount = 1)
+
+    for kind in 0..2:
+      var wire = sixLaneWire()
+      wire[21] = 40
+      wire[24] = 40
+      case kind
+      of 0:
+        # The first source may differ from the chained destination.
+        wire[20] = 0x65
+      of 1:
+        # A distinct second source prevents consuming the first result.
+        wire[23] = 0x65
+      else:
+        # A distinct second destination leaves the first write observable.
+        wire[23] = 0x56
+      let body = ringFixture(wire, Prices[0]).blocks[2].body
+      assert matchesNativeRingShiftPair(body[0], body[1]) == (kind == 0)
+      checkRing(wire, signedRight = 3, addLane = 12, profileCount = 1)
+
 proc runRegisterRing*() =
   ## Check direct execution and the prepared-owner path on the selected native host.
   when NativeCheckedReadEnabled:
     checkRing()
+    checkRingShiftPairs()
+    when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+      checkResidentRing()
+      checkResidentAddWordImmediate()
     when defined(pvmSharedAsyncWitness):
       checkRuntimeRing()
   echo "PVM native register ring passed"

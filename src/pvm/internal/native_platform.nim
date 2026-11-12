@@ -207,6 +207,12 @@ func nativeRegisterRingRotation*(image: NativeImage, header: uint32): uint64 =
         if image.ringValue.blocks[index].header == header: return uint64(index)
   high(uint64)
 
+when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+  proc ringAbiNative(handle: nil pointer, offset: uint32,
+      registers, context: pointer): uint64 {.cdecl, importc: "pvm_x86_ring_abi_proof",
+      header: "x86_resident_access_proof.h".}
+    ## The private proof checks actual SysV preservation without changing the Ring receipt.
+
 proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
     context: var NativeRingContext): uint32 =
   ## Validate rotation before borrowing state and verify the complete receipt before returning.
@@ -218,7 +224,13 @@ proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
     let entry = NativeRingIndex(context.entry)
     let gas = context.gas
     let remaining = context.remaining
-    result = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+    when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+      # The maintained x86 matrix enters the real published image through the ABI canary.
+      let tagged = ringAbiNative(image.handle, image.offset, addr registers[0], addr context)
+      assert tagged shr 32 == 1
+      result = uint32(tagged and 0xffffffff'u64)
+    else:
+      result = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
     if not validRingReceipt(image.ringValue, entry, result, gas, remaining, context, registers):
       abortNativeReceipt()
   else:
