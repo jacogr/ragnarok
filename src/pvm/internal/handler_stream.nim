@@ -1092,7 +1092,10 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
     if destination != off: return destination
 
 proc flatChargedAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32 =
-  ## Follow the second proved header only when the original cached arm selects it.
+  ## Follow the matching peer only through original cached branches and checked bodies.
+  let bodySpan = when First: 2'u32 else: 1'u32
+  # A published native prefix owns its original body entry, even in the shared checked layout.
+  if f.nativeEntry > off and f.nativeEntry-off <= bodySpan: return flatCharge(f, off)
   let peerHandler: FlatHandler = when First: flatChargedAdjacent[false] else: flatChargedAdjacent[true]
   var destination = flatStop
   when First:
@@ -1100,6 +1103,8 @@ proc flatChargedAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): ui
   else:
     flatChargedStep(f, off, 132, -1, 81, destination)
   if f.handlers[int(destination)] != peerHandler: return destination
+  # Let the peer execute its own native bridge through the same original entry.
+  if f.nativeEntry > destination and f.nativeEntry-destination <= 3-bodySpan: return destination
   let peer = destination
   while true:
     # Every original block retains its reservation and exact paid/attempt checks.
