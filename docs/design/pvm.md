@@ -16,6 +16,12 @@ and [native admission](../../src/pvm/internal/native_pipeline.nim) own their res
 pricing, invocation and reuse contracts. The [engine record](../../spec/pvm-engines.md)
 keeps the scope and qualification of the available engine identities.
 
+Prepared execution admits the full source and resource limits up front, then fills
+block metadata on resolution. Its exclusive stream cache owns that derived metadata;
+the immutable program and admission identity remain shareable. Source-global instruction
+ordinals preserve native adjacent-block proofs regardless of visitation order.
+See the [checked stream owner](../../src/pvm/internal/handler_stream.nim).
+
 The [Services owner](../../src/app/services.nim) inventories production runtime consumers and
 the ownership, aggregate retention and competition contract required before wider integration.
 The [scheduler](../../src/pvm/internal/native_pipeline.nim) documents current image capacity
