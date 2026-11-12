@@ -125,7 +125,8 @@ runs against the translated engine.
 All 22 workloads have passed locally, also under AddressSanitizer, in both role labels,
 including complete DOOM event bytes
 and the upstream video golden. ARM64 generated tick loops contain packed arithmetic and comparison
-instructions. Native Linux performance results are still pending; no rollback or speed conclusion
-follows from local correctness.
+instructions. Native Linux ARM64 and x86 performance runs have now passed on the same CPU models as the
+saved master baseline. [RESULTS.md](RESULTS.md) records the exact tested revision, artifacts,
+full comparison and limitations. The results do not support a wholesale interpreter replacement.
 
 Source attribution and license texts are in [LICENSES/NOTICE.md](LICENSES/NOTICE.md).
