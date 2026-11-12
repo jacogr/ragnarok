@@ -1,6 +1,7 @@
 {
   "defines": [
     "pvmX86Jit",
+    "pvmX86ResidentProof",
     "pvmSharedAsyncWitness"
   ],
   "directory": "codec",

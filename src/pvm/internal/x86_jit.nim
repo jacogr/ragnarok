@@ -576,12 +576,15 @@ proc x86RegionSuccessor(code: var X86Block, fixes: var seq[X86RegionFixup],
   regionEdge(code, fixes, target, condition, false)
 
 proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
-    round = default(NativeRingRoundBudget)): seq[byte] =
+    round = default(NativeRingRoundBudget), entryBytes, exitBytes: openArray[byte] = [],
+    byteLimit = NativeImageByteLimit): seq[byte] =
   ## Emit guarded source blocks and, for an eligible Ring, one reserved A/B/C path.
   let count = blocks.len
   assert count in 1..3 and (not round.enabled or (rotating and count == 3))
+  assert byteLimit in 1..NativeImageByteLimit
   var code = default(X86Block)
-  # RDI is the guest array, RSI the fresh context, and bodies only touch RAX/RCX/RDX/R8.
+  put(code, entryBytes)
+  # RDI/RSI keep the guest array and context across every rotation.
   put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8])
   var labels, roundLabels = default(array[3, int])
   var refundLabels = default(array[2, int])
@@ -652,8 +655,10 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
     returns.add(code.bytes.len)
     regionWord(code, 0)
   let epilogue = code.bytes.len
-  put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
-  if code.bytes.len >= 4096: return @[]
+  put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8])
+  put(code, exitBytes)
+  put(code, [0xc3'u8])
+  if code.bytes.len >= byteLimit: return @[]
   for at in returns:
     let relative = uint32(epilogue-at-4)
     for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
@@ -674,7 +679,7 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
     for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
   takeX86Instructions(code)
 
-proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
+proc x86CanonicalRegisterRing(ring: NativeRegisterRing): seq[byte] =
   ## Reuse the canonical region builder with three distinct visit lanes.
   var blocks = default(array[3, X86RegionBlock])
   for index in 0..2:
@@ -692,6 +697,55 @@ proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
     result = x86RegionBytes(blocks, true, round)
     if result.len != 0: return
   result = x86RegionBytes(blocks, true)
+
+when declared(X86ResidentAccess):
+  include ./x86_ring_operands
+
+  proc x86ResidentRegisterRing(ring: NativeRegisterRing, limit: int): seq[byte] =
+    ## Build one mapped body per role for both guarded and prepaid paths.
+    let lanes = ringLaneUse(ring)
+    if not fitsX86ResidentBank(lanes.used): return @[]
+    let bank = x86ResidentAccess(lanes.used)
+    var blocks = default(array[3, X86RegionBlock])
+    for index in 0..2:
+      let item = ring.blocks[index]
+      var body = default(X86Block)
+      for position in 0..<int(item.span)-1:
+        emitRingOperand(body, bank, item.body[position])
+      let branch = item.branch
+      emitX86BranchAccess(body, bank, branch.opcode, branch.slots, branch.immediate,
+        item.yes, item.no)
+      blocks[index] = X86RegionBlock(header: item.header, span: item.span,
+        operations: item.span, yes: item.yes, no: item.no, price: item.price, body: move(body))
+
+    var entry, leave = default(X86Block)
+    for slot in 0..12:
+      let encoded = bank.registers[slot]
+      if encoded != 0:
+        # Load even write-only lanes because an earlier guard or side exit preserves their values.
+        saveX86ResidentRegister(entry, encoded-1)
+        loadX86ResidentRegister(entry, bank, slot)
+    commitX86ResidentRegisters(leave, bank, lanes.written)
+    restoreX86ResidentRegisters(leave, bank)
+    x86RegionBytes(blocks, true, nativeRingRoundBudget(ring), entry.bytes, leave.bytes, limit)
+
+  when defined(pvmX86ResidentProof):
+    proc x86CanonicalRingProof*(ring: NativeRegisterRing): seq[byte] =
+      ## Select the retained canonical reservation and guarded policy for controls.
+      x86CanonicalRegisterRing(ring)
+
+    proc x86ResidentRingLimitProof*(ring: NativeRegisterRing, limit: int): seq[byte] =
+      ## Enforce the exact smaller resident extent through the normal canonical fallback.
+      result = x86ResidentRegisterRing(ring, limit)
+      if result.len == 0: result = x86CanonicalRegisterRing(ring)
+
+proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
+  ## Prefer direct mapped operands; a declined map or extent keeps the qualified canonical renderer.
+  when declared(X86ResidentAccess):
+    if ring.complete:
+      result = x86ResidentRegisterRing(ring, NativeImageByteLimit)
+      if result.len != 0: return
+  x86CanonicalRegisterRing(ring)
 
 proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
   ## Preserve the legacy publisher and its two-block receipt.
@@ -944,51 +998,18 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       readBodyReturn(code, NativeReadRefusal)
       sealCheckedRead(code, fixes, labels)
 
-    proc saveCheckedReadRegister(code: var X86Block, hardware: uint8) =
-      ## Save one selected SysV register before changing it.
-      if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the PUSH register.
-      put(code, [byte(0x50 or (hardware and 7))]) # PUSH resident64.
-
-    proc loadCheckedReadRegister(code: var X86Block, bank: X86ResidentAccess,
-        slot: range[0..12]) =
-      ## Load one mapped lane from the current canonical file or Read checkpoint.
-      let encoded = bank.registers[slot]
-      assert encoded != 0
-      let hardware = encoded-1
-      put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
-        byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
-
     proc loadCheckedReadLiveIn(code: var X86Block, access: X86CheckedReadAccess,
         slot: range[0..12]) =
       ## Initialize a mapped read-before-write lane from the current canonical file.
       if (access.liveIns and (1'u32 shl int(slot))) != 0:
-        loadCheckedReadRegister(code, access.bank, slot)
-
-    proc restoreCheckedReadRegisters(code: var X86Block, bank: X86ResidentAccess) =
-      ## Restore every selected SysV register in reverse save order.
-      for index in 0..12:
-        let encoded = bank.registers[12-index]
-        if encoded != 0:
-          let hardware = encoded-1
-          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the POP register.
-          put(code, [byte(0x58 or (hardware and 7))]) # POP resident64.
-
-    proc commitCheckedReadRegisters(code: var X86Block, bank: X86ResidentAccess,
-        mask = 0x1fff'u32) =
-      ## Publish the selected mapped lanes after all guards, or save a pre-Read checkpoint.
-      for slot in 0..12:
-        let encoded = bank.registers[slot]
-        if encoded != 0 and (mask and (1'u32 shl slot)) != 0:
-          let hardware = encoded-1
-          put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x89,
-            byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV [RDI+slot*8],resident64.
+        loadX86ResidentRegister(code, access.bank, slot)
 
     proc emitCheckedReadResidentEntry(code: var X86Block, access: X86CheckedReadAccess) =
       ## Save exactly the selected hardware lanes and initialize mapped reads before first write.
       for slot in 0..12:
         let encoded = access.bank.registers[slot]
         if encoded != 0:
-          saveCheckedReadRegister(code, encoded-1)
+          saveX86ResidentRegister(code, encoded-1)
           loadCheckedReadLiveIn(code, access, slot)
       put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI saves the extent table.
 
@@ -997,7 +1018,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       ## Publish the scalar status and restore the caller's saved registers.
       put(code, [0xb8'u8]) # MOV EAX,status defines the full scalar result.
       cycleWord(code, status)
-      restoreCheckedReadRegisters(code, access.bank)
+      restoreX86ResidentRegisters(code, access.bank)
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
     proc checkedReadResidentInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
@@ -1008,7 +1029,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       var nextLabel = 1'u8
       emitCheckedReadOperations(code, fixes, labels, body, access, body.len, 0, nextLabel)
       assert access.written == dirty
-      commitCheckedReadRegisters(code, access.bank)
+      commitX86ResidentRegisters(code, access.bank)
       emitCheckedReadResidentReturn(code, access, NativeReadSuccess)
       labels[0] = code.bytes.len # Late refusal skips every guest-file store.
       emitCheckedReadResidentReturn(code, access, NativeReadRefusal)
@@ -1020,13 +1041,6 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(entry, sealCheckedRead(code, fixes, labels))
       takeX86Instructions(entry)
 
-    func fitsCheckedReadBank(dirty: uint32): bool =
-      ## Select the resident path only when all prospective writes fit the bank.
-      var count = 0
-      for slot in 0..12:
-        if (dirty and (1'u32 shl slot)) != 0: inc count
-      count <= X86ResidentHardware.len
-
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       assert body.complete and sizeof(RegisterFile) == 104
       # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
@@ -1035,7 +1049,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       # sparse/hybrid staging, preserving delayed publication and unchanged-register refusal.
       # Both x86 choices execute native read code.
       let dirty = readBodyDirty(body, body.len)
-      if fitsCheckedReadBank(dirty):
+      if fitsX86ResidentBank(dirty):
         return checkedReadResidentInstructions(body, dirty)
       checkedReadStackInstructions(body, dirty)
 
@@ -1524,7 +1538,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           labels[label] += bodyStart
         for fix in readFixes:
           fixes.add(X86CycleFixup(at: bodyStart+fix.at, target: fix.target))
-        commitCheckedReadRegisters(code, bank)
+        commitX86ResidentRegisters(code, bank)
 
       proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow,
           allowStorePage, allowStoreTail: bool): seq[byte] =
@@ -1558,11 +1572,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           if nativeReadEncodingOpcode(opcode) != opcode: return @[]
 
         let dirty = readBodyDirty(cycle.read, readCycleBodyOps)
-        let resident = readCycleUsesResident and fitsCheckedReadBank(dirty)
+        let resident = readCycleUsesResident and fitsX86ResidentBank(dirty)
         let budgetRegisters = resident and readCycleUsesBudgetRegisters
         let roleMask = dirty or (1'u32 shl int(word.baseLane))
         let roleRegisters = budgetRegisters and readCycleUsesRoleRegisters and
-          fitsCheckedReadBank(roleMask)
+          fitsX86ResidentBank(roleMask)
         # The opt-off build retains the original label array and reservation emitter.
         let credits =
           when readCycleUsesCredits:
@@ -1596,8 +1610,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             let encoded = bank.registers[slot]
             if encoded != 0:
               # Save each selected SysV lane once. Prepaid Read already has a checkpoint.
-              saveCheckedReadRegister(code, encoded-1)
-              if roleRegisters: loadCheckedReadRegister(code, bank, slot)
+              saveX86ResidentRegister(code, encoded-1)
+              if roleRegisters: loadX86ResidentRegister(code, bank, slot)
         else:
           # R11 retains the canonical pointer while RDI addresses the private stack stage.
           put(code, [0x49'u8, 0x89, 0xfb]) # MOV R11,RDI.
@@ -1655,7 +1669,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             if not credits: readCycleDebit(code, span, price, budgetRegisters)
             if roleRegisters:
               # Save only the lanes this paid Read can replace. Earlier stores survive a miss.
-              commitCheckedReadRegisters(code, bank, dirty)
+              commitX86ResidentRegisters(code, bank, dirty)
             labels[int(readCyclePrepaid)] = code.bytes.len # The checked entry already reserved the first Read.
             if roleRegisters:
               if window.operations != 0:
@@ -1728,7 +1742,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           # Discard only this Read's speculative writes before the common publication.
           for slot in 0..12:
             if (dirty and (1'u32 shl slot)) != 0:
-              loadCheckedReadRegister(code, bank, slot)
+              loadX86ResidentRegister(code, bank, slot)
         # The Read-only and stack banks discard their stage by skipping its commit.
         readCycleSet(code, NativeCyclePaidReadOffset, 1)
         readCycleSelect(code, fixes, cycle.layout.sites[NativeCycleRole.Read].header)
@@ -1746,13 +1760,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           readCycleContextOp(code, [0x49'u8, 0x89, 0x92], NativeCycleRemainingOffset) # MOV [R10+remaining],RDX.
         if roleRegisters:
           # Publish the completed prefix before the caller validates the last role's predicate.
-          commitCheckedReadRegisters(code, bank)
+          commitX86ResidentRegisters(code, bank)
         if budgetRegisters and not credits:
           # All exits publish the same full-width budgets without clobbering the header in EAX.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x8a], NativeCycleGasOffset) # MOV [R10+gas],R9.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x9a], NativeCycleRemainingOffset) # MOV [R10+remaining],R11.
         put(code, [0x48'u8, 0x83, 0xc4, stackBytes]) # ADD RSP,stackBytes releases the borrow.
-        if resident: restoreCheckedReadRegisters(code, bank)
+        if resident: restoreX86ResidentRegisters(code, bank)
         put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
         if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout, storePage)
         if window.operations != 0:

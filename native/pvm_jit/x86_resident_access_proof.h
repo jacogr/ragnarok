@@ -84,6 +84,30 @@ static __attribute__((noinline, unused)) uint64_t pvm_x86_checked_read_abi_proof
 #endif
 }
 
+/* A Ring leaf preserves all six GPRs, the exact stack pointer and its caller's stack words. */
+static __attribute__((noinline, unused)) uint64_t pvm_x86_ring_abi_proof(void *handle,
+        uint32_t offset, void *registers, void *context) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || !registers || !context || offset >= owner->used || (offset & 15)) return 0;
+    volatile uint64_t canary[2] = {UINT64_C(0x3f2841975ca026de), UINT64_C(0xd6038c92ea7541bf)};
+    uintptr_t before, after;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(before) :: "memory");
+    uint64_t next = pvm_x86_resident_abi_entry((unsigned char *)owner->executable + offset,
+        registers, context, NULL, NULL);
+    __asm__ volatile("mov %%rsp, %0" : "=r"(after) :: "memory");
+    if (before != after || canary[0] != UINT64_C(0x3f2841975ca026de) ||
+            canary[1] != UINT64_C(0xd6038c92ea7541bf)) {
+        fputs("X86_RING_STACK_MISMATCH\n", stderr);
+        abort();
+    }
+    return next;
+#else
+    (void)handle; (void)offset; (void)registers; (void)context;
+    return 0;
+#endif
+}
+
 /* Copy only bounded, actually published RX bytes for this literal backend proof. */
 static inline int pvm_x86_resident_copy_proof(void *handle, uint32_t offset,
         unsigned char *output, uint32_t length) {

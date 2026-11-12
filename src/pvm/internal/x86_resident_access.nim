@@ -42,6 +42,46 @@ when declared(X86Block):
       put(fragment, [byte(0x48 or (if hardware >= 8: 1 else: 0)), 0x89,
         byte(0xc0 or int(hardware and 7))]) # MOV resident64,RAX.
 
+  proc saveX86ResidentRegister(code: var X86Block, hardware: uint8) =
+    ## Save one selected SysV register before changing it.
+    if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the PUSH register.
+    put(code, [byte(0x50 or (hardware and 7))]) # PUSH resident64.
+
+  proc loadX86ResidentRegister(code: var X86Block, bank: X86ResidentAccess,
+      slot: range[0..12]) =
+    ## Load one mapped lane from the canonical file at RDI.
+    let encoded = bank.registers[slot]
+    assert encoded != 0
+    let hardware = encoded-1
+    put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
+      byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
+
+  proc restoreX86ResidentRegisters(code: var X86Block, bank: X86ResidentAccess) =
+    ## Restore every selected SysV register in reverse save order.
+    for index in 0..12:
+      let encoded = bank.registers[12-index]
+      if encoded != 0:
+        let hardware = encoded-1
+        if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the POP register.
+        put(code, [byte(0x58 or (hardware and 7))]) # POP resident64.
+
+  proc commitX86ResidentRegisters(code: var X86Block, bank: X86ResidentAccess,
+      mask = 0x1fff'u32) =
+    ## Store selected mapped lanes without disturbing the context or return lanes.
+    for slot in 0..12:
+      let encoded = bank.registers[slot]
+      if encoded != 0 and (mask and (1'u32 shl slot)) != 0:
+        let hardware = encoded-1
+        put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x89,
+          byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV [RDI+slot*8],resident64.
+
+  func fitsX86ResidentBank(mask: uint32): bool =
+    ## The cold allocator may assign at most six canonical guest lanes.
+    var count = 0
+    for slot in 0..12:
+      if (mask and (1'u32 shl slot)) != 0: inc count
+    count <= X86ResidentHardware.len
+
   when defined(pvmX86ResidentProof):
     proc beginX86Resident*(fragment: var X86Block, access: X86ResidentAccess) =
       ## Save all six SysV GPRs. Entry RSP%16=8; 48 saved plus40 context bytes align it to16.
