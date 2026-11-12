@@ -220,6 +220,7 @@ func lowestEntryIndex(mask: uint32): cint {.importc: "__builtin_ctz", nodecl.}
 proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasResult =
   ## Compute the whole block charge, with no register/memory/gas mutation or retained allocation.
   ## start must be a block boundary; the cycle ceiling is local work policy, not guest gas.
+  ## A pending copied decode survives slot stalls; no extra cycle or owner-bound cache is introduced.
   let boundary = basicBlockStart(program, start)
   # Reject default owners, operand bytes and interior instruction addresses uniformly.
   if boundary.error != ProgramError.None or not boundary.value:
@@ -230,6 +231,10 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
   var waiting = 0'u32 # Bits mark exactly the active entries in Stage.Waiting.
   var transitioning = 0'u32 # Bits mark exactly the active Decoding and Executing entries.
   var pc = uint64(start)
+  # A stalled decode keeps one copied instruction/profile until admission advances the PC.
+  var pending = false
+  var item = default(Instruction)
+  var cost = default(Profile)
   var ended = false
   var cycles = 0'u64
   var slots = 4
@@ -238,11 +243,13 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
   # Each transition decodes a bounded instruction, starts one entry, or advances a bounded cycle.
   while true:
     if not ended and count < 32:
-      # A validated block ends in T, so every successive PC can be decoded safely.
-      let decoded = instruction(program, CodeAddress(pc))
-      if decoded.error != ProgramError.None: return GasResult(status: GasError.InvalidStart)
-      let item = decoded.value
-      var cost = profile(item)
+      if not pending:
+        # A validated block ends in T. Slot stalls must not decode/profile this same PC again.
+        let decoded = instruction(program, CodeAddress(pc))
+        if decoded.error != ProgramError.None: return GasResult(status: GasError.InvalidStart)
+        item = decoded.value
+        cost = profile(item)
+        pending = true
       if cost.slots <= slots:
         # Branch cost inspects raw bytes even when the target is not a valid jump destination.
         if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
@@ -278,6 +285,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
           inc count
         ended = terminatesBlock(item.opcode)
         pc += 1 + uint64(item.skip)
+        pending = false # Only successful pipeline admission consumes this decoded instruction.
         continue
     if starts > 0:
       # Pick the oldest waiting entry whose dependencies have finished and resources fit.
