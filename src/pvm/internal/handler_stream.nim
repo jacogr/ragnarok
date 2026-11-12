@@ -1804,7 +1804,7 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   ## The cache exclusively owns this derived plan. The immutable admission owner stays untouched.
   ## Preserve global logical fact slots so native adjacency proofs keep their original index space.
   ## Allocate payload chunks only on writes; untouched blocks retain implicit zero metadata.
-  ## Only resolved blocks (including existing branch prelinks) fill those slots and their quotas.
+  ## A requested block, including a branch prelink, can be catalogued before emission is refused.
   let requested = instructionHeader(f.plan.source, CodeAddress(uint64(pc)))
   if requested.error != ProgramError.None: return false
   if f.plan.admission == nil:
@@ -1870,7 +1870,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   let packedStart = f.plan.factAt[int(pc)]
   if packedStart == 0: return flatStop
   let start = int(packedStart - 1)
-  # Stable offset links forbid eviction inside execution. Refuse a whole suffix before its first allocation/map write.
+  # The source catalogue is already populated. These quotas guard executable nodes and compiled-PC entries.
   let ceiling = uint64(f.plan.limits.nodes)
   let occupied = uint64(f.handlers.len)
   assert occupied <= ceiling
