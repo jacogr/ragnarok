@@ -9,6 +9,7 @@ import ../codec/[bounded, disputes]
 import ../codec/state/safrole
 
 const MaxJudgmentDeliveries = 3072 ## Three maximum1023-position recipient cohorts fit with fixed accounting slack.
+
 type
   JudgmentDeliveryMode* {.pure.} = enum ## Relays preserve the original signature; produced judgments additionally reach all presently known succeeding author sets.
     Relayed, Produced

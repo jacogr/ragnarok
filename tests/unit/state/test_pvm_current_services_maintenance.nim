@@ -20,8 +20,10 @@ import ../../../src/codec/report_owned
 import ../../../src/rpc/server
 import ../../support/[current_services_disk_samples, current_application_context,
   accumulation_current_chain_context, managed_storage_samples, rpc_socket]
+
 type MaintenanceOrder {.pure.} = enum ## Each explicit order owns one complete sequential Services lifetime.
   Pending, Finished, Automatic, Joined
+
 const ChainPath = "pvm-current-services-maintenance-chain"
 const DiskPath = "pvm-current-services-maintenance-state"
 

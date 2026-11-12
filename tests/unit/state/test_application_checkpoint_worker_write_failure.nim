@@ -14,6 +14,7 @@ import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context,
     file_size_ceiling]
+
 const
   Directory = "application-checkpoint-worker-write-failure"
   FileName = Directory & "/checkpoint"

@@ -27,6 +27,7 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/codec/state/[composition as state_composition, layout as state_layout]
 import ../../src/chain/[provider, genesis]
+
 type CollectedMutationFixture* = object ## Test-only descriptors retain genuine native execution and caller-supplied identities, never a mutation certificate.
   origin*: CurrentNamespaceTransition
   chain*: ApplicationChain

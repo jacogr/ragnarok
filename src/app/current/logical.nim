@@ -13,6 +13,7 @@ import ../../state/current/[logical as current_logical, identities as current_id
 import ../../state/current/refresh/plan as current_refresh_plan
 import ../../state/current/logical/refresh as current_logical_refresh
 import ../../state/accumulation/current/update as accumulation_current_update
+
 type
   CollectedLogicalLimits* = object ## Every existing bounded stage keeps its independent caller policy.
     identities*: CurrentIdentityLimits

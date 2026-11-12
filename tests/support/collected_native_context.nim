@@ -18,6 +18,7 @@ import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/[composition as state_composition, layout as state_layout,
     accounts as state_accounts]
 import ../../src/codec/header
+
 type CollectedNativeFixture* = object ## Test descriptors retain immutable genuine receipt/chain and independent supplied declarations.
   fixture*: CurrentRepeatedLogicalFixture
   chain*: ApplicationChain

@@ -9,6 +9,7 @@ import ../../state/accumulation/current/update as accumulation_current_update
 import ../../state/proof/plan as proof_plan
 import ../../chain/[provider, genesis]
 import ../../codec/bounded
+
 type
   LogicalProofLimits* = object ## Whole selected-view copying and existing full-map/path/wire/hash query work retain separate ceilings.
     blocks*: ElementLimit

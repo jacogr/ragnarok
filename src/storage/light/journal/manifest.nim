@@ -10,11 +10,13 @@ import ../../managed/manifest as managed_manifest
 import ../../../codec/bounded
 import ../../../codec/state/trie as state_trie
 import ../../../crypto/primitives
+
 const
   Magic = "RAGNAROK-LIGHT-MANIFEST-V1\n"
   AnchorMagic = "RAGNAROK-LIGHT-JOURNAL-V1\n"
   LightJournalManifestBytes* = Magic.len+144 ## Fixed chain/root/epoch/baseline/image/checksum fields.
   LightJournalAnchorBytes* = AnchorMagic.len+72 ## Fixed selected manifest checksum, sequence and own checksum.
+
 type
   LightSelectionError* {.pure.} = enum ## Neither default nor failed operations expose a selected physical epoch.
     Uninitialized, None, InvalidFormat, LimitExceeded, WrongChain, WrongRoot, WrongAnchor,

@@ -32,6 +32,34 @@ class NimSpacingTests(unittest.TestCase):
         self.assertEqual(normalize_spacing(source), expected)
         self.assertEqual(normalize_spacing(expected), expected)
 
+    def test_top_level_import_const_and_type_sections(self):
+        """Keep imports together and separate adjacent declaration kinds with one blank line."""
+        source = ('import std/[\n  assertions,\n  options\n]\n'
+                  'from ../chain/genesis import BlockHash\n'
+                  '# Explain the limits.\nconst\n  limit = 8\n'
+                  'const otherLimit = 16\ntype\n  Header = object\n')
+        expected = ('import std/[\n  assertions,\n  options\n]\n'
+                    'from ../chain/genesis import BlockHash\n\n'
+                    '# Explain the limits.\nconst\n  limit = 8\n'
+                    'const otherLimit = 16\n\ntype\n  Header = object\n')
+        self.assertEqual(normalize_spacing(source), expected)
+        self.assertEqual(normalize_spacing(expected), expected)
+
+    def test_attached_block_comments(self):
+        """Place the separator before a mixed comment group and after any trailing block."""
+        for opener, closer in (('#[', ']#'), ('##[', ']##')):
+            with self.subTest(opener=opener):
+                previous = f'import std/options {opener} Explains the import.\n{closer}\n'
+                comments = (f'# Explain the limit.\n{opener} More detail.\n'
+                            f'\n\n{opener} Nested detail. {closer}\n{closer}\n'
+                            '# End of the explanation.\n')
+                declaration = 'const limit = 8\n'
+                expected = previous + '\n' + comments + declaration
+                self.assertEqual(normalize_spacing(previous + comments + declaration), expected)
+                self.assertEqual(normalize_spacing(expected), expected)
+                self.assertEqual(normalize_spacing(previous + declaration),
+                                 previous + '\n' + declaration)
+
     def test_routine_sections_and_attached_comments(self):
         """One separator precedes a routine and its explanatory comments, including forward declarations."""
         source = ('proc first() =\n  discard\n\n\nproc second() = discard\n'
@@ -43,7 +71,8 @@ class NimSpacingTests(unittest.TestCase):
 
     def test_nested_declarations(self):
         """Nested declarations retain their grouping while excessive blank lines collapse."""
-        source = 'when defined(example):\n  proc first()\n  proc second()\n\n\n  discard\n'
+        source = ('when defined(example):\n  import std/options\n  const limit = 8\n'
+                  '  type Header = object\n  proc first()\n  proc second()\n\n\n  discard\n')
         self.assertEqual(normalize_spacing(source), source.replace('\n\n\n', '\n\n'))
 
     def test_multiline_values_and_nested_comments(self):

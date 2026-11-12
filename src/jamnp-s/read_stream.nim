@@ -46,6 +46,7 @@ type
     variable: seq[byte]
     cursor: SegmentRequestCursor
     declared: int
+
 const MaxReadReplyBytes* = 8*1024*1024 ## Aggregate framed reply ceiling, independent of untrusted u32 limits.
 
 func error*[T](outcome: ReadResult[T]): ReadError =

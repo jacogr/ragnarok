@@ -10,6 +10,7 @@ import ../../src/state/parent/[profile as parent_profile, globals as parent_glob
 import ../../src/state/current/[identities as current_identities,
     request_keys as current_request_keys]
 import ../../src/codec/[bounded, report_owned]
+
 const currentRequestKeyTestLimits* = CurrentRequestKeyLimits(services: ElementLimit(2),
     requests: ElementLimit(4), bytes: ByteLimit(4096))
 

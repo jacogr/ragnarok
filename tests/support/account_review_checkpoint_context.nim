@@ -7,6 +7,7 @@ import ./[planned_account_checkpoint_context, service_directory_context, account
 import ../../src/state/account/review/checkpoint as account_review_checkpoint
 import ../../src/state/[supervision_table, economics_table]
 import ../../src/codec/bounded
+
 const accountReviewCheckpointTestLimits* = AccountReviewCheckpointLimits(
   checkpoint: plannedCheckpointTestLimits, directory: directoryTestLimits,
   footprints: invariantFootprintLimits,

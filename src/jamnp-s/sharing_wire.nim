@@ -11,6 +11,7 @@ const
   MaxSharingHeaderBytes* = 517 ## E2 core, E2 shards, one canonical count and at most eight64-byte mappings.
   MaxSharingBundleBytes* = MaxBundleBytes ## The same complete auditable-bundle ceiling used by the original package pipeline.
   SharingResponseBytes* = 96 ## Exact report hash followed by one ordinary Ed25519 signature.
+
 type
   SharingWireError* {.pure.} = enum ## Defaults and refusals expose no accepted message prefix.
     Uninitialized, None, InvalidOwner, InvalidMessage, LimitExceeded

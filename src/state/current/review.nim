@@ -9,6 +9,7 @@ import ./[state as current_state, globals as current_globals, profile as current
 import ../economic_profile
 import ../account/review/plan as account_review_plan
 import ../account/review as account_review
+
 type
   CurrentReviewPlan* = object ## Frozen original current serialization and admitted reports retain one immutable source and original parameter rates.
     initialized: bool

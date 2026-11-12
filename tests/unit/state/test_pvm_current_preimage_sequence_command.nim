@@ -13,6 +13,7 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[current_preimage_sequence_context, current_consecutive_download_context,
   current_sequence_command_context, current_services_disk_samples, managed_storage_samples,
   block_download_transport, rpc_socket]
+
 const
   ChainPath = "pvm-current-preimage-sequence-command-chain"
   PolicyPath = "pvm-current-preimage-sequence-command-policy"

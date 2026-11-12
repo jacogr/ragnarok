@@ -6,6 +6,7 @@
 import ../../../state/current/logical as current_logical
 import ../../../state/[checkpoint, store]
 import ../../../codec/bounded
+
 type
   ImportedLogicalCheckpoint* = object ## Original logical provenance and separately decoded physical ownership stay distinguishable.
     initialized: bool

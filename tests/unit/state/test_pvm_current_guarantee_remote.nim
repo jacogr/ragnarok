@@ -18,8 +18,10 @@ import ../../support/[current_guarantee_sequence_context, current_guarantee_remo
   current_consecutive_download_context, current_download_command_context,
   current_application_context,
   current_services_disk_samples, managed_storage_samples, block_download_transport]
+
 type RemoteCase {.pure.} = enum ## The independent responder changes only original-context bytes or FIN behavior.
   Adopt, WrongParent, Timeout
+
 const ChainPath = "pvm-current-guarantee-remote-chain"
 const PolicyPath = "pvm-current-guarantee-remote-policy"
 

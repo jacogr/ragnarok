@@ -7,6 +7,7 @@
 import ../../codec/state/composition as state_composition
 import ./globals as current_globals
 import ../[global_snapshot, manifest, inventory]
+
 type
   CurrentStateSerialization* = object ## Private owners bind supplied facts to the original authenticated update and profile.
     initialized: bool

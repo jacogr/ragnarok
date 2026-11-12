@@ -17,6 +17,7 @@ import ../../../src/storage/[record_codec, database_identity, journal_codec]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/report_owned
+
 type
   ResourceLimit {.importc: "struct rlimit", header: "<sys/resource.h>", bycopy.} = object
     ## Exact supported 64-bit SDK fields constrain only the forked writer.

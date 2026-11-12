@@ -15,6 +15,7 @@ import ../../src/storage/file/errors as file_errors
 import ../../src/storage/managed/manifest as managed_manifest
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type Fixture = object ## Only three bounded proofs and one cross-page value survive independent complete-map construction.
   config: PagedNativeConfig
   first, absent, last: LightStateProof

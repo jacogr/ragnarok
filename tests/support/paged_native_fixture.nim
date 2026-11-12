@@ -10,6 +10,7 @@ import ../../src/storage/state_proof
 import ../../src/storage/full/state_trie as full_state_trie
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type PagedNativeFixture* = object ## Independent complete-map roots constrain two different same-shape paged knowledge stores.
   config*: PagedNativeConfig
   records*: seq[LightStateProof]

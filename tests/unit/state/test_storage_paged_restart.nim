@@ -19,6 +19,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/state/paged/proof_view as transport
 import ../../../src/state/proof/view as partial
+
 type Memory = ref object ## Independent test transport owns bytes and deterministic callback refusal.
   bytes: seq[byte]
   calls, failAt: int

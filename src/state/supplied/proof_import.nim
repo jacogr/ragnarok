@@ -7,6 +7,7 @@ import ../proof/[state_import as proof_state_import, view as proof_view]
 import ../[store, global_snapshot, manifest]
 import ./logical_inventory as supplied_logical_inventory
 import ../../codec/state/[trie as state_trie, composition as state_composition]
+
 type
   SuppliedProofImportLimits* = object ## Complete reconstruction, all-global decoding and supplied compact/raw-key retention use independent existing policies.
     restoration*: ProofStateImportLimits

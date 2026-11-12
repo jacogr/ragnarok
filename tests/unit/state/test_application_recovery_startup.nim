@@ -16,6 +16,7 @@ import ../../../src/codec/state/layout as state_layout
 import ../../../src/state/store
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const CheckpointPath = "application-recovery-startup-map"
 const TrustPath = "application-recovery-startup-identity"
 const HeaderPath = "application-recovery-startup-header"

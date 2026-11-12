@@ -5,5 +5,6 @@
 
 import ../../src/state/supplied/services as supplied_services
 import ../../src/codec/bounded
+
 const suppliedServicesTestLimits* = SuppliedServicesLimits(services: ElementLimit(16),
     facts: ElementLimit(128), perValue: ByteLimit(65536), bytes: ByteLimit(262144))

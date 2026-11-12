@@ -19,6 +19,7 @@ type
     case status: TicketPacketError
     of None: completed: TicketPacket
     else: discard              # A short proof cannot become a valid all-zero suffix.
+
 const TicketPacketBytes* = 789 ## E4 use epoch, E1 attempt and exactly784 proof bytes.
 
 func error*(outcome: TicketPacketResult): TicketPacketError =

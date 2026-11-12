@@ -13,9 +13,11 @@ import ../../../src/codec/bounded
 import ../../../src/chain/genesis
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context]
+
 const
   Directory = "application-checkpoint-worker-crash"
   FileName = Directory & "/checkpoint"
+
 type ExitBoundary = enum ## These observed boundaries make no claim about unobserved mid-write interruption.
   Staged, Cancelled, Durable
 

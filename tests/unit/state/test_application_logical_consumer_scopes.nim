@@ -22,6 +22,7 @@ import ../../../src/state/store
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
 import ../../../src/chain/genesis
+
 type DetachedConsumers = object ## Only independent bytes, semantic keys, fixed profile and explicitly selected posterior commitment cross the final scope.
   proof, checkpoint: seq[byte]
   plan: StateProofPlan

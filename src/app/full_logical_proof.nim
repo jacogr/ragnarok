@@ -10,6 +10,7 @@ import ../state/proof/plan as proof_plan
 import ../state/store
 import ../codec/bounded
 import ../codec/state/[layout as state_layout, trie as state_trie]
+
 type
   FullLogicalProofLimits* = object ## Complete physical key traversal and input/retained/sort key arrays have independent selector policies.
     keys*: ElementLimit

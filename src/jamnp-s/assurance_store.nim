@@ -15,6 +15,7 @@ import ../state/erasure/words
 import ../crypto/primitives
 
 const IdentityMagic = "RAGAF001"
+
 type
   AssuranceScanStop* = proc(context: nil pointer): bool {.nimcall, raises: [].}
     ## A trusted host reads cancellation only; the borrowed context outlives this synchronous call and grants no storage/signing authority.

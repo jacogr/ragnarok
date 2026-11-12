@@ -23,6 +23,7 @@ const
   LeafDomain = "RAGNAROK-FULL-PAGED-LEAF-V1\n"
   PadDomain = "RAGNAROK-FULL-PAGED-PAD-V1\n"
   NodeDomain = "RAGNAROK-FULL-PAGED-NODE-V1\n"
+
 type
   FullPagedError* {.pure.} = enum ## No failed/default result exposes checked metadata or record bytes.
     Uninitialized, None, InvalidFormat, LimitExceeded, LengthOverflow, WrongChain, WrongRoot,

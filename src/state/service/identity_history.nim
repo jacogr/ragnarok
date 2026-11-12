@@ -10,6 +10,7 @@ import ../accumulation/[coverage as accumulation_coverage, annulment as accumula
 import ../store
 import ../../codec/bounded
 import ../../codec/state/layout as state_layout
+
 type
   ServiceIdentityHistoryLimits* = object ## Original coverage and each selected fixed-array extent are independently admitted.
     entries*, outcomes*, creations*, deletions*: ElementLimit

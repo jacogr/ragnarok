@@ -15,6 +15,7 @@ import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const PathName = "application-recovery-file"
 
 proc cycle(wire: seq[byte], expected: ApplicationCheckpointIdentity) =

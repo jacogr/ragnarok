@@ -7,6 +7,7 @@
 import ../../codec/bounded
 import ../../codec/state/composition as state_composition
 import ../[manifest, inventory]
+
 type
   SuppliedLogicalLimits* = object ## Compact descriptors, extra raw-key counts, raw bytes and all extra retained array bytes have independent limits.
     inventory*: StateInventoryLimits

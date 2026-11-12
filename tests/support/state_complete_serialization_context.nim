@@ -7,6 +7,7 @@ import std/[assertions, parseutils]
 import ../../src/crypto/primitives
 import ../../src/codec/state/[composition as state_composition, accounts as state_accounts,
     service_values as state_service_values, requests as state_requests]
+
 const sizes = [0, 1, 31, 32, 33, 63, 64, 65]
 
 proc serializationWord*(caseId, field, bits: int): uint64 =

@@ -10,10 +10,12 @@ import ./[record_codec, database_identity]
 import ../codec/bounded
 import ../codec/state/trie as state_trie
 import ../crypto/primitives
+
 const
   Magic = "RAGNAROK-SNAPSHOT-V1\n"
   HeaderBytes = Magic.len+113
   Overhead = HeaderBytes+32
+
 type
   SnapshotLimits* = object ## Snapshot extent and root/context limits are separate from per-commit batches.
     repository*: RepositoryLimits

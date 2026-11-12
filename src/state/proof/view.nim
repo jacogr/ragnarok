@@ -9,6 +9,7 @@ import ../trie_proof
 import ./plan as proof_plan
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, trie as state_trie, safrole as state_safrole]
+
 type
   ProofViewLimits* = object ## Count and retained logical value bytes bound this partial evidence collection.
     items*: ElementLimit

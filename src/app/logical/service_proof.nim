@@ -9,6 +9,7 @@ import ../../state/inventory
 import ../../state/proof/plan as proof_plan
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, requests as state_requests]
+
 type
   LogicalServiceProofLimits* = object ## Full service traversal, total selectors, request hashes and scratch/retained key arrays have separate ceilings.
     services*, keys*, requests*: ElementLimit

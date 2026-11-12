@@ -17,6 +17,7 @@ const
   MaxAssuranceRecordBytes* = 16'u64*1024*1024+uint64(
       AssuranceRecordHeaderBytes) ## CE137's independent aggregate ceiling bounds one record's native allocations.
   RecordMagic = "RAGAS001"
+
 type
   AssuranceChainId* = distinct array[32, byte] ## Expected configured chain identity is separate from shard roots and the current assurance anchor.
   AssuranceTime* = distinct uint64 ## Whole seconds since the GP Common Era, never a timeslot or an epoch count.

@@ -28,6 +28,7 @@ import "../../src/state/block/transition" as block_transition
 import "../../src/state/block/admission" as block_admission
 import ../../src/state/[preimages, store]
 import ./[accumulation_current_activity_context, accumulation_current_round_context]
+
 type CurrentChainFixture* = object ## Actual current authority retains its structurally captured exact parent and independently authored parent keys.
   source*: PreparedCurrentAccumulationConsensus
   parent*: BlockSnapshotResult

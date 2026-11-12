@@ -10,6 +10,7 @@ import ../../chain/[genesis, provider]
 import ../../codec/bounded
 import ../../codec/state/trie as state_trie
 import ../../codec/header
+
 type
   CurrentCheckpointInfo* = object ## Copied fixed identities do not replace the retained execution certificate or grant independent finality.
     child*, parent*: BlockHash

@@ -10,6 +10,7 @@ import ../state/supplied/services as supplied_services
 import ../state/accumulation/current/update as accumulation_current_update
 import ../codec/bounded
 import ../codec/state/composition as state_composition
+
 type
   FrozenSuppliedInfo* = object ## Exact copied descriptor/payload accounting grants no matching or execution authority.
     services*: int

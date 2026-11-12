@@ -11,6 +11,7 @@ import ../../../state/proof/plan as proof_plan
 import ../../../codec/bounded
 import ../../../codec/state/[layout as state_layout, requests as state_requests,
     service_values as state_service_values]
+
 type
   LogicalCodeProofLimits* = object ## Complete availability auditing and the fixed selector's input/retained/sort storage have separate budgets.
     code*: CodeAvailabilityLimits

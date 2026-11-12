@@ -9,6 +9,7 @@ import ../jamnp-s/[node, connections, endpoints, read_stream, read_client]
 import ../codec/bounded
 
 const ParallelAuditors = 8 ## Leave native request capacity for other foreground protocol actors.
+
 type
   Delivery = object ## Each slot retires only the native authorities it reserved.
     occupied, requesting, dialing, retiring, closing: bool

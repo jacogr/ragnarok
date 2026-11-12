@@ -6,6 +6,7 @@
 # @@Verification={"group":"ownership_compile","expected":"'=dup' is not available for type <ScalarOwner>","build_name":"nimony-scalar-copy","rationale":"A scalar-only owner used to bypass unavailable copy/dup hooks without a destructor; preserve the original lowering regression.","reference":"spec/nimony-nightly-2026-10-21.md"}
 
 import std/syncio
+
 type ScalarOwner = object ## A scalar payload deliberately has no destructor or managed field.
   token: int
 

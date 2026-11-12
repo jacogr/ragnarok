@@ -11,6 +11,7 @@ import ../codec/bounded
 import ../codec/state/safrole
 
 const MaxPendingGuarantees* = 64 ## Fixed host storage does not grow with peer announcements.
+
 type
   PendingGuarantee = object ## Fixed provenance and independent wire bytes contain no canonical map or signer alias.
     used: bool

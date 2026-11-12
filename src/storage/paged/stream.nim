@@ -13,6 +13,7 @@ import ../../codec/state/[layout as state_layout, trie as state_trie]
 import ../../crypto/primitives
 
 const PagedStreamFixedBytes* = 32768'u64 ## Conservative logical fixed-workspace reservation; not native RSS.
+
 type
   PagedRead* = proc(offset: PagedOffset, output: var openArray[byte]): bool {.closure.}
     ## True means the complete requested extent was copied; no callback or output view may escape.

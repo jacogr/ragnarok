@@ -10,6 +10,7 @@ import ../../database_identity
 import ../../../codec/bounded
 import ../../../codec/state/layout as state_layout
 import ../../../crypto/primitives
+
 const EditBytes = 42
 
 type

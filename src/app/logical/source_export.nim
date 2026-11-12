@@ -9,6 +9,7 @@ import ../../state/supplied/logical_inventory as supplied_logical_inventory
 import ../../state/inventory
 import ../../codec/bounded
 import ../../codec/state/layout as state_layout
+
 type
   LogicalSourceExportLimits* = object ## Whole identity traversal, each detached raw-key copy and output-plus-largest-key storage have independent ceilings.
     services*, facts*: ElementLimit

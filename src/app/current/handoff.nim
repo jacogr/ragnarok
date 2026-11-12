@@ -8,6 +8,7 @@ import ../../chain/genesis
 import ../../rpc/server
 import ../../state/store
 import ../../state/accumulation/current/update as accumulation_current_update
+
 type
   CurrentHandoffPhase* {.pure.} = enum ## Finished success/refusal occupies capacity until explicit acknowledgment.
     Idle, Pending, Finished, Publishing

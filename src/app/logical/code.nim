@@ -6,6 +6,7 @@
 import ../../state/current/[logical as current_logical, state as current_state]
 import ../../state/code_availability
 import ../../codec/state/requests as state_requests
+
 type
   LogicalCodeAvailability* = object ## Logical identity and original-current compact code observations cannot be independently substituted.
     initialized: bool

@@ -13,6 +13,7 @@ import ../../../codec/state/[layout as state_layout, trie as state_trie]
 import ../../../crypto/primitives
 
 const FullPagedFixedBytes* = 4194304'u64 ## Conservative logical workspace, distinct from measured RSS.
+
 type
   FullPagedWrite* = proc(offset: PagedOffset, input: openArray[byte]): bool {.closure.}
     ## Write the complete scratch window or refuse; caller owns a private exact-sized scratch file.

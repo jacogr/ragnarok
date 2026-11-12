@@ -12,6 +12,7 @@ import ../../../src/app/checkpoint/[worker as checkpoint_worker, transfer as che
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-worker"
 
 proc cycle(worker: var ApplicationCheckpointWorker) {.raises.} =

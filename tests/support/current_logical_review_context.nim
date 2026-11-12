@@ -14,6 +14,7 @@ import ../../src/state/account/audit/plan as account_audit_plan
 import ../../src/state/footprint_audit
 import ../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../src/codec/bounded
+
 type CurrentLogicalReviewComposition* = object ## Test descriptors keep original complete logical provenance beside the existing current-source review, without joining different compact captures.
   logical*: CurrentLogicalState
   reviewed*: ReviewedCurrentState

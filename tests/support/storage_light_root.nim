@@ -16,6 +16,7 @@ import ../../src/storage/database_identity
 import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type
   LightRootFixture* = object ## Only immutable images, detached evidence and explicit root/configuration inputs survive fixture construction.
     source*, destination*: PreparedLightSnapshot

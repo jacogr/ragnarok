@@ -11,6 +11,7 @@ import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, safrole as state_safrole,
     composition as state_composition]
 import ../../codec/[assurances, header]
+
 type
   CurrentProfileLimits* = object ## Previous-roster bytes/items are preflighted independently of later whole-global validation.
     validators*: ElementLimit

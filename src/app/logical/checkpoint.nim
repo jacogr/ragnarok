@@ -5,6 +5,7 @@
 
 import ../../state/current/[logical as current_logical, checkpoint as current_checkpoint]
 import ../../codec/bounded
+
 type
   LogicalCheckpointError* {.pure.} = enum ## Default logical source and the exact existing checkpoint refusal remain distinct.
     Uninitialized, None, InvalidLogical, CheckpointFailure

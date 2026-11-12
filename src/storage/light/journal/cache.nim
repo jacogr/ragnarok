@@ -12,6 +12,7 @@ import ../../file/errors as file_errors
 import ../../durability
 import ../../../codec/bounded
 import ../../../codec/state/[trie as state_trie, layout as state_layout]
+
 type
   LightJournalConfig* = object ## Independently selected trust and exact resource policies never come from journal metadata.
     chain*: StorageChainId

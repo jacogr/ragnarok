@@ -6,6 +6,7 @@
 import ../../src/state/footprint_audit
 import ../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../src/codec/bounded
+
 const
   invariantFootprintLimits* = FootprintAuditLimits(services: ElementLimit(2), checks: ElementLimit(4))
   invariantContentLimits* = PreimageContentLimits(services: ElementLimit(2),

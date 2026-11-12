@@ -8,6 +8,7 @@ import ../../codec/[bounded, assurances]
 import ../../codec/state/[composition as state_composition, layout as state_layout,
     safrole as state_safrole, consensus as state_consensus]
 import ../store
+
 type
   ParentProfileLimits* = object ## Rolling/finalized owners, view/index bytes and previous-roster decode resources have independent admission.
     blocks*, validators*: ElementLimit

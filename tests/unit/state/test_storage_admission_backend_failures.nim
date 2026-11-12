@@ -12,6 +12,7 @@ import ../../../src/storage/record_codec
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 type Prefix = object ## Explicit public consumer owns only the provisional records it chose to retain.
   records: seq[TrieRecord]
   starts, calls, stopAfter: int

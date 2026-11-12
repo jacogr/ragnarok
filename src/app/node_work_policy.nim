@@ -18,6 +18,7 @@ import ../lib/logging
 const
   GuarantorPolicyHeader = "ragnarok-work-policy-v2"
   GuarantorPolicyFields = 194 ## Includes one bounded unknown-field diagnostic beyond every required scalar.
+
 type
   NodeWorkSettings* = object ## Plain explicit serialization inputs carry no private key, live source, or activation capability.
     admission*: WorkSubmissionLimits

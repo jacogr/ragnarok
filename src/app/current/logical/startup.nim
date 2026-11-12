@@ -21,6 +21,7 @@ const CurrentLogicalSourceBytes* = 65536 ## Startup transport cap is independent
 const CurrentLogicalSourceHeader* = "ragnarok-current-logical-source-v1" ## Shared existing v1 identity-only transport header; export and parser accept one representation.
 const CurrentLogicalSourceKeyBytes* = 4096 ## Shared v1 raw-identity syntax ceiling also bounds canonical export.
 const CurrentLogicalSourceLines* = 4096 ## Fixed syntax cap bounds duplicate-service preflight and native ordinal conversions.
+
 type
   CurrentLogicalStartupLimits* = object ## Every actual-source projection, full parent qualification and later continuation policy is explicit.
     projection*: SuppliedServicesLimits

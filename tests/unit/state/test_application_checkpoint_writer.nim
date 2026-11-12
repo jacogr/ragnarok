@@ -13,6 +13,7 @@ import ../../../src/app/checkpoint/[identity as checkpoint_identity,
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-writer"
 
 proc cycle(expected: ApplicationCheckpointIdentity) =

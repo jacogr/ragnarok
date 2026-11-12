@@ -10,6 +10,7 @@ from ../codec/work/report import ErasureRoot
 import ../state/availability/specifier
 
 const MaxGuarantorEntries = 64 ## Fixed metadata stays independent of original bundle and validator-population payload sizes.
+
 type
   GuarantorStorageLimits* = object ## Computation bytes bound the whole cache plus capture workspace; hashes bound each new complete capture.
     entries*: ElementLimit

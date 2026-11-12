@@ -9,6 +9,7 @@ import std/posix/posix
 import ../file/errors as file_errors
 import ./manifest as managed_manifest
 import ../../codec/bounded
+
 type
   ManagedFileKind* {.pure.} = enum ## The managed namespace exposes only exact fixed or epoch-derived names.
     Current, Snapshot, Journal

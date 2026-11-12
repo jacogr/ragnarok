@@ -10,11 +10,13 @@ import ../[state_proof, database_identity]
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, trie as state_trie]
 import ../../crypto/primitives
+
 const
   Magic = "RAGNAROK-LIGHT-CACHE-V1\n"
   HeaderBytes = Magic.len+72
   EntryBytes = 41
   Overhead = HeaderBytes+32
+
 type
   LightSnapshotLimits* = object ## Bound complete encoded images and restored cache contents independently of ordinary batches.
     cache*: LightCacheLimits

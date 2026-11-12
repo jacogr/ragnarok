@@ -12,6 +12,7 @@ import ../../src/state/service/directory as service_directory
 import ../../src/state/[supervision_table, economics_table, economic_profile, footprint_audit]
 import ../../src/codec/bounded
 import ../../src/codec/state/composition as state_composition
+
 type AccountReviewTestEvidence* = object ## Test-owned public factory outputs share one genuine complete inventory.
   invariants*: CheckedAccountInvariants
   supervision*: StateSupervisionTable

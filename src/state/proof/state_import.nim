@@ -7,6 +7,7 @@ import ./view as proof_view
 import ../[trie_proof, store]
 import ../../codec/bounded
 import ../../codec/state/[trie as state_trie, layout as state_layout]
+
 type
   ProofStateImportLimits* = object ## Input lookup traversal and temporary entry copies are independent of the resulting complete store's inherited policies.
     lookups*: ElementLimit

@@ -8,6 +8,7 @@ import ../../codec/bounded
 import ../../codec/state/composition as state_composition
 import ./logical_inventory as supplied_logical_inventory
 import ../[inventory, manifest, store]
+
 type
   SuppliedServicesLimits* = object ## Every copied service/child descriptor, raw key and payload is charged before allocating output arrays.
     services*, facts*: ElementLimit

@@ -14,6 +14,7 @@ import ../../../src/storage/node/records as node_records
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 type Capture = ref object ## Private consumer staging owns copies only; failed streams cannot expose a completed capture.
   keys: seq[StateKey]
   values: seq[seq[byte]]

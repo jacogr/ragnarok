@@ -11,6 +11,7 @@ import ../supplied/logical_inventory as supplied_logical_inventory
 import ./[globals as current_globals, profile as current_profile]
 import ../accumulation/current/update as accumulation_current_update
 import ../../chain/[genesis, provider]
+
 type
   CurrentLogicalState* = object ## Private higher provenance owner and revalidated logical owner cannot be paired unchecked.
     initialized: bool

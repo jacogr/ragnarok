@@ -16,6 +16,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 const FileName = "application-checkpoint-file"
 
 proc cycle(expected: ApplicationCheckpointIdentity) =

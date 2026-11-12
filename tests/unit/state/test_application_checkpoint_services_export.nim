@@ -10,6 +10,7 @@ import ../../../src/app/checkpoint/[identity as checkpoint_identity,
     transfer as checkpoint_transfer, worker as checkpoint_worker, file as checkpoint_file]
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
+
 const FileName = "application-checkpoint-services-export"
 
 proc waitDone(owner: var Services) =

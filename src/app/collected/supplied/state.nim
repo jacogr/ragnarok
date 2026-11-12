@@ -8,6 +8,7 @@ import ./plan as collected_supplied_plan
 import ../../../state/current/[state as current_state, logical as current_logical]
 import ../../../state/accumulation/current/update as accumulation_current_update
 import ../../../codec/state/composition as state_composition
+
 type
   CollectedSuppliedError* {.pure.} = enum ## Invalid frozen source, stale canonical prior and original complete matching failures remain distinct.
     Uninitialized, None, InvalidPlan, StaleUpdate, StateFailure, LogicalFailure

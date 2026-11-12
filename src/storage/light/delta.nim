@@ -9,11 +9,13 @@ import ../[state_proof, database_identity]
 import ../../codec/bounded
 import ../../codec/state/[layout as state_layout, trie as state_trie]
 import ../../crypto/primitives
+
 const
   Magic = "RAGNAROK-LIGHT-DELTA-V1\n"
   LightDeltaHeaderBytes* = Magic.len+152 ## Fixed metadata precedes every variable-width edit.
   LightDeltaOverhead* = LightDeltaHeaderBytes+32 ## A complete frame includes its corruption checksum.
   EditBytes = 42
+
 type
   LightDeltaSequence* = distinct uint64 ## Zero is a checkpoint baseline; encoded updates require a positive exact sequence.
   LightDeltaLimits* = object ## Bound mutation descriptors and one encoded frame independently of the retained image.
