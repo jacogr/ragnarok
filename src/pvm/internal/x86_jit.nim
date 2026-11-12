@@ -729,6 +729,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
     fixes.add(X86CycleFixup(at: code.bytes.len, target: target))
     cycleWord(code, 0)
 
+  include ./x86_local_edges
+
   when defined(pvmX86Jit) and NativeCheckedReadEnabled:
     proc readBodyReturn(code: var X86Block, status: uint32) =
       ## Both exits restore the same SysV stack frame and define the complete scalar return.
@@ -1410,6 +1412,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
         ## The synchronous leaf owns the canonical file until return. Its mapped Read slots
         ## hold the pre-Read checkpoint while the hardware bank holds current guest state.
+        ## Seal only complete local fixup metadata after the original image-size refusal.
+        ## Branch contraction preserves every other byte and the checked-header return ABI.
         assert sizeof(RegisterFile) == 104 and sizeof(NativeCycleContext) == NativeCycleContextBytes
         if not cycle.read.complete or cycle.read.continuationInfo.terminal == 0 or
             cycle.read.len != readCycleBodyOps+readCycleSetupOps or
@@ -1625,13 +1629,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           emitCheckedReadOperations(code, fixes, labels, cycle.read, roleAccess,
             readCycleBodyOps, readCyclePaidMiss, nextLabel)
           cycleEdge(code, fixes, 0, readComplete)
+        # Preserve renderer selection against the original, unrelaxed per-leaf ceiling.
         if code.bytes.len > NativeImageByteLimit: return @[]
-        for fix in fixes:
-          # The complete image ceiling proves signed rel32 for both forward and backward edges.
-          let delta = cast[uint32](int32(labels[int(fix.target)]-(fix.at+4)))
-          for shift in 0..<4:
-            code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
-        takeX86Instructions(code)
+        sealX86LocalEdges(code, fixes, labels)
 
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
         ## Ordinary x86 uses register budgets and credits for eligible connected cycles.

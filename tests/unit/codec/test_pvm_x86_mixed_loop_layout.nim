@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Preserve every x86 mixed-loop edge through signed-width changes and fixed-point cascades.
+## Preserve every shared x86 local edge through signed-width changes and fixed-point cascades.
 
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/[native_ir, x86_jit]
@@ -36,6 +36,12 @@ when NativeReadCycleEnabled:
           for shift in 0..<4:
             assert image[at+edgeLength-4+shift] ==
               byte((cast[uint32](int32(delta)) shr (shift*8)) and 255)
+  # Read-cycle label views may be larger than the mixed-loop fixed array.
+  # Exercise the full uint8 label domain at both signed short-edge boundaries.
+  let highForward = x86MixedLoopRelaxProof(127, false, 0x85, 255)
+  assert highForward.len == 130 and highForward[0] == 0x75 and highForward[1] == 127
+  let highBackward = x86MixedLoopRelaxProof(126, true, 0, 255)
+  assert highBackward.len == 129 and highBackward[126] == 0xeb and highBackward[127] == 128
   let cascade = x86MixedLoopRelaxCascadeProof()
   assert cascade.len == 129 and cascade[0] == 0x75 and cascade[1] == 126
   for index in 2..<126: assert cascade[index] == 0x90

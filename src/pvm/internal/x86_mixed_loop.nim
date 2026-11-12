@@ -8,112 +8,26 @@ when declared(X86Block):
   type X86MixedLoopLabels = array[3+5*(int(NativeReadFactLimit)-1), int]
     ## The paid loop has three fixed targets and at most five targets per body operation.
 
-  func mixedLoopPosition(fixes: openArray[X86CycleFixup], savings: openArray[byte],
-      original: int): int =
-    ## Map an original boundary after selected, disjoint branch contractions.
-    assert fixes.len == savings.len
-    result = original
-    for index in 0..<fixes.len:
-      # A boundary before this displacement retains every byte of this edge.
-      if fixes[index].at+4 <= original: result -= int(savings[index])
-
-  proc sealMixedLoop(code: var X86Block, fixes: openArray[X86CycleFixup],
-      labels: X86MixedLoopLabels): seq[byte] =
-    ## Record all relative fields as sorted disjoint rel32 edges with instruction-boundary labels.
-    ## Each edge contracts once; distances never grow, so the monotone fixed point is finite.
-    ## Preserve other bytes and entry zero; retain the caller's conservative pre-relax 4 KiB cap.
-    var savings = newSeq[byte](fixes.len)
-    var starts = newSeq[int](fixes.len)
-    var shortOpcodes = newSeq[byte](fixes.len)
-    var previousEnd = 0
-    for index in 0..<fixes.len:
-      # Fixups describe complete original rel32 instructions in emission order.
-      let fix = fixes[index]
-      assert fix.at >= 1 and fix.at+4 <= code.bytes.len
-      if code.bytes[fix.at-1] == 0xe9:
-        starts[index] = fix.at-1
-        shortOpcodes[index] = 0xeb
-      else:
-        assert fix.at >= 2 and code.bytes[fix.at-2] == 0x0f
-        assert code.bytes[fix.at-1] >= 0x80 and code.bytes[fix.at-1] <= 0x8f
-        starts[index] = fix.at-2
-        shortOpcodes[index] = code.bytes[fix.at-1]-0x10
-      assert starts[index] >= previousEnd
-      previousEnd = fix.at+4
-      let target = labels[int(fix.target)]
-      assert target >= 0 and target < code.bytes.len
-    for fix in fixes:
-      # No recorded target may land within any instruction being contracted.
-      let target = labels[int(fix.target)]
-      for index in 0..<fixes.len:
-        assert target <= starts[index] or target >= fixes[index].at+4
-
-    var changed = true
-    while changed:
-      # At most one transition per edge is possible; no selected edge widens again.
-      changed = false
-      for index in 0..<fixes.len:
-        if savings[index] != 0: continue
-        let fix = fixes[index]
-        let saved = byte(fix.at+4-starts[index]-2)
-        let start = mixedLoopPosition(fixes, savings, starts[index])
-        var target = mixedLoopPosition(fixes, savings, labels[int(fix.target)])
-        if labels[int(fix.target)] >= fix.at+4:
-          # A forward target also moves when this same edge becomes shorter.
-          target -= int(saved)
-        let delta = target-(start+2)
-        if delta >= -128 and delta <= 127:
-          savings[index] = saved
-          changed = true
-
-    result = @[]
-    var cursor = 0
-    for index in 0..<fixes.len:
-      # Preserve every nonbranch byte, including all guards and memory operations.
-      let fix = fixes[index]
-      while cursor < starts[index]:
-        result.add(code.bytes[cursor])
-        inc cursor
-      assert result.len == mixedLoopPosition(fixes, savings, starts[index])
-      let target = mixedLoopPosition(fixes, savings, labels[int(fix.target)])
-      if savings[index] != 0:
-        let delta = target-(result.len+2)
-        assert delta >= -128 and delta <= 127
-        result.add(shortOpcodes[index])
-        result.add(byte(cast[uint32](int32(delta)) and 255))
-      else:
-        # A remaining long edge keeps its condition and exact mapped target.
-        while cursor < fix.at:
-          result.add(code.bytes[cursor])
-          inc cursor
-        let delta = cast[uint32](int32(target-(result.len+4)))
-        for shift in 0..<4: result.add(byte((delta shr (shift*8)) and 255))
-      cursor = fix.at+4
-    while cursor < code.bytes.len:
-      result.add(code.bytes[cursor])
-      inc cursor
-    assert result.len == mixedLoopPosition(fixes, savings, code.bytes.len)
-
   when defined(pvmX86MixedRelaxWitness) or defined(pvmSharedAsyncWitness):
     proc x86MixedLoopRelaxProof*(padding: int, backward: bool,
-        condition: byte): seq[byte] =
+        condition: byte, target = 0'u8): seq[byte] =
       ## Private literal layouts exercise signed displacement boundaries through real fixups.
       assert padding >= 0 and padding <= 256
       assert condition == 0 or (condition >= 0x80 and condition <= 0x8f)
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
-      var labels = default(X86MixedLoopLabels)
+      var labels = default(array[256, int])
       if backward:
         # The original entry itself is a legal self/backward target.
-        labels[0] = 0
+        labels[int(target)] = 0
         for _ in 0..<padding: put(code, [0x90'u8])
-        cycleEdge(code, fixes, condition, 0)
+        cycleEdge(code, fixes, condition, target)
       else:
-        cycleEdge(code, fixes, condition, 0)
+        cycleEdge(code, fixes, condition, target)
         for _ in 0..<padding: put(code, [0x90'u8])
-        labels[0] = code.bytes.len
+        labels[int(target)] = code.bytes.len
       put(code, [0xc3'u8])
-      sealMixedLoop(code, fixes, labels)
+      sealX86LocalEdges(code, fixes, labels)
 
     proc x86MixedLoopRelaxCascadeProof*(): seq[byte] =
       ## The first edge fits only after the later edge contracts on an earlier pass.
@@ -125,7 +39,7 @@ when declared(X86Block):
       cycleEdge(code, fixes, 0, 0)
       labels[0] = code.bytes.len
       put(code, [0xc3'u8])
-      sealMixedLoop(code, fixes, labels)
+      sealX86LocalEdges(code, fixes, labels)
 
   proc mixedLoopReadPointer(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, width, refusal: byte, nextLabel: var byte) =
@@ -331,7 +245,7 @@ when declared(X86Block):
     put(code, [0x48'u8, 0x83, 0xc4, frameBytes, 0x41, 0x5d, 0x41, 0x5c, 0xc3])
 
     if code.bytes.len > NativeImageByteLimit: return @[]
-    sealMixedLoop(code, fixes, labels)
+    sealX86LocalEdges(code, fixes, labels)
 
   proc x86PaidMixedLoopInstructions*(operations: openArray[NativeOperation],
       guards: uint32): seq[byte] =
@@ -408,4 +322,4 @@ when declared(X86Block):
         put(code, [0xc3'u8])
 
     if code.bytes.len > NativeImageByteLimit: return
-    result = sealMixedLoop(code, fixes, labels)
+    result = sealX86LocalEdges(code, fixes, labels)

@@ -6,7 +6,7 @@
 The default x86 mixed-loop lowerer packs the same certified sources under the existing
 4096-byte arena ceiling. The boundary/fixup assumptions, monotone finite termination,
 position map and conservative pre-relaxation per-leaf ceiling are documented beside
-[sealMixedLoop](../src/pvm/internal/x86_mixed_loop.nim). Source admission, gas/attempt
+[sealX86LocalEdges](../src/pvm/internal/x86_local_edges.nim). Source admission, gas/attempt
 receipts, original continuations, eight-entry inventory and sixteen reconstruction checks
 remain owned by the shared pipeline.
 
