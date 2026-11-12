@@ -305,10 +305,17 @@ when declared(FlatFrame):
       var frame = newFlatFrame(plan, [], MachineInfo(gas: MachineGas(1000000)))
       frame.nativeSession = newNativeSession(runtime)
       var lastPc = 0'u32
-      for ordinal in 0..<plan.facts.len:
-        let fact = plan.facts[ordinal]
-        if fact.opcode != 171: continue
-        let original = flatSourcePayload(plan, fact)
+      let extent = codeLength(program)
+      assert extent.error == ProgramError.None
+      var pc = 0'u64
+      while pc < extent.value:
+        # Enumerate immutable source; derived facts do not exist before each frame resolves a block.
+        let decoded = instruction(program, CodeAddress(pc))
+        assert decoded.error == ProgramError.None
+        let item = decoded.value
+        pc += 1+uint64(item.skip)
+        if item.opcode != 171: continue
+        let original = flatSourcePayload(decoded)
         lastPc = uint32(original.args.x shr 32)
         let header = flatResolve(frame, lastPc)
         assert header != flatStop

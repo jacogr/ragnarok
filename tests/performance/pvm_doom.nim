@@ -180,16 +180,18 @@ let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(
     4*1024*1024), JumpCountLimit(1048576))
 assert decoded.error == ProgramError.None
 let owner = decoded.value
-var images = newSeq[PageImage](pages)
+var regions = newSeq[InitializationRegion](pages)
 for page in 0..<pages:
   # Every complete source page retains its canonical index and permissions.
   let cursor = 152+wireSize+page*4101
   let permission = byte(data[cursor+4])
   assert permission in [1'u8, 2'u8]
-  images[page].index = PageIndex(uint32(word(data, cursor, 4)))
-  images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
-  copyInvocationInput(images[page].bytes, data, cursor+5)
-let captured = captureMemory(images, PageLimit(8192))
+  let index = uint32(word(data, cursor, 4))
+  assert index < 0x100000'u32
+  regions[page] = InitializationRegion(first: PageIndex(index), past: PageIndex(index+1),
+    access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
+    source: InitializationSource.First, offset: cursor+5, length: 4096)
+let captured = captureInvocationMemory(regions, data, PageLimit(8192))
 assert captured.error == MachineError.None
 let source = captureMachine(owner, captured.value, info).value
 let prepareWallStart = if requestedPreparation == "1": getMonoTime().ticks else: 0'i64
@@ -253,15 +255,15 @@ for sample in 0..<samples:
   assert finalIndices.value.len == pages and sourceIndices.value.len == pages
   for page in 0..<pages:
     # Complete final-state comparison and source immutability validation stay outside collection.
-    assert uint32(finalIndices.value[page]) == uint32(images[page].index)
-    assert uint32(sourceIndices.value[page]) == uint32(images[page].index)
-    let finalPage = pageImage(finalMemory, images[page].index).value
-    let original = pageImage(captured.value, images[page].index).value
-    assert finalPage.access == images[page].access
-    assert original.access == images[page].access
+    assert uint32(finalIndices.value[page]) == uint32(regions[page].first)
+    assert uint32(sourceIndices.value[page]) == uint32(regions[page].first)
+    let finalPage = pageImage(finalMemory, regions[page].first).value
+    let original = pageImage(captured.value, regions[page].first).value
+    assert finalPage.access == regions[page].access
+    assert original.access == regions[page].access
     for i in 0..<4096:
       assert finalPage.bytes[i] == byte(expected[120+page*4096+i])
-      assert original.bytes[i] == images[page].bytes[i]
+      assert original.bytes[i] == byte(data[regions[page].offset+i])
   let originalCpu = machineInfo(source).value
   assert uint64(originalCpu.pc) == uint64(info.pc) and
       not originalCpu.blockCharged

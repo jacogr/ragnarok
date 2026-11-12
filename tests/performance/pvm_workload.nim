@@ -147,36 +147,35 @@ for row in 0..<11:
   let preparation = getMonoTime().ticks
   var wire: seq[byte] = @[]
   for i in 0..<int(length):
-    # Captured program bytes and memory are prepared once, outside all execution samples.
+    # Program and memory admission happen once inside the enclosing cold invocation.
     wire.add(byte(data[cursor + i]))
   cursor += int(length)
   let program = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(128),
       JumpCountLimit(0)).value
-  var images: seq[PageImage] = @[]
+  var memory = default(Memory)
   if kind in [1'u8, 2, 4]:
-    # Aligned/crossing guests touch the same first pair; sparse cases retain additional mapped canaries.
+    # Copy the common pattern directly into final independent pages, preserving sparse holes.
     assert address in [0x10000'u64, 0x10fff'u64]
-    # Sparse cases admit 64 two-page pairs separated by unmapped holes; all retained bytes validate.
-    if kind == 4:
-      # The exact sparse count is known before staging. Fill the final input slots in order.
-      images = newSeq[PageImage](128)
-      for page in 0..<images.len:
-        let offset = (page div 2)*4 + page mod 2
-        images[page].index = PageIndex(uint32(16 + offset))
-        images[page].access = PageAccess.ReadWrite
-        for i in 0..<4096: images[page].bytes[i] = 33
-    else:
-      for page in 0..<2:
-        var image = PageImage(index: PageIndex(uint32(16 + page)), access: PageAccess.ReadWrite,
-          bytes: default(array[4096, byte]))
-        for i in 0..<4096: image.bytes[i] = 33
-        images.add(image)
-    for i in 0..<8:
-      # Initial scalar bytes are copied from the independent fixture before execution begins.
-      let offset = int(address - 0x10000) + i
-      images[offset div 4096].bytes[offset mod 4096] = byte((initial shr (8 *
-          i)) and 255)
-  let memory = captureMemory(images, PageLimit(if kind == 4: 128 else: 2)).value
+    var firstPair = default(array[8192, byte])
+    var common = default(array[4096, byte])
+    for index in 0..<firstPair.len: firstPair[index] = 33
+    for index in 0..<common.len: common[index] = 33
+    for index in 0..<8:
+      # Only the first pair differs; the initial scalar may cross its page boundary.
+      firstPair[int(address-0x10000)+index] = byte((initial shr (8*index)) and 255)
+    let pageCount = if kind == 4: 128 else: 2
+    var regions = newSeq[InitializationRegion](pageCount)
+    for page in 0..<pageCount:
+      let offset = if kind == 4: (page div 2)*4 + page mod 2 else: page
+      regions[page] = InitializationRegion(first: PageIndex(uint32(16+offset)),
+        past: PageIndex(uint32(17+offset)), access: PageAccess.ReadWrite,
+        source: (if page < 2: InitializationSource.First else: InitializationSource.Second),
+        offset: (if page < 2: page*4096 else: 0), length: 4096)
+    memory = captureInitializationMemory(regions, firstPair, common, PageLimit(uint32(
+        pageCount))).value
+  else:
+    # Non-memory workloads retain an empty independently owned mapping with the original limit.
+    memory = captureMemory([], PageLimit(2)).value
   var registers = default(RegisterFile)
   for i in 0..<13: registers[i] = RegisterValue(word(data, at + 65 + i * 8, 8))
   let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0),
@@ -285,20 +284,27 @@ for row in 0..<11:
       assert uint64(final.registers[i]) == word(data, at + 169 + i * 8, 8),
         "pvm synthetic terminal register mismatch"
       assert uint64(machineInfo(source).value.registers[i]) == uint64(registers[i])
-    for page in 0..<images.len:
+    for page in 0..<originalLayout.len:
       # Full byte checks retain output observability and catch extra writes beyond the measured scalar.
       let actual = pageImage(memoryOf(evaluated.value.machine).value, PageIndex(
           uint32(16 + (if kind == 4: (page div 2)*4 +
               page mod 2 else: page)))).value
       assert actual.access == PageAccess.ReadWrite
       for i in 0..<4096:
-        let physical = 0x10000'u64 + uint64((int(uint32(images[
+        let physical = 0x10000'u64 + uint64((int(uint32(originalLayout[
             page].index))-16) * 4096 + i)
         let expected = if physical >= address and physical - address < 8:
           byte((word(data, at + 21, 8) shr (8 * int(physical - address))) and
               255) else: 33'u8
         assert actual.bytes[i] == expected
-      assert pageImage(memoryOf(source).value, images[page].index).value.bytes == images[page].bytes
+      let retained = pageImage(memoryOf(source).value, originalLayout[page].index).value
+      assert retained.access == PageAccess.ReadWrite
+      for index in 0..<4096:
+        # Derive the original byte independently from the fixture, without retaining a staging copy.
+        let physical = uint64(uint32(originalLayout[page].index))*4096 + uint64(index)
+        let expected = if physical >= address and physical-address < 8:
+          byte((initial shr (8*int(physical-address))) and 255) else: 33'u8
+        assert retained.bytes[index] == expected
     if kind == 4:
       for pair in 0..<64:
         # Unmapped holes remain faults in both the retained source and final immutable result.

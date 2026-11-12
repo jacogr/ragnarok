@@ -4,7 +4,9 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step.
 ##
-## A plan owns exact immutable source facts. The executable stream owns handlers,
+## A plan owns immutable source admission. Derived lazy catalogues belong to the
+## exclusively leased frame/stream and fill complete blocks at stable source-global ordinals.
+## The executable stream owns handlers,
 ## sealed operands, sites and stable offsets. A private frame owns mutable CPU,
 ## guest memory, budgets and callbacks. Restore and take move code-only state
 ## across calls. The executable cache retains no invocation pointers. Idle byte
@@ -17,11 +19,12 @@
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
 
-import std/[algorithm, assertions]
+import std/[algorithm, assertions, bitops]
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
+import ./metadata_store
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
@@ -84,6 +87,11 @@ when NativeCheckedReadEnabled:
         protectedTried, protectedInstalled, protectedActive, protectedCountable: bool
         protectedRemainingLimit: uint64
 
+type FlatSourceRanks = ref object
+  ## Immutable bitmap ranks preserve source-global ordinals without decoding every header again.
+  words: seq[uint64]
+  prefixes: seq[uint32]
+
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
   FlatNodeLimit* = distinct uint64 ## Ceiling on emitted header/operation nodes in one exclusive frame.
@@ -115,7 +123,7 @@ type
     key: NativeImageKey
     patches: array[3, FlatNativePatch]
     count: byte
-  FlatFact = object ## Immutable whole-program coordinates and quotas, captured by eager source decoding.
+  FlatFact = object ## Stable source coordinates and suffix quotas, immutable after block admission.
     pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
     ending, fallthrough: bool
@@ -128,17 +136,22 @@ type
   FlatTarget = object ## Only genuine jump-table and block-membership validation supplies positive target facts.
     pc: uint32
     valid: bool
-  FlatPlan* = ref object ## One immutable source/fact owner; executable stream mutation belongs only to a frame.
+  FlatPlan* = ref object ## Immutable admission, or a private derived catalogue owned by an exclusive frame/stream.
     source: Program
-    facts: seq[FlatFact]
-    # A marked PC stores its fact ordinal plus one; other PCs keep zero.
-    factAt: seq[uint32]
+    facts: MetadataStore[FlatFact]
+    # A materialized start stores its global ordinal plus one; operand and still-lazy PCs keep zero.
+    factAt: MetadataStore[uint32]
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
-    limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
-    allowNative: bool  # Immutable cold policy; forced interpretation never creates native handlers.
-    singleStep: bool   # A bounded adapter plan owns one instruction and never enters whole-program emission.
+    limits: FlatLimits     # Cold admission policy follows the existing hot plan fields.
+    allowNative: bool      # Immutable cold policy; forced interpretation never creates native handlers.
+    singleStep: bool       # A bounded adapter plan owns one instruction and never enters whole-program emission.
+    admission: nil FlatPlan # Private cache catalogue points back to its immutable admission identity.
+    admittedFacts: uint32  # Full validated source count is refused before any execution.
+    codeBytes: uint32      # Logical PC extent remains known before a lazy map is allocated.
+    ranks: FlatSourceRanks # Shared immutable source-global index, built once during admission.
+    materialized: uint32   # Filled fact slots only; reserved array capacity is a separate cost.
   FlatRegion = ref object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
@@ -170,7 +183,7 @@ type
     handlers: seq[FlatHandler]
     arguments: seq[FlatArgs]
     sites: seq[uint32]
-    compiledForPc: seq[uint32]
+    compiledForPc: MetadataStore[uint32]
     sourceMemory: Memory
     sourcePages: seq[PageDescription]
     roBase, rwBase, stackBase: uint64
@@ -1616,9 +1629,79 @@ proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
     if fact.opcode == 50: result.handler = flatDynamic[50, true]
     elif fact.opcode == 180: result.handler = flatDynamic[180, true]
 
+proc sourceRanks(source: Program, extent: uint64, count: uint32): FlatSourceRanks =
+  ## Build one rank per 64 code bytes; only the validated marker bitmap is traversed.
+  let words = int(extent div 64 + uint64(int(extent mod 64 != 0)))
+  result = FlatSourceRanks(words: newSeq[uint64](words), prefixes: newSeq[uint32](words))
+  var word = 0'u64
+  var shift = 0
+  var slot = 0
+  var seen = 0'u32
+  for value in admissionMaskBytes(source):
+    word = word or (uint64(value) shl shift)
+    shift += 8
+    if shift == 64:
+      # All set bits are genuine instruction starts in the validated immutable owner.
+      result.words[slot] = word
+      result.prefixes[slot] = seen
+      let added = uint32(countSetBits(word))
+      assert seen <= count and added <= count-seen
+      seen += added
+      inc slot
+      shift = 0
+      word = 0
+  if shift != 0:
+    # Canonical high padding is zero, so the partial final word contributes no false starts.
+    result.words[slot] = word
+    result.prefixes[slot] = seen
+    let added = uint32(countSetBits(word))
+    assert seen <= count and added <= count-seen
+    seen += added
+    inc slot
+  assert slot == words and seen == count
+
+func sourceOrdinal(ranks: FlatSourceRanks, pc: uint32): uint32 =
+  ## Select a genuine zero-based ordinal; only block materialization uses rank arithmetic.
+  let slot = int(pc div 64)
+  let bit = 1'u64 shl int(pc mod 64)
+  let word = ranks.words[slot]
+  assert (word and bit) != 0
+  ranks.prefixes[slot]+uint32(countSetBits(word and (bit-1)))
+
+proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
+    extent: uint64, count: uint32, allowNative: bool): FlatResult[FlatPlan] =
+  ## Admit all source/resource obligations now; derived facts belong to a later exclusive stream.
+  if uint64(count) > uint64(limits.facts):
+    return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
+  var owner = FlatPlan(source: source, limits: limits, cycles: cycles,
+    allowNative: allowNative, singleStep: false, admittedFacts: count, codeBytes: uint32(extent),
+    ranks: sourceRanks(source, extent, count))
+  var ordinal = 0'u64
+  while true:
+    # Jump-table membership remains eager and preserves fact-before-jump refusal precedence.
+    let resolved = jumpTarget(source, JumpIndex(ordinal))
+    if resolved.error != ProgramError.None: break
+    if ordinal >= uint64(limits.jumps):
+      return FlatResult[FlatPlan](status: FlatError.JumpLimitExceeded)
+    let target = resolved.value
+    let valid = basicBlockStart(source, target)
+    owner.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
+      valid: valid.error == ProgramError.None and valid.value))
+    inc ordinal
+  FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+
+func flatPlanIdentity(plan: FlatPlan): FlatPlan =
+  ## Private derived catalogues never replace the immutable identity used for cache leasing.
+  if plan == nil: return plan # Empty/default streams retain the original neutral identity.
+  let original = plan.admission
+  if original == nil: plan else: original
+
 proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     allowNative: bool = true): FlatResult[FlatPlan] =
-  ## Capture genuine complete instruction facts and containing-block pricing inputs before execution, preserving the explicit preparation boundary.
+  ## Validate full-source resource obligations and jump membership before execution.
+  ## Rank immutable opcode markers now; materialize complete block facts on first resolution.
+  assert sizeof(FlatArgs) == 16
+  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 24
   if not validFlatLimits(limits): return FlatResult[FlatPlan](status: FlatError.InvalidPolicy)
   let extent = codeLength(source)
   if extent.error != ProgramError.None or extent.value == 0:
@@ -1628,62 +1711,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   let instructions = instructionCount(source)
   if instructions.error != ProgramError.None: return FlatResult[FlatPlan](
       status: FlatError.InvalidProgram)
-  # Reserve only admitted counts. Over-limit input still follows the existing refusal loop.
-  let factCapacity = if uint64(instructions.value) <= uint64(limits.facts):
-      int(instructions.value)
-    else: 0
-  assert sizeof(FlatArgs) == 16
-  # Catalogue layout is a target for the later pinned layout gate, not a measured allocation claim.
-  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 24
-  var owner = FlatPlan(source: source, limits: limits, facts: newSeqOfCap[FlatFact](factCapacity),
-    factAt: newSeq[uint32](int(extent.value)), pricePcs: @[], cycles: cycles, jumps: @[],
-    allowNative: allowNative, singleStep: false)
-  var pc = 0'u64
-  var priceIndex = 0'u32
-  var begins = true
-  while pc < extent.value:
-    if uint64(owner.facts.len) >= uint64(limits.facts):
-      return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
-    let decoded = instructionHeader(source, CodeAddress(pc))
-    if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
-        status: FlatError.InvalidProgram)
-    let item = decoded.value
-    # This sequential walk already knows whether the preceding instruction ended a block.
-    if begins:
-      priceIndex = uint32(owner.pricePcs.len)
-      owner.pricePcs.add(item.address)
-    let fact = flatFact(decoded, priceIndex)
-    # The admission check bounds this positive ordinal by the 4,194,304-fact ceiling.
-    owner.factAt[int(pc)] = uint32(owner.facts.len + 1)
-    owner.facts.add(fact)
-    begins = fact.ending
-    pc = uint64(fact.next)
-  var count = 0'u32
-  var nodes = 0'u32
-  var at = owner.facts.len
-  while at > 0:
-    dec at
-    if owner.facts[at].ending:
-      # A genuine terminator begins the next reverse suffix; folded noops occupy no executable node.
-      count = 1
-      nodes = 0
-    else: inc count
-    if owner.facts[at].opcode != 2: inc nodes
-    owner.facts[at].sourceCount = count
-    owner.facts[at].nodeCount = nodes
-  var ordinal = 0'u64
-  while true:
-    let resolved = jumpTarget(source, JumpIndex(ordinal))
-    if resolved.error != ProgramError.None: break
-    if ordinal >= uint64(limits.jumps): return FlatResult[FlatPlan](
-        status: FlatError.JumpLimitExceeded)
-    let target = resolved.value
-    let valid = basicBlockStart(source, target)
-    owner.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
-      valid: valid.error == ProgramError.None and valid.value))
-    inc ordinal
-
-  FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+  return admitFlatPlan(source, cycles, limits, extent.value, instructions.value, allowNative)
 
 proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
     cycles: GasCycleLimit): FlatResult[FlatPlan] =
@@ -1701,7 +1729,8 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   fact.sourceCount = 1
   fact.nodeCount = 1
   FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
-    facts: @[fact], factAt: @[], pricePcs: @[], cycles: cycles, jumps: @[], limits: limits,
+    facts: singletonMetadataStore(fact), factAt: default(MetadataStore[uint32]), pricePcs: @[],
+        cycles: cycles, jumps: @[], limits: limits,
     allowNative: false, singleStep: true))
 
 proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
@@ -1770,6 +1799,60 @@ proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
   flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(pc), y: 0, slots: default(RegisterSlots)), 0)
   offset
 
+proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
+  ## Materialize one complete containing block, giving every interior resume its original quotas.
+  ## The cache exclusively owns this derived plan. The immutable admission owner stays untouched.
+  ## Preserve global logical fact slots so native adjacency proofs keep their original index space.
+  ## Allocate payload chunks only on writes; untouched blocks retain implicit zero metadata.
+  ## A requested block, including a branch prelink, can be catalogued before emission is refused.
+  let requested = instructionHeader(f.plan.source, CodeAddress(uint64(pc)))
+  if requested.error != ProgramError.None: return false
+  if f.plan.admission == nil:
+    # Fork only on the first valid resolution; never let two frames mutate one admission catalogue.
+    let original = f.plan
+    f.plan = FlatPlan(source: original.source, limits: original.limits, cycles: original.cycles,
+      jumps: original.jumps, allowNative: original.allowNative, singleStep: false,
+      admission: original, admittedFacts: original.admittedFacts, codeBytes: original.codeBytes,
+      factAt: initMetadataStore[uint32](int(original.codeBytes)), ranks: original.ranks,
+      facts: initMetadataStore[FlatFact](int(original.admittedFacts)))
+  let owner = f.plan
+  if owner.factAt[int(pc)] != 0: return true
+  let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
+  assert containing.error == ProgramError.None
+  var at = uint64(containing.value)
+  let first = int(sourceOrdinal(owner.ranks, uint32(at)))
+  var past = first
+  let priceIndex = uint32(owner.pricePcs.len)
+  owner.pricePcs.add(containing.value)
+  while true:
+    # Immutable validation guarantees complete marked headers through the block terminator.
+    assert at < uint64(owner.codeBytes) and owner.factAt[int(at)] == 0
+    assert past < owner.facts.len and owner.materialized < owner.admittedFacts
+    let decoded = instructionHeader(owner.source, CodeAddress(at))
+    assert decoded.error == ProgramError.None
+    let fact = flatFact(decoded, priceIndex)
+    assert owner.facts[past].sourceCount == 0
+    owner.factAt[int(at)] = uint32(past+1)
+    owner.facts[past] = fact
+    inc past
+    inc owner.materialized
+    if fact.ending: break
+    at = uint64(fact.next)
+  var count = 0'u32
+  var nodes = 0'u32
+  var index = past
+  while index > first:
+    # Within-block ordinals stay contiguous and immutable after this complete publication.
+    dec index
+    inc count
+    if owner.facts[index].opcode != 2: inc nodes
+    var fact = owner.facts[index]
+    fact.sourceCount = count
+    fact.nodeCount = nodes
+    owner.facts[index] = fact
+  assert owner.factAt[int(pc)] != 0
+  true
+
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## Reuse admitted headers and keep offset links stable. For a new suffix, check
   ## the node ceiling and then the work ceiling before the first node or map write.
@@ -1777,16 +1860,17 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## Interior resume can create a prepaid suffix header.
   if f.preparationFailure != FlatError.None: return flatStop
   if f.plan.singleStep: return flatSingleResolve(f, pc)
-  if uint64(pc) >= uint64(f.plan.factAt.len): return flatStop
+  if pc >= f.plan.codeBytes: return flatStop
   if f.compiledForPc.len > 0:
     let packed = f.compiledForPc[int(pc)]
     if packed != 0:
       let value = packed-1
       if (value and 0x80000000'u32) != 0: return value and 0x7fffffff'u32
+  if not flatAdmitBlock(f, pc): return flatStop
   let packedStart = f.plan.factAt[int(pc)]
   if packedStart == 0: return flatStop
   let start = int(packedStart - 1)
-  # Stable offset links forbid eviction inside execution. Refuse a whole suffix before its first allocation/map write.
+  # The source catalogue is already populated. These quotas guard executable nodes and compiled-PC entries.
   let ceiling = uint64(f.plan.limits.nodes)
   let occupied = uint64(f.handlers.len)
   assert occupied <= ceiling
@@ -1809,7 +1893,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     f.preparationFailure = FlatError.PreparationLimitExceeded
     return flatStop
   f.preparationUsed+=neededWork
-  if f.compiledForPc.len == 0: f.compiledForPc = newSeq[uint32](f.plan.factAt.len)
+  if f.compiledForPc.len == 0: f.compiledForPc = initMetadataStore[uint32](f.plan.factAt.len)
   let origin = uint32(f.handlers.len)
   var index = start
   var first = true
@@ -2185,7 +2269,7 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory, sourcePages: @[],
+    compiledForPc: default(MetadataStore[uint32]), sourceMemory: memory, sourcePages: @[],
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: default(
         RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
@@ -3576,6 +3660,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.pricingPlan = f.pricingPlan
   replacement.pricingMemo = f.pricingMemo
   replacement.pricingKind = f.pricingKind
+  replacement.plan = move(f.plan)
   replacement.handlers = move(f.handlers)
   replacement.arguments = move(f.arguments)
   replacement.sites = move(f.sites)
@@ -3769,7 +3854,8 @@ type FlatStream* = object
   ## A reusable exclusive cache retains program coordinates/handlers and counters, never CPU or memory.
   handlers: seq[FlatHandler]
   arguments: seq[FlatArgs]
-  sites, compiledForPc: seq[uint32]
+  sites: seq[uint32]
+  compiledForPc: MetadataStore[uint32]
   sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
   nativeOriginal: nil FlatHandler
   nativeInstallation: FlatNativeInstallation
@@ -3780,13 +3866,13 @@ type FlatStream* = object
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
+  catalogue: nil FlatPlan  # Exclusive derived metadata moves together with stable handler site ordinals.
 
-when defined(pvmArm64Jit) or defined(pvmX86Jit):
-  proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
-    ## Reject copying an owner that contains exclusive native JIT resources.
+proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
+  ## Reject copying exclusive native resources or a privately mutable lazy catalogue.
 
-  proc `=dup`*(source: FlatStream): FlatStream {.error.}
-    ## Reject duplication of an owner that contains exclusive native JIT resources.
+proc `=dup`*(source: FlatStream): FlatStream {.error.}
+  ## Reject duplication of exclusive native resources or a privately mutable lazy catalogue.
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Return the exclusive cache to the prepared owner with its admitted entries,
@@ -3801,6 +3887,11 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     failure: savedFailure,
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
     nativeInstalledEpoch: f.nativeInstalledEpoch, nativeInstallation: f.nativeInstallation)
+  let original = flatPlanIdentity(f.plan)
+  result.sourcePlan = original
+  if f.plan != nil and f.plan.admission != nil:
+    result.catalogue = move(f.plan)
+    f.plan = original # The emptied frame cannot retain mutable metadata now leased to the stream.
   when NativeReadCycleEnabled:
     assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
     when defined(pvmPaidMixedLoopWitness): assert f.mixedPair == nil
@@ -3815,7 +3906,8 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## An absent saved failure leaves the receiving frame's status intact, including
   ## a sticky refusal on a same-frame restore. A fresh frame can use the admitted
   ## entries. Any new suffix must fit the remaining node and preparation-work quota.
-  if stream.sourcePlan != nil and stream.sourcePlan != f.plan:
+  let identity = flatPlanIdentity(f.plan)
+  if stream.sourcePlan != nil and stream.sourcePlan != identity:
     # Refuse before consuming another owner's price, executable capability or scalar coordinates.
     f.preparationFailure = FlatError.InvalidProgram
     return
@@ -3825,6 +3917,11 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     invalidateNativeStream(f.nativeSession)
     stream = default(FlatStream)
     return
+  let catalogue = stream.catalogue
+  if catalogue != nil:
+    # Narrow the optional retained owner before handing off its sole mutable capability.
+    f.plan = catalogue
+    stream.catalogue = nil
   stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
@@ -3882,8 +3979,30 @@ func streamPreparation*(stream: FlatStream): uint64 =
   stream.preparation
 
 func planFacts*(plan: FlatPlan): uint64 =
-  ## Immutable decoded-fact occupancy belongs to the admitted source owner.
+  ## Report the full admitted source count; lazy materialization never changes its resource obligation.
+  if not plan.singleStep: return uint64(plan.admittedFacts)
   uint64(plan.facts.len)
+
+func metadataPayloadBytes*(frame: FlatFrame): uint64 =
+  ## Copied allocated fact/map payload excludes directory and executable-handler storage.
+  ## A default or moved frame owns no metadata.
+  if frame.plan == nil: return 0
+  uint64(allocatedElements(frame.plan.facts))*uint64(sizeof(FlatFact)) +
+    uint64(allocatedElements(frame.plan.factAt)+allocatedElements(frame.compiledForPc))*4
+
+func materializedFacts*(frame: FlatFrame): uint64 =
+  ## Copied occupancy reports only blocks requested by resolution, including branch prelinks.
+  if frame.plan == nil: 0'u64 else: uint64(frame.plan.materialized)
+
+func materializedOrdinal*(frame: FlatFrame, pc: CodeAddress): uint32 =
+  ## Copied global ordinal tag; zero means this instruction has no materialized fact.
+  if frame.plan == nil or uint64(pc) >= uint64(frame.plan.factAt.len): return 0
+  frame.plan.factAt[int(uint64(pc))]
+
+func materializedFacts*(stream: FlatStream): uint64 =
+  ## Observe the saved catalogue without exporting its mutable owner or coordinates.
+  let catalogue = stream.catalogue
+  if catalogue == nil: 0'u64 else: uint64(catalogue.materialized)
 
 func flatScratchSlot(pages: seq[PageDescription], physical: uint32): int =
   ## Same-map validation proves every retained dirty ordinal still belongs to this sorted mapping.
@@ -4052,7 +4171,8 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     runFlat(checked, quota)
     assert observed.reason == oracle.StepError.StepLimitExceeded and observed.reason == checked.reason
     assert observed.info == checked.info and observed.info.blockCharged
-    assert observed.info.pc == CodeAddress(uint64(plan.facts[int(proof.first)+int(
+    # The active frame owns materialized facts; the original admission plan stays immutable.
+    assert observed.info.pc == CodeAddress(uint64(observed.plan.facts[int(proof.first)+int(
         proof.span)-1].pc))
     assert observed.mixedProbe == nil and observed.barrier == flatStop and observed.savedHandler == nil
     assert observed.handlers[int(terminal)] == flatBranch[171]
@@ -4133,7 +4253,8 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopEntryWitness):
       assert native.mixedWitnessVisits == expected[scenario]
       if scenario == 1:
         assert native.reason == oracle.StepError.StepLimitExceeded and native.info.blockCharged
-        assert uint64(native.info.pc) == uint64(plan.facts[int(proof.first)+4].pc)
+        # Resolve the original instruction in this frame's private block catalogue.
+        assert uint64(native.info.pc) == uint64(native.plan.facts[int(proof.first)+4].pc)
       echo "MIXED_FUSED_ENTRY,", pc, ",", scenario, ",", native.mixedWitnessVisits
 
 when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):

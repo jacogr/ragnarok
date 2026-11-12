@@ -193,18 +193,19 @@ else:
       1024 * 1024), JumpCountLimit(1024 * 1024))
   assert decoded.error == ProgramError.None, "sieve program decoding"
   owner = decoded.value
-  var images = newSeq[PageImage](pageCount)
+  var regions = newSeq[InitializationRegion](pageCount)
   var cursor = 136 + wireSize
   for page in 0..<pageCount:
     # Pinky's writable state includes its initializer's heap, framebuffer and stack residues.
     let index = PageIndex(uint32(word(data, cursor, 4)))
     let permission = byte(data[cursor + 4])
     assert permission in [1'u8, 2'u8]
-    images[page].index = index
-    images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
-    copyInvocationInput(images[page].bytes, data, cursor + 5)
+    assert uint32(index) < 0x100000'u32
+    regions[page] = InitializationRegion(first: index, past: PageIndex(uint32(index)+1),
+      access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
+      source: InitializationSource.First, offset: cursor+5, length: 4096)
     cursor += 4101
-  let captured = captureMemory(images, PageLimit(uint32(pageCount)))
+  let captured = captureInvocationMemory(regions, data, PageLimit(uint32(pageCount)))
   assert captured.error == MachineError.None
   memory = captured.value
 # All thirteen caller registers, finite gas and uncharged entry come from the frozen invocation ABI.

@@ -16,6 +16,7 @@
 ## Paper and JAM profiles share the framing. JAM's scoped validation and table
 ## normalization are documented on decodeJamProgram and qualified in spec/pvm-program.md.
 
+import std/assertions
 import ../codec/natural
 
 const
@@ -568,6 +569,15 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
       # Captured PCs fit host int and nonnegative offsets fit signed32, so this uint64 sum cannot wrap.
       item.targetStartsBlock = validStaticTarget(data, pc+uint64(item.displacement))
   ProgramResult[Instruction](status: ProgramError.None, completed: item)
+
+iterator admissionMaskBytes*(program: Program): byte =
+  ## Copied marker bytes from an immutable, fully validated owner.
+  ## Bounds and canonical padding were established by decode; no borrowed storage escapes.
+  assert program.data != nil
+  let data = program.data
+  let count = data.codeLength div 8 + int(data.codeLength mod 8 != 0)
+  for offset in 0..<count:
+    yield data.bytes[data.maskOffset+offset]
 
 proc instructionHeader*(program: Program, address: CodeAddress): ProgramResult[InstructionHeader] =
   ## Copy marked instruction boundaries without decoding operands or resolving static destinations.
