@@ -13,6 +13,12 @@ not describe the current complete STF path or establish full JAM wire parity.
 
 ## Current unreleased Gray Paper contract
 
+The [pinned footprint amendment](https://github.com/gavofyork/graypaper/blob/43f328c9717a62b40ae4582ddb7e390ddb4197eb/text/pvm_invocations.tex)
+at `43f328c9` returns FULL when the prospective item count exceeds E4
+or the prospective octet count exceeds E8. Exact maxima are valid.
+The write guest witnesses check both exact limits and one-unit overflow,
+including preservation of the prior state on refusal.
+
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
 selects write as host 5. Register r7 selects an account (all ones means self).
 Key pointer/length and value pointer/length occupy r8-r11. Current self writes
@@ -68,9 +74,9 @@ debt retains the existing GasRangeExceeded local gate.
 Deposit comparison uses the equivalent `base + itemRate*items + byteRate*octets
 <= balance + gratis`. The right side may require 65 bits. Each exact 128-bit
 product is compared and subtracted from that budget, so neither overflow nor
-saturation can turn an underfunded account into an accepted one. Candidate E4/E8
-footprint overflow is a local InvalidState refusal; inconsistent old counters
-refuse as MalformedState. The counters are serialized account facts updated by
+saturation can turn an underfunded account into an accepted one. Under the older
+pin, prospective E4/E8 footprint overflow was a local InvalidState refusal.
+The current rule returns FULL. Inconsistent old counters still refuse as MalformedState. The counters are serialized account facts updated by
 an exact delta, not a full reverse reconstruction of hashed storage namespaces.
 
 The regular effect retains a new complete-map owner only after inherited store

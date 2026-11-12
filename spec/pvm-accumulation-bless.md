@@ -3,7 +3,7 @@
 ## Scope and authority
 
 Qualify bless (16), Omega_B, against the [owned-role amendment](https://github.com/gavofyork/graypaper/blob/068d88c6f6a97e5294afa8619b24de947788733a/text/pvm_invocations.tex)
-at the repository's pinned revision `068d88c6`. Charge
+introduced in revision `068d88c6`. Charge
 `422 + 20*r12` before capture, including when r11 keeps the current allowance
 dictionary. A full-width all-ones role register or input pointer keeps the
 corresponding current value. An all-ones E4 assigner keeps that core's owner.

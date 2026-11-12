@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_VERDICT_AVAILABILITY",
   "files": {
-    "jam-fuzzer-full-verdict-availability.json": "d7c9c7204ffd93bb0bdada6b6845db93958e187df399735b901aba540d2fd1f8"
+    "jam-fuzzer-full-verdict-availability.json": "9f6659c478048fbf1b9f01ad9d4c3625e20f14ae615c0cfe48f82a85c08189f3"
   },
   "target": "jam-fuzzer-full-verdict-availability.json"
 }

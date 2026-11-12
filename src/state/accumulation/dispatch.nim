@@ -394,7 +394,7 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   of AccumulationEffectError.NotRequested:
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH retains both implication dimensions.
   of AccumulationEffectError.StorageFull:
-    response.registers[7] = RegisterValue(high(uint64)-4) # FULL preserves the prior pair.
+    response.registers[7] = RegisterValue(high(uint64)-4) # Prospective footprint or funding FULL preserves the prior pair.
   of AccumulationEffectError.LimitExceeded:
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Store ceilings remain local refusals.
   of AccumulationEffectError.BackendFailure:
@@ -1159,7 +1159,7 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   of AccumulationEffectError.NotRequested:
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH rejects all other existing history shapes.
   of AccumulationEffectError.StorageFull:
-    response.registers[7] = RegisterValue(high(uint64)-4) # FULL preserves all prior state and effects.
+    response.registers[7] = RegisterValue(high(uint64)-4) # Prospective footprint or funding FULL preserves all prior effects.
   of AccumulationEffectError.MalformedState:
     return hostFailure(AccumulationDispatchError.MalformedState) # Malformed canonical state has no fabricated guest verdict.
   of AccumulationEffectError.LimitExceeded:
@@ -1167,7 +1167,7 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   of AccumulationEffectError.BackendFailure:
     return hostFailure(AccumulationDispatchError.BackendFailure) # No partially solicited request survives hashing refusal.
   else:
-    return hostFailure(AccumulationDispatchError.InvalidContext) # Includes nonrepresentable footprint counters.
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Other invalid contexts remain local failures.
   hostSuccess[AccumulationDispatchError](response)
 
 proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):

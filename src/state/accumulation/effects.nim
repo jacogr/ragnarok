@@ -26,7 +26,7 @@ type
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
       BackendFailure, InvalidIndex,
-      StorageFull,               ## Candidate storage footprint requires more balance than the account has.
+      StorageFull,               ## Prospective storage footprint exceeds E4/E8 bounds or available funding.
       InvalidParameters,         ## Deposit settings must come from a valid parameter snapshot.
       NotManager,                ## Only the current manager can grant storage credits.
       UnauthorizedPrivilege,     ## The caller proposed a change to a privilege it does not hold.
@@ -1305,7 +1305,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   ## UnknownService/NotRequested distinguish absent targets from unauthorized writes before namespace hashing.
   ## Borrowed bytes remain stable during this call; the complete-map store independently captures accepted values.
   ## Empty values delete the key. Success retains the successor and distinguishes absent/present-empty prior values.
-  ## StorageFull is a funding refusal; copy/store limits, malformed counters and backend failure publish no successor.
+  ## StorageFull covers prospective E4/E8 overflow or insufficient funding. Invalid prior
+  ## counters, local limits and backend failures remain separate refusals.
   # Refuse without publishing a candidate map or successor effect pair.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationStorageChange](status: reason)
@@ -1350,10 +1351,10 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   if value.len != 0:
     # A nonempty value inserts one item; an empty value deletes, including absent-key no-ops.
     if uint64(key.len) > high(uint64)-34-uint64(value.len):
-      fail(AccumulationEffectError.InvalidState) # Full-width native extents cannot wrap a footprint.
+      fail(AccumulationEffectError.StorageFull) # The proposed entry alone exceeds the E8 footprint.
     let footprint = 34'u64+uint64(key.len)+uint64(value.len)
     if items == uint64(high(uint32)) or footprint > high(uint64)-octets:
-      fail(AccumulationEffectError.InvalidState) # Preserve declared E4/E8 footprint domains without wrapping.
+      fail(AccumulationEffectError.StorageFull) # Check the candidate E4/E8 domains before adding.
     items += 1
     octets += footprint
   metadata.storageItems = AccountStorageItems(uint32(items))
@@ -2330,8 +2331,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     length: RequestLength, parameters: Parameters, target: ServiceIndex): AccumulationEffectResult[
         AccumulationEffects] =
   ## Create an empty self/supervised request or restore an unavailable history using the invocation's own slot.
-  ## NotRequested is HUH for other shapes; StorageFull is FULL after exact prospective funding. Balance and existing preimages never change.
-  ## Publish metadata/history atomically under inherited write limits; InvalidState rejects unrepresentable footprint counters.
+  ## NotRequested is HUH for other shapes. StorageFull covers E4/E8 footprint overflow
+  ## and insufficient funding. Balance and existing preimages stay intact.
+  ## Publish metadata and history atomically under inherited write limits.
   # All refused/default operations carry only a reason, never a partially requested successor.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)
@@ -2367,7 +2369,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   if fresh:
     let added = 81'u64+uint64(uint32(length)) # E4 length plus fixed overhead is below 2^33.
     if uint32(metadata.storageItems) > high(uint32)-2 or uint64(metadata.storageBytes) > high(uint64)-added:
-      fail(AccumulationEffectError.InvalidState) # Prove both serialized counter additions before forming them.
+      fail(AccumulationEffectError.StorageFull) # Prove both serialized counter additions before forming them.
     metadata.storageItems = AccountStorageItems(uint32(metadata.storageItems)+2)
     metadata.storageBytes = AccountStorageBytes(uint64(metadata.storageBytes)+added)
   if not funded(metadata, parameters):
