@@ -1,10 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One encompassing process-CPU/wall boundary shared by every canonical PVM workload.
+## Complete invocation clocks and synchronous frozen-input capture shared by canonical PVM workloads.
 
 import std/[assertions, monotimes, syncio]
-import ../../src/pvm/step
+import ../../src/pvm/[step, machine]
 import ../support/pvm_owner_record
 
 proc processCpu(): int64 {.importc: "pvm_sieve_cpu_nanoseconds",
@@ -17,6 +17,17 @@ proc copyInvocationInput*(output: var openArray[byte], input {.byref.}: string,
   assert output.len > 0 and offset >= 0 and offset <= input.len and
       output.len <= input.len - offset
   copyMem(addr output[0], readRawData(input, offset), output.len)
+
+proc captureInvocationMemory*(regions: openArray[InitializationRegion],
+    input {.byref.}: string, limit: PageLimit): MachineResult[Memory] =
+  ## Copy validated fixture spans directly into immutable pages, without a PageImage staging vector.
+  ## The by-reference string stays alive and unchanged throughout capture, including SSO inputs.
+  ## The byte view is private to this call; capture validates every region and retains no pointer.
+  if input.len == 0:
+    # Empty inputs have no byte address; the initializer still validates region extents.
+    return captureInitializationMemory(regions, [], [], limit)
+  let bytes = cast[ptr UncheckedArray[byte]](readRawData(input))
+  captureInitializationMemory(regions, toOpenArray(bytes, 0, input.len-1), [], limit)
 
 type
   InvocationRuntime* = NativeRuntime
