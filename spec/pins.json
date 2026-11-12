@@ -1,7 +1,7 @@
 {
   "graypaper": {
     "repository": "https://github.com/gavofyork/graypaper",
-    "commit": "068d88c6f6a97e5294afa8619b24de947788733a",
+    "commit": "43f328c9717a62b40ae4582ddb7e390ddb4197eb",
     "serialization_source_sha256": "6638b901e3187be42083ace5e23094a04a94967ced5cb737844c00091e3e9ec1",
     "path": "vendor/graypaper",
     "source_sha256": {
@@ -20,10 +20,10 @@
       "text/merklization.tex": "30e11a6e52cf16a0ae9b90b5090316648e2f642b0ddf819c19b0919a0c311aea",
       "text/authorization.tex": "9873bce01eeb25d657aa32955e3f487388eeb6029128ffebb7ae312b0af1ca81",
       "text/recent_history.tex": "1a5424af880851d77baf51d29d05a11cff689a007dd44d991f40cf7025a6fc36",
-      "text/accounts.tex": "ea2f84619862f9fef91427b7f696538af438daf1e5dcbdbce21f11ba7c88b80c",
+      "text/accounts.tex": "4a32efa69f6366840c7354cf79882b5b5ac0484f22943793e1eb105c640ac0df",
       "text/overview.tex": "5f60dadd2198ec8927bc07ac24f488cc0746f1558fd302e0441ed1044f682b32",
       "text/statistics.tex": "b7aa008f19f5626d2e90a814065378c94c1e6b06a0ab8d93bfa2a3a54d472cd8",
-      "text/pvm_invocations.tex": "ac3a3f4e48369a9a8425d2933e9cd19386fde62d8c9b6743e6e0c54a0b486921",
+      "text/pvm_invocations.tex": "5f89a50c2c2b44aa7440f9d091391f986351765930977401782812985ef8dd15",
       "text/utilities.tex": "66f096f97269d4152316ebb68a18d67f15b8052ecfe3034f29299cff7f36ff60",
       "text/pvm.tex": "7cde11ac4542b4f02b0b5bba4d42bf0a91d009193c700b5f52846403748f866c",
       "preamble.tex": "5c16e92117c50fea78f6e2b30620d1ed68f9e9bd66c0cbca203d4346b7607507"

@@ -237,20 +237,28 @@ assert run(underfunded, copy = 0).value.exit == StepExit.OutOfGas and hashCalls(
 failHash(0)
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-2193, "full-width guest credit"
-for items in [high(uint32)-2, high(uint32)-1, high(uint32)]:
-  let completed = run(source(account = ServiceMetadata(storageItems: AccountStorageItems(items))),
-      params = parameters(0, 0, 0))
-  if items == high(uint32)-2:
-    assert uint32(metadata(context(completed)).storageItems) == high(uint32), "exact E4 item addition edge"
+# An absent request for three bytes adds two items and 84 octets.
+for sample in [(high(uint32)-2, high(uint64)-84, true),
+    (high(uint32)-1, high(uint64)-84, false),
+    (high(uint32), high(uint64)-84, false),
+    (high(uint32)-2, high(uint64)-83, false)]:
+  let (items, octets, accepted) = sample
+  let prepared = source(account = ServiceMetadata(storageItems: AccountStorageItems(items),
+    storageBytes: AccountStorageBytes(octets)))
+  let before = prepared.machineBootstrap.value.bootstrapService.value.serviceState.value
+  let completed = run(prepared, params = parameters(0, 0, 0))
+  assert completed.error == AccumulationDispatchError.None
+  resultCode(completed, if accepted: 0'u64 else: high(uint64)-4)
+  let regular = context(completed)
+  if accepted:
+    assert uint32(metadata(regular).storageItems) == high(uint32)
+    assert uint64(metadata(regular).storageBytes) == high(uint64)
+    assert regular.effectRequestHistory(hash, RequestLength(3)).value.state ==
+        RequestState.Requested
   else:
-    assert completed.error == AccumulationDispatchError.InvalidContext, "unrepresentable item count remains local"
-for octets in [high(uint64)-84, high(uint64)-83, high(uint64)]:
-  let completed = run(source(account = ServiceMetadata(storageBytes: AccountStorageBytes(octets))),
-      params = parameters(0, 0, 0))
-  if octets == high(uint64)-84:
-    assert uint64(metadata(context(completed)).storageBytes) == high(uint64), "exact E8 octet addition edge"
-  else:
-    assert completed.error == AccumulationDispatchError.InvalidContext, "unrepresentable footprint remains local"
+    assert sameStateSnapshot(regular.effectAccounts.value, before), "FULL preserves the complete regular map"
+  assert sameStateSnapshot(context(completed, AccumulationDimension.Exceptional).effectAccounts.value,
+    before), "the checkpoint retains its original map"
 let repeated = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8,
     196608), @[10'u8, 25], @[50'u8, 0]]))
 resultCode(repeated, high(uint64)-8)

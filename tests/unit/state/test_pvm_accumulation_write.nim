@@ -48,7 +48,8 @@ proc entries(): seq[StateEntry] =
 proc source(keyAddress = 65536'u64, keyLength = 1'u64, valueAddress = 196608'u64,
     valueLength = 3'u64, credit = 100000'u64, existing = false, balance = 10000'u64,
     gratis = 0'u64, spare = 1, selector = high(uint64), suffix: seq[seq[byte]] = @[@[50'u8,
-        0]], extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
+        0]], extra: seq[StateEntry] = @[], otherItems = 0'u32,
+    otherOctets = 0'u64): PreparedAccumulationMachine =
   var code = @[registerImmediate(7, selector), registerImmediate(8, keyAddress),
     registerImmediate(9, keyLength), registerImmediate(10, valueAddress),
     registerImmediate(11, valueLength), @[10'u8, 5]]
@@ -63,8 +64,9 @@ proc source(keyAddress = 65536'u64, keyLength = 1'u64, valueAddress = 196608'u64
   guestProgram(code, credit, extra = added,
     account = ServiceMetadata(balance: AccountBalance(balance), depositOffset: AccountBalance(
         gratis),
-      storageItems: AccountStorageItems(if existing: 1'u32 else: 0'u32),
-      storageBytes: AccountStorageBytes(if existing: 38'u64 else: 0'u64)), spareEntries = spare)
+      storageItems: AccountStorageItems(otherItems+(if existing: 1'u32 else: 0'u32)),
+      storageBytes: AccountStorageBytes(otherOctets+(if existing: 38'u64 else: 0'u64))),
+          spareEntries = spare)
 
 ## Execute through the actual dispatcher; local copy and machine budgets are independent of protocol gas.
 proc run(prepared: PreparedAccumulationMachine, limit = 64'u64,
@@ -282,16 +284,28 @@ assert removedEmpty.error == AccumulationEffectError.None and removedEmpty.value
     removedEmpty.value.previousBytes == 0
 assert uint32(metadata(removedEmpty.value.effects.effectContext(
     regular).value.effectAccounts.value).storageItems) == 0
-let fullItems = initial(ServiceMetadata(balance: AccountBalance(high(uint64)),
-  storageItems: AccountStorageItems(high(uint32))))
-assert recordAccumulationStorage(fullItems, @[73'u8], @[1'u8], schedule(0, 0, 0), ByteLimit(
-    1)).error ==
-  AccumulationEffectError.InvalidState
-let fullBytes = initial(ServiceMetadata(balance: AccountBalance(high(uint64)),
-  storageBytes: AccountStorageBytes(high(uint64))))
-assert recordAccumulationStorage(fullBytes, @[73'u8], @[1'u8], schedule(0, 0, 0), ByteLimit(
-    1)).error ==
-  AccumulationEffectError.InvalidState
+# A new one-byte key with three value bytes adds one item and 38 octets.
+for sample in [(false, high(uint32)-1, high(uint64)-38, 3'u64, true),
+    (false, high(uint32), high(uint64)-38, 3'u64, false),
+    (false, high(uint32)-1, high(uint64)-37, 3'u64, false),
+    (true, high(uint32)-1, high(uint64)-38, 3'u64, true),
+    (true, high(uint32)-1, high(uint64)-38, 4'u64, false)]:
+  let (existing, items, octets, length, accepted) = sample
+  let prepared = source(existing = existing, valueLength = length,
+    otherItems = items, otherOctets = octets)
+  let before = prepared.machineBootstrap.value.bootstrapService.value.serviceState.value
+  let done = run(prepared, parameters = schedule(0, 0, 0))
+  assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
+  if accepted:
+    assert uint64(machineInfo(done.value.machine).value.registers[7]) ==
+      (if existing: 3'u64 else: high(uint64))
+    assert uint32(metadata(accounts(done)).storageItems) == high(uint32)
+    assert uint64(metadata(accounts(done)).storageBytes) == high(uint64)
+  else:
+    assert uint64(machineInfo(done.value.machine).value.registers[7]) == high(uint64)-4
+    assert sameStateSnapshot(accounts(done), before), "FULL preserves the complete regular map"
+  assert sameStateSnapshot(accounts(done, exceptional), before), "the checkpoint retains its original map"
+
 assert recordAccumulationStorage(default(AccumulationEffects), @[], @[], schedule(), ByteLimit(
     0)).error ==
   AccumulationEffectError.Uninitialized

@@ -3,9 +3,9 @@
   "chains": 3,
   "transitions": 12,
   "sibling_imports": 3,
-  "full_profile_sha256": "fda976d9b930699a4597aa2bf88690383ddaf9e35c6db59003abdf909e4a95ad",
+  "full_profile_sha256": "27b2832c66dbc7166d5e8027b39e97aa9f3ee14b20d40bcc0bf04b9d1acd1dd9",
   "guest_reference_sha256": "73feff5723d3c296815c490812f1cb1f3600ced6021329364b5ecf5bad93d665",
-  "ring_input_sha256": "e18cd04ef884ce288144ebc9568b294c2e51cb4d22205dd82f8f7e455079c8ec",
+  "ring_input_sha256": "a02cdfa95b1a3c4e8379dd1b8754e4a23eb3913f2b6818c3447670337d05872f",
   "successor_roots": [
     [
       "a895482dca6171dc540e4eba7977efdd92983c3d5165799cf89146b3900350af",

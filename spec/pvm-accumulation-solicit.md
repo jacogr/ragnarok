@@ -13,6 +13,12 @@ not describe the current complete STF path or establish full JAM wire parity.
 
 ## Current unreleased Gray Paper contract
 
+The [pinned footprint amendment](https://github.com/gavofyork/graypaper/blob/43f328c9717a62b40ae4582ddb7e390ddb4197eb/text/pvm_invocations.tex)
+at `43f328c9` returns FULL when the prospective item count exceeds E4
+or the prospective octet count exceeds E8. Exact maxima are valid.
+The solicit guest witnesses check both exact limits and one-unit overflow,
+including preservation of the prior state on refusal.
+
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
 selects solicit as host 25. Register r7 selects an account (all ones means self).
 Hash pointer and advertised request length occupy r8/r9. Lengths must be strictly
@@ -52,7 +58,8 @@ footprint unchanged. Check the prospective exact deposit threshold, including
 gratis and full-width products, against unchanged current balance; underfunding
 returns FULL. Publish new history/metadata in one atomic two-write batch; a
 restored history requires only one physical write after its funding check.
-Counter overflow is a local InvalidState refusal, never wrapping or a guest code.
+Under this older pin, counter overflow was a local InvalidState refusal. The current
+rule returns FULL before the counters can wrap.
 Malformed canonical history/metadata and hash/store failures remain typed local
 refusals. Preserve preimages, storage, other accounts, allocation cursor,
 transfers/provisions/yield and initial/exceptional versions. Borrowed buffers do
