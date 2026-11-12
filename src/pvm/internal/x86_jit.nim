@@ -810,6 +810,26 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
       else: assert false # The common certificate admits only these seven load encodings.
 
+    proc emitResidentReadImmediateShift(code: var X86Block, access: X86ResidentAccess,
+        op: NativeOperation): bool =
+      ## Encode a logical 64-bit immediate shift when both guest operands are in the role bank.
+      if op.opcode notin {151'u8, 152}: return false
+      let sourceRegister = access.registers[op.slots.bIndex]
+      let destinationRegister = access.registers[op.slots.destinationIndex]
+      if sourceRegister == 0 or destinationRegister == 0: return false
+      let source = sourceRegister-1
+      let destination = destinationRegister-1
+      let destinationRex = byte(if destination >= 8: 0x49 else: 0x48)
+      if source != destination:
+        # MOV destination,source copies the original guest operand before changing its destination.
+        let rex = destinationRex or byte(if source >= 8: 4 else: 0)
+        let operands = byte(0xc0 or ((source and 7) shl 3) or (destination and 7))
+        put(code, [rex, 0x89, operands])
+      let shift = if op.opcode == 151: 0xe0'u8 else: 0xe8'u8
+      # Group-2 imm8 shifts consume the same low six count bits as the original CL shifts.
+      put(code, [destinationRex, 0xc1, shift or (destination and 7), byte(op.immediate and 63)])
+      true
+
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
         labels: untyped, body: NativeReadBody, access: untyped,
         count: int, refusal: byte, nextLabel: var byte,
@@ -819,7 +839,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         let op = body.operation(index)
         let encoding = nativeReadEncodingOpcode(op.opcode)
         if not nativeReadOpcode(encoding):
-          emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
+          let shifted = when access is X86ResidentAccess:
+            emitResidentReadImmediateShift(code, access, op)
+          else: false
+          if not shifted:
+            emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
         elif (window.operations and (1'u32 shl index)) != 0:
           # RSI holds this entry's first-descriptor window. Load bytes at the original position.
           let offset = uint32(op.immediate and 0xffffffff'u64)-window.first

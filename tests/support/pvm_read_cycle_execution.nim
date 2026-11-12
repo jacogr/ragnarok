@@ -536,6 +536,9 @@ when NativeReadCycleEnabled:
           else:
             checkRoleEntry(cycle, image, extra, exit)
 
+    when defined(pvmReadCycleCreditWitness):
+      include ./pvm_read_cycle_shift_cases
+
 when NativeReadCycleEnabled:
   proc tailPointerFixture(): NativeReadCycle =
     ## Each setup resets the Store base and advances the word that the next Tail will read.
@@ -746,6 +749,8 @@ proc runReadCycleExecution*() =
         ReadExit.UnpaidTail, receiptLayout = wide, expectedImage = wideBytes)
     when defined(pvmReadCycleRoleWitness):
       runReadCycleRoleWitness()
+    when defined(pvmReadCycleCreditWitness):
+      checkResidentReadShifts()
     checkTailPointerReuse()
     checkStorePageBoundary()
     when defined(pvmX86Jit):

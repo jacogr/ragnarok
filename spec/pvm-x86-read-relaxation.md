@@ -34,3 +34,13 @@ not combine its context or checked-header dispatcher with the mixed-loop receipt
 ABI. A Read3350 plus read-only278 layout would occupy3638 bytes at sixteen-byte
 alignment, but no heterogeneous arena is implemented or qualified here. No timing
 improvement is claimed.
+
+The resident Read emitter can also encode logical 64-bit shifts directly in the
+mapped guest registers. It copies a distinct source before shifting, masks the
+immediate to six bits, and uses the shared scalar lowering when either operand is
+unmapped. The maintained x86 credit suite exercises masked-zero and boundary
+counts, distinct and aliased operands, and the spill path through installed RX.
+
+With these shifts the packed DOOM leaf is 3206 bytes. The two copies of the Read
+body each replace five scratch-register sequences. The sealed branch graph and
+non-branch bytes outside those sequences are preserved.
