@@ -8,7 +8,11 @@ import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[handler_stream, native_pipeline, native_platform]
 import ./pvm_owner_record
-when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+when defined(pvmSharedAsyncWitness) and not defined(pvmSharedReadCycleOff) and (
+    (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
+    (defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(arm64) and
+      (defined(linux) or defined(macosx)))):
+  # Lexical host guards prevent Nimony from loading enabled-only helpers on the other ISA.
   import ./[pvm_read_cycle_execution, pvm_mixed_loop_source]
 
 proc recordNativeQualification(kind: string, runtime: NativeRuntime, info: PreparedInfo,
