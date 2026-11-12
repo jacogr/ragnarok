@@ -277,25 +277,34 @@ proc decode(input: openArray[byte], entry: CodeAddress,
     return ProgramResult[Program](status: ProgramError.NonCanonical)
   # The empty program cannot satisfy v_inst at any entry point.
   if codeLength == 0: return ProgramResult[Program](status: ProgramError.InvalidProgram)
-  var pc = 0
+  if not marked(input, maskOffset, 0):
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
+  var previous = 0
+  var finalOpcode = 0'u8
   var validatedInstructions = 0'u32
-  # Iterative v_blob avoids recursion proportional to untrusted program length.
-  while pc < codeLength:
-    # Every traversed instruction must begin at a set mask bit and have an opcode in U.
-    if not marked(input, maskOffset, pc) or not validOpcode(input[codeOffset + pc]):
-      return ProgramResult[Program](status: ProgramError.InvalidProgram)
-    let step = 1 + int(distance(input, maskOffset, codeLength, pc))
-    # The final instruction must belong to T, even when it carries operand bytes.
-    if step == codeLength - pc:
-      let opcode = input[codeOffset + pc]
-      if not terminatesBlock(opcode):
+  # The capped skip reaches every marker exactly when adjacent starts are at most 25 bytes apart.
+  # Walk the bitmap once; canonical padding above proves every marked position is inside code.
+  for i in 0..<maskBytes:
+    var bits = input[maskOffset+i]
+    while bits != 0:
+      # Locate and remove the lowest set bit, consuming only genuine instruction markers.
+      let nibble = if (bits and 15'u8) == 0: 4 else: 0
+      let pair = if ((bits shr nibble) and 3'u8) == 0: 2 else: 0
+      let bit = nibble+pair+int(((bits shr (nibble+pair)) and 1'u8) == 0)
+      let pc = i*8+bit
+      if pc-previous > 25: return ProgramResult[Program](status: ProgramError.InvalidProgram)
+      finalOpcode = input[codeOffset+pc]
+      if not validOpcode(finalOpcode):
         return ProgramResult[Program](status: ProgramError.InvalidProgram)
-      # GP-PVM-004: JAM modules require a final terminator with no fallthrough successor.
-      if profile == DecodeProfile.Jam and opcode notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}:
-        return ProgramResult[Program](status: ProgramError.InvalidProgram)
-    # Each validated instruction advances at least one byte within the 32 MiB code bound.
-    inc validatedInstructions
-    pc += step
+      previous = pc
+      inc validatedInstructions
+      bits = bits and (bits-1'u8)
+  # The capped skip must also reach the end of the final instruction.
+  if codeLength-previous > 25 or not terminatesBlock(finalOpcode):
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
+  # GP-PVM-004: JAM modules require a final terminator with no fallthrough successor.
+  if profile == DecodeProfile.Jam and finalOpcode notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}:
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
   # Validate entry without narrowing it until the code extent proves the conversion safe.
   if uint64(entry) >= codeSize:
     return ProgramResult[Program](status: ProgramError.InvalidInstruction)
