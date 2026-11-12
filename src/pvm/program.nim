@@ -286,6 +286,9 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # Walk the bitmap once; canonical padding above proves every marked position is inside code.
   for i in 0..<maskBytes:
     var bits = input[maskOffset+i]
+    if bits == 0 and i*8-previous >= 25:
+      # This empty byte already starts beyond the previous instruction's allowed span.
+      return ProgramResult[Program](status: ProgramError.InvalidProgram)
     while bits != 0:
       # Locate and remove the lowest set bit, consuming only genuine instruction markers.
       let nibble = if (bits and 15'u8) == 0: 4 else: 0
