@@ -43,7 +43,9 @@ class DownloadCacheTests(unittest.TestCase):
                    'build-tools/crypto/*.dylib', 'build-tools/quic/native-environment.json',
                    'build-tools/quic/*.so', 'build-tools/quic/*.dylib',
                    'build-tools/polkavm/native-environment.json', 'build-tools/polkavm/release'}
-        jobs = workflow((ROOT/'.github/workflows/ci.yml').read_text())['jobs']
+        ci = '.github/workflows/ci.yml'
+        jobs = workflow((ROOT/ci).read_text())['jobs']
+        lock = workflow((ROOT/'.github/workflows/actions.lock').read_text())
         for job in jobs.values():
             for step in job['steps']:
                 if not step.get('uses', '').startswith('actions/cache@'):
@@ -53,7 +55,8 @@ class DownloadCacheTests(unittest.TestCase):
                 self.assertTrue(step.get('continue-on-error'), 'Cache service failure must allow setup')
                 self.assertFalse(step['with'].get('fail-on-cache-miss', False))
                 self.assertFalse(step['with'].get('restore-keys'), 'Use only the matching pin set')
-                self.assertRegex(step['uses'], r'@[0-9a-f]{40}$')
+                self.assertIn(step['uses'], lock['workflows'][ci])
+                self.assertRegex(lock['dependencies'][step['uses']]['commit'], r'^sha1-[0-9a-f]{40}$')
 
     def test_cache_keys_separate_hosts_and_change_with_dependency_pins(self):
         """Cross-platform restores and unchanged keys after pin updates waste or corrupt reuse."""

@@ -5,6 +5,12 @@ the root README on the repository landing page.
 
 [Project overview](../README.md) · [Testing guide](../docs/testing.md)
 
+Both workflows use exact version tags for GitHub Actions. GitHub runs the commits recorded in
+[`workflows/actions.lock`](workflows/actions.lock). After adding, removing or updating an action
+reference, run `gh actions-lock` with the
+[GitHub CLI extension](https://github.com/github/gh-actions-lock), review the commit changes in
+the lockfile, and run `gh actions-lock --verify` before submitting the workflow changes.
+
 [`workflows/ci.yml`](workflows/ci.yml) defines GitHub Actions verification and evidence collection.
 It runs the maintained Make targets on native Linux runners, plus macOS for binary builds,
 with a unified **Build** matrix for Smoke, Tooling, Linux & Docker and macOS. Other jobs cover
