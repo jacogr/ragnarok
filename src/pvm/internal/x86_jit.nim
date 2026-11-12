@@ -19,6 +19,7 @@ import ./[native_control, native_ir]
 import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
   import ./native_read_cycle
+  import ./native_mixed_loop
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.

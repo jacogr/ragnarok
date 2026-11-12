@@ -331,9 +331,11 @@ class SharedQualificationTests(unittest.TestCase):
         self.profiles = {}
         self.sources = {}
         for directory, suite, defines, golden in (
-            ('codec', 'pvm_shared_async_arm', ['pvmArm64Jit', 'pvmSharedAsyncWitness'],
+            ('codec', 'pvm_shared_async_arm',
+             ['pvmArm64Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness'],
              'PVM shared async passed\n'),
-            ('codec', 'pvm_shared_async_x86', ['pvmX86Jit', 'pvmSharedAsyncWitness'],
+            ('codec', 'pvm_shared_async_x86',
+             ['pvmX86Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness'],
              'PVM shared async passed\n'),
             ('state', 'pvm_runtime_policy_refused',
              ['pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'],
@@ -430,7 +432,8 @@ class SharedQualificationTests(unittest.TestCase):
                 self.assertEqual([b['source'] for b in builds],
                     [self.sources[normal], self.sources['pvm_runtime_policy_refused']])
                 self.assertEqual([set(b['defines']) for b in builds],
-                    [{isa, 'pvmSharedAsyncWitness'}, {isa, isa+'Refuse', 'pvmSharedAsyncWitness'}])
+                    [{isa, 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness'},
+                     {isa, isa+'Refuse', 'pvmSharedAsyncWitness'}])
                 self.assertEqual(result['production_defines'], [isa])
                 self.assertEqual(set(result['controls'][1]['registered_defines']),
                     {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'})
@@ -466,20 +469,30 @@ class SharedQualificationTests(unittest.TestCase):
 
     def test_source_mutation_or_foreign_witness_profile_refuses(self):
         """The source-bound receipt cannot survive changed inputs or a mismatched positive ISA."""
-        self.profiles['pvm_shared_async_x86']['defines'] = ['pvmArm64Jit', 'pvmSharedAsyncWitness']
+        self.profiles['pvm_shared_async_x86']['defines'] = [
+            'pvmArm64Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness']
         checks, _ = self.tools()
         with self.assertRaisesRegex(ValueError, 'registration'):
             ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
         checks.build.assert_not_called()
         self.profiles['pvm_shared_async_x86']['defines'] = [
-            'pvmX86Jit', 'pvmSharedAsyncWitness', 'pvmSharedAsyncWitness']
+            'pvmX86Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness', 'pvmSharedAsyncWitness']
         with self.assertRaisesRegex(ValueError, 'registration'):
             ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
         checks.build.assert_not_called()
-        self.profiles['pvm_shared_async_x86']['defines'] = ['pvmX86Jit', 'pvmSharedAsyncWitness']
+        self.profiles['pvm_shared_async_x86']['defines'] = [
+            'pvmX86Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness']
         checks, _ = self.tools('tamper')
         with self.assertRaisesRegex(ValueError, 'source changed'):
             ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+
+    def test_paid_continuation_coverage_cannot_be_omitted(self):
+        """A positive native gate must not silently drop the committed-prefix repair cases."""
+        self.profiles['pvm_shared_async_x86']['defines'].remove('pvmPaidMixedLoopWitness')
+        checks, _ = self.tools()
+        with self.assertRaisesRegex(ValueError, 'registration'):
+            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+        checks.build.assert_not_called()
 
     def test_unavailable_host_does_not_claim_common_native_pass(self):
         """Unsupported hosts preserve truthful fallback without starting a common native target."""

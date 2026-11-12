@@ -25,23 +25,37 @@ import ./register_ops
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
-  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness): import std/syncio
+  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness):
+    import std/syncio
   import ./[native_mixed_loop, native_platform]
 
-  const
-    FlatMixedHeatLimit = 16*NativeInvocationFloor
   type
     FlatMixedLoopSource = object
       ## Cold discovery retains only bounded source coordinates and their epoch.
       epoch: uint64
-      chosen: uint32
-      count, checks, refused: uint8
+      chosen: array[NativeMixedLoopEntryLimit, uint32]
+      count, checks, refused, chosenCount: uint8
       candidates: array[NativeMixedLoopCandidateLimit, uint32]
     FlatMixedLoopProbe = object
-      ## Temporary checked header handlers borrow this segment's scalar visit counters.
+      ## Temporary checked terminal handlers count completed visits within this segment.
       count: int
-      headers, tokens, remaining: array[NativeMixedLoopCandidateLimit, uint32]
+      terminals, tokens: array[NativeMixedLoopCandidateLimit, uint32]
+      visits: array[NativeMixedLoopCandidateLimit, uint64]
       spans: array[NativeMixedLoopCandidateLimit, uint8]
+  when defined(pvmMixedLoopWitness):
+    type FlatMixedArenaWitness = object
+      entries, visits, refusals, paid, operations, branches, repeatedHeaders: uint64
+  when defined(pvmPaidMixedLoopWitness):
+    type
+      FlatMixedPairMode* {.pure.} = enum
+        Disabled, Checked, ByteOnly, PaidOnly, Both
+      FlatMixedPairCounts = object
+        entries, visits, refusals, paid, operations, branches, repeatedHeaders: uint64
+        lastGuardPc, lastGuardOrdinal: uint32
+      FlatMixedPairWitness = object
+        proofs: array[2, NativeMixedLoop]
+        images: array[2, nil ptr NativeImage]
+        counts: array[2, FlatMixedPairCounts]
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit) and
     defined(pvmArmMacroReceipt) and defined(pvmArmMacroStateTrace):
@@ -176,23 +190,23 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]               # Absolute physical-page bits, bounded by the highest mapped page.
+    dirtyPages: seq[uint64]                   # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
     pricingPlan: GasPlan # Optional source-bound immutable prices, selected only during cold emission.
-    pricingMemo: GasMemo                  # Optional caller-owned bounded price memo, never CPU or paid gas.
+    pricingMemo: GasMemo                      # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
       x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
       readContext: NativeReadContext
       readContextReady: bool
       readProbe: ReadProbeState
-    nativeSession*: NativeSession         # Prepared identity only; never passed to the compiler thread.
+    nativeSession*: NativeSession             # Prepared identity only; never passed to the compiler thread.
     nativeInstallation: FlatNativeInstallation
     nativeOriginal: nil FlatHandler
     when NativeCheckedReadEnabled:
-      nativeRingInstalled: bool           # Ready image rebound to this invocation's checked handlers.
+      nativeRingInstalled: bool               # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
     nativeInstalledEpoch: uint64
     pricingKind: byte # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
@@ -206,8 +220,16 @@ type
     when NativeReadCycleEnabled:
       mixedSource: FlatMixedLoopSource
       mixedProbe: nil ptr FlatMixedLoopProbe
-      mixedProof: nil ptr NativeMixedLoop # Borrowed only while the outlined segment is on the stack.
+      mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
+      mixedMask: uint8
+      when defined(pvmSharedAsyncWitness):
+        mixedProbeWitness: bool
+      when defined(pvmMixedLoopWitness):
+        mixedArenaWitness: array[NativeMixedLoopEntryLimit, FlatMixedArenaWitness]
+      when defined(pvmPaidMixedLoopWitness):
+        mixedPairMode*: FlatMixedPairMode
+        mixedPair: nil ptr FlatMixedPairWitness
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -403,6 +425,15 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
+proc restoreFlatTemporaryHandler(f: var FlatFrame, node: uint32, temporary, original: FlatHandler) =
+  ## A quota barrier saves the worker it replaced. Restore that saved worker before clearing its owner.
+  if f.barrier == node:
+    assert f.handlers[int(node)] == flatBudget and f.savedHandler == temporary
+    f.savedHandler = original
+  else:
+    assert f.handlers[int(node)] == temporary
+    f.handlers[int(node)] = original
+
 template flatReserveImpl(f: var FlatFrame, off: uint32,
     observeProtected, observeLater: static[bool]) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
@@ -511,6 +542,13 @@ proc flatFusedRegisters[First, Second: static[int]](f: var FlatFrame, off: uint3
     return flatLocal(f, next, oracle.StepError.UnsupportedInstruction)
   f.info.registers[index] = value
   next+1
+
+func flatFusedRegisterHandler(first, second: byte): nil FlatHandler =
+  ## These literal adjacent scalar pairs retain both original source nodes and the second-node barrier.
+  if first == 151 and second == 152: flatFusedRegisters[151, 152]
+  elif first == 200 and second == 139: flatFusedRegisters[200, 139]
+  elif first == 149 and second == 149: flatFusedRegisters[149, 149]
+  else: nil
 
 func signedLess(a, b: uint64): bool =
   ## Compare unsigned register bits in signed order by flipping their sign bits.
@@ -1842,9 +1880,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           # Only these trace-selected adjacent genuine register opcodes fuse; folded noops and other families retain existing dispatch.
           if index+1 < f.plan.facts.len:
             let second = f.plan.facts[index+1].opcode
-            if fact.opcode == 151 and second == 152: selected = flatFusedRegisters[151, 152]
-            elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
-            elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
+            let fused = flatFusedRegisterHandler(fact.opcode, second)
+            if fused != nil: selected = fused
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
             elif fact.opcode == 131 and second == 83 and not f.plan.allowNative:
               # The ADD worker can fuse after resolution while the original branch node
@@ -3039,28 +3076,18 @@ template flatDispatchSegment(f: var FlatFrame, entry: uint32) =
     flatDispatchLoop(f, entry, false)
 
 when NativeReadCycleEnabled:
-  func flatMixedHeatVisits(span: uint8): uint32 =
-    let width = uint64(span)
-    uint32((FlatMixedHeatLimit+width-1) div width)
-
-  proc flatProbeMixedLoop[ObserveLater: static[bool]](f: var FlatFrame, header: uint32): uint32 =
-    ## Count visits only at nominated headers, and restore the ordinary worker at the cap.
+  proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =
+    ## A completed original BNE counts one full checked visit, including folded source facts.
     let probe = f.mixedProbe
     assert probe != nil
     var index = 0
-    while index < probe[].count and probe[].headers[index] != header: inc index
-    assert index < probe[].count and probe[].remaining[index] > 0
-    dec probe[].remaining[index]
-    if probe[].remaining[index] == 0: f.handlers[int(header)] = flatCharge
-    let body = flatReserveHeader[ObserveLater](f, header)
-    if body == flatStop: return flatStop
-    let selected = f.handlers[int(body)]
-    selected(f, body)
+    while index < probe[].count and probe[].terminals[index] != terminal: inc index
+    assert index < probe[].count
+    result = flatBranch[171](f, terminal)
+    if f.reason == oracle.StepError.None: inc probe[].visits[index]
 
   proc runFlatMixedProbeSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
-    ## Compare checked visits within this callback-free segment. A header stops collecting
-    ## at the first whole visit reaching 65,536 source attempts. After primary native work,
-    ## offer the hottest disjoint block that reached the admission floor.
+    ## Rank actual complete checked work across this callback-free segment, bounded by its public quota.
     var probe = default(FlatMixedLoopProbe)
     let source = f.mixedSource
     for index in 0..<int(source.count):
@@ -3069,53 +3096,161 @@ when NativeReadCycleEnabled:
       let proof = buildFlatMixedLoop(f, token-1, source.epoch)
       if not proof.complete or not mixedLoopDisjoint(f.nativeSession, proof): continue
       let slot = probe.count
-      probe.headers[slot] = proof.header
+      probe.terminals[slot] = proof.terminal
       probe.tokens[slot] = token
       probe.spans[slot] = proof.span
-      probe.remaining[slot] = flatMixedHeatVisits(proof.span)
       inc probe.count
     if probe.count == 0:
       flatDispatchSegment(f, entry)
       return
-    let observeLater = f.readProbe.observing and f.readProbe.later
-    let handler: FlatHandler = if observeLater: flatProbeMixedLoop[true] else: flatProbeMixedLoop[false]
     f.mixedProbe = addr probe
-    for index in 0..<probe.count: f.handlers[int(probe.headers[index])] = handler
+    for index in 0..<probe.count: f.handlers[int(probe.terminals[index])] = flatProbeMixedLoop
     defer:
       f.mixedProbe = nil
-      for index in 0..<probe.count: f.handlers[int(probe.headers[index])] = flatCharge
+      for index in 0..<probe.count:
+        restoreFlatTemporaryHandler(f, probe.terminals[index], flatProbeMixedLoop, flatBranch[171])
       if f.reason == oracle.StepError.None and nativeInvocationUsed(f.nativeSession):
-        var best = 0'u32
-        var bestWork = NativeInvocationFloor-1
-        for index in 0..<probe.count:
-          let visits = flatMixedHeatVisits(probe.spans[index])-probe.remaining[index]
-          let work = uint64(visits)*uint64(probe.spans[index])
-          if work > bestWork:
-            best = probe.tokens[index]
-            bestWork = work
-        if best != 0:
-          let proof = buildFlatMixedLoop(f, best-1, source.epoch)
-          if offerNativeMixedLoop(f.nativeSession, proof): f.mixedSource.chosen = best
+        var selected = default(NativeMixedLoopSet)
+        var chosenTokens = default(array[NativeMixedLoopEntryLimit, uint32])
+        var considered = 0'u8
+        when defined(pvmMixedLoopWitness):
+          var selectedWork = default(array[NativeMixedLoopEntryLimit, uint64])
+        while selected.count < uint8(NativeMixedLoopEntryLimit):
+          var best = -1
+          var bestWork = NativeInvocationFloor-1
+          for index in 0..<probe.count:
+            if (considered and (1'u8 shl index)) != 0: continue
+            let work = probe.visits[index]*uint64(probe.spans[index])
+            if work > bestWork:
+              best = index
+              bestWork = work
+          if best < 0: break
+          considered = considered or (1'u8 shl best)
+          let proof = buildFlatMixedLoop(f, probe.tokens[best]-1, source.epoch)
+          if not proof.complete: continue
+          var disjoint = true
+          for index in 0..<int(selected.count):
+            if not nativeMixedLoopDisjoint(selected.proofs[index], proof): disjoint = false
+          if not disjoint: continue
+          let slot = int(selected.count)
+          selected.proofs[slot] = proof
+          chosenTokens[slot] = probe.tokens[best]
+          when defined(pvmMixedLoopWitness): selectedWork[slot] = bestWork
+          inc selected.count
+        if selected.count != 0 and offerNativeMixedLoops(f.nativeSession, selected):
+          f.mixedSource.chosen = chosenTokens
+          f.mixedSource.chosenCount = selected.count
+          when defined(pvmMixedLoopWitness):
+            for index in 0..<int(selected.count):
+              let proof = selected.proofs[index]
+              echo "MIXED_ARENA_CHOICE,", index, ",", chosenTokens[index]-1, ",", selectedWork[
+                  index],
+                ",", proof.span, ",", proof.price, ",", proof.paidGuards
     flatDispatchSegment(f, entry)
 
   proc runFlatMixedLoopSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
-    ## Borrow the exact installed auxiliary only for this selected frame segment.
+    ## Reconstruct exact selected proofs and borrow their shared immutable arena once.
     let source = f.mixedSource
-    if source.chosen != 0:
-      var proof = buildFlatMixedLoop(f, source.chosen-1, source.epoch)
-      if proof.complete:
-        if borrowFlatMixedLoopSegment(f, addr proof):
-          # This exact primary already rejected the encoding. The other candidates can still compete.
-          for index in 0..<int(source.count):
-            if f.mixedSource.candidates[index] == source.chosen:
-              f.mixedSource.refused = f.mixedSource.refused or (1'u8 shl index)
-              break
-          f.mixedSource.chosen = 0
+    if source.chosenCount != 0:
+      var requested = default(NativeMixedLoopSet)
+      requested.count = source.chosenCount
+      for index in 0..<int(source.chosenCount):
+        requested.proofs[index] = buildFlatMixedLoop(f, source.chosen[index]-1, source.epoch)
+      if requested.complete:
+        let borrowed = borrowFlatMixedLoopSegment(f, addr requested)
         if f.mixedImage != nil:
           defer: returnFlatMixedLoopSegment(f)
           flatDispatchSegment(f, entry)
           return
+        if borrowed.refusedMask != 0:
+          for index in 0..<int(source.chosenCount):
+            if (borrowed.refusedMask and (1'u8 shl index)) == 0: continue
+            for candidate in 0..<int(source.count):
+              if source.candidates[candidate] == source.chosen[index]:
+                f.mixedSource.refused = f.mixedSource.refused or (1'u8 shl candidate)
+          f.mixedSource.chosenCount = 0
+        elif not borrowed.settled or borrowed.pending:
+          flatDispatchSegment(f, entry)
+          return
     runFlatMixedProbeSegment(f, entry)
+
+  when defined(pvmPaidMixedLoopWitness):
+    proc runFlatMixedPairSegment(f: var FlatFrame, entry: uint32) =
+      ## Privately install both disjoint entries in the same already linked checked frame.
+      ## The shared Read owner and its ordinary worker keep their original lease.
+      if not mixedLoopPrimaryReady(f.nativeSession):
+        flatDispatchSegment(f, entry)
+        return
+      let epoch = nativeEpoch(f.nativeSession)
+      var pair = default(FlatMixedPairWitness)
+      pair.proofs[0] = buildFlatMixedLoop(f, 469077, epoch)
+      pair.proofs[1] = buildFlatMixedLoop(f, 467872, epoch, allowPaid = true)
+      let byteLoop {.cursor.} = pair.proofs[0]
+      let paidLoop {.cursor.} = pair.proofs[1]
+      if not byteLoop.complete or not paidLoop.complete or paidLoop.paidGuards == 0 or
+          not mixedLoopDisjoint(f.nativeSession, byteLoop) or
+          not mixedLoopDisjoint(f.nativeSession, paidLoop):
+        flatDispatchSegment(f, entry)
+        return
+      assert paidLoop.first+uint32(paidLoop.span) <= byteLoop.first
+      assert paidLoop.exitHeader notin byteLoop.header..byteLoop.terminal
+      assert byteLoop.exitHeader notin paidLoop.header..paidLoop.terminal
+      assert paidLoop.terminal < byteLoop.header or byteLoop.terminal < paidLoop.header
+      var byteImage = default(NativeImage)
+      var paidImage = default(NativeImage)
+      var refused = false
+      if f.mixedPairMode in {FlatMixedPairMode.ByteOnly, FlatMixedPairMode.Both}:
+        byteImage = lowerNativeMixedLoop(byteLoop, refused)
+        assert byteImage.ready and not refused
+        pair.images[0] = addr byteImage
+      if f.mixedPairMode in {FlatMixedPairMode.PaidOnly, FlatMixedPairMode.Both}:
+        paidImage = lowerNativeMixedLoop(paidLoop, refused)
+        assert paidImage.ready and not refused
+        pair.images[1] = addr paidImage
+      assert f.mixedPair == nil
+      f.mixedPair = addr pair
+      for index in 0..1:
+        if pair.images[index] != nil:
+          let header = pair.proofs[index].header
+          assert f.handlers[int(header)] == flatCharge
+          f.handlers[int(header)] = flatMixedPairEntry
+      defer:
+        for index in 0..1:
+          if pair.images[index] != nil:
+            let header = pair.proofs[index].header
+            restoreFlatTemporaryHandler(f, header, flatMixedPairEntry, flatCharge)
+        f.mixedPair = nil
+        let first = pair.counts[0]
+        let second = pair.counts[1]
+        if first.entries != 0 or second.entries != 0:
+          echo "MIXED_PAIR_SEGMENT,", first.entries, ",", first.visits, ",", first.refusals,
+            ",", first.paid, ",", first.operations, ",", first.branches, ",", first.repeatedHeaders,
+            ",", second.entries, ",", second.visits, ",", second.refusals, ",", second.paid,
+            ",", second.operations, ",", second.branches, ",", second.repeatedHeaders
+      flatDispatchSegment(f, entry)
+
+  template dispatchPreparedMixed(f: var FlatFrame, offset: uint32) =
+    template ordinary() =
+      if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
+          mixedLoopPrimaryReady(f.nativeSession):
+        runFlatMixedLoopSegment(f, offset)
+      else:
+        flatDispatchSegment(f, offset)
+    template selected() =
+      when defined(pvmPaidMixedLoopWitness):
+        if f.mixedPairMode != FlatMixedPairMode.Disabled:
+          runFlatMixedPairSegment(f, offset)
+        else:
+          ordinary()
+      else:
+        ordinary()
+    when defined(pvmSharedAsyncWitness):
+      if f.mixedProbeWitness:
+        runFlatMixedProbeSegment(f, offset)
+      else:
+        selected()
+    else:
+      selected()
 
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
@@ -3167,11 +3302,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
   when NativeReadCycleEnabled:
-    if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
-        mixedLoopPrimaryReady(f.nativeSession):
-      runFlatMixedLoopSegment(f, offset)
-    else:
-      flatDispatchSegment(f, offset)
+    dispatchPreparedMixed(f, offset)
   else:
     flatDispatchSegment(f, offset)
   if f.barrier != flatStop:
@@ -3671,7 +3802,8 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
     nativeInstalledEpoch: f.nativeInstalledEpoch, nativeInstallation: f.nativeInstallation)
   when NativeReadCycleEnabled:
-    assert f.mixedImage == nil
+    assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
+    when defined(pvmPaidMixedLoopWitness): assert f.mixedPair == nil
     result.mixedSource = f.mixedSource
     f.mixedSource = default(FlatMixedLoopSource)
 
@@ -3880,3 +4012,135 @@ proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.S
     f.pricingMemo = memo
     f.pricingKind = 2
   oracle.StepError.None
+
+when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
+  include ./handler_mixed_pair_witness
+
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+  proc witnessFlatMixedProbeBarrier*(program: Program, pc: uint32) =
+    ## Stop immediately before a profiled BNE, retain its stream, and resume the exact paid source PC.
+    let cycles = GasCycleLimit(100000)
+    var admitted = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
+    assert admitted.error == FlatError.None
+    let plan = takeValue(admitted)
+    let read = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)
+    let write = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)
+    var info = MachineInfo(pc: CodeAddress(uint64(pc)), gas: MachineGas(1000000))
+    info.registers[5] = RegisterValue(17*4096)
+    info.registers[6] = RegisterValue(16*4096)
+    info.registers[12] = RegisterValue(1)
+    var observed = newFlatFrame(plan, [read, write], info)
+    var checked = newFlatFrame(plan, [read, write], info)
+    var header, terminal = 0'u32
+    for frame in [addr observed, addr checked]:
+      header = flatResolve(frame[], pc)
+      assert header != flatStop
+      var source = default(FlatSourceInterval)
+      var walk = default(FlatSourceSummary)
+      assert flatSourceIntervalAt(frame[], header, NativeReadFactLimit, source)
+      assert flatWalkCompleteSource(frame[], header, source, walk)
+      terminal = walk.terminal
+      assert flatUnresolvedBranch[171](frame[], terminal) == terminal
+    let proof = buildFlatMixedLoop(observed, pc, 1)
+    assert proof.complete
+    observed.mixedSource.epoch = 1
+    observed.mixedSource.count = 1
+    observed.mixedSource.candidates[0] = pc+1
+    observed.mixedProbeWitness = true
+    let quota = uint64(proof.span)-1
+    runFlat(observed, quota)
+    runFlat(checked, quota)
+    assert observed.reason == oracle.StepError.StepLimitExceeded and observed.reason == checked.reason
+    assert observed.info == checked.info and observed.info.blockCharged
+    assert observed.info.pc == CodeAddress(uint64(plan.facts[int(proof.first)+int(
+        proof.span)-1].pc))
+    assert observed.mixedProbe == nil and observed.barrier == flatStop and observed.savedHandler == nil
+    assert observed.handlers[int(terminal)] == flatBranch[171]
+    assert observed.remaining == checked.remaining and observed.dirtyPages == checked.dirtyPages
+    assert observed.dirtyIndices == checked.dirtyIndices
+    let snapshot = flatMemorySnapshot(observed)
+    let reference = flatMemorySnapshot(checked)
+    var fresh = prepareFlatMemoryFrame(plan, snapshot, observed.info)
+    var baseline = prepareFlatMemoryFrame(plan, reference, checked.info)
+    assert fresh.error == FlatError.None and baseline.error == FlatError.None
+    var resumed = takeValue(fresh)
+    var compared = takeValue(baseline)
+    var retained = takeFlatStream(observed)
+    var control = takeFlatStream(checked)
+    restoreFlatStream(resumed, retained)
+    restoreFlatStream(compared, control)
+    runFlat(resumed, 1)
+    runFlat(compared, 1)
+    assert resumed.mixedProbe == nil and resumed.reason == compared.reason
+    assert resumed.info == compared.info and resumed.remaining == compared.remaining
+    assert resumed.reservation == compared.reservation and resumed.stoppedAt == compared.stoppedAt
+    assert resumed.dirtyPages == compared.dirtyPages and resumed.dirtyIndices ==
+        compared.dirtyIndices
+
+when NativeReadCycleEnabled and defined(pvmMixedLoopEntryWitness):
+  proc witnessFlatFusedMixedLoopEntry*(program: Program, pc: uint32) =
+    ## Compare every original node, including a step barrier between the two fused scalar operations.
+    let cycles = GasCycleLimit(100000)
+    var admitted = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
+    assert admitted.error == FlatError.None
+    let plan = takeValue(admitted)
+    let price = blockGas(program, CodeAddress(uint64(pc)), cycles)
+    assert price.error == GasError.None and uint64(price.value) > 0
+    let read = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)
+    let write = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)
+    for scenario in 0..5:
+      let quota = case scenario
+        of 1: 4'u64
+        of 2: 12'u64
+        of 3: 13'u64
+        else: 27'u64
+      var info = MachineInfo(pc: CodeAddress(uint64(pc)), gas: MachineGas(
+        if scenario == 4: uint64(price.value)-1 else: 1000000'u64))
+      info.registers[0] = RegisterValue(0x35)
+      info.registers[5] = RegisterValue(17*4096)
+      info.registers[6] = RegisterValue(16*4096)
+      info.registers[12] = RegisterValue(17*4096+2)
+      var native = newFlatFrame(plan, [read, write], info)
+      var checked = newFlatFrame(plan, [read, write], info)
+      for frame in [addr native, addr checked]:
+        let header = flatResolve(frame[], pc)
+        assert header != flatStop
+        var source = default(FlatSourceInterval)
+        var walk = default(FlatSourceSummary)
+        assert flatSourceIntervalAt(frame[], header, NativeReadFactLimit, source)
+        assert flatWalkCompleteSource(frame[], header, source, walk)
+        assert flatUnresolvedBranch[171](frame[], walk.terminal) == walk.terminal
+        if scenario != 5: flatMarkStore[1](frame[], 17'u64*4096)
+      let proof = buildFlatMixedLoop(native, pc, 1)
+      assert proof.complete and proof.span == 13 and proof.count == 12
+      var refused = false
+      var image = lowerNativeMixedLoop(proof, refused)
+      assert image.ready and not refused
+      native.mixedWitnessProof = proof
+      native.mixedWitnessImage = addr image
+      native.handlers[int(proof.header)] = flatMixedLoopEntryWitness
+      runFlat(native, quota)
+      runFlat(checked, quota)
+      native.mixedWitnessImage = nil
+      assert native.info == checked.info and native.reason == checked.reason and native.exit == checked.exit
+      assert native.remaining == checked.remaining and native.reservation == checked.reservation
+      assert native.stoppedAt == checked.stoppedAt and native.attemptedExit == checked.attemptedExit
+      assert uint64(native.faultPage) == uint64(checked.faultPage)
+      assert native.dirtyPages == checked.dirtyPages and native.dirtyIndices == checked.dirtyIndices
+      assert native.rw.len == checked.rw.len
+      for index in 0..<native.rw.len: assert native.rw[index] == checked.rw[index]
+      let expected = [2'u64, 0, 0, 1, 0, 1]
+      assert native.mixedWitnessVisits == expected[scenario]
+      if scenario == 1:
+        assert native.reason == oracle.StepError.StepLimitExceeded and native.info.blockCharged
+        assert uint64(native.info.pc) == uint64(plan.facts[int(proof.first)+4].pc)
+      echo "MIXED_FUSED_ENTRY,", pc, ",", scenario, ",", native.mixedWitnessVisits
+
+when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
+  proc seedFlatMixedDirtyPages*(frame: var FlatFrame, addresses: openArray[uint64]) =
+    ## Private continuation controls establish checked dirty bookkeeping without changing source bytes.
+    for address in addresses:
+      let access = writableScalar(frame.sourceMemory, MemoryAddress(address), AccessWidth(1))
+      assert access.error == MachineError.None
+      flatMaterializeStore[1](frame, address)
+      flatMarkStore[1](frame, address)

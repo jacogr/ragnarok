@@ -24,16 +24,16 @@ bound runtime. Unported capabilities remain checked until their real shared path
 
 ## Capability inventory
 
-| Capability | Former ARM64 implementation | Former x86-64 implementation | Initial shared path and migration obligation |
+| Capability | Former ARM64 implementation | Former x86-64 implementation | Shared coverage and remaining migration obligation |
 | --- | --- | --- | --- |
 | Pure register operations | Resident guest lanes with live-in and dirty masks | Canonical array access, with separate resident-access support | Copied pure spans exist on both. Preserve all register aliases and exact arithmetic while improving allocation independently. |
 | Conditional block control | Immediate/register branch suffixes | Immediate/register branch suffixes | The shared self-loop uses unsigned less-than. The three-header loop adds exact immediate inequality, signed less-or-equal and register signed less-than edges. |
 | Connected pure regions | Two/three-block cycles | One/two-block regions, with additional restricted prototypes | Shared single-block and bounded three-header register loops use exact weighted accounting and checked side exits. General connected control remains open. |
-| Indirect scalar reads | All seven width/sign forms, prefixes and transactional bodies | A narrower retained read path | Shared bodies admit U8, S32 and U64 under restricted geometry. Extend the shared operand and refusal contract for the remaining applicable forms on both ISAs. |
-| Direct-address reads | Direct loads with pure suffix/control lowering | No equivalent retained frame adapter | Checked only. Represent genuine decoded memory operands in copied IR before adding either public native path. |
-| Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Checked only. Migrate loads, stores, arithmetic and control together with precise fault, quota and dirty-page effects. |
-| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | A shared bounded mixed loop admits one already-dirty byte store. Wider writes and additional stores remain checked in this route. |
-| Read/store/tail cycles | Linked and resident cycle drivers | Restricted source-sealed cycle prototypes | No shared cycle kind. Retain useful source geometry and accounting without retaining synchronous compiler governance. |
+| Indirect scalar reads | All seven width/sign forms, prefixes and transactional bodies | A narrower retained read path | Both ISAs admit all seven scalar width/sign forms within the [shared read-body geometry](../src/pvm/internal/native_read_body.nim). General memory/control composition remains open. |
+| Direct-address reads | Direct loads with pure suffix/control lowering | No equivalent retained frame adapter | Both ISAs admit direct-address scalar loads within the same [source-certified read bodies](../src/pvm/internal/handler_read_body.nim). General direct-memory regions remain open. |
+| Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Both ISAs share bounded [read/store cycles](../src/pvm/internal/handler_read_cycle.nim) and [mixed self-loops](../src/pvm/internal/handler_mixed_loop.nim). Arbitrary mixed blocks and connected graphs remain open. |
+| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | The [shared loop certificate](../src/pvm/internal/handler_mixed_loop.nim) admits a transactional byte store or an ordered paid read/byte-store/read/word-store body. Other store geometries remain checked. |
+| Read/store/tail cycles | Linked and resident cycle drivers | Restricted source-sealed cycle prototypes | Both ISAs share the [seven-role connected cycle and exact receipt](../src/pvm/internal/native_read_cycle.nim). General connected graphs and additional native entry headers remain open. |
 | Larger connected control | Linked/resident macro routes | Restricted wide-source prototypes | Checked only. Evaluate demonstrated dynamic regions and use bounded shared graph certificates; fixture-specific nomination is not a production policy. |
 | Arena and ABI mechanics | ARM word publication, coherency and saved-register rules | x86 byte publication, mapping and SysV rules | Shared exclusive images and lifetime certificates exist. Keep the required mechanical lowerers and independent ABI proofs when deleting old frame adapters. |
 
@@ -92,10 +92,15 @@ policy across the existing consumers before increasing availability or image cap
 
 ## Bounded mixed byte-store loops
 
-Both shared native backends can run a bounded mixed byte-store loop beside a connected Read
-image. See the [source certificate](../src/pvm/internal/handler_mixed_loop.nim) and
-[worker and image ownership](../src/pvm/internal/native_pipeline.nim). The shared-async native
-suites cover source admission, primary priority, publication accounting and borrowed retirement.
+Both shared native backends can run source-certified transactional and paid mixed self-loops
+beside a connected Read image. The [source certificate](../src/pvm/internal/handler_mixed_loop.nim)
+owns accepted geometry and bounded discovery; [worker and image ownership](../src/pvm/internal/native_pipeline.nim)
+owns the single global auxiliary arena and exact primary-ticket/proof-set authority.
+[Publication](../src/pvm/internal/native_platform.nim) preserves ranked slots within the common
+byte cap; target encoding sizes can leave different slots checked on each ISA. This does not
+provide arbitrary graph composition or auxiliary scheduling beside a register-ring primary.
+The shared-async native suites cover source admission, primary priority, publication accounting,
+quota-bound handler restoration and borrowed retirement.
 
 ## Qualification and retirement
 
