@@ -463,3 +463,41 @@ assert singleHeapAfter-singleHeapBefore < 65536, "empty invocation scratch must 
 runFlatSingle(singleFrame)
 sameCpu(singleFrame.info, singleExpected)
 echo "PASS bounded single-step /17001 instruction source /one admitted fact /prepaid interior /immutable source"
+
+block adjacentRegisterHeaders:
+  # A's fallthrough enters B. B's equality edge returns to A until A reaches the limit.
+  let source = owner([@[149'u8, 0x33, 1], @[200'u8, 0x55, 5], @[170'u8, 0x43, 9],
+    @[132'u8, 0x55, 0], @[81'u8, 5, 0xf4], @[50'u8, 0]])
+  let cycles = GasCycleLimit(100000)
+  let firstPrice = uint64(blockGas(source, CodeAddress(0), cycles).value)
+  let secondPrice = uint64(blockGas(source, CodeAddress(9), cycles).value)
+  var combined = prepareFlatPlan(source, cycles, defaultFlatLimits(), false)
+  var ordinary = prepareFlatPlan(source, cycles, defaultFlatLimits(), true)
+  assert combined.error == FlatError.None and ordinary.error == FlatError.None
+  let combinedPlan = takeValue(combined)
+  let ordinaryPlan = takeValue(ordinary)
+  for pc in [CodeAddress(0), CodeAddress(9)]:
+    # Warm both orientations so neither stream still uses first-visit branch discovery.
+    var input = MachineInfo(pc: pc, gas: MachineGas(high(uint64)), registers: registers)
+    input.registers[4] = RegisterValue(6)
+    var fast = newFlatFrame(combinedPlan, [], input)
+    var checked = newFlatFrame(ordinaryPlan, [], input)
+    runFlat(fast, 64)
+    runFlat(checked, 64)
+    assert fast.exit == StepExit.Halt and checked.exit == StepExit.Halt
+    assert uint64(fast.info.registers[3]) == 6
+    sameCpu(fast.info, checked.info)
+    for paid in [false, true]:
+      # Check affordability and partial attempts in both originals after promotion.
+      input.blockCharged = paid
+      for gas in [0'u64, firstPrice-1, firstPrice, firstPrice+secondPrice-1,
+          firstPrice+secondPrice, high(uint64)]:
+        input.gas = MachineGas(gas)
+        for budget in 0'u64..16'u64:
+          resetFlatFrame(fast, input)
+          resetFlatFrame(checked, input)
+          runFlat(fast, budget)
+          runFlat(checked, budget)
+          assert fast.reason == checked.reason and fast.exit == checked.exit
+          assert fast.remaining == checked.remaining
+          sameCpu(fast.info, checked.info)
