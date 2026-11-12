@@ -49,8 +49,12 @@ assert materializedFacts(emptyFrame) == 0 and materializedFacts(emptyStream) == 
 var first = frame(plan, 700)
 var independent = frame(plan, 100)
 assert materializedFacts(first) == 0 and materializedFacts(independent) == 0
+assert metadataPayloadBytes(first) == 0 and metadataPayloadBytes(independent) == 0
 checkRun(first, 700)
 assert materializedFacts(first) == 2 and materializedFacts(independent) == 0
+# A late two-instruction visit must not allocate whole-source fact or PC-map payloads.
+assert metadataPayloadBytes(first) > 0 and metadataPayloadBytes(first) < 65536
+assert metadataPayloadBytes(independent) == 0
 # Native adjacency proofs require source-global ordinals even when the first visited block is late.
 assert materializedOrdinal(first, CodeAddress(2800)) == 1401
 assert materializedOrdinal(first, CodeAddress(2803)) == 1402
@@ -58,6 +62,7 @@ assert materializedOrdinal(first, CodeAddress(1200)) == 0
 assert planFacts(plan) == 2048
 var saved = takeFlatStream(first)
 assert materializedFacts(first) == 0 and materializedFacts(saved) == 2
+assert metadataPayloadBytes(first) == 0 # Moved maps cannot retain a stale logical/payload occupancy.
 var earlier = frame(plan, 300)
 restoreFlatStream(earlier, saved)
 assert materializedFacts(saved) == 0 and materializedFacts(earlier) == 2
@@ -67,6 +72,12 @@ assert materializedOrdinal(earlier, CodeAddress(1200)) == 601
 assert materializedOrdinal(earlier, CodeAddress(2800)) == 1401
 checkRun(independent, 100)
 assert materializedFacts(independent) == 2 and materializedFacts(earlier) == 4
+
+# A frame move transfers the actual payload and leaves the source observation empty.
+let transferredBytes = metadataPayloadBytes(independent)
+let movedFrame = move(independent)
+assert transferredBytes > 0 and metadataPayloadBytes(movedFrame) == transferredBytes
+assert metadataPayloadBytes(independent) == 0
 
 # An interior-first entry still admits its complete containing block, including its original charge.
 var interior = frame(plan, 900, true)
@@ -103,5 +114,22 @@ var foreign = frame(other, 700)
 restoreFlatStream(foreign, saved)
 assert preparationError(foreign) == FlatError.InvalidProgram
 assert materializedFacts(foreign) == 0 and materializedFacts(saved) == 4
+
+# One complete block crosses multiple metadata chunks, including a short final chunk.
+var longBytes = @[0'u8, 0'u8]
+let longLength = encode(JamNatural(1026))
+for index in 0..<longLength.len: longBytes.add(longLength.bytes[index])
+for index in 0..<1025: longBytes.add(2'u8)
+longBytes.add(0'u8)
+for index in 0..<128: longBytes.add(255'u8)
+longBytes.add(3'u8)
+let longSource = decodeJamProgram(longBytes, CodeAddress(0), ProgramByteLimit(8192), JumpCountLimit(0))
+assert longSource.error == ProgramError.None
+let longPlan = newFlatPlan(longSource.value, GasCycleLimit(10000))
+var longFrame = newFlatFrame(longPlan, [], MachineInfo(gas: MachineGas(100000)))
+runFlat(longFrame, 1026)
+assert longFrame.reason == StepError.None and longFrame.exit == StepExit.Panic
+assert materializedFacts(longFrame) == 1026
+assert materializedOrdinal(longFrame, CodeAddress(1025)) == 1026
 
 echo "PASS lazy admission / reached blocks / isolated catalogues / resource and identity boundaries"
