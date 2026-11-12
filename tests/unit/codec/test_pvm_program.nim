@@ -208,6 +208,22 @@ for gap in 0..26:
       assert header.error == ProgramError.None and header.value.skip == 24
       assert header.value.opcode == 2 and instructionHasFallthrough(header)
 
+block finalMarkerTail:
+  # A final marked trap may cover at most 24 operand bytes, even across empty bitmap bytes.
+  for tail in 24..26:
+    var code = newSeq[byte](7+tail)
+    code[0] = 2
+    let wire = blob(code, [0, 7])
+    let paper = read(wire)
+    let jam = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(0))
+    let expected = if tail <= 25: ProgramError.None else: ProgramError.InvalidProgram
+    assert paper.error == expected and jam.error == expected
+    if tail <= 25:
+      # Both profiles retain the two actual markers and the complete final skip.
+      for owner in [paper.value, jam.value]:
+        assert instructionCount(owner).value == 2
+        assert instructionHeader(owner, CodeAddress(7)).value.skip == tail-1
+
 # All thirteen operand forms: explicit values catch register naming and immediate-width mistakes.
 assert ins([2'u8, 0], [0, 1]).shape == OperandShape.NoArguments
 let immediate = ins([10'u8, 128, 0], [0, 2])
