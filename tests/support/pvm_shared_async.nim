@@ -1486,6 +1486,7 @@ proc runSharedAsync*() =
         # Both maintained native profiles include deterministic paid fault and retry coverage.
         runPaidMixedLoopSource()
       runMixedLoopMailbox()
+      runTypedAuxiliaryMailbox()
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")
       lateReadReplacement()

@@ -25,8 +25,9 @@ import ./register_ops
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
-  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness) or
-      defined(pvmTypedAuxiliaryWitness):
+  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
+    import std/syncio
+  elif defined(pvmPaidMixedLoopWitness) or defined(pvmTypedAuxiliaryWitness):
     import std/syncio
   import ./[native_mixed_loop, native_platform, native_auxiliary]
 
@@ -3317,7 +3318,9 @@ when NativeReadCycleEnabled:
 
   proc runFlatAuxiliarySegment(f: var FlatFrame, entry: uint32,
       key: NativeImageKey) {.noinline.} =
-    ## Borrow the already chosen immutable ticket once per checked segment.
+    ## Rebind the immutable proof set and borrow once for this checked segment.
+    ## The inner defer restores every handler and proof view before the outer
+    ## defer returns the image lease. No segment borrow crosses a host callback.
     if f.auxiliaryHeat.primary != key: bindFlatAuxiliaryHeat(f, key)
     let source = f.mixedSource
     if source.chosenCount != 0 and source.chosenPrimary == key:

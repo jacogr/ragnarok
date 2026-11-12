@@ -121,8 +121,9 @@ when declared(FlatFrame):
     let epoch = nativeEpoch(f.nativeSession)
     if epoch == 0: return
     if f.mixedSource.epoch != epoch: f.mixedSource = FlatMixedLoopSource(epoch: epoch)
-    if int(f.mixedSource.count)+int(f.mixedSource.cycleToken != 0) >= NativeMixedLoopCandidateLimit or
-        int(f.mixedSource.checks)+int(f.mixedSource.cycleChecks) >= NativeMixedLoopReconstructionLimit:
+    let candidates = int(f.mixedSource.count)+int(f.mixedSource.cycleToken != 0)
+    let checks = int(f.mixedSource.checks)+int(f.mixedSource.cycleChecks)
+    if candidates >= NativeMixedLoopCandidateLimit or checks >= NativeMixedLoopReconstructionLimit:
       return
     let token = pc+1
     for index in 0..<int(f.mixedSource.count):

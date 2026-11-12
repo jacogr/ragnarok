@@ -56,9 +56,9 @@ when NativeReadCycleEnabled:
     NativeOperation(opcode: opcode, slots: instructionRegisters(decoded),
       immediate: uint64(decoded.value.x))
 
-  proc readFixture(overlap: bool, epoch: uint64): NativeReadBody =
+  proc readFixture(overlap: bool, epoch: uint64, first = 1'u32): NativeReadBody =
     ## Build the original paid Read without attaching the optional setup block.
-    result = initNativeReadBody(readHeader, 33, 1, 24, epoch)
+    result = initNativeReadBody(readHeader, 33, first, first+23, epoch)
     # The overlap case must use the old r6 address before replacing it with the loaded byte.
     let firstLoad = operation(124, if overlap: 0x66'u8 else: 0x36'u8)
     let qwordLoad = operation(130, if overlap: 0xa7'u8 else: 0x37'u8)
@@ -74,13 +74,13 @@ when NativeReadCycleEnabled:
     for i, op in body:
       # The leading noop folds into the header. The 22 read operations follow it in order.
       let offset = uint32(i)+1
-      assert addReadBodyOperation(result, readHeader+offset, 1+offset, op),
+      assert addReadBodyOperation(result, readHeader+offset, first+offset, op),
         "append one source Read operation"
 
   proc cycleFixture(overlap = false, outside = false, receiptLayout = layout,
       epoch = 1'u64): NativeReadCycle =
     ## Extend the same paid Read with setup and the certified connected route.
-    var read = readFixture(overlap, epoch)
+    var read = readFixture(overlap, epoch, receiptLayout.sites[NativeCycleRole.Read].first)
     let outerUpdate = if overlap: operation(149, 0x36) else: operation(149, 0x88, 2)
     let setup = [operation(51, 9, 0x7a), operation(200, 0xb9, 9), operation(149, 0x99, 2)]
     assert addNativeReadContinuation(read,
@@ -1248,21 +1248,36 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     invalidateNativeStream(renderer)
     assert runtimeInfo(runtime).registered == 0 and close(runtime)
 
+  proc typedCycleFixture(first: uint32, epoch: uint64): NativeReadCycle =
+    ## Keep role source intervals distinct and contiguous independently of cached headers.
+    var typedLayout = layout
+    var next = first
+    for role in NativeCycleRole:
+      typedLayout.sites[role].first = next
+      next += uint32(NativeCycleSpans[role])
+    cycleFixture(receiptLayout = typedLayout, epoch = epoch)
+
+  proc typedReadOnlyProof(epoch: uint64): NativeMixedLoop =
+    ## Bind a bounded Read, pointer increment, and original signed backedge.
+    result = NativeMixedLoop(header: 128, first: 192, terminal: 131, exitHeader: 132,
+      price: 3, epoch: epoch, span: 3, count: 3)
+    result.operations[0] = operation(124, 0x36) # r6 = byte[r3]
+    result.operations[1] = operation(149, 0x33, 1)
+    result.operations[2] = operation(173, 0x43) # repeat while r3 <s r4
+
   proc runTypedAuxiliaryNative*() =
     ## Execute both ABIs from one RX image and repeat the existing literal Read receipts there.
-    var typedLayout = layout
-    var first = typedLayout.sites[NativeCycleRole.Read].first
-    for role in NativeCycleRole:
-      typedLayout.sites[role].first = first
-      first += uint32(NativeCycleSpans[role])
-    let cycle = cycleFixture(receiptLayout = typedLayout)
-    var loop = NativeMixedLoop(header: 128, first: 192, terminal: 131, exitHeader: 132,
-      price: 3, epoch: cycle.read.info.epoch, span: 3, count: 3)
-    loop.operations[0] = operation(124, 0x36) # r6 = byte[r3]
-    loop.operations[1] = operation(149, 0x33, 1)
-    loop.operations[2] = operation(173, 0x43) # repeat while r3 <s r4
+    let cycle = typedCycleFixture(1, 1)
+    let typedLayout = cycle.layout
+    let loop = typedReadOnlyProof(cycle.read.info.epoch)
     var plan = initNativeAuxiliaryPlan(cycle.read.info.epoch)
     assert plan.add(cycle) and plan.add(loop)
+    var request = default(NativeAuxiliaryRequest)
+    assert newNativeAuxiliaryRequest(plan, request) == NativeAuxiliaryBuildStatus.Ready
+    var owned = move(request)
+    assert request.isEmpty and not owned.isEmpty
+    var copied = default(NativeAuxiliaryPlan)
+    assert copyNativeAuxiliaryPlan(owned, copied) and sameNativeAuxiliaryPlan(owned, copied)
     var refused = 0'u8
     var pairRefused = false
     let image = lowerNativeAuxiliary(plan, refused, pairRefused)
@@ -1291,7 +1306,8 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
 
     assert tryEnterNativeAuxiliaryLoopAt(image, 1, registers, loopContext, raw)
     let receipt = nativeMixedLoopReceipt(loop, 2, raw, registers)
-    assert receipt.valid and receipt.visits == 2 and not receipt.paid and receipt.next == loop.exitHeader
+    assert receipt.valid and receipt.visits == 2 and not receipt.paid and receipt.next ==
+        loop.exitHeader
     assert uint64(registers[3]) == wordAddress+2 and uint64(registers[6]) == 0x42
 
     checkEntry(image, false, 1000, 1000, tailHeader, 969, 976, ReadExit.UnpaidTail,
@@ -1301,5 +1317,80 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     checkEntry(image, false, 0, 0, readHeader, 0, 0, ReadExit.FirstMiss,
       receiptLayout = typedLayout, auxiliarySlot = 0)
     checkEntry(image, true, 1000, 1000, typedLayout.sites[NativeCycleRole.Store].header,
-      997, 996, ReadExit.UnpaidStore, receiptLayout = typedLayout, pageDirty = false, auxiliarySlot = 0)
+      997, 996, ReadExit.UnpaidStore, receiptLayout = typedLayout, pageDirty = false,
+          auxiliarySlot = 0)
     echo "PASS typed auxiliary image and both ABI guards"
+
+  proc runTypedAuxiliaryMailbox*() =
+    ## Borrow the exact heterogeneous request, then revoke it under real primary pressure.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "typed auxiliary worker startup failed"
+    let owner = newNativeSession(runtime)
+    let other = newNativeSession(runtime)
+    readyMixedLoopTestRenderer(runtime, owner, ring = true)
+    readyMixedLoopTestRenderer(runtime, other, ring = true)
+    let epoch = nativeEpoch(owner)
+    assert epoch == nativeEpoch(other)
+    let cycle = typedCycleFixture(64, epoch)
+    let loop = typedReadOnlyProof(epoch)
+    var exact = initNativeAuxiliaryPlan(epoch)
+    assert exact.add(cycle) and exact.add(loop)
+
+    beginNativeInvocation(owner, NativeInvocationFloor)
+    let primary = nativeInstalledKey(owner)
+    assert offerNativeAuxiliary(owner, primary, exact)
+    finishNativeInvocation(owner, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).registered == 3 and runtimeInfo(runtime).completions == 1
+
+    var lease = default(NativeAuxiliaryLease)
+    beginNativeInvocation(other, NativeInvocationFloor)
+    let wrongOwner = borrowNativeAuxiliary(other, nativeInstalledKey(other), exact, lease)
+    assert wrongOwner.settled and not wrongOwner.matched and not lease.ready
+    finishNativeInvocation(other, NativeInvocationFloor)
+    beginNativeInvocation(owner, NativeInvocationFloor)
+    var changed = cycle
+    changed.word.displacement += 1
+    var wrong = initNativeAuxiliaryPlan(epoch)
+    assert wrong.add(changed) and wrong.add(loop)
+    let wrongProof = borrowNativeAuxiliary(owner, primary, wrong, lease)
+    assert wrongProof.settled and not wrongProof.matched and not lease.ready
+    var reversed = initNativeAuxiliaryPlan(epoch)
+    assert reversed.add(loop) and reversed.add(cycle)
+    let wrongOrder = borrowNativeAuxiliary(owner, primary, reversed, lease)
+    assert wrongOrder.settled and not wrongOrder.matched and not lease.ready
+    let borrowed = borrowNativeAuxiliary(owner, primary, exact, lease)
+    assert borrowed.settled and borrowed.matched and borrowed.mask == 3 and lease.ready
+    var moved = move(lease)
+    assert not lease.ready and moved.ready and auxiliaryCodeBytes(moved) > 0
+    assert auxiliaryEntryMatches(moved, 0, NativeAuxiliaryKind.ReadCycle) and
+      auxiliaryEntryMatches(moved, 1, NativeAuxiliaryKind.SelfLoop)
+
+    let entrant = newNativeSession(runtime)
+    beginNativeInvocation(entrant, NativeInvocationFloor)
+    nominateNativeReadCycle(entrant, cycleFixture())
+    finishNativeInvocation(entrant, NativeInvocationFloor)
+    # Primary pressure revokes the borrowed image but cannot recycle its row.
+    assert runtimeInfo(runtime).registered == 4 and nativeState(entrant) == NativeState.Pending
+    waitNativeCompiler(runtime)
+    var registers = default(RegisterFile)
+    var empty = NativeCycleContext(lastCompleted: NativeCycleNoCompleted)
+    var lastHeader = cycle.read.info.header
+    assert runBorrowedAuxiliaryCycle(owner, moved, 0, cycle, registers, empty, lastHeader) ==
+      cycle.read.info.header
+    assert empty.paidRead == 1 and empty.lastCompleted == NativeCycleNoCompleted
+    assert registers == default(RegisterFile)
+    assert not close(runtime)
+    returnNativeAuxiliary(moved)
+    assert not moved.ready and runtimeInfo(runtime).registered == 3
+    let retired = borrowNativeAuxiliary(owner, primary, exact, lease)
+    assert retired.settled and not retired.matched and not lease.ready
+
+    finishNativeInvocation(owner, NativeInvocationFloor)
+    invalidateNativeStream(entrant)
+    invalidateNativeStream(other)
+    invalidateNativeStream(owner)
+    assert runtimeInfo(runtime).registered == 0 and close(runtime)

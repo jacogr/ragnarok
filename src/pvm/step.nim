@@ -1015,7 +1015,8 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
   when NativeReadCycleEnabled:
-    finishFlatAuxiliaryInvocation(frame, answer.error == HostExecutionError.None and answer.value.exit == StepExit.Halt)
+    finishFlatAuxiliaryInvocation(frame, answer.error == HostExecutionError.None and
+        answer.value.exit == StepExit.Halt)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer

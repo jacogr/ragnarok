@@ -916,6 +916,36 @@ when NativeCheckedReadEnabled:
         if nativeReadObservationOverlaps(session, part): return true
       false
 
+type
+  NativeAuxiliaryLease* = object
+    ## One callback-free segment's return obligation. The caller's active session
+    ## pins the runtime anchor; neither a request nor readonly plan parameter is borrowed.
+    runtime: nil ptr NativeRuntimeStorage
+    image: nil ptr NativeImage
+    key, owner: JobKey
+
+proc `=copy`*(destination: var NativeAuxiliaryLease, source: NativeAuxiliaryLease) {.error.}
+  ## Only one handle may discharge the runtime's borrow obligation.
+
+proc `=dup`*(source: NativeAuxiliaryLease): NativeAuxiliaryLease {.error.}
+  ## A copied image pointer cannot confer a second active lease.
+
+proc `=wasMoved`*(lease: var NativeAuxiliaryLease) {.nodestroy, inline.} =
+  ## Transfer the obligation without returning a still-live arena.
+  lease.runtime = nil
+  lease.image = nil
+  lease.key = default(JobKey)
+  lease.owner = default(JobKey)
+
+proc `=destroy`*(lease: var NativeAuxiliaryLease) =
+  ## Destruction cannot restore the caller's patched handlers; require an explicit return.
+  assert lease.runtime == nil and lease.image == nil and lease.key.ticket == 0 and
+    lease.owner.ticket == 0, "return active auxiliary lease before destruction"
+
+func ready*(lease: NativeAuxiliaryLease): bool =
+  ## An empty/default/failed lease exposes no image.
+  lease.image != nil
+
 when NativeReadCycleEnabled:
   func mixedLoopPrimaryReady*(session: NativeSession): bool =
     ## Match the current installed primary before either offer or segment borrow.
@@ -1031,34 +1061,6 @@ when NativeReadCycleEnabled:
       mask*, refusedMask*: uint8
     NativeMixedLoopBorrow* = NativeAuxiliaryBorrowInfo
       ## Compatibility name for the existing loop-only source observer.
-    NativeAuxiliaryLease* = object
-      ## One callback-free segment's return obligation. The caller's active session
-      ## pins the runtime anchor; neither a request nor readonly plan parameter is borrowed.
-      runtime: nil ptr NativeRuntimeStorage
-      image: nil ptr NativeImage
-      key, owner: JobKey
-
-  proc `=copy`*(destination: var NativeAuxiliaryLease, source: NativeAuxiliaryLease) {.error.}
-    ## Only one handle may discharge the runtime's borrow obligation.
-
-  proc `=dup`*(source: NativeAuxiliaryLease): NativeAuxiliaryLease {.error.}
-    ## A copied image pointer cannot confer a second active lease.
-
-  proc `=wasMoved`*(lease: var NativeAuxiliaryLease) {.nodestroy, inline.} =
-    ## Transfer the obligation without returning a still-live arena.
-    lease.runtime = nil
-    lease.image = nil
-    lease.key = default(JobKey)
-    lease.owner = default(JobKey)
-
-  proc `=destroy`*(lease: var NativeAuxiliaryLease) =
-    ## Destruction cannot restore the caller's patched handlers; require an explicit return.
-    assert lease.runtime == nil and lease.image == nil and lease.key.ticket == 0 and
-      lease.owner.ticket == 0, "return active auxiliary lease before destruction"
-
-  func ready*(lease: NativeAuxiliaryLease): bool =
-    ## An empty/default/failed lease exposes no image.
-    lease.image != nil
 
   func emptyAuxiliaryLease(lease: NativeAuxiliaryLease): bool =
     ## A new borrow must never erase an outstanding return obligation.
@@ -1175,7 +1177,8 @@ when NativeReadCycleEnabled:
     let owner = JobKey(slot: expected.slot, generation: expected.generation,
       ticket: expected.ticket, epoch: expected.epoch, kind: expected.kind)
     let exact = runtime.mixedKey.generation != 0 and sameKey(runtime.mixedOwner, owner) and
-      matchesRow(runtime, owner) and runtime.slots[owner.slot].location == CompletionLocation.Installed and
+      matchesRow(runtime, owner) and runtime.slots[owner.slot].location ==
+          CompletionLocation.Installed and
       sameNativeAuxiliaryPlan(runtime.mixedRequest, requested)
     borrowAuxiliaryLocked(runtime, data[], exact, lease, result)
     for index in 0..<requested.len:

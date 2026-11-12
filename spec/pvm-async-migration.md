@@ -92,49 +92,17 @@ policy across the existing consumers before increasing availability or image cap
 
 ## Bounded typed auxiliary arena
 
-Both shared native backends can run source-certified transactional, paid and read-only
-signed-LT self-loops beside an exact connected Read or RegisterRing image. Beside a Ring,
-one connected Read cycle may share the same arena with those loops. This reuses the existing
-seven-role certificate and lowerer; it does not admit arbitrary graph composition.
+A RegisterRing can share one auxiliary arena with a connected Read cycle and eligible
+self-loops. The [Ring observer and frame ledger](../src/pvm/internal/handler_auxiliary.nim),
+[typed request](../src/pvm/internal/native_auxiliary.nim),
+[worker and lease](../src/pvm/internal/native_pipeline.nim) and
+[image publisher](../src/pvm/internal/native_platform.nim) own the contracts.
 
-The [Ring observer](../src/pvm/internal/handler_auxiliary.nim) ranks complete checked work in
-one public invocation. A cycle needs at least 4,096 attempted facts in certified roles and
-one completed Read; outside successors do not add cycle heat. The bounded scalar observation
-does not survive public return or a change of primary key or source epoch. Cold discovery
-shares eight accepted source slots and sixteen reconstruction attempts with
-[self-loops](../src/pvm/internal/handler_mixed_loop.nim). One initial read-only loop is allowed.
-The Ring keeps one initial Read scout. It spends at most four of the shared sixteen attempts
-and retries only after the checked stream adds nodes or links. A later Read primary keeps the
-existing loop budget: across replacement, up to sixteen loop walks and four earlier cycle
-walks can occur in the same stream epoch.
-
-After an actual Ring entry and a successful Halt, both public execution paths rebuild the
-ranked proofs in the final live frame. They offer once after Read observation cleanup and
-before returning the stream. A busy compiler, pressure or allocation refusal leaves execution
-checked; no call waits for an auxiliary to be ready. The connected Read primary retains its
-loop-only per-segment selection.
-
-The [worker](../src/pvm/internal/native_pipeline.nim) owns one global auxiliary row and
-rechecks the exact primary key before it moves in the immutable request. The host owns that
-request; the worker copies only its bounded proof data under the mutex. The request can stay
-parked after the last borrow and physical unmap until the host collects it. The existing
-four credits and primary queue priority still apply.
-
-[Publication](../src/pvm/internal/native_platform.nim) preserves the ordered slots within
-the common byte cap and records an ABI tag for each occupied slot. Different encoding
-sizes can leave different entries checked on each ISA. A segment rebuilds the exact proof set
-and borrows a move-only image lease. It restores every saved handler, including a handler
-under a quota barrier, before returning that lease. Each body uses the corresponding Read
-or self-loop receipt and fresh frame memory bounds.
-
-The shared native suites exercise a Read and a signed loop in the same image, reject both
-wrong-ABI entries, and check paid Read rollback and unpaid Store and Tail boundaries.
-The shared-async native suites cover source admission, primary priority, publication
-accounting, quota-barrier restoration and borrowed retirement. The maintained ARM/x86
-`pvm_read_only_loop` suites cover thirteen native/checked frame scenarios, two repaired
-width faults, both loaded operand orientations, and the one-candidate discovery bound.
-Their explicit loop-only scheduling witness also serves the private frozen-program proof.
-Ordinary unit runs need no external DOOM data.
+The ARM64 and x86-64 native suites cover exact heterogeneous mailbox authority and
+borrowed retirement, both entry ABIs, signed-loop source and frame checks, paid Read
+rollback, and unpaid Store and Tail boundaries. The ownership lowering controls reject
+copying the host request or image lease. The frozen DOOM gate verifies all three entries
+in the same arena and checks complete init and tick results.
 
 ## Qualification and retirement
 

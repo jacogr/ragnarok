@@ -1,7 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Invocation-local checked work and typed auxiliary entries beside the RegisterRing.
+## Count completed checked blocks under one exact RegisterRing key. Heat lives
+## only in the current public invocation and uses its original step budget.
+## The observer counts seven connected Read roles separately from the outside
+## successor and self-loops. After actual Ring execution and a successful Halt,
+## the final live frame rebuilds the ranked proofs and offers one immutable job.
+##
+## Each callback-free segment binds the exact ordered proofs before borrowing.
+## The frame records every occupied slot's original handler in a bounded ledger.
+## It restores the ledger, including quota barrier saves, before returning the
+## lease. Source-plan and invocation memory borrows end at the same boundary.
 
 when declared(FlatFrame):
   proc clearFlatAuxiliaryInvocation*(f: var FlatFrame) =
@@ -64,7 +73,8 @@ when declared(FlatFrame):
     f.mixedSource.cycleRefused = false
 
   proc bindFlatAuxiliaryHeat(f: var FlatFrame, key: NativeImageKey) =
-    ## Only exact Ring authority funds this observer. Retained source tokens carry no heat.
+    ## Keep at most fifteen observation sites under one exact Ring key and public budget.
+    ## A key change discards the previous observations. Only source tokens can survive return.
     let budget = f.auxiliaryHeat.budget
     f.auxiliaryHeat = FlatAuxiliaryHeat(primary: key, budget: budget)
     if budget < NativeInvocationFloor or f.pricingKind != 0 or
@@ -116,7 +126,9 @@ when declared(FlatFrame):
     ## Do not consume the existing cold loop budget while waiting on an incomplete route.
 
   proc discoverFlatAuxiliaryCycle(f: var FlatFrame, header: uint32) =
-    ## One bounded cold scout retries only when the checked stream adds nodes or links.
+    ## Keep one cold scout and count at most four walks against the Ring's sixteen.
+    ## A retry needs new emitted nodes or cached edges. Ring retirement releases the
+    ## cycle's share of the inventory, so Read-primary owners keep their loop budget.
     if f.mixedSource.cycleToken != 0 or
         f.mixedSource.count >= uint8(NativeMixedLoopCandidateLimit) or
         f.mixedSource.cycleChecks >= uint8(FlatAuxiliaryCycleCheckLimit) or
@@ -193,7 +205,10 @@ when declared(FlatFrame):
         return
 
   proc finishFlatAuxiliaryInvocation*(f: var FlatFrame, successfulHalt: bool) =
-    ## Rank only exact settled work in the actual final frame, after Read cleanup.
+    ## Rank exact settled work in the final live frame, after Read cleanup.
+    ## A cycle needs 4,096 certified role attempts and at least one completed Read.
+    ## The outside successor contributes no cycle heat. Rebuild all proofs before
+    ## offering once under the exact key. Refusal cannot transfer heat to another call.
     defer: clearFlatAuxiliaryInvocation(f)
     let current = nativeInstalledKey(f.nativeSession)
     if f.mixedSource.chosenPrimary.kind == NativeKind.RegisterRing and
@@ -317,7 +332,9 @@ when declared(FlatFrame):
 
   proc planFlatAuxiliaryPatches(f: var FlatFrame, plan: var NativeAuxiliaryPlan,
       mask: uint8): bool =
-    ## Capture only real published slots. Validate the whole ledger before any mutation.
+    ## Capture the actual original handlers for at most eight occupied slots.
+    ## Validate the full ledger and ABI tags before mutating the live checked stream.
+    ## The caller owns plan storage and must restore the handlers before lease return.
     assert f.auxiliaryPatchCount == 0 and f.auxiliaryPlan == nil and f.auxiliaryLease.ready
     var patches = default(array[NativeAuxiliaryEntryLimit, FlatAuxiliaryPatch])
     var count = 0
@@ -354,7 +371,8 @@ when declared(FlatFrame):
     true
 
   proc restoreFlatAuxiliaryPatches(f: var FlatFrame) =
-    ## Also restore a saved original beneath a live partial quota barrier.
+    ## Restore every actual checked handler, including one saved beneath a quota barrier.
+    ## Clear the local proof view before lease return can retire and unmap the image.
     for index in 0..<int(f.auxiliaryPatchCount):
       let patch = f.auxiliaryPatches[index]
       let checked = patch.checked
