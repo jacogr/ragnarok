@@ -8,6 +8,8 @@ import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[handler_stream, native_pipeline, native_platform]
 import ./pvm_owner_record
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+  import ./[pvm_read_cycle_execution, pvm_mixed_loop_source]
 
 proc recordNativeQualification(kind: string, runtime: NativeRuntime, info: PreparedInfo,
     noRetryChecks = 0) =
@@ -1474,6 +1476,9 @@ proc runSharedAsync*() =
     immediateLoops()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
+    when NativeReadCycleEnabled:
+      runMixedLoopSource()
+      runMixedLoopMailbox()
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")
       lateReadReplacement()

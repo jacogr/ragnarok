@@ -384,7 +384,7 @@ type
     backend*: PvmBackend
     nativeFragments*: uint64                ## Cumulative successful physical publications, including replacements.
     nativeCalls*, nativeOperations*: uint64 ## Cumulative activity across invocations of this owner.
-    nativeBranchCalls*, nativeHeaderCalls*: uint64 ## Physical calls with a branch or native backedge.
+    nativeBranchCalls*, nativeHeaderCalls*: uint64 ## Physical calls with a branch or a visit completed after a native backedge.
     nativeCompilationMeasured*: bool ## False means the supplementary process-based compilation duration is unavailable.
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
@@ -452,7 +452,7 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   var native = default(array[7, uint64])
   var built, supported = false
   when defined(pvmArm64Jit) or defined(pvmX86Jit):
-    let observed = nativeStatistics(data.native)
+    let observed = nativeOwnerStatistics(data.native)
     for index in 0..<5: native[index] = observed[index]
     let control = nativeControlStatistics(data.native)
     native[5] = control.branchCalls
@@ -472,6 +472,13 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
         checkedFallbackEnabled: data.selected == PvmBackend.Jit,
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
         data.memoryScratch)))
+
+when defined(pvmMixedLoopWitness) or defined(pvmSharedAsyncWitness):
+  proc preparedPrimaryNativeStatistics*(prepared: PreparedProgram): array[5, uint64] =
+    ## Qualification observes the primary independently from the public owner totals.
+    let data = prepared.data
+    assert data != nil and not data.busy
+    nativeStatistics(data.native)
 
 when defined(pvmArm64JitOwnerReceipt):
   proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
@@ -515,7 +522,7 @@ proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
 
 proc nativeOperations(frame: FlatFrame): uint64 =
   ## One common activity source certifies actual execution on either lowerer, never requested policy alone.
-  nativeStatistics(frame.nativeSession)[2]
+  nativeOperationCount(frame.nativeSession)
 
 func actualIndependentBackend(usedNative: bool): PvmBackend =
   ## Completed native work identifies JIT execution; checked-only work remains interpreted.

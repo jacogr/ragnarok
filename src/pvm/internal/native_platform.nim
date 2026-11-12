@@ -9,6 +9,7 @@ import ./[native_ir, native_control]
 import ./[native_read_body, native_register_ring]
 when NativeReadCycleEnabled:
   import ./native_read_cycle
+  import ./native_mixed_loop
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -290,6 +291,37 @@ when NativeCheckedReadEnabled:
     status == NativeReadSuccess
 
 when NativeReadCycleEnabled:
+  proc lowerNativeMixedLoop*(proof: NativeMixedLoop, refused: var bool): NativeImage =
+    ## A bad proof or oversized encoding is deterministic. Arena failures can be transient.
+    result = default(NativeImage)
+    refused = true
+    if not proof.complete: return
+    when defined(pvmX86Jit):
+      var encoded = x86MixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
+      const unitBytes = 1
+    else:
+      var encoded = armMixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
+      const unitBytes = 4
+    let count = encoded.len
+    if count == 0 or count > NativeImageByteLimit div unitBytes: return
+    refused = false
+    let handle = createNativeArena()
+    if handle == nil: return
+    let offset = arenaPublish(handle, addr encoded[0], uint32(count))
+    if offset < 0:
+      arenaRelease(handle)
+      return
+    result = NativeImage(handle: handle, offset: uint32(offset),
+      bytesValue: uint64(count)*uint64(unitBytes), kindValue: NativeKind.MixedSelfLoop)
+
+  proc enterNativeMixedLoop*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeMixedLoopContext): uint32 =
+    ## The runtime lease owns the image while this call borrows only the active frame.
+    assert sizeof(NativeMixedLoopContext) == NativeMixedLoopContextBytes and
+      sizeof(RegisterFile) == 104
+    if not image.ready or image.kind != NativeKind.MixedSelfLoop: abortNativeReceipt()
+    arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+
   proc lowerNativeReadCycle*(cycle: NativeReadCycle): NativeImage =
     ## Publish one complete region under its own ABI and image size limit.
     ## The lowerers retain their original probes when the Store proof exceeds the

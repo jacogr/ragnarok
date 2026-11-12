@@ -32,7 +32,7 @@ bound runtime. Unported capabilities remain checked until their real shared path
 | Indirect scalar reads | All seven width/sign forms, prefixes and transactional bodies | A narrower retained read path | Shared bodies admit U8, S32 and U64 under restricted geometry. Extend the shared operand and refusal contract for the remaining applicable forms on both ISAs. |
 | Direct-address reads | Direct loads with pure suffix/control lowering | No equivalent retained frame adapter | Checked only. Represent genuine decoded memory operands in copied IR before adding either public native path. |
 | Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Checked only. Migrate loads, stores, arithmetic and control together with precise fault, quota and dirty-page effects. |
-| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | Checked fusion exists, but no shared native store kind. Require actual native stores and immutable publication on both architectures. |
+| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | A shared bounded mixed loop admits one already-dirty byte store. Wider writes and additional stores remain checked in this route. |
 | Read/store/tail cycles | Linked and resident cycle drivers | Restricted source-sealed cycle prototypes | No shared cycle kind. Retain useful source geometry and accounting without retaining synchronous compiler governance. |
 | Larger connected control | Linked/resident macro routes | Restricted wide-source prototypes | Checked only. Evaluate demonstrated dynamic regions and use bounded shared graph certificates; fixture-specific nomination is not a production policy. |
 | Arena and ABI mechanics | ARM word publication, coherency and saved-register rules | x86 byte publication, mapping and SysV rules | Shared exclusive images and lifetime certificates exist. Keep the required mechanical lowerers and independent ABI proofs when deleting old frame adapters. |
@@ -89,6 +89,13 @@ credit even with no active invocation. Checked fallback is expected at that boun
 not implied. Per-owner idle memory ceilings do not establish an aggregate prepared-storage bound.
 Future wiring requires explicit ownership/shutdown, aggregate retention budgets and a competition
 policy across the existing consumers before increasing availability or image capacity.
+
+## Bounded mixed byte-store loops
+
+Both shared native backends can run a bounded mixed byte-store loop beside a connected Read
+image. See the [source certificate](../src/pvm/internal/handler_mixed_loop.nim) and
+[worker and image ownership](../src/pvm/internal/native_pipeline.nim). The shared-async native
+suites cover source admission, primary priority, publication accounting and borrowed retirement.
 
 ## Qualification and retirement
 
