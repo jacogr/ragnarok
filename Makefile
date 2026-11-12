@@ -6,6 +6,37 @@
 
 # Make owns setup dependencies and command sequencing; helpers retain validation and native logic.
 .DEFAULT_GOAL := help
+# Standalone maintainer-authorized diagnostic; no production interpreter is linked.
+.PHONY: check-pvm-faithful
+check-pvm-faithful: toolchain sources rust-tools
+	. ./build-tools/toolchain/env.sh; $(PYTHON) experiments/pvm-faithful/check.py --compiler "$$NIMONY"
+
+# The fresh-control benchmark shares canonical fixtures/reference drivers, never production execution.
+.PHONY: check-pvm-faithful-workloads check-pvm-faithful-asan bench-pvm-faithful
+check-pvm-faithful-workloads: PVM_ASSET_TOOLS = 1
+check-pvm-faithful-workloads: prepare-pvm-faithful
+	$(PYTHON) experiments/pvm-faithful/tests/test_benchmark.py
+	. ./build-tools/toolchain/env.sh; $(PYTHON) experiments/pvm-faithful/benchmark.py --compiler "$$NIMONY" --mode check
+
+check-pvm-faithful-asan: PVM_ASSET_TOOLS = 1
+check-pvm-faithful-asan: prepare-pvm-faithful
+	. ./build-tools/toolchain/env.sh; $(PYTHON) experiments/pvm-faithful/benchmark.py --compiler "$$NIMONY" --mode check --asan
+
+bench-pvm-faithful: PVM_ASSET_TOOLS = 1
+bench-pvm-faithful: prepare-pvm-faithful
+	$(PYTHON) experiments/pvm-faithful/tests/test_benchmark.py
+	. ./build-tools/toolchain/env.sh; $(PYTHON) experiments/pvm-faithful/benchmark.py --compiler "$$NIMONY" --mode measure
+
+
+.PHONY: prepare-pvm-faithful format-pvm-faithful
+prepare-pvm-faithful: check-pvm-faithful
+	@if [ "$$(uname -s)" = Linux ] && ! command -v llvm-dwarfdump >/dev/null; then sudo apt-get install -y llvm; fi
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+
+format-pvm-faithful: compiler-tools rust-tools
+	. ./build-tools/toolchain/env.sh; $(PYTHON) experiments/pvm-faithful/format.py
+
 # Put flags in SHELL for both macOS Make 3.81 and newer Linux Make.
 SHELL := /bin/bash -eu -o pipefail
 # Native preparations and tests share build directories; serialize top-level targets.

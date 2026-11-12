@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, tooling, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, tooling, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, bench-pvm-faithful, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       contract_measure_bundles:
@@ -1001,3 +1001,41 @@ jobs:
             build/tests/jam-network/*.log
             build/tests/jam-network/*.json
             build/tests/jam-network/summary.md
+
+  # Standalone maintainer-requested control; never scheduled by a push or PR label.
+  pvm-faithful:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm-faithful' }}
+    name: Faithful control / ${{ matrix.family.group }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        family:
+          - {group: arm64, os: ubuntu-26.04-arm}
+          - {group: x86_64, os: ubuntu-26.04}
+    runs-on: ${{ matrix.family.os }}
+    env:
+      PVM_CI_SYSTEM: Linux
+      PVM_CI_ARCH: ${{ matrix.family.group }}
+    steps:
+      - *checkout
+      - *python
+      - *tool-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *polkavm-built-cache
+      - name: Validate and compare the standalone interpreter
+        run: make bench-pvm-faithful
+      - name: Retain complete standalone evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-faithful-${{ matrix.family.group }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build/pvm-faithful/**/*.json
+            build/pvm-faithful/**/*.jsonl
+            build/pvm-faithful/**/*.log
+            build/pvm-faithful/**/*.md
+            build/pvm-faithful/**/simulator-assembly.txt
