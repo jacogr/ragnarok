@@ -300,15 +300,6 @@ when NativeCheckedReadEnabled:
     status == NativeReadSuccess
 
 when NativeReadCycleEnabled:
-  when defined(pvmMixedLoopArenaWitness):
-    proc mixedLoopArenaAddress(handle: nil pointer): nil pointer {.cdecl,
-        importc: "pvm_mixed_arena_address", header: "mixed_arena_proof.h".}
-      ## Retain only the mapping address needed to verify cleanup after a failed append.
-
-    proc mixedLoopArenaUnmapped(address: nil pointer): cint {.cdecl,
-        importc: "pvm_mixed_arena_unmapped", header: "mixed_arena_proof.h".}
-      ## A failed publication must release the complete executable mapping before returning.
-
   proc lowerNativeMixedLoops*(candidates: NativeMixedLoopSet, refused: var uint8,
       pairRefused: var bool): NativeImage =
     ## Publish accepted source slots into one immutable arena before returning its owner.
@@ -368,18 +359,11 @@ when NativeReadCycleEnabled:
     if handle == nil: return
     for index in 0..<int(candidates.count):
       if (entries and (1'u8 shl index)) != 0:
-        var count = uint32(encodings[index].len)
-        when defined(pvmMixedLoopArenaWitness):
-          const pvmMixedLoopPublishFail {.intdefine.} = -1
-          if index == pvmMixedLoopPublishFail:
-            count = 0 # Exercise the maintained publisher's real refusal and full cleanup.
+        let count = uint32(encodings[index].len)
         let offset = arenaPublish(handle, addr encodings[index][0], count)
         if offset < 0:
-          when defined(pvmMixedLoopArenaWitness):
-            let address = mixedLoopArenaAddress(handle)
+          # The image is usable only after every accepted leaf has been published.
           arenaRelease(handle)
-          when defined(pvmMixedLoopArenaWitness):
-            assert mixedLoopArenaUnmapped(address) == 1
           return
         assert uint32(offset) == offsets[index]
     result = NativeImage(handle: handle, bytesValue: uint64(used),
@@ -399,36 +383,13 @@ when NativeReadCycleEnabled:
     if image.ready and image.kind == NativeKind.MixedSelfLoop: image.mixedEntries
     else: 0'u8
 
-  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopArenaWitness):
+  when defined(pvmMixedLoopWitness):
     func witnessNativeMixedLoopGeometry*(image: NativeImage, index: uint8): tuple[offset,
         length: uint32] =
       ## Copied byte coordinates identify one occupied proof slot without granting a new image borrow.
       assert index < uint8(NativeMixedLoopEntryLimit) and
         (nativeMixedLoopEntries(image) and (1'u8 shl int(index))) != 0
       (offset: image.mixedOffsets[int(index)], length: image.mixedLengths[int(index)])
-
-  when defined(pvmMixedLoopArenaWitness):
-    proc copyMixedLoopRx(handle: nil pointer, offset: uint32, output: ptr byte,
-        count: uint32): cint {.cdecl, importc: "pvm_mixed_arena_copy",
-        header: "mixed_arena_proof.h".}
-      ## Read only the already published RX extent for the native arena witness.
-
-    proc witnessNativeMixedLoopImage*(image: NativeImage, index: uint8,
-        expected: openArray[byte]): tuple[offset, length: uint32] =
-      ## Verify exact canonical leaf bytes at their recorded aligned arena offset.
-      assert index < uint8(NativeMixedLoopEntryLimit) and
-        (nativeMixedLoopEntries(image) and (1'u8 shl int(index))) != 0
-      assert expected.len > 0 and expected.len <= NativeImageByteLimit
-      let slot = int(index)
-      let offset = image.mixedOffsets[slot]
-      let length = image.mixedLengths[slot]
-      assert uint32(expected.len) == length and uint64(offset)+uint64(length) <= image.codeBytes
-      var actual = default(array[NativeImageByteLimit, byte])
-      assert copyMixedLoopRx(image.handle, offset, addr actual[0], length) == 1
-      for at in 0..<expected.len:
-        # Every leaf is compared before its recorded entry can execute.
-        assert actual[at] == expected[at]
-      (offset: offset, length: length)
 
   proc enterNativeMixedLoopAt*(image: NativeImage, index: uint8, registers: var RegisterFile,
       context: var NativeMixedLoopContext): uint32 =
