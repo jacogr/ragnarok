@@ -1264,4 +1264,3 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     # Stop bypasses the worker gate. Close joins before it inspects or returns that credit.
     assert close(runtime)
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
-    echo "PASS auxiliary priority, epoch, cancellation, retirement and close"
