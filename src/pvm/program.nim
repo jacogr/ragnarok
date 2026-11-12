@@ -303,8 +303,10 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   if not marked(input, maskOffset, int(uint64(entry))):
     return ProgramResult[Program](status: ProgramError.InvalidInstruction)
   var owned = newSeq[byte](input.len)
-  # Copy after full validation; callers may mutate or release their input on return.
-  for i in 0..<input.len: owned[i] = input[i]
+  # Complete validation proves nonempty input; the fresh equally sized owner is disjoint.
+  # One bounded copy preserves all framing bytes without a checked sequence store per byte.
+  # Callers may mutate or release their input immediately after this capture returns.
+  copyMem(addr owned[0], unsafeAddr input[0], input.len)
   ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
     bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width,

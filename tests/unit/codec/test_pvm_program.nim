@@ -164,6 +164,34 @@ block opcodeLocations:
     assert instructionByte(owner, CodeAddress(1)).value == 0
     assert instructionByte(owner, CodeAddress(high(uint64))).value == 0
 
+block capturedInputSpans:
+  # Exact wire bytes remain independent across short/vector/page boundaries and unaligned borrows.
+  for length in [1, 7, 8, 15, 16, 31, 32, 63, 64, 255, 256, 4095, 4096, 4097]:
+    var code = newSeq[byte](length)
+    var starts: seq[int] = @[]
+    for i in 0..<length:
+      # Explicit distinct valid opcodes reveal misplaced copies; the last instruction is a trap.
+      code[i] = if i mod 3 == 0 or i == length-1: 0'u8 else: 2'u8
+      starts.add(i)
+    let wire = blob(code, starts)
+    for offset in [1, 7, 17]:
+      var padded = newSeq[byte](offset+wire.len+17)
+      for i in 0..<padded.len: padded[i] = 0xa5
+      for i in 0..<wire.len: padded[offset+i] = wire[i]
+      let paper = decodeProgram(padded.toOpenArray(offset, offset+wire.len-1), CodeAddress(0),
+        ProgramByteLimit(uint64(wire.len)), JumpCountLimit(0))
+      let jam = decodeJamProgram(padded.toOpenArray(offset, offset+wire.len-1), CodeAddress(0),
+        ProgramByteLimit(uint64(wire.len)), JumpCountLimit(0))
+      assert paper.error == ProgramError.None and jam.error == ProgramError.None
+      for i in 0..<padded.len:
+        # Neither successful owner can borrow any byte of the mutable source or its padding.
+        padded[i] = 0xff
+      for owned in [paper.value, jam.value]:
+        assert matchesProgramEncoding(owned, wire)
+        assert instructionCount(owned).value == uint32(length)
+        let exported = programBytes(owned)
+        assert exported.error == ProgramError.None and exported.value == wire
+
 # Skip at 24 is allowed; a 25-byte operand gap reaches an unmarked instruction and must fail.
 for gap in 0..26:
   var code = newSeq[byte](gap + 2)
