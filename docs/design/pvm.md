@@ -20,7 +20,7 @@ Prepared execution admits the full source and resource limits up front, then fil
 block metadata on resolution. Its exclusive stream cache owns that derived metadata;
 the immutable program and admission identity remain shareable. Source-global instruction
 ordinals preserve native adjacent-block proofs regardless of visitation order. Fact and
-PC-map payloads allocate in bounded chunks as code is resolved; the logical resource
+PC-map payloads use direct storage for small extents and bounded chunks for larger code; the logical resource
 extents remain those admitted for the whole source.
 See the [checked stream owner](../../src/pvm/internal/handler_stream.nim).
 
