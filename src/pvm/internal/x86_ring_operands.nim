@@ -87,3 +87,27 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
       if count != 0:
         ringModRm(code, 0xc1, (if op.opcode == 151: 4'u8 else: 5'u8), dst, true)
         put(code, [count])
+
+  proc emitRingShiftPair(code: var X86Block, bank: X86ResidentAccess,
+      first, second: NativeOperation): bool =
+    ## Equal shifts leave the low 64-count bits of the original source.
+    ## Decline before writing any bytes when two immediate shifts are needed.
+    if not matchesNativeRingShiftPair(first, second): return false
+    let count = int(first.immediate and 63)
+    if count in 1..31: return false
+    let source = ringHardware(bank, first.slots.bIndex)
+    let dst = ringHardware(bank, first.slots.destinationIndex)
+    if count == 0:
+      # A zero pair is a full-width copy, which can be omitted for an alias.
+      if dst != source:
+        ringModRm(code, 0x89, source, dst, true)
+    elif count == 32:
+      # The 32-bit MOV clears the upper half even when source and destination alias.
+      ringModRm(code, 0x89, source, dst, false)
+    else:
+      # For 1 to 31 retained bits, the 32-bit AND also clears the upper half.
+      if dst != source:
+        ringModRm(code, 0x89, source, dst, false)
+      ringModRm(code, 0x81, 4, dst, false)
+      regionWord(code, (1'u32 shl (64-count))-1)
+    true

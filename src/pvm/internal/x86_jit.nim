@@ -710,8 +710,10 @@ when declared(X86ResidentAccess):
     for index in 0..2:
       let item = ring.blocks[index]
       var body = default(X86Block)
-      for position in 0..<int(item.span)-1:
-        emitRingOperand(body, bank, item.body[position])
+      # The C body completes both original shifts before its branch or any exit.
+      if index != 2 or not emitRingShiftPair(body, bank, item.body[0], item.body[1]):
+        for position in 0..<int(item.span)-1:
+          emitRingOperand(body, bank, item.body[position])
       let branch = item.branch
       emitX86BranchAccess(body, bank, branch.opcode, branch.slots, branch.immediate,
         item.yes, item.no)

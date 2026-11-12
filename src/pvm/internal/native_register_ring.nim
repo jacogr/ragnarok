@@ -58,6 +58,14 @@ func complete*(ring: NativeRegisterRing): bool =
       if cast[uint64](int64(cast[int32](low))) != item.branch.immediate: return false
   true
 
+func matchesNativeRingShiftPair*(first, second: NativeOperation): bool =
+  ## A whole admitted C block may hide the first shift only if the second overwrites it.
+  ## The copied slots already account for saturated source register encodings.
+  first.opcode == 151 and second.opcode == 152 and
+    first.slots.destinationIndex == second.slots.bIndex and
+    first.slots.destinationIndex == second.slots.destinationIndex and
+    (first.immediate and 63) == (second.immediate and 63)
+
 const
   NativeRingRoundSpan* = 8'u32             ## Total original attempts in the certified three blocks.
   NativeRingRoundSuffixSpans* = [5'u32, 3] ## Attempts to refund after the first or second block.

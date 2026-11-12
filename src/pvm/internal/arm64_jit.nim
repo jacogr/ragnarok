@@ -1568,9 +1568,14 @@ proc encodeArmRegisterRing*(ring: NativeRegisterRing): seq[uint32] =
   for index in 0..2:
     let item = ring.blocks[index]
     var body = newArmRegionBody()
-    for operation in 0..<int(item.span)-1:
-      let op = item.body[operation]
-      emitArmOperation(body, op.opcode, op.slots, op.immediate)
+    let first = item.body[0]
+    let second = item.body[1]
+    # The C body still charges and records both original shifts together.
+    if index != 2 or not matchesNativeRingShiftPair(first, second) or
+        not emitArmShiftPair(body, first.slots, second.slots, first.immediate, second.immediate):
+      for operation in 0..<int(item.span)-1:
+        let op = item.body[operation]
+        emitArmOperation(body, op.opcode, op.slots, op.immediate)
     let branch = item.branch
     emitArmBranch(body, branch.opcode, branch.slots, branch.immediate, item.yes, item.no)
     blocks[index] = ArmRegionBlock(header: item.header, span: item.span,

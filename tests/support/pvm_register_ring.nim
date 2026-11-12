@@ -55,7 +55,7 @@ proc ringFixture(wire: openArray[byte], prices: array[3, uint64]): NativeRegiste
   assert result.complete
 
 proc checkRing(wire: openArray[byte] = Wire, signedRight = 7, addLane = 2,
-    addStart = high(uint64)-6, wordStart = 1'u64) =
+    addStart = high(uint64)-6, wordStart = 1'u64, profileCount = Prices.len) =
   ## Use real decoded operands and compare every register and original continuation.
   let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
   assert decoded.error == ProgramError.None
@@ -63,7 +63,8 @@ proc checkRing(wire: openArray[byte] = Wire, signedRight = 7, addLane = 2,
   let memory = captureMemory([], PageLimit(0))
   assert memory.error == MachineError.None
   var cases = 0
-  for profile in 0..<Prices.len:
+  assert profileCount in 1..Prices.len
+  for profile in 0..<profileCount:
     let prices = Prices[profile]
     # Publish each price profile through the production direct lowering and image-size check.
     let ring = ringFixture(wire, prices)
@@ -121,7 +122,7 @@ proc checkRing(wire: openArray[byte] = Wire, signedRight = 7, addLane = 2,
             assert destination == CoordinateBase+pc and context == expectedContext
             assert registers == machineInfo(expected).value.registers
             inc cases
-  assert cases == 5760
+  assert cases == profileCount*960
 
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   proc noHost(called: var bool, stop: StepOutcome): HostResponse {.raises: [].} =
@@ -340,10 +341,42 @@ when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentP
     assert encodeX86RegisterRing(aliasRing) != x86CanonicalRingProof(aliasRing)
     checkRing(rightAlias, signedRight = 3, addLane = 12)
 
+when NativeCheckedReadEnabled:
+  proc checkRingShiftPairs() =
+    ## Run actual reserved and guarded C bodies against original checked steps on both ISAs.
+    const counts: array[6, array[2, byte]] = [
+      [0'u8, 64], [1'u8, 65], [32'u8, 96], [40'u8, 104], [63'u8, 127], [40'u8, 41]]
+    for index in 0..<counts.len:
+      var wire = sixLaneWire()
+      wire[21] = counts[index][0]
+      wire[24] = counts[index][1]
+      let body = ringFixture(wire, Prices[0]).blocks[2].body
+      assert matchesNativeRingShiftPair(body[0], body[1]) == (index != counts.len-1)
+      checkRing(wire, signedRight = 3, addLane = 12, profileCount = 1)
+
+    for kind in 0..2:
+      var wire = sixLaneWire()
+      wire[21] = 40
+      wire[24] = 40
+      case kind
+      of 0:
+        # The first source may differ from the chained destination.
+        wire[20] = 0x65
+      of 1:
+        # A distinct second source prevents consuming the first result.
+        wire[23] = 0x65
+      else:
+        # A distinct second destination leaves the first write observable.
+        wire[23] = 0x56
+      let body = ringFixture(wire, Prices[0]).blocks[2].body
+      assert matchesNativeRingShiftPair(body[0], body[1]) == (kind == 0)
+      checkRing(wire, signedRight = 3, addLane = 12, profileCount = 1)
+
 proc runRegisterRing*() =
   ## Check direct execution and the prepared-owner path on the selected native host.
   when NativeCheckedReadEnabled:
     checkRing()
+    checkRingShiftPairs()
     when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
       checkResidentRing()
     when defined(pvmSharedAsyncWitness):
