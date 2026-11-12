@@ -29,8 +29,8 @@ bench-pvm-faithful: prepare-pvm-faithful
 
 
 .PHONY: prepare-pvm-faithful format-pvm-faithful
+prepare-pvm-faithful: PVM_FAITHFUL_TOOLS = 1
 prepare-pvm-faithful: check-pvm-faithful
-	@if [ "$$(uname -s)" = Linux ] && ! command -v llvm-dwarfdump >/dev/null; then sudo apt-get install -y llvm; fi
 	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 
@@ -161,6 +161,7 @@ host-tools:
 	  if [ "$(BINARY_PACKAGE)" = 1 ]; then packages="$$packages patchelf"; fi; \
 	  if [ "$(STORAGE_ABORT_DIAGNOSTICS)" = 1 ]; then packages="$$packages lldb"; fi; \
 	  if [ "$(PVM_ASSET_TOOLS)" = 1 ]; then packages="$$packages zstd"; fi; \
+	  if [ "$(PVM_FAITHFUL_TOOLS)" = 1 ]; then packages="$$packages llvm"; fi; \
 	  for package in $$packages; do \
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
