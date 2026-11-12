@@ -801,7 +801,13 @@ proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
 
 proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlot,
     expected: PageDescription, bytes: openArray[byte]): MachineError =
-  ## Read a checked resident span synchronously; no pointer is stored in the batch.
+  ## Stage a 4096-byte view for an existing writable slot whose description
+  ## matches expected. Slots must increase strictly. A refusal is sticky and
+  ## prevents finishResidentReplacements from publishing the batch.
+  ## An unchanged page advances the slot without staging a replacement. If
+  ## all eight spans changed, copy them into one backing for the first seven
+  ## spans and a separate tail. Otherwise copy the changed chunks and retain
+  ## the immutable owners of the unchanged bytes. The input borrow ends here.
   if batch.status != MachineError.None: return batch.status
   let data {.cursor.} = batch.source.data
   assert data != nil
@@ -823,17 +829,23 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
     if cmpMem(borrowPageChunk(previous, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
       differences = differences or (1'u8 shl chunk)
   if differences != 0:
-    var chunks = default(array[8, nil PageChunk])
-    for chunk in 0..<8:
-      # Copy changed chunks only; do not retain their superseded source owners first.
-      if (differences and (1'u8 shl chunk)) != 0:
-        chunks[chunk] = copiedChunk(bytes, chunk*512)
-      else:
-        # Unchanged nil overrides still resolve through the retained immutable base.
-        chunks[chunk] = previous.chunks[chunk]
-    let changed = PageData(index: previous.index, zeroChunks: 0, access: previous.access,
-      backing: previous.backing, chunks: move(chunks))
-    dropCoveredBacking(changed)
+    let changed = if differences == high(uint8):
+      # Every old span has been superseded. Capture the complete borrowed page
+      # with one backing and one tail, without retaining the old payload.
+      fullPage(previous.index, previous.access, bytes)
+    else:
+      var chunks = default(array[8, nil PageChunk])
+      for chunk in 0..<8:
+        # Copy changed chunks and retain each unchanged effective span.
+        if (differences and (1'u8 shl chunk)) != 0:
+          chunks[chunk] = copiedChunk(bytes, chunk*512)
+        else:
+          # An unchanged nil override still resolves through the retained backing.
+          chunks[chunk] = previous.chunks[chunk]
+      let sparse = PageData(index: previous.index, zeroChunks: 0, access: previous.access,
+        backing: previous.backing, chunks: move(chunks))
+      dropCoveredBacking(sparse)
+      sparse
     batch.slots.add(at)
     batch.changed.add(changed)
   batch.lastSlot = at
