@@ -217,6 +217,7 @@ jobs:
         if: ${{ matrix.family.group == 'smoke' }}
         run: make check-smoke
       - name: Retain smoke diagnostics
+        timeout-minutes: 2
         if: ${{ always() && matrix.family.group == 'smoke' }}
         uses: &upload-artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -231,6 +232,7 @@ jobs:
         if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
       - name: Retain downloadable binary archive
+        timeout-minutes: 5
         if: ${{ matrix.family.group == 'binary' }}
         uses: *upload-artifact
         with:
@@ -241,6 +243,7 @@ jobs:
             build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
             build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
       - name: Retain binary build diagnostics
+        timeout-minutes: 2
         if: ${{ always() && matrix.family.group == 'binary' }}
         uses: *upload-artifact
         with:
@@ -261,6 +264,7 @@ jobs:
         run: make summary-modules SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
+        timeout-minutes: 2
         if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
@@ -276,6 +280,7 @@ jobs:
         if: ${{ !cancelled() && matrix.family.group == 'docker' }}
         run: make check-docker
       - name: Retain Docker build diagnostics
+        timeout-minutes: 2
         if: ${{ always() && matrix.family.group == 'docker' }}
         uses: *upload-artifact
         with:
