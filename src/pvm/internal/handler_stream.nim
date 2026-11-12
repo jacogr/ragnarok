@@ -3662,15 +3662,15 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
   false
 
 template requireFlatHostFact(f: FlatFrame, fact: var int) =
-  ## Bind both host observations to the stopped PC and resolve its immutable fact.
+  ## Bind both host observations to the original stopped node and its immutable source PC.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
     return oracle.StepError.InvalidHostSuspension
-  let pc = uint64(f.info.pc)
-  if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
-  let packed = f.plan.factAt[int(pc)]
-  if packed == 0: return oracle.StepError.InvalidHostSuspension
-  fact = int(packed - 1)
+  if f.plan.singleStep or int(f.stoppedAt) >= f.sites.len:
+    return oracle.StepError.InvalidHostSuspension
+  fact = int(f.sites[int(f.stoppedAt)])
+  if uint64(f.info.pc) != uint64(f.plan.facts[fact].pc):
+    return oracle.StepError.InvalidHostSuspension
 
 func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
     info: var MachineInfo): oracle.StepError {.noinline.} =

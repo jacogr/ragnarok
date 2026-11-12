@@ -74,11 +74,17 @@ proc resources(frame: FlatFrame, identity, nodes, work: uint64) =
 
 proc resume(frame: var FlatFrame, marker: uint64) =
   ## The genuine host boundary supplies posterior memory/scalars, never an arbitrary PC or paid flag.
-  let memory = observeFlatHostMemory(frame)
   let gas = frame.info.gas
   var registers = frame.info.registers
   registers[7] = RegisterValue(marker)
-  require(resumeFlatHostMemory(frame, memory, gas, registers) == StepError.None, "resume-host")
+  if (marker and 1) != 0:
+    # Odd replies exercise scalar-only suspension, including every folded-prefix budget below.
+    discard observeFlatHostScalars(frame)
+    require(resumeFlatHostScalars(frame, gas, registers) == StepError.None, "resume-scalar-host")
+  else:
+    # Alternate immutable-memory replies against the same admitted source and cached body.
+    let memory = observeFlatHostMemory(frame)
+    require(resumeFlatHostMemory(frame, memory, gas, registers) == StepError.None, "resume-host")
 
 proc hostCount(count, pricing: int, alreadyPaid: bool, defaults: bool = false) =
   ## Dynamic/complete/lazy pricing must keep the same admitted body across every paid continuation.
