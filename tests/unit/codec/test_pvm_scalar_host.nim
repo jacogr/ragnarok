@@ -284,6 +284,32 @@ block ownedReplacementRetry:
   checkMemory(second, 33, 22, 44)
   checkMemory(observed, 11, 0x65, 0x65)
 
+block changedStoppedPc:
+  # A caller cannot turn a different valid host instruction into the actual suspended one.
+  let code = owner([@[10'u8], @[10'u8], @[0'u8]])
+  var admitted = prepareFlatPlan(code, GasCycleLimit(1000), defaultFlatLimits(), false)
+  let plan = takeValue(admitted)
+  for scalar in [false, true]:
+    var frame = newFlatFrame(plan, [], MachineInfo(gas: MachineGas(1000)))
+    runFlat(frame, 3)
+    assert frame.exit == StepExit.Host and uint64(frame.info.pc) == 0
+    frame.info.pc = CodeAddress(1)
+    if scalar:
+      # Observation alone cannot authorize a fabricated source coordinate.
+      let cpu = observeFlatHostScalars(frame)
+      assert resumeFlatHostScalars(frame, cpu.gas, cpu.registers) == StepError.InvalidHostSuspension
+    else:
+      # Owned-memory observations carry the same stopped-source binding as scalar observations.
+      let memory = observeFlatHostMemory(frame)
+      let cpu = frame.info
+      assert resumeFlatHostMemory(frame, memory, cpu.gas,
+        cpu.registers) == StepError.InvalidHostSuspension
+    frame.info.pc = CodeAddress(0)
+    let cpu = observeFlatHostScalars(frame)
+    assert resumeFlatHostScalars(frame, cpu.gas, cpu.registers) == StepError.None
+    runFlat(frame, 1)
+    assert frame.exit == StepExit.Host and uint64(frame.info.pc) == 1
+
 mixedCycle()
 let before = getOccupiedMem()
 for iteration in 0..<1000:
