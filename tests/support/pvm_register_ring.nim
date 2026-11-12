@@ -341,6 +341,33 @@ when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentP
     assert encodeX86RegisterRing(aliasRing) != x86CanonicalRingProof(aliasRing)
     checkRing(rightAlias, signedRight = 3, addLane = 12)
 
+  proc checkResidentAddWordImmediate() =
+    ## Cross both signed imm8 bounds on the mapped ADDW path and check the full signed results.
+    const edges = [127'i16, 128, -128, -129]
+    var lengths = default(array[edges.len, int])
+    for index in 0..<edges.len:
+      let immediate = edges[index]
+      var wire = sixLaneWire()
+      # Use two immediate bytes by shortening the following branch's compare operand to zero.
+      # Only the branch moves within its block, so the block targets and prices still match.
+      let encoded = cast[uint16](immediate)
+      wire[14] = byte(encoded and 255)
+      wire[15] = byte(encoded shr 8)
+      wire[16] = 88
+      wire[17] = 4
+      wire[18] = 16
+      wire[35] = 0x22
+      let ring = ringFixture(wire, Prices[0])
+      let add = ring.blocks[1].body[0]
+      assert (add.immediate and 0xffffffff'u64) == uint64(cast[uint32](int32(immediate)))
+      let resident = encodeX86RegisterRing(ring)
+      assert resident.len > 0 and resident != x86CanonicalRingProof(ring)
+      lengths[index] = resident.len
+      let start = if immediate > 0: 0x7fffff81'u64 else: 0x8000007f'u64
+      checkRing(wire, signedRight = 3, addLane = 12, wordStart = start, profileCount = 1)
+    # Each wider immediate adds three bytes in both the reserved and guarded copies.
+    assert lengths[1] == lengths[0]+6 and lengths[3] == lengths[2]+6
+
 when NativeCheckedReadEnabled:
   proc checkRingShiftPairs() =
     ## Run actual reserved and guarded C bodies against original checked steps on both ISAs.
@@ -379,6 +406,7 @@ proc runRegisterRing*() =
     checkRingShiftPairs()
     when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
       checkResidentRing()
+      checkResidentAddWordImmediate()
     when defined(pvmSharedAsyncWitness):
       checkRuntimeRing()
   echo "PVM native register ring passed"

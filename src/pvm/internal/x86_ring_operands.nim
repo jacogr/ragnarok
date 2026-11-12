@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Direct operands for the admitted three-block Ring. The region owns guards and receipts.
+## Direct operands require a complete admitted Ring and one map for all decoded source,
+## destination and predicate lanes after register saturation. The six preserved GPRs hold
+## the entire map across every rotation. If the map or resident image does not fit, the
+## caller uses the canonical renderer. The region owns guards and source receipts.
 
 when declared(X86ResidentAccess) and declared(NativeRegisterRing):
   func ringLane(slot: range[0..12]): uint32 =

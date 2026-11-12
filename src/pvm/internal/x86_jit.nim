@@ -703,6 +703,9 @@ when declared(X86ResidentAccess):
 
   proc x86ResidentRegisterRing(ring: NativeRegisterRing, limit: int): seq[byte] =
     ## Build one mapped body per role for both guarded and prepaid paths.
+    ## Load every lane, including a write-only destination whose writer may be skipped
+    ## by a rotation, guard or prefix exit. The common exit commits all possible writes
+    ## while their guest values are still in the SysV registers, then restores the caller.
     let lanes = ringLaneUse(ring)
     if not fitsX86ResidentBank(lanes.used): return @[]
     let bank = x86ResidentAccess(lanes.used)
