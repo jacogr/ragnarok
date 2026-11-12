@@ -1008,7 +1008,12 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditReconstruct = 39'u8
         readCycleCreditReadUnits = 40'u8
         readCycleCreditPublish = 41'u8
-        readCycleCreditLocal = 42'u8
+        readCycleOriginalSetup = 42'u8
+        readCycleTriadCreditShort = 43'u8
+        readCycleTriadStoreProof = 44'u8
+        readCycleOriginalStoreFinish = 45'u8
+        readCycleTriadTailLoaded = 46'u8
+        readCycleCreditLocal = 47'u8
         readCycleLocal =
           when readCycleUsesCredits: readCycleCreditLocal
           else: readCycleExactLocal
@@ -1018,6 +1023,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditSpanShift = 5'u8
         storePagePointerSlot = 16'u8
         storePageTagSlot = 24'u8
+        storeTailSlot = 28'u8
 
       type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+20, int]
 
@@ -1061,6 +1067,62 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         ## Record one completed role, or one four-visit Store group.
         readCycleContextOp(code, [0x49'u8, 0xff, 0x82], NativeCycleVisitsOffset+8*ord(role))
         readCycleSet(code, NativeCycleLastOffset, uint32(ord(role)))
+
+      func storeTailSetupAddend(cycle: NativeReadCycle): int =
+        ## Prove that the copied Setup resets the Store shift and writes
+        ## bound = base + addend + 1 without altering either live input.
+        let reset = cycle.read.operation(readCycleBodyOps)
+        let sum = cycle.read.operation(readCycleBodyOps+1)
+        let next = cycle.read.operation(readCycleBodyOps+2)
+        let word = cycle.word
+        if reset.opcode != 51 or reset.immediate != 0 or
+            reset.slots.destinationIndex != word.shiftLane or
+            sum.opcode != 200 or sum.slots.destinationIndex != word.boundLane or
+            next.opcode != 149 or next.immediate != 1 or
+            next.slots.bIndex != word.boundLane or
+            next.slots.destinationIndex != word.boundLane:
+          return -1
+        let addend = if sum.slots.aIndex == word.baseLane: int(sum.slots.bIndex)
+          elif sum.slots.bIndex == word.baseLane: int(sum.slots.aIndex)
+          else: -1
+        # The tested value must survive the reset and remain independent of every Store lane.
+        if addend < 0 or addend in [int(word.valueLane), int(word.shiftLane),
+            int(word.byteLane), int(word.baseLane), int(word.boundLane)]:
+          return -1
+        addend
+
+      proc emitReadCycleStoreTailSetup(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, word: NativeCycleWord, access: X86ResidentAccess,
+          addend: range[0..12], tailSlot: byte) =
+        ## Reserve Setup, Store and Tail together on the credited register profile.
+        ## The copied Setup resets the shift and computes base + addend + 1. The addend must
+        ## be independent of the Store lanes, stay canonical and equal 3. Require a mapped Tail
+        ## and three credits before committing Setup.
+        ## A failed admission guard returns to original Setup with its original credits.
+        ## The folded path publishes the wrapping bound and Setup receipt before testing carry.
+        ## Carry returns the original unpaid Store, with Setup still committed.
+        put(code, [0x48'u8, 0x83, 0x7f, byte(addend*8), 3]) # CMP qword [RDI+slot],3.
+        cycleEdge(code, fixes, 0x85, readCycleOriginalSetup)
+        put(code, [0x48'u8, 0x83, 0x7c, 0x24, tailSlot, 0]) # CMP qword [RSP+tail],0.
+        cycleEdge(code, fixes, 0x84, readCycleOriginalSetup)
+        put(code, [0x49'u8, 0x83, 0xe9, 3]) # SUB R9,3.
+        cycleEdge(code, fixes, 0x82, readCycleTriadCreditShort)
+        # The copied Setup and addend guard prove shift=0 and wrapping bound=base+4.
+        put(code, [0x31'u8, 0xc0]) # XOR EAX,EAX.
+        writeAccess(code, access, word.shiftLane)
+        readAccess(code, access, word.baseLane, false)
+        put(code, [0x48'u8, 0x83, 0xc0, 4]) # ADD RAX,4.
+        # MOV publishes the wrapped bound. The receipt's INC and MOV preserve CF,
+        # so the unpaid Store edge can use the same ADD after Setup has committed.
+        writeAccess(code, access, word.boundLane)
+        readCycleComplete(code, NativeCycleRole.StoreSetup)
+        cycleEdge(code, fixes, 0x82, readCycleUnpaid+byte(ord(NativeCycleRole.Store)))
+        # Nonwrapping Setup joins before the ordinary writable and dirty proof.
+        put(code, [0xc6'u8, 0x44, 0x24, storeTailSlot, 1]) # MOV byte [RSP+route],1.
+        cycleEdge(code, fixes, 0, readCycleTriadStoreProof)
+        labels[int(readCycleTriadCreditShort)] = code.bytes.len
+        put(code, [0x49'u8, 0x83, 0xc1, 3]) # ADD R9,3 restores the pre-guard credits.
+        labels[int(readCycleOriginalSetup)] = code.bytes.len
 
       proc readCycleSelect(code: var X86Block, fixes: var seq[X86CycleFixup], header: uint32) =
         ## Every exit supplies the checked header through a common stack epilogue.
@@ -1233,8 +1295,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
       template emitReadCycleStore(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: untyped, word: NativeCycleWord, span, unpaid: byte, price: uint64,
-          nextLabel: var byte, budgetRegisters, credits, storePage: bool,
-              access: X86ResidentAccess) =
+          nextLabel: var byte, budgetRegisters, credits, storePage, storeTail: bool,
+              access: X86ResidentAccess, tailSlot: byte) =
         ## Preflight the existing checked word projection, then commit exactly one group.
         ## Hits prove whole-word containment. Misses preserve the original dirty
         ## checks and return first writes unpaid to the checked Store.
@@ -1247,6 +1309,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readAccess(code, access, word.boundLane, true)
         put(code, [0x48'u8, 0x39, 0xc8]) # CMP nextBase,bound; none of the earlier visits can exit.
         cycleEdge(code, fixes, 0x87, unpaid)
+        if storeTail:
+          # The fused Setup joins before the original writable-page and dirty proof.
+          labels[int(readCycleTriadStoreProof)] = code.bytes.len
         readBodyBase(code, access, word.baseLane)
         put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 after capturing the old low word.
         cycleWord(code, uint32(word.displacement and 0xffffffff'u64))
@@ -1309,7 +1374,18 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         writeAccess(code, access, word.byteLane)
         readCycleAdvance(code, access, word.baseLane, 4)
         readCycleAdvance(code, access, word.shiftLane, 32)
-        readCycleComplete(code, NativeCycleRole.Store)
+        readCycleContextOp(code, [0x49'u8, 0xff, 0x82],
+          NativeCycleVisitsOffset+8*ord(NativeCycleRole.Store))
+        if storeTail:
+          put(code, [0x80'u8, 0x7c, 0x24, storeTailSlot, 0]) # CMP byte [RSP+route],0.
+          cycleEdge(code, fixes, 0x84, readCycleOriginalStoreFinish)
+          put(code, [0xc6'u8, 0x44, 0x24, storeTailSlot, 0]) # Clear the entry-local route.
+          # R8 was the Store pointer. Resolve no new extent and load the live signed
+          # Tail word only after the Store, including an aliased destination.
+          put(code, [0x4c'u8, 0x8b, 0x44, 0x24, tailSlot, 0x49, 0x63, 0x00])
+          cycleEdge(code, fixes, 0, readCycleTriadTailLoaded)
+          labels[int(readCycleOriginalStoreFinish)] = code.bytes.len
+        readCycleSet(code, NativeCycleLastOffset, uint32(ord(NativeCycleRole.Store)))
         readAccess(code, access, word.baseLane, false)
         readAccess(code, access, word.boundLane, true)
         put(code, [0x48'u8, 0x39, 0xc8]) # Preserve the original != backedge after the fourth visit.
@@ -1397,8 +1473,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         commitCheckedReadRegisters(code, bank)
 
       proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits, allowWindow,
-          allowStorePage: bool): seq[byte] =
+          allowStorePage, allowStoreTail: bool): seq[byte] =
         ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
+        ## ARM uses an exact Store/Tail reservation after the writable proof. The x86 pair
+        ## runs on the credited profile, where Setup can reserve three credits.
+        ## Store refusal after folded Setup retains its receipt and reconstructs exact balances.
         ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
         ## The synchronous leaf owns the canonical file until return. Its mapped Read slots
@@ -1442,6 +1521,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         let bank = if roleRegisters: x86ResidentAccess(roleMask)
           elif resident: x86ResidentAccess(dirty) else: default(X86ResidentAccess)
         let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
+        let addend = if storePage and allowStoreTail: storeTailSetupAddend(cycle) else: -1
+        # The short direct guard addresses the canonical lane and leaves the resident bank live.
+        let storeTail = addend >= 0 and roleAccess.registers[addend] == 0
         # Keep the entry-local borrow outside the 104-byte stack checkpoint.
         # Both allocations preserve the original alignment and fit a signed immediate.
         let tailSlot = if resident: 0'u8 else: byte(sizeof(RegisterFile))
@@ -1466,6 +1548,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           # R11 retains the canonical pointer while RDI addresses the private stack stage.
           put(code, [0x49'u8, 0x89, 0xfb]) # MOV R11,RDI.
         put(code, [0x48'u8, 0x83, 0xec, stackBytes]) # SUB RSP,stackBytes.
+        if storeTail:
+          # The existing 32-byte frame ends after the four-byte credit tag spill and route.
+          put(code, [0xc6'u8, 0x44, 0x24, storeTailSlot, 0])
         put(code, [0x49'u8, 0x89, 0xf2]) # R10=RSI holds the context, RDI stays canonical.
         # Extent checks use RCX/RDX before either live budget ledger is loaded.
         emitReadCycleTailPointer(code, fixes, labels,
@@ -1500,6 +1585,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
           let span = byte(NativeCycleSpans[role]*group)
           let price = cycle.layout.sites[role].price*group
+          if storeTail and role == NativeCycleRole.StoreSetup:
+            assert addend >= 0 and addend <= 12
+            emitReadCycleStoreTailSetup(code, fixes, labels, word, roleAccess, addend, tailSlot)
           if credits:
             # A funded credit covers both reservations. Cold checks enter at this same
             # boundary, before Store/Tail preflight and before a later Read checkpoint.
@@ -1544,7 +1632,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             readCycleComplete(code, role)
           of NativeCycleRole.Store:
             emitReadCycleStore(code, fixes, labels, word, span, unpaid, price, nextLabel,
-              budgetRegisters, credits, storePage, roleAccess)
+              budgetRegisters, credits, storePage, storeTail, roleAccess, tailSlot)
           of NativeCycleRole.Tail:
             # A missing pointer leaves this affordable role unpaid. Load fresh bytes
             # on every visit so earlier Stores remain visible, including aliases.
@@ -1552,6 +1640,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             put(code, [0x4d'u8, 0x85, 0xc0]) # TEST R8,R8.
             cycleEdge(code, fixes, 0x84, unpaid)
             put(code, [0x49'u8, 0x63, 0x00]) # MOVSXD RAX,dword [R8].
+            if storeTail: labels[int(readCycleTriadTailLoaded)] = code.bytes.len
             writeAccess(code, roleAccess, cycle.tailLoad.slots.aIndex)
             if not credits: readCycleDebit(code, span, price, budgetRegisters)
             let step = cycle.tailStep
@@ -1629,19 +1718,23 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
         ## Ordinary x86 uses register budgets and credits for eligible connected cycles.
         ## The Read and role masks must fit the bank, and every role must fit one credit.
-        ## Try the page proof with the credited register allocation. Each retry
-        ## preserves the original image-size fallback and seven-role receipt.
+        ## Try the credited triad within the 4,096-byte image ceiling. Retry the
+        ## original credited page proof first, then the older credited and exact images.
+        ## Every image preserves the seven-role receipt.
         when readCycleUsesCredits:
-          result = emitX86ReadCycle(cycle, true, true, true)
+          result = emitX86ReadCycle(cycle, true, true, true, true)
+          if result.len == 0:
+            # Retry the original credited page-proof image before changing its profile.
+            result = emitX86ReadCycle(cycle, true, true, true, false)
           if result.len != 0: return
-          result = emitX86ReadCycle(cycle, true, true, false)
+          result = emitX86ReadCycle(cycle, true, true, false, false)
           if result.len == 0:
             # Preserve the original credited image if only the extra Read body exceeds the cap.
-            result = emitX86ReadCycle(cycle, true, false, false)
+            result = emitX86ReadCycle(cycle, true, false, false, false)
           if result.len != 0: return
         # Preserve the original exact image under the same ceiling.
-        result = emitX86ReadCycle(cycle, false, true, false)
-        if result.len == 0: result = emitX86ReadCycle(cycle, false, false, false)
+        result = emitX86ReadCycle(cycle, false, true, false, false)
+        if result.len == 0: result = emitX86ReadCycle(cycle, false, false, false, false)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =

@@ -209,6 +209,15 @@ append, then a separate positive linked parent and child
 with exact gas, attempts, complete memory and checked continuation. Raw image, ABI and capacity
 controls retain their own profiles.
 
+## Connected Store and Tail completion
+
+The connected Read image now shares eligible Store and Tail completion by default.
+The [ARM64 emitter](../src/pvm/internal/arm64_jit.nim) and
+[x86-64 emitter](../src/pvm/internal/x86_jit.nim) own the lowering contracts.
+The [shared entry suite](../tests/support/pvm_read_cycle_execution.nim) checks the original
+role receipts and state. The qualified page-hit path fell from 82 to 75 instructions on ARM64
+and from 68 to 54 on x86-64. [Linux qualification and paired evidence](https://github.com/jacogr/ragnarok/actions/runs/43011408267)
+
 ## Initial disposition
 
 This contract records the migration architecture and required evidence. It does not qualify a new

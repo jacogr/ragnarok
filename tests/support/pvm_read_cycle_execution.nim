@@ -661,6 +661,145 @@ when NativeReadCycleEnabled:
       assert validNativeCycleReceipt(layout, destination, 1000, 44, context)
       assert registers == expected and writable == expectedMemory and dirty == initialDirty
 
+  type StoreTailCase {.pure.} = enum ## Expected committed prefix for one original role route.
+    SignedAlias                      ## The Tail reads the sign-set word written by Store.
+    BaseWrap                         ## Setup commits a wrapping bound before Store refuses.
+    GasShort                         ## Gas funds Setup and Store, with one unit missing for Tail.
+    AttemptsShort                    ## The attempt budget similarly leaves Tail unpaid.
+    CreditShort                      ## The exact x86 path can continue after a three-credit miss.
+    Backedge                         ## A second Store must run before Tail.
+    Clean                            ## Store leaves a clean destination unpaid.
+    Unwritable                       ## A readable extent grants no writable borrow.
+    Unmapped                         ## Tail is unpaid after Store commits.
+    SetupAlias                       ## An addend aliased with the shift uses original Setup.
+    PriceOverflow                    ## The ARM pair's combined price overflows.
+
+  proc storeTailFixture(unmapped, setupAlias, baseWrap: bool): NativeReadCycle =
+    ## Copy the same verified Read as the maintained shared witness.
+    result = cycleFixture(outside = true)
+    result.read = readFixture(false, 1)
+    let addLanes = if setupAlias: 0x13'u8
+      elif baseWrap: 0x58'u8
+      else: 0x53'u8
+    let setup = [operation(51, 1), operation(200, addLanes, 4), operation(149, 0x44, 1)]
+    assert addNativeReadContinuation(result.read,
+      NativeReadContinuation(header: setupHeader, terminal: 44, price: 3), setup)
+    let address = if unmapped: tailAddress else: wordAddress
+    result.tailLoad = operation(57, 5, uint32(address))
+    if baseWrap:
+      # The original Read still uses mapped r3. Store's independent r8 wraps.
+      result.word.baseLane = 8
+
+  proc checkStoreTailCase(mode: StoreTailCase) =
+    ## Enter published code and verify the exact original completion receipt and state.
+    const original = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
+    const readOnly = [0xfe'u8, 0xff, 0xff, 0xff, 0x80, 0x21, 0x32, 0x43,
+      0x54, 0x65, 0x76, 0x87]
+    let signedAlias = mode == StoreTailCase.SignedAlias
+    let baseWrap = mode == StoreTailCase.BaseWrap
+    let committedWord = [0x11'u8, 0x22, 0x33, (if signedAlias: 0x84'u8 else: 0x44'u8)]
+    var cycle = storeTailFixture(mode == StoreTailCase.Unmapped, mode == StoreTailCase.SetupAlias,
+      baseWrap)
+    let storePrice = if mode == StoreTailCase.PriceOverflow:
+        high(uint64) div NativeCycleGroupVisits
+      else: cycle.layout.sites[NativeCycleRole.Store].price
+    cycle.layout.sites[NativeCycleRole.Store].price = storePrice
+    let image = lowerNativeReadCycle(cycle)
+    assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+    let gas = case mode
+      of StoreTailCase.GasShort: 41'u64 # Setup and Store cost 31. Tail costs 11.
+      of StoreTailCase.CreditShort: 256'u64
+      of StoreTailCase.PriceOverflow: high(uint64)
+      else: 1000'u64
+    let remaining = case mode
+      of StoreTailCase.AttemptsShort: 27'u64 # Setup and Store use 24. Tail uses 4.
+      of StoreTailCase.CreditShort: 64'u64   # Two conservative x86 credits, 32 exact attempts.
+      else: 1000'u64
+    let addend = if mode == StoreTailCase.Backedge: 7'u64 else: 3'u64
+    var registers = default(RegisterFile)
+    registers[0] = RegisterValue(if signedAlias: 0x84332211'u64 else: 0x44332211'u64)
+    registers[1] = RegisterValue(3)
+    registers[3] = RegisterValue(wordAddress)
+    registers[5] = RegisterValue(addend)
+    registers[10] = RegisterValue(tailAddress+4)
+    if signedAlias:
+      # Tail's sign-extended value is above signed minimum and exits through Jump.
+      registers[12] = RegisterValue(1'u64 shl 63)
+    if baseWrap:
+      registers[8] = RegisterValue(high(uint64)-2)
+    var expected = registers
+    expected[1] = RegisterValue(0)
+    expected[4] = RegisterValue(wordAddress+(if mode == StoreTailCase.SetupAlias: 1'u64
+      else: addend+1))
+    if baseWrap:
+      # Setup publishes the wrapping bound before the original Store refuses.
+      expected[4] = RegisterValue(1)
+    expected[6] = RegisterValue(0x19)
+    var writable = original
+    var expectedBytes = original
+    let initialDirty = if mode == StoreTailCase.Clean: 0'u64 else: 1'u64 shl (wordAddress shr 12)
+    var dirty = initialDirty
+    let extent = if mode == StoreTailCase.Unwritable: NativeCycleWritable(first: wordAddress,
+        length: uint64(writable.len)) # A readable word carries no writable borrow.
+      else: NativeCycleWritable(first: wordAddress, length: uint64(writable.len),
+        data: cast[pointer](addr writable[0]))
+    let readable = if mode == StoreTailCase.Unmapped:
+        initNativeReadRegion(tailAddress+4, readOnly.toOpenArray(4, 11))
+      else: initNativeReadRegion(tailAddress, readOnly)
+    var context = NativeCycleContext(
+      read: [default(NativeReadRegion), initNativeReadRegion(wordAddress, writable), readable],
+      writable: [NativeCycleWritable(first: 0x13000), extent],
+      dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: remaining)
+    var visits: NativeCycleVisits = [1'u64, 1, 0, 0, 0, 0, 0]
+    var last = NativeCycleRole.StoreSetup
+    var header = layout.sites[NativeCycleRole.Store].header
+    var spent = 3'u64
+    var attempts = 4'u64
+    if mode notin {StoreTailCase.Clean, StoreTailCase.Unwritable, StoreTailCase.SetupAlias,
+        StoreTailCase.BaseWrap}:
+      # A Store backedge publishes two complete words through the original role path.
+      let stores = if mode == StoreTailCase.Backedge: 2'u64 else: 1'u64
+      visits[NativeCycleRole.Store] = stores
+      last = NativeCycleRole.Store
+      header = tailHeader
+      spent += (storePrice*NativeCycleGroupVisits)*stores
+      attempts += 20*stores
+      expected[1] = RegisterValue(32*stores)
+      expected[2] = RegisterValue(uint64(committedWord[3]))
+      expected[3] = RegisterValue(wordAddress+4*stores)
+      for index in 0..<int(4*stores):
+        # Both complete four-byte groups write the same low word.
+        expectedBytes[index] = committedWord[index mod 4]
+      if mode in {StoreTailCase.SignedAlias, StoreTailCase.CreditShort, StoreTailCase.Backedge}:
+        # Tail reads and sign-extends the just-written word before applying its step.
+        expected[5] = RegisterValue(if signedAlias: 0xffffffff84332212'u64 else: 0x44332212'u64)
+        expected[8] = RegisterValue(3)
+        visits[NativeCycleRole.Tail] = 1
+        visits[NativeCycleRole.Jump] = 1
+        visits[NativeCycleRole.Outer] = 1
+        last = NativeCycleRole.Outer
+        header = layout.outsideHeader
+        spent += 27
+        attempts += 8
+    let destination =
+      when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+        enterNativeReadCycleAbiProof(image, registers, context)
+      else:
+        enterNativeReadCycle(image, registers, context)
+    assert destination == header, "Store/Tail original destination"
+    assert context.visits == visits and context.lastCompleted == uint64(ord(last)) and
+      context.paidRead == 0, "Store/Tail original completed roles"
+    assert context.gas == gas-spent and context.remaining == remaining-attempts,
+      "Store/Tail exact gas and attempt debit"
+    assert validNativeCycleReceipt(cycle.layout, destination, gas, remaining, context)
+    assert registers == expected and writable == expectedBytes and dirty == initialDirty,
+      "Store/Tail exact live registers and bytes"
+
+  proc checkStoreTail() =
+    ## Compare every original role boundary on both supported ISAs.
+    for mode in StoreTailCase:
+      checkStoreTailCase(mode)
+
 when NativeReadCycleEnabled and defined(pvmX86Jit):
   proc checkStoreDirtyBoundary() =
     ## Exercise first/last page authority across the boundary between bitmap words.
@@ -748,6 +887,7 @@ proc runReadCycleExecution*() =
       runReadCycleRoleWitness()
     checkTailPointerReuse()
     checkStorePageBoundary()
+    checkStoreTail()
     when defined(pvmX86Jit):
       checkStoreDirtyBoundary()
       assert nativePlatformSupported()

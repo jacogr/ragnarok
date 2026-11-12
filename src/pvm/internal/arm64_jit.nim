@@ -2708,9 +2708,11 @@ when NativeReadCycleEnabled:
     armReadWindowReady = 15
     armReadWindowMiss = 16
     armReadWindowComplete = 17
+    armStoreCommit = 18
+    armTailLoaded = 19
 
-  type ArmReadCycleLabels = array[armReadWindowComplete+1, int]
-    ## Seven role edges, checked exits, and the optional Store and Read proof joins.
+  type ArmReadCycleLabels = array[armTailLoaded+1, int]
+    ## Seven role edges, checked exits, and the Read, Store and Tail proof joins.
 
   proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       span: ArmReadSpan, refusal: int) =
@@ -2874,12 +2876,18 @@ when NativeReadCycleEnabled:
       words.add(instruction)
     cycleEdge(words, fixes, target, condition)
 
-  proc emitArmReadCycle(cycle: NativeReadCycle, storePage, allowWindow: bool): seq[uint32] =
+  proc armCycleStoreWord(words: var seq[uint32], value, byteReg, base, shift: uint32) =
+    ## Commit a resolved four-visit Store and update its original guest lanes.
+    words.add(0xb9000000'u32 or (25'u32 shl 5) or value) # STR Wvalue,[X25].
+    words.add(0x53187c00'u32 or (value shl 5) or byteReg) # LSR Wbyte,Wvalue,#24.
+    cycleAddImmediate(words, base, base, 4)
+    cycleAddImmediate(words, shift, shift, 32)
+
+  proc emitArmReadCycle(cycle: NativeReadCycle, storePage, allowWindow,
+      allowStoreTail: bool): seq[uint32] =
     ## Render the copied seven-role cycle, using the already-paid first read and typed checked exits.
     ## The guest bank stays resident across roles. Read refusal restores its checkpoint before
-    ## the common exit publishes the changed lanes. As on x86-64, each entry resolves Tail's
-    ## readable extent once. Tail checks for a missing extent after gas and quota, and loads
-    ## the current signed word after preceding Stores.
+    ## the common exit publishes the changed lanes.
     ##
     ## The invariant-base proof permits five ordered qword loads from the
     ## current bytes. ARM64 keeps their descriptor pointer in caller-saved D31.
@@ -2887,6 +2895,12 @@ when NativeReadCycleEnabled:
     ## uses X0 for the pointer and X1..X3/X17 as scratch. D31 survives Store,
     ## which can reuse X0 and keeps its separate page proof in X27/X28.
     ## A miss selects the ordered read bank after the same paid checkpoint.
+    ##
+    ## Each entry resolves Tail's readable extent once.
+    ## After the writable and dirty Store proof, ARM uses its exact gas and attempt ledgers to
+    ## reserve the combined Store/Tail price and span. Pairing requires a mapped Tail, a Store
+    ## successor at Tail and a nonoverflowing price. Otherwise the original per-role checks apply.
+    ## The pair writes the Store before reading the live signed Tail word, including aliased bytes.
     const
       readCount = 22
       readOpcodes = [124'u8, 151, 130, 200, 129, 51, 151, 152, 130, 198, 132,
@@ -2911,6 +2925,12 @@ when NativeReadCycleEnabled:
         cycle.outer[2].opcode != 81 or cycle.gate.opcode != 88 or
         sites[NativeCycleRole.Store].price > high(uint64) div NativeCycleGroupVisits:
       return
+    let storePrice = sites[NativeCycleRole.Store].price*NativeCycleGroupVisits
+    let tailPrice = sites[NativeCycleRole.Tail].price
+    let storeTail = storePage and allowStoreTail and tailPrice <= high(uint64)-storePrice
+    let pairPrice = if storeTail: storePrice+tailPrice else: 0'u64
+    let pairSpan = uint32(NativeCycleSpans[NativeCycleRole.Store]*NativeCycleGroupVisits +
+      NativeCycleSpans[NativeCycleRole.Tail])
     let word = cycle.word
     let lanes = [word.valueLane, word.shiftLane, word.byteLane, word.baseLane, word.boundLane]
     for i in 0..<lanes.len:
@@ -3037,18 +3057,36 @@ when NativeReadCycleEnabled:
         for instruction in setupBank.words: words.add(instruction)
       of NativeCycleRole.Store:
         armCycleWordPreflight(words, fixes, labels, word, unpaid, storePage)
+        if storeTail:
+          # ARM keeps exact balances. Select the pair only after the Store proof and
+          # before debit or publication. A short pair, backedge or absent Tail enters
+          # the original Store commit, which can complete even when Tail must refuse.
+          cycleAddImmediate(words, 0, base, 4) # The Store proof already excludes wrap.
+          cycleCompare(words, 0, bound)
+          cycleEdge(words, fixes, armStoreCommit, 1)
+          cycleCompareImmediate(words, 26, 0)
+          cycleEdge(words, fixes, armStoreCommit, 0)
+          cyclePriceGuard(words, fixes, pairPrice, armStoreCommit)
+          cycleCompareImmediate(words, 22, pairSpan)
+          cycleEdge(words, fixes, armStoreCommit, 3)
+          armCycleDebit(words, pairSpan, pairPrice)
+          armCycleStoreWord(words, value, byteReg, base, shift)
+          armMacroCount(words, uint32(NativeCycleVisitsOffset div 8+ord(role)))
+          # Both roles are now guaranteed to complete. Load live bytes after the
+          # Store, including when its writable word aliases the Tail pointer.
+          words.add(0xb9800340'u32) # LDRSW X0,[X26].
+          cycleEdge(words, fixes, armTailLoaded, 16)
+          labels[armStoreCommit] = words.len
         armCycleDebit(words, span, price)
         # From the store through completion all instructions are non-faulting native bookkeeping.
-        words.add(0xb9000000'u32 or (25'u32 shl 5) or value) # STR Wvalue,[X25].
-        words.add(0x53187c00'u32 or (value shl 5) or byteReg) # LSR Wbyte,Wvalue,#24.
-        cycleAddImmediate(words, base, base, 4)
-        cycleAddImmediate(words, shift, shift, 32)
+        armCycleStoreWord(words, value, byteReg, base, shift)
       of NativeCycleRole.Tail:
         # A missing extent leaves this already-checked role unpaid.
         cycleCompareImmediate(words, 26, 0)
         cycleEdge(words, fixes, unpaid, 0)
         words.add(0xb9800340'u32) # LDRSW X0,[X26] reads bytes after all prior Stores.
         armCycleDebit(words, span, price)
+        labels[armTailLoaded] = words.len
         cycleMove(words, tailSlot+4, 0)
         for instruction in tailStep.words: words.add(instruction)
       of NativeCycleRole.Jump, NativeCycleRole.Gate:
@@ -3109,13 +3147,22 @@ when NativeReadCycleEnabled:
       result = move(words)
 
   proc armReadCycleInstructions*(cycle: NativeReadCycle): seq[uint32] =
-    ## Prefer both proofs. Drop the extra Read body first if the image exceeds
-    ## the ceiling, then preserve admission with the original ordered probes.
-    result = emitArmReadCycle(cycle, storePage = true, allowWindow = true)
+    ## Prefer the Read window and Store/Tail pair with the entry-local Store page proof.
+    ## The 4,096-byte ceiling still admits the original Read window or ordered probes.
+    result = emitArmReadCycle(cycle, storePage = true, allowWindow = true, allowStoreTail = true)
     if result.len == 0:
-      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false)
+      # Keep the existing Read-window image if the pair exceeds the byte ceiling.
+      result = emitArmReadCycle(cycle, storePage = true, allowWindow = true, allowStoreTail = false)
     if result.len == 0:
-      result = emitArmReadCycle(cycle, storePage = false, allowWindow = false)
+      # The ordered Read body may leave room for the pair when the window did not fit.
+      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false, allowStoreTail = true)
+    if result.len == 0:
+      result = emitArmReadCycle(cycle, storePage = true, allowWindow = false,
+          allowStoreTail = false)
+    if result.len == 0:
+      # Preserve admission of an image whose original probes fit the ceiling.
+      result = emitArmReadCycle(cycle, storePage = false, allowWindow = false,
+          allowStoreTail = false)
 
 func armWindowInstructionSafe(instruction: uint32): bool =
   ## Admit only present integer emitter families and the dirty byte body's exact
