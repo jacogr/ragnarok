@@ -1,0 +1,17 @@
+{
+  "defines": [
+    "pvmArm64Jit",
+    "pvmMixedLoopArenaWitness",
+    "pvmMixedLoopEntryWitness",
+    "pvmPaidMixedLoopWitness",
+    "pvmReadOnlyMixedLoopWitness",
+    "pvmSharedAsyncWitness"
+  ],
+  "directory": "codec",
+  "includes": [
+    "pvm_jit"
+  ],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

@@ -37,7 +37,8 @@ def validate_requirements(records):
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
-                    'pvmInnerPreparedReceipt', 'pvmPaidMixedLoopWitness', 'pvmResidentWitness',
+                    'pvmInnerPreparedReceipt', 'pvmMixedLoopArenaWitness', 'pvmMixedLoopEntryWitness',
+                    'pvmPaidMixedLoopWitness', 'pvmReadOnlyMixedLoopWitness', 'pvmResidentWitness',
                     'pvmSharedAsyncWitness'} | CREDIT_ONLY_FLAGS,
     }
     for name, record in records.items():
@@ -56,9 +57,10 @@ def validate_requirements(records):
                 raise ValueError('Invalid native '+field+': '+name)
         defines = set(record['defines'])
         if 'pvmPaidMixedLoopWitness' in defines and (
-                name not in ('pvm_shared_async_arm', 'pvm_shared_async_x86')
+                name not in ('pvm_shared_async_arm', 'pvm_shared_async_x86',
+                             'pvm_read_only_loop_arm', 'pvm_read_only_loop_x86')
                 or 'pvmSharedAsyncWitness' not in defines):
-            # Paid continuation instrumentation belongs to the two actual native shared suites.
+            # Paid continuation instrumentation belongs to actual native shared/frame suites.
             raise ValueError('Paid mixed witness requires the shared native profile: '+name)
         if name == CREDIT_WITNESS_SUITE or defines & CREDIT_ONLY_FLAGS:
             # All credit flags belong to one exact Linux x86 witness profile.

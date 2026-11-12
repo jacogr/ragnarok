@@ -53,61 +53,8 @@ when defined(pvmSharedAsyncWitness):
   echo "READ_ONLY_PROBE_BARRIER_OK"
 
 when defined(pvmSharedAsyncWitness):
-  import ../support/pvm_register_ring
-  import ../../src/pvm/internal/native_pipeline
-  let runtime = newNativeRuntime()
-  try:
-    assert start(runtime)
-  except:
-    assert false, "read-only ordering worker startup failed"
-  let session = newNativeSession(runtime)
-  beginNativeInvocation(session, NativeInvocationFloor)
-  nominateNativeRing(session, registerRingFixture([3'u64, 2, 5]), nativeEpoch(session))
-  finishNativeInvocation(session, NativeInvocationFloor)
-  waitNativeCompiler(runtime)
-  beginNativeInvocation(session, NativeInvocationFloor)
-  assert mixedLoopPrimaryReady(session)
-  let exact = nativeInstalledKey(session)
-  var wrong = exact
-  wrong.epoch += 1
-  assert not matchesNativeImage(session, wrong, NativeKind.RegisterRing)
-  assert not matchesNativeImage(session, exact, NativeKind.ConnectedReadCycle)
-  pauseNativeCompiler(runtime, true)
-  let initial = runtimeInfo(runtime)
-  witnessFlatReadOnlyScheduling(decoded.value, 471839, session, 2, false)
-  witnessFlatReadOnlyScheduling(decoded.value, 471839, session, 901, false, stale = true)
-  assert runtimeInfo(runtime).submitted == initial.submitted
-  finishNativeInvocation(session, NativeInvocationFloor)
-  beginNativeInvocation(session, NativeInvocationFloor-1)
-  witnessFlatReadOnlyScheduling(decoded.value, 471839, session, 901, false)
-  assert runtimeInfo(runtime).submitted == initial.submitted
-  finishNativeInvocation(session, NativeInvocationFloor)
-  beginNativeInvocation(session, NativeInvocationFloor)
-  witnessFlatReadOnlyScheduling(decoded.value, 471839, session, 901, true)
-  assert runtimeInfo(runtime).submitted == initial.submitted+1
-  finishNativeInvocation(session, NativeInvocationFloor)
-  pauseNativeCompiler(runtime, false)
-  waitNativeCompiler(runtime)
-  beginNativeInvocation(session, NativeInvocationFloor)
-  let shared = borrowNativeMixedLoop(session, proof)
-  let sharedImage = shared.image
-  assert sharedImage != nil and shared.mask == 1
-  when defined(pvmMixedLoopArenaWitness):
-    when defined(pvmX86Jit):
-      import ../../src/pvm/internal/x86_jit
-      let expected = x86MixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
-    else:
-      import ../../src/pvm/internal/arm64_jit
-      var expected: seq[byte] = @[]
-      for word in armMixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1)):
-        for lane in 0..<4: expected.add(byte((word shr (lane*8)) and 255'u32))
-    let rx = witnessNativeMixedLoopImage(sharedImage[], 0, expected)
-    echo "READ_ONLY_RING_RX_OK,", rx.offset, ",", rx.length
-  returnNativeMixedLoop(session)
-  finishNativeInvocation(session, NativeInvocationFloor)
-  invalidateNativeStream(session)
-  assert runtimeInfo(runtime).registered == 0 and close(runtime)
-  echo "READ_ONLY_RING_ORDERING_OK,901,3"
+  import ../support/pvm_read_only_loop
+  runReadOnlyLoopScheduling(decoded.value, 471839, report = true)
 
 for pc in [471839'u32, 461066, 462062, 461614]:
   # All real signed predicates certify separately, including a loaded value on either side.

@@ -101,6 +101,11 @@ byte cap; target encoding sizes can leave different slots checked on each ISA. T
 one initial read-only candidate. General auxiliary graph composition remains separate work.
 The shared-async native suites cover source admission, primary priority, publication accounting,
 quota-bound handler restoration and borrowed retirement.
+The maintained ARM/x86 `pvm_read_only_loop` suites use a small decoded fixture to cover
+signed receipt boundaries, thirteen native/checked frame scenarios, two repaired width faults,
+saved signed-branch quota barriers, both loaded operand orientations, the one-candidate discovery
+bound and hot nomination before current-call Ring entry. Their scheduling helper also serves the
+private frozen-program proof; ordinary unit runs need no external DOOM data.
 
 ## Qualification and retirement
 

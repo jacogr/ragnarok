@@ -111,11 +111,11 @@ when declared(FlatFrame):
       result = proof
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
-    ## Bound source reconstruction to cold BNE Stores and privately qualified signed-LT Reads.
-    ## Refused early loops consume reconstruction work without occupying the accepted
-    ## inventory. A separate ceiling permits later useful loops after those refusals:
-    ## at most sixteen cold attempts, each spanning at most NativeReadFactLimit facts,
-    ## per stream epoch. Revalidation of retained certificates is a separate segment step.
+    ## Bound cold BNE Store and signed-LT Read discovery to eight accepted source certificates.
+    ## At most one initial read-only candidate occupies this shared inventory.
+    ## Refused loops consume reconstruction work without occupying accepted slots.
+    ## Allow at most sixteen cold attempts of NativeReadFactLimit facts per stream epoch.
+    ## Revalidation of retained certificates is a separate segment step.
     if terminal <= header or terminal-header < NativeMixedLoopMinimum or
         terminal-header > NativeReadFactLimit: return
     let epoch = nativeEpoch(f.nativeSession)

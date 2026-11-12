@@ -25,7 +25,7 @@ when declared(FlatFrame) and defined(pvmMixedLoopEntryWitness) and defined(pvmPa
     for lane in 0..<4:
       page.bytes[offset+lane] = byte((value shr (lane*8)) and 255'u32)
 
-  proc witnessFlatReadOnlyMixedFrames*(program: Program, pc: uint32) =
+  proc witnessFlatReadOnlyMixedFrames*(program: Program, pc: uint32, report = true) =
     ## Compare direct native entry, exact checked fallback and repaired paid retry on original facts.
     let cycles = GasCycleLimit(100000)
     var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
@@ -185,11 +185,13 @@ when declared(FlatFrame) and defined(pvmMixedLoopEntryWitness) and defined(pvmPa
         assert uint64(resumed.info.registers[6]) == 0
         assert uint64(resumed.info.registers[12]) == base+4094+8
         assert resumed.dirtyIndices.len == 0
-        echo "READ_ONLY_RETRY,", ord(scenario), ",", uint64(resumed.info.pc), ",",
-          uint64(resumed.info.gas), ",", resumed.remaining
-      echo "READ_ONLY_FRAME,", ord(scenario), ",", native.mixedWitnessVisits, ",",
-        native.mixedWitnessRefusals, ",", uint64(native.info.pc), ",", uint64(native.info.gas),
-        ",", native.remaining, ",", uint64(native.faultPage), ",", image.codeBytes
+        if report:
+          echo "READ_ONLY_RETRY,", ord(scenario), ",", uint64(resumed.info.pc), ",",
+            uint64(resumed.info.gas), ",", resumed.remaining
+      if report:
+        echo "READ_ONLY_FRAME,", ord(scenario), ",", native.mixedWitnessVisits, ",",
+          native.mixedWitnessRefusals, ",", uint64(native.info.pc), ",", uint64(native.info.gas),
+          ",", native.remaining, ",", uint64(native.faultPage), ",", image.codeBytes
 
   when defined(pvmSharedAsyncWitness):
     proc witnessFlatReadOnlyScheduling*(program: Program, pc: uint32,
