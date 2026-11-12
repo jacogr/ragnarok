@@ -112,6 +112,8 @@ when declared(FlatFrame):
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =
     ## A full unpaid entry may run natively. The original header handles partial, paid and gas stops.
+    when NativeReadCycleEnabled:
+      if f.auxiliaryHeat.valid: settleFlatAuxiliaryBlock(f)
     if f.info.blockCharged or f.barrier != flatStop or f.pricingKind != 0 or
         not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.RegisterRing):
       return false

@@ -11,7 +11,7 @@ import ./[native_ir, native_control]
 import ./[native_read_body, native_register_ring]
 when NativeReadCycleEnabled:
   import ./native_read_cycle
-  import ./native_mixed_loop
+  import ./[native_mixed_loop, native_auxiliary]
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -60,6 +60,7 @@ type NativeImage* = object ## Exclusive published image with its exact call ABI.
   when NativeReadCycleEnabled:
     mixedOffsets, mixedLengths: array[NativeMixedLoopEntryLimit, uint32]
     mixedEntries: uint8
+    auxiliaryKinds: array[NativeAuxiliaryEntryLimit, NativeAuxiliaryKind]
   when NativeCheckedReadEnabled:
     ringValue: NativeRegisterRing
 
@@ -79,6 +80,7 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
     image.mixedOffsets = default(array[NativeMixedLoopEntryLimit, uint32])
     image.mixedLengths = default(array[NativeMixedLoopEntryLimit, uint32])
     image.mixedEntries = 0
+    image.auxiliaryKinds = default(array[NativeAuxiliaryEntryLimit, NativeAuxiliaryKind])
   when NativeCheckedReadEnabled:
     image.ringValue = default(NativeRegisterRing)
 
@@ -297,22 +299,23 @@ when NativeReadCycleEnabled:
         importc: "pvm_mixed_arena_unmapped", header: "mixed_arena_proof.h".}
       ## A failed publication must release the complete executable mapping before returning.
 
-  proc lowerNativeMixedLoops*(candidates: NativeMixedLoopSet, refused: var uint8,
+  proc lowerNativeAuxiliary*(candidates: var NativeAuxiliaryPlan, refused: var uint8,
       pairRefused: var bool): NativeImage =
-    ## Publish accepted source slots into one immutable arena before returning its owner.
+    ## Publish complete typed leaves into one immutable arena before returning its owner.
+    ## Each existing lowerer retains its own ABI, original cap and exact checked exits.
     ## Individual bad encodings set refusal bits. An aggregate size refusal skips
     ## that ranked leaf and sets only pairRefused; later leaves still fit greedily.
     ## Allocation or append failures release the whole arena and remain retryable.
     ## Encoding lengths and alignment depend on the target ISA: identical admitted
     ## source sets can occupy different subsets under the same byte cap. Original
     ## rank indices remain stable; a skipped leaf does not prevent later smaller
-    ## leaves from fitting. Only the returned occupancy mask authorizes entry.
+    ## leaves from fitting. Occupancy, the exact key/proof and the ABI tag authorize entry together.
     result = default(NativeImage)
     refused = 0
     pairRefused = false
-    if candidates.count == 0 or candidates.count > uint8(NativeMixedLoopEntryLimit): return
+    if candidates.len == 0 or candidates.len > NativeAuxiliaryEntryLimit: return
     if not candidates.complete:
-      refused = uint8((1'u32 shl int(candidates.count))-1)
+      refused = uint8((1'u32 shl candidates.len)-1)
       return
     when defined(pvmX86Jit):
       const unitBytes = 1
@@ -325,18 +328,30 @@ when NativeReadCycleEnabled:
     var offsets = default(array[NativeMixedLoopEntryLimit, uint32])
     var lengths = default(array[NativeMixedLoopEntryLimit, uint32])
     var entries = 0'u8
+    var kinds = default(array[NativeAuxiliaryEntryLimit, NativeAuxiliaryKind])
     var used = 0
-    for index in 0..<int(candidates.count):
-      let proof {.cursor.} = candidates.proofs[index]
-      template operations: untyped = proof.operations.toOpenArray(0, int(proof.count)-1)
-      when defined(pvmX86Jit):
-        encodings[index] = if proof.paidGuards != 0:
-            x86PaidMixedLoopInstructions(operations, proof.paidGuards)
-          else: x86MixedLoopInstructions(operations)
-      else:
-        encodings[index] = if proof.paidGuards != 0:
-            armPaidMixedLoopInstructions(operations, proof.paidGuards)
-          else: armMixedLoopInstructions(operations)
+    for index in 0..<candidates.len:
+      # The immutable metadata selects the same ABI as the exact ordered proof slot.
+      let kind = candidates.kind(uint8(index))
+      kinds[index] = kind
+      case kind
+      of NativeAuxiliaryKind.SelfLoop:
+        let proof {.cursor.} = candidates.loopProof(uint8(index))
+        template operations: untyped = proof.operations.toOpenArray(0, int(proof.count)-1)
+        when defined(pvmX86Jit):
+          encodings[index] = if proof.paidGuards != 0:
+              x86PaidMixedLoopInstructions(operations, proof.paidGuards)
+            else: x86MixedLoopInstructions(operations)
+        else:
+          encodings[index] = if proof.paidGuards != 0:
+              armPaidMixedLoopInstructions(operations, proof.paidGuards)
+            else: armMixedLoopInstructions(operations)
+      of NativeAuxiliaryKind.ReadCycle:
+        # Reuse the whole existing seven-role lowerer, including its original return/role ABI.
+        when defined(pvmX86Jit):
+          encodings[index] = x86ReadCycleInstructions(candidates.cycleProof(uint8(index)))
+        else:
+          encodings[index] = armReadCycleInstructions(candidates.cycleProof(uint8(index)))
       let count = encodings[index].len
       if count == 0 or count > NativeImageByteLimit div unitBytes:
         refused = refused or (1'u8 shl index)
@@ -354,7 +369,7 @@ when NativeReadCycleEnabled:
     if entries == 0: return
     let handle = createNativeArena()
     if handle == nil: return
-    for index in 0..<int(candidates.count):
+    for index in 0..<candidates.len:
       if (entries and (1'u8 shl index)) != 0:
         var count = uint32(encodings[index].len)
         when defined(pvmMixedLoopArenaWitness):
@@ -371,8 +386,21 @@ when NativeReadCycleEnabled:
           return
         assert uint32(offset) == offsets[index]
     result = NativeImage(handle: handle, bytesValue: uint64(used),
-      kindValue: NativeKind.MixedSelfLoop, mixedOffsets: offsets,
-      mixedLengths: lengths, mixedEntries: entries)
+      kindValue: NativeKind.AuxiliaryArena, mixedOffsets: offsets,
+      mixedLengths: lengths, mixedEntries: entries, auxiliaryKinds: kinds)
+
+  proc lowerNativeMixedLoops*(candidates: NativeMixedLoopSet, refused: var uint8,
+      pairRefused: var bool): NativeImage =
+    ## Preserve the loop-only callers and direct witnesses through the same typed publisher.
+    refused = 0'u8
+    pairRefused = false
+    if candidates.count == 0 or candidates.count > uint8(NativeMixedLoopEntryLimit):
+      return default(NativeImage)
+    var plan = nativeAuxiliaryPlan(candidates)
+    if plan.len == 0:
+      refused = uint8((1'u32 shl int(candidates.count))-1)
+      return default(NativeImage)
+    lowerNativeAuxiliary(plan, refused, pairRefused)
 
   proc lowerNativeMixedLoop*(proof: NativeMixedLoop, refused: var bool): NativeImage =
     ## Preserve the one-leaf caller contract through the shared immutable publisher.
@@ -384,7 +412,7 @@ when NativeReadCycleEnabled:
 
   func nativeMixedLoopEntries*(image: NativeImage): uint8 =
     ## Zero denotes an absent image. Occupied bits retain the original ranked proof slots.
-    if image.ready and image.kind == NativeKind.MixedSelfLoop: image.mixedEntries
+    if image.ready and image.kind == NativeKind.AuxiliaryArena: image.mixedEntries
     else: 0'u8
 
   when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopArenaWitness):
@@ -418,18 +446,45 @@ when NativeReadCycleEnabled:
         assert actual[at] == expected[at]
       (offset: offset, length: length)
 
-  proc enterNativeMixedLoopAt*(image: NativeImage, index: uint8, registers: var RegisterFile,
-      context: var NativeMixedLoopContext): uint32 =
-    ## Enter only a published slot under the shared image borrow and its exact certificate.
-    ## Entry offsets are immutable after publication. Both buffers remain invocation-local.
+  func auxiliaryEntryMatches*(image: NativeImage, index: uint8, kind: NativeAuxiliaryKind): bool =
+    ## No entry address is usable without its occupied slot and exact ABI tag.
+    if index >= uint8(NativeAuxiliaryEntryLimit) or
+        (nativeMixedLoopEntries(image) and (1'u8 shl int(index))) == 0:
+      return false
+    let slot = int(index)
+    if image.auxiliaryKinds[slot] != kind: return false
+    let offset = uint64(image.mixedOffsets[slot])
+    let length = uint64(image.mixedLengths[slot])
+    const alignment = when defined(pvmX86Jit): 16'u64 else: 4'u64
+    length != 0 and (offset and (alignment-1)) == 0 and offset <= image.codeBytes and
+      length <= image.codeBytes-offset
+
+  proc tryEnterNativeAuxiliaryLoopAt*(image: NativeImage, index: uint8,
+      registers: var RegisterFile, context: var NativeMixedLoopContext,
+      raw: var uint32): bool =
+    ## A wrong ABI refuses before any call can modify the shared context prefix or guest memory.
     assert sizeof(NativeMixedLoopContext) == NativeMixedLoopContextBytes and
       sizeof(RegisterFile) == 104
-    if index >= uint8(NativeMixedLoopEntryLimit) or (nativeMixedLoopEntries(image) and (
-        1'u8 shl int(index))) == 0:
+    raw = 0'u32
+    if not auxiliaryEntryMatches(image, index, NativeAuxiliaryKind.SelfLoop): return false
+    raw = arenaRegion(image.handle, image.mixedOffsets[int(index)], addr registers[0], addr context)
+    true
+
+  proc tryEnterNativeAuxiliaryCycleAt*(image: NativeImage, index: uint8,
+      registers: var RegisterFile, context: var NativeCycleContext, raw: var uint32): bool =
+    ## Cycle receipts use the full context and never reinterpret a packed self-loop result.
+    assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
+    raw = 0'u32
+    if not auxiliaryEntryMatches(image, index, NativeAuxiliaryKind.ReadCycle): return false
+    raw = arenaRegion(image.handle, image.mixedOffsets[int(index)], addr registers[0], addr context)
+    true
+
+  proc enterNativeMixedLoopAt*(image: NativeImage, index: uint8, registers: var RegisterFile,
+      context: var NativeMixedLoopContext): uint32 =
+    ## The established loop caller has already borrowed and bound its exact source slot.
+    result = 0'u32
+    if not tryEnterNativeAuxiliaryLoopAt(image, index, registers, context, result):
       abortNativeReceipt()
-    let offset = image.mixedOffsets[int(index)]
-    assert uint64(offset)+uint64(image.mixedLengths[int(index)]) <= image.codeBytes
-    arenaRegion(image.handle, offset, addr registers[0], addr context)
 
   proc enterNativeMixedLoop*(image: NativeImage, registers: var RegisterFile,
       context: var NativeMixedLoopContext): uint32 =

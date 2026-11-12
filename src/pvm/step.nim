@@ -609,6 +609,9 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeCheckedReadEnabled:
     # Plain execution preserves initial selection and observes only an already armed later phase.
     if nativeReplacementObservation(frame.nativeSession): beginReadProbe(frame, uint64(limit))
+  when NativeReadCycleEnabled:
+    beginFlatAuxiliaryInvocation(frame, uint64(limit))
+    defer: clearFlatAuxiliaryInvocation(frame)
   let nativeBaseline = nativeOperations(frame)
   runFlat(frame, uint64(limit))
   when NativeCheckedReadEnabled:
@@ -623,6 +626,8 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == StepError.None)
     finishNativeReadObservation(frame, answer.error == StepError.None)
+  when NativeReadCycleEnabled:
+    finishFlatAuxiliaryInvocation(frame, answer.error == StepError.None and answer.value.exit == StepExit.Halt)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
@@ -1001,11 +1006,16 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
           data.mixedDirtyCount)-1))
   when NativeCheckedReadEnabled:
     beginReadProbe(frame, uint64(steps))
+  when NativeReadCycleEnabled:
+    beginFlatAuxiliaryInvocation(frame, uint64(steps))
+    defer: clearFlatAuxiliaryInvocation(frame)
   let answer = driveHostFrame[Context, Reason, Fallible, ScalarCapable, Callbacks](frame, owner,
       context, callbacks, steps, calls, data.limits.resources.pages)
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
+  when NativeReadCycleEnabled:
+    finishFlatAuxiliaryInvocation(frame, answer.error == HostExecutionError.None and answer.value.exit == StepExit.Halt)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer

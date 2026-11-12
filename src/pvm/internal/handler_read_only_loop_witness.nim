@@ -196,7 +196,7 @@ when declared(FlatFrame) and defined(pvmMixedLoopEntryWitness) and defined(pvmPa
   when defined(pvmSharedAsyncWitness):
     proc witnessFlatReadOnlyScheduling*(program: Program, pc: uint32,
         session: NativeSession, visits: uint32, expectedOffer: bool, stale = false) =
-      ## Rank a real checked read segment before any current-call primary entry.
+      ## Exercise the isolated loop-only probe with a real checked read segment.
       ## Short observed work, a stale source epoch or an unpermitted lease cannot queue.
       assert visits in 1'u32..1000'u32 and not nativeInvocationUsed(session)
       var admitted = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
@@ -208,6 +208,7 @@ when declared(FlatFrame) and defined(pvmMixedLoopEntryWitness) and defined(pvmPa
       info.registers[12] = RegisterValue(16*4096)
       var frame = newFlatFrame(plan, [readable], info)
       frame.nativeSession = session
+      frame.mixedProbeWitness = true
       let header = flatResolve(frame, pc)
       var source = default(FlatSourceInterval)
       var walk = default(FlatSourceSummary)

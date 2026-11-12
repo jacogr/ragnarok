@@ -17,7 +17,7 @@ when NativeReadCycleEnabled and defined(pvmReadOnlyMixedLoopWitness):
       import ../../src/pvm/internal/arm64_jit
 
   proc runReadOnlyLoopScheduling*(program: Program, pc: uint32, report = false) =
-    ## Queue hot signed source beside an exact installed Ring before current-call primary use.
+    ## Exercise the explicit loop-only scheduler with a signed source proof and an exact Ring.
     let proof = witnessFlatReadOnlyMixedSource(program, pc)
     let runtime = newNativeRuntime()
     try:
@@ -53,9 +53,9 @@ when NativeReadCycleEnabled and defined(pvmReadOnlyMixedLoopWitness):
     pauseNativeCompiler(runtime, false)
     waitNativeCompiler(runtime)
     beginNativeInvocation(session, NativeInvocationFloor)
-    let shared = borrowNativeMixedLoop(session, proof)
-    let sharedImage = shared.image
-    assert sharedImage != nil and shared.mask == 1
+    var lease = default(NativeAuxiliaryLease)
+    let shared = borrowNativeMixedLoops(session, singleNativeMixedLoop(proof), lease)
+    assert lease.ready and shared.mask == 1
     when defined(pvmMixedLoopArenaWitness):
       when defined(pvmX86Jit):
         let expected = x86MixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1))
@@ -63,9 +63,9 @@ when NativeReadCycleEnabled and defined(pvmReadOnlyMixedLoopWitness):
         var expected: seq[byte] = @[]
         for word in armMixedLoopInstructions(proof.operations.toOpenArray(0, int(proof.count)-1)):
           for lane in 0..<4: expected.add(byte((word shr (lane*8)) and 255'u32))
-      let rx = witnessNativeMixedLoopImage(sharedImage[], 0, expected)
+      let rx = witnessBorrowedAuxiliaryImage(lease, 0, expected)
       if report: echo "READ_ONLY_RING_RX_OK,", rx.offset, ",", rx.length
-    returnNativeMixedLoop(session)
+    returnNativeAuxiliary(lease)
     finishNativeInvocation(session, NativeInvocationFloor)
     invalidateNativeStream(session)
     assert runtimeInfo(runtime).registered == 0 and close(runtime)

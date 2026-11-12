@@ -1,1 +1,2 @@
 PASS shared native read cycle execution
+PASS typed auxiliary image and both ABI guards

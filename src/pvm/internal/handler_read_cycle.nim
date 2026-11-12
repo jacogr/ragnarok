@@ -154,6 +154,18 @@ when declared(FlatFrame):
     cycle.read = read
     result = cycle
 
+  proc flatCycleContext(f: var FlatFrame): NativeCycleContext =
+    ## Borrow the live frame's read, writable and dirty storage for a single entry.
+    if not f.readContextReady: prepareFlatReadContext(f)
+    result = NativeCycleContext(read: f.readContext, gas: uint64(f.info.gas),
+      remaining: f.remaining, lastCompleted: NativeCycleNoCompleted)
+    result.writable[0] = NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len))
+    result.writable[1] = NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))
+    if f.stack.len > 0: result.writable[0].data = addr f.stack[0]
+    if f.rw.len > 0: result.writable[1].data = addr f.rw[0]
+    if f.dirtyPages.len > 0: result.dirty = addr f.dirtyPages[0]
+    result.dirtyWords = uint64(f.dirtyPages.len)
+
   proc flatNativeReadCycle(f: var FlatFrame, off: uint32): uint32 =
     ## All borrows and the reservation receipt belong to this invocation only.
     let original = f.nativeOriginal
@@ -165,15 +177,7 @@ when declared(FlatFrame):
         f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
         f.reservation != (read.header or flatReservationHeaderFlag):
       return original(f, off)
-    if not f.readContextReady: prepareFlatReadContext(f)
-    var context = NativeCycleContext(read: f.readContext, gas: uint64(f.info.gas),
-      remaining: f.remaining, lastCompleted: NativeCycleNoCompleted)
-    context.writable[0] = NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len))
-    context.writable[1] = NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))
-    if f.stack.len > 0: context.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.writable[1].data = addr f.rw[0]
-    if f.dirtyPages.len > 0: context.dirty = addr f.dirtyPages[0]
-    context.dirtyWords = uint64(f.dirtyPages.len)
+    var context = flatCycleContext(f)
     var lastHeader = read.header
     result = runNativeCycle(f.nativeSession, f.info.registers, context, lastHeader)
     f.info.gas = MachineGas(context.gas)

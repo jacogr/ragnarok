@@ -10,4 +10,5 @@ when not defined(pvmSharedReadCycleOff) and defined(pvmSharedAsyncWitness) and
     defined(pvmX86Jit) and defined(amd64) and defined(linux):
   # A lexical guard keeps Nimony from loading this enabled-only dependency in off builds.
   import ../../support/pvm_connected_read_handoff
+  runTypedAuxiliaryNative()
   runConnectedReadHandoff(false)

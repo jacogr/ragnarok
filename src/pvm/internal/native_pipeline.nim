@@ -10,12 +10,10 @@
 ## auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
 ## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
-## A hot init Read can precede the ring's first current-call entry. Completed ranked source work and
-## the allowed installed ring lease permit that segment's offer under the same credit checks.
-## This also permits an already discovered Store auxiliary during unused-ring warmup before
-## Read replacement. Primary counters remain separate from the combined owner work and publications.
-## Connected Read remains a primary-only image kind. Running that whole Read graph beside
-## an actively used ring needs a later typed auxiliary contract and selection policy.
+## A Ring owner ranks complete checked work at a successful Halt after actual Ring
+## execution in that call. Its auxiliary can share a connected Read with self-loops.
+## A Read primary retains its loop-only segment policy. Primary counters stay separate
+## from the combined owner work and publications.
 ## Another source can retain a ready primary while its auxiliary offer waits for retirement.
 ## Deferred identities hold no credit; only eligible work that can queue claims one.
 ## Installed owners retain credits while idle, so a serialized second consumer can still
@@ -40,7 +38,7 @@ export native_ir, native_read_body, native_register_ring
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   export native_read_cycle
-  import ./native_mixed_loop
+  import ./[native_mixed_loop, native_auxiliary]
 
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
@@ -141,7 +139,7 @@ type
     submitted, completed: uint64
     when NativeReadCycleEnabled:
       mixedKey, mixedOwner: JobKey ## One auxiliary arena and its exact installed primary ticket.
-      mixedSet: NativeMixedLoopSet
+      mixedRequest: NativeAuxiliaryRequest ## Sole host-owned payload, possibly parked after unmapping.
       mixedPairRefused: bool
       mixedBorrowed: bool
     when defined(pvmSharedAsyncWitness):
@@ -218,6 +216,7 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   for index in 0..<runtime.slots.len:
     # This hook is legal only before synchronization initialization and registration admission.
     `=wasMoved`(runtime.slots[index])
+  when NativeReadCycleEnabled: `=wasMoved`(runtime.mixedRequest)
   runtime.initialized = false
   runtime.started = false
   runtime.stopping = false
@@ -225,6 +224,9 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
 proc `=destroy`(runtime: var NativeRuntimeStorage) =
   ## Last host anchor must be closed. Sessions retain the allocation/locks after an explicit close.
   assert not runtime.started, "close NativeRuntime before releasing its last anchor"
+  when NativeReadCycleEnabled:
+    assert runtime.mixedRequest.isEmpty
+    `=destroy`(runtime.mixedRequest)
   for index in 0..<runtime.slots.len:
     # Closed surviving clients retain the anchor until their own image/credit retirement finishes.
     `=destroy`(runtime.slots[index])
@@ -302,7 +304,8 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
       assert not runtime.mixedBorrowed
       runtime.mixedKey = default(JobKey)
       runtime.mixedOwner = default(JobKey)
-      runtime.mixedSet = default(NativeMixedLoopSet)
+      # Physical unmapping frees the credit. The worker cannot release the host ARC payload.
+      assert not runtime.mixedRequest.isEmpty
       runtime.mixedPairRefused = false
       runtime.slots[index].state = Free
       return
@@ -311,6 +314,15 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
     runtime.slots[index].state = Free
 
 when NativeReadCycleEnabled:
+  proc takeRetiredAuxiliaryRequest(runtime: ptr NativeRuntimeStorage): NativeAuxiliaryRequest =
+    ## Host only, under the runtime lock. A zero auxiliary key means exact row recycle
+    ## has already followed physical unmapping and the last borrow/worker view.
+    ## The returned owner must be destroyed outside this mutex, before another offer.
+    result = default(NativeAuxiliaryRequest)
+    if runtime.mixedKey.generation == 0 and not runtime.mixedRequest.isEmpty:
+      assert not runtime.mixedBorrowed
+      result = move(runtime.mixedRequest)
+
   func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
     ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
     result = 0
@@ -454,13 +466,31 @@ proc releaseCompilerClaim(runtime: ptr NativeRuntimeStorage, key: JobKey): bool 
   release(runtime.lock)
 
 when NativeReadCycleEnabled:
-  func mixedLoopRefused(tokens: array[NativeMixedLoopCandidateLimit, uint32],
-      header: uint32): bool =
-    ## Within the exact primary key the checked header identifies immutable original source.
+  func auxiliaryRefusalToken(kind: NativeAuxiliaryKind, header: uint32): uint32 =
+    ## Source headers fit below bit31. Keep typed lowering refusals in one bounded word ledger.
+    assert header < NativeEntryLimit
+    (header+1) or (if kind == NativeAuxiliaryKind.ReadCycle: 0x80000000'u32 else: 0'u32)
+
+  func auxiliaryPlanToken(plan: var NativeAuxiliaryPlan, index: uint8): uint32 =
+    ## Compare a kind-bound original entry coordinate, never a code offset or occupancy bit.
+    let kind = plan.kind(index)
+    let header = if kind == NativeAuxiliaryKind.SelfLoop: plan.loopProof(index).header
+      else: plan.cycleProof(index).read.info.header
+    auxiliaryRefusalToken(kind, header)
+
+  func auxiliaryRefused(tokens: array[NativeMixedLoopCandidateLimit, uint32],
+      wanted: uint32): bool =
+    ## A full bounded ledger conservatively refuses further work under the same primary ticket.
     for token in tokens:
       if token == 0: return false
-      if token == header+1: return true
+      if token == wanted: return true
     true
+
+  func mixedLoopRefused(tokens: array[NativeMixedLoopCandidateLimit, uint32],
+      header: uint32): bool =
+    ## The unchanged loop selection path cannot match a Read-cycle refusal of another ABI.
+    if header >= NativeEntryLimit: return false
+    auxiliaryRefused(tokens, auxiliaryRefusalToken(NativeAuxiliaryKind.SelfLoop, header))
 
   func mixedLoopQueued(runtime: ptr NativeRuntimeStorage): bool =
     runtime.mixedKey.generation != 0 and
@@ -470,13 +500,14 @@ when NativeReadCycleEnabled:
     ## Copy the bounded certificate under the lock. The existing worker publishes its row.
     let key = runtime.mixedKey
     assert matchesRow(runtime, key) and mixedLoopQueued(runtime)
-    let requested = runtime.mixedSet
+    var requested = default(NativeAuxiliaryPlan)
+    if not copyNativeAuxiliaryPlan(runtime.mixedRequest, requested): abortNativeReceipt()
     runtime.slots[key.slot].location = CompletionLocation.Running
     var image = default(NativeImage)
     var refused = 0'u8
     var pairRefused = false
     if releaseCompilerClaim(runtime, key):
-      image = lowerNativeMixedLoops(requested, refused, pairRefused)
+      image = lowerNativeAuxiliary(requested, refused, pairRefused)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
       compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
@@ -485,11 +516,11 @@ when NativeReadCycleEnabled:
       let owner = runtime.mixedOwner
       assert matchesRow(runtime, owner) and
         runtime.slots[owner.slot].location == CompletionLocation.Installed
-      for proofIndex in 0..<int(requested.count):
+      for proofIndex in 0..<requested.len:
         if (refused and (1'u8 shl proofIndex)) == 0: continue
         for index in 0..<NativeMixedLoopCandidateLimit:
           if runtime.slots[owner.slot].mixedRefusals[index] == 0:
-            runtime.slots[owner.slot].mixedRefusals[index] = requested.proofs[proofIndex].header+1
+            runtime.slots[owner.slot].mixedRefusals[index] = auxiliaryPlanToken(requested, uint8(proofIndex))
             break
     if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready:
       runtime.slots[key.slot].location = CompletionLocation.Reclaiming
@@ -500,7 +531,7 @@ when NativeReadCycleEnabled:
       acquire(runtime.lock)
       finishRetirement(runtime, key)
     else:
-      assert image.kind == NativeKind.MixedSelfLoop
+      assert image.kind == NativeKind.AuxiliaryArena
       runtime.slots[key.slot].completion = move(image)
       runtime.mixedPairRefused = pairRefused
       runtime.slots[key.slot].location = CompletionLocation.Complete
@@ -645,6 +676,8 @@ proc close*(runtime: NativeRuntime): bool =
   var images = default(array[NativeSessionLimit, NativeImage])
   var keys = default(array[NativeSessionLimit, JobKey])
   var detached = default(array[NativeSessionLimit, bool])
+  when NativeReadCycleEnabled:
+    var retired = default(NativeAuxiliaryRequest)
   acquire(data.lock)
   for index in 0..<data.slots.len:
     # With the worker joined, every parked completion can detach without racing publication.
@@ -669,8 +702,10 @@ proc close*(runtime: NativeRuntime): bool =
   data.work = WorkPhase.Idle
   data.key = default(JobKey)
   data.started = false
+  when NativeReadCycleEnabled: retired = takeRetiredAuxiliaryRequest(data)
   broadcast(data.changed)
   release(data.lock)
+  when NativeReadCycleEnabled: retired = default(NativeAuxiliaryRequest)
   true
 
 proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
@@ -896,41 +931,73 @@ when NativeReadCycleEnabled:
       header: proof.header, terminal: proof.terminal, first: proof.first,
       last: proof.first+uint32(proof.span)-1, epoch: proof.epoch))
 
-  proc offerNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet): bool =
-    ## Queue under the exact eligible installed primary ticket and stream epoch. Require an idle primary
-    ## mailbox and leave one usable primary credit. The proof copies source facts only.
-    ## Source admission preserves rank slots, while the target publisher chooses the
-    ## resident subset under its byte cap. Borrowers must use the published occupancy
-    ## mask; equal source admission does not promise equal occupancy across ISAs.
-    if not mixedLoopPrimaryReady(session) or not requested.complete: return false
-    for index in 0..<int(requested.count):
-      if not mixedLoopDisjoint(session, requested.proofs[index]): return false
+  func auxiliaryCanQueue(runtime: ptr NativeRuntimeStorage, owner: JobKey,
+      requested: var NativeAuxiliaryPlan): bool =
+    ## Check the exact installed primary and all resource/refusal predicates while locked.
+    if not runtime.started or runtime.stopping or runtime.work != WorkPhase.Idle or
+        runtime.mixedKey.generation != 0 or not runtime.mixedRequest.isEmpty or
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2 or
+        not matchesRow(runtime, owner) or runtime.slots[owner.slot].state != Live or
+        runtime.slots[owner.slot].location != CompletionLocation.Installed or
+        runtime.slots[owner.slot].cancelled:
+      return false
+    for index in 0..<requested.len:
+      # Only actual lowering refusals enter this exact-key typed ledger.
+      if auxiliaryRefused(runtime.slots[owner.slot].mixedRefusals,
+          auxiliaryPlanToken(requested, uint8(index))): return false
+    true
+
+  proc offerNativeAuxiliary*(session: NativeSession, expected: NativeImageKey,
+      requested: var NativeAuxiliaryPlan): bool =
+    ## Queue a complete ordered proof set under the caller's exact live primary lease.
+    ## Construct only actual payload bytes after availability, outside the mutex; recheck
+    ## every key/credit predicate before moving the sole owner into the global row.
+    if expected.kind notin {NativeKind.RegisterRing, NativeKind.ConnectedReadCycle} or
+        not matchesNativeImage(session, expected, expected.kind) or not requested.complete or
+        requested.sourceEpoch != expected.epoch:
+      return false
+    for index in 0..<requested.len:
+      # The connected family is auxiliary only beside a Ring; loop-only Read offers remain supported.
+      let slot = uint8(index)
+      case requested.kind(slot)
+      of NativeAuxiliaryKind.SelfLoop:
+        if not mixedLoopDisjoint(session, requested.loopProof(slot)): return false
+      of NativeAuxiliaryKind.ReadCycle:
+        if expected.kind != NativeKind.RegisterRing or
+            nativeReadCycleObservationOverlaps(session, requested.cycleProof(slot)): return false
     let data {.cursor.} = session.data
-    assert data != nil and data.slot >= 0
+    assert data != nil and data.slot == expected.slot
     let anchor {.cursor.} = data.runtime
     assert anchor != nil
     let runtime = addr anchor.storage
+    let owner = JobKey(slot: expected.slot, generation: expected.generation,
+      ticket: expected.ticket, epoch: expected.epoch, kind: expected.kind)
     acquire(runtime.lock)
-    if runtime.stopping or runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2:
+    var retired = takeRetiredAuxiliaryRequest(runtime)
+    let available = auxiliaryCanQueue(runtime, owner, requested)
+    release(runtime.lock)
+    # Do not overlap a detached old payload with construction of its replacement.
+    retired = default(NativeAuxiliaryRequest)
+    if not available: return false
+    var payload = default(NativeAuxiliaryRequest)
+    if newNativeAuxiliaryRequest(requested, payload) != NativeAuxiliaryBuildStatus.Ready:
+      return false # Allocation refusal neither claims a credit nor records a lowering refusal.
+    acquire(runtime.lock)
+    if not matchesNativeImage(session, expected, expected.kind) or
+        not auxiliaryCanQueue(runtime, owner, requested):
       release(runtime.lock)
       return false
-    for index in 0..<int(requested.count):
-      if mixedLoopRefused(runtime.slots[data.slot].mixedRefusals, requested.proofs[index].header):
-        release(runtime.lock)
-        return false
     var slot = 0
     while runtime.slots[slot].state != Free or runtime.slots[slot].generation == high(uint64):
       inc slot
-    assert runtime.slots[data.slot].location == CompletionLocation.Installed and
-      runtime.slots[slot].location == CompletionLocation.Empty
+    assert runtime.slots[slot].location == CompletionLocation.Empty
     inc runtime.slots[slot].generation
     inc runtime.nextTicket
     let key = JobKey(slot: slot, generation: runtime.slots[slot].generation,
-      epoch: data.epoch, ticket: runtime.nextTicket, kind: NativeKind.MixedSelfLoop)
+      epoch: expected.epoch, ticket: runtime.nextTicket, kind: NativeKind.AuxiliaryArena)
     runtime.mixedKey = key
-    runtime.mixedOwner = runtime.slots[data.slot].key
-    runtime.mixedSet = requested
+    runtime.mixedOwner = owner
+    runtime.mixedRequest = move(payload)
     runtime.mixedPairRefused = false
     runtime.slots[slot].key = key
     runtime.slots[slot].state = Live
@@ -940,6 +1007,12 @@ when NativeReadCycleEnabled:
     signal(runtime.changed)
     release(runtime.lock)
     true
+
+  proc offerNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet): bool =
+    ## Keep the established loop-only source ranking and offer boundary for Read-primary callers.
+    let expected = nativeInstalledKey(session)
+    var plan = nativeAuxiliaryPlan(requested)
+    offerNativeAuxiliary(session, expected, plan)
 
   proc offerNativeMixedLoop*(session: NativeSession, proof: NativeMixedLoop): bool =
     ## Existing single-entry clients share the same arena and scheduling contract.
@@ -951,18 +1024,119 @@ when NativeReadCycleEnabled:
     data.mixedObserved = key
     if data.mixedPublications < high(uint64): inc data.mixedPublications
 
-  type NativeMixedLoopBorrow* = object
-    image*: nil ptr NativeImage
-    refused*, pairRefused*, settled*, pending*: bool
-    mask*, refusedMask*: uint8
+  type
+    NativeAuxiliaryBorrowInfo* = object
+      ## Copied observation only. It never contains an executable pointer or owns a lease.
+      refused*, pairRefused*, settled*, pending*, matched*: bool
+      mask*, refusedMask*: uint8
+    NativeMixedLoopBorrow* = NativeAuxiliaryBorrowInfo
+      ## Compatibility name for the existing loop-only source observer.
+    NativeAuxiliaryLease* = object
+      ## One callback-free segment's return obligation. The caller's active session
+      ## pins the runtime anchor; neither a request nor readonly plan parameter is borrowed.
+      runtime: nil ptr NativeRuntimeStorage
+      image: nil ptr NativeImage
+      key, owner: JobKey
 
-  proc borrowNativeMixedLoops*(session: NativeSession,
-      requested: NativeMixedLoopSet): NativeMixedLoopBorrow =
-    ## Try once for the exact completed ticket and proof in the current owner epoch.
-    ## Pressure may revoke the image during the segment. Unmapping waits for its return.
-    ## Compare the primary owner key and the complete ordered proof set before exposing
-    ## the image or mask. Equal occupancy masks can select different source PCs in
-    ## different sets, so a mask alone never grants source or executable authority.
+  proc `=copy`*(destination: var NativeAuxiliaryLease, source: NativeAuxiliaryLease) {.error.}
+    ## Only one handle may discharge the runtime's borrow obligation.
+
+  proc `=dup`*(source: NativeAuxiliaryLease): NativeAuxiliaryLease {.error.}
+    ## A copied image pointer cannot confer a second active lease.
+
+  proc `=wasMoved`*(lease: var NativeAuxiliaryLease) {.nodestroy, inline.} =
+    ## Transfer the obligation without returning a still-live arena.
+    lease.runtime = nil
+    lease.image = nil
+    lease.key = default(JobKey)
+    lease.owner = default(JobKey)
+
+  proc `=destroy`*(lease: var NativeAuxiliaryLease) =
+    ## Destruction cannot restore the caller's patched handlers; require an explicit return.
+    assert lease.runtime == nil and lease.image == nil and lease.key.ticket == 0 and
+      lease.owner.ticket == 0, "return active auxiliary lease before destruction"
+
+  func ready*(lease: NativeAuxiliaryLease): bool =
+    ## An empty/default/failed lease exposes no image.
+    lease.image != nil
+
+  func emptyAuxiliaryLease(lease: NativeAuxiliaryLease): bool =
+    ## A new borrow must never erase an outstanding return obligation.
+    lease.runtime == nil and lease.image == nil and lease.key.ticket == 0 and lease.owner.ticket == 0
+
+  func auxiliaryEntries*(lease: NativeAuxiliaryLease): uint8 =
+    ## Return occupancy only for a live borrowed image; this still does not select an ABI.
+    let image = lease.image
+    if image == nil: return 0'u8
+    nativeMixedLoopEntries(image[])
+
+  func auxiliaryCodeBytes*(lease: NativeAuxiliaryLease): uint64 =
+    ## Copy resident bytes without exposing an image pointer or extending its lease.
+    let image = lease.image
+    if image == nil: return 0'u64
+    image[].codeBytes
+
+  func auxiliaryEntryMatches*(lease: NativeAuxiliaryLease, index: uint8,
+      kind: NativeAuxiliaryKind): bool =
+    ## Keep the image private while checking the immutable published entry metadata.
+    let image = lease.image
+    image != nil and native_platform.auxiliaryEntryMatches(image[], index, kind)
+
+  proc enterBorrowedAuxiliaryLoop*(lease: NativeAuxiliaryLease, index: uint8,
+      registers: var RegisterFile, context: var NativeMixedLoopContext): uint32 =
+    ## The caller has rebound the ordered proof and retained a fresh invocation-local context.
+    let image = lease.image
+    if image == nil: abortNativeReceipt()
+    enterNativeMixedLoopAt(image[], index, registers, context)
+
+  proc enterBorrowedAuxiliaryCycle*(lease: NativeAuxiliaryLease, index: uint8,
+      registers: var RegisterFile, context: var NativeCycleContext): uint32 =
+    ## A cycle entry never interprets the loop's packed receipt or smaller context.
+    let image = lease.image
+    result = 0'u32
+    if image == nil or not tryEnterNativeAuxiliaryCycleAt(image[], index, registers, context, result):
+      abortNativeReceipt()
+
+  when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopArenaWitness):
+    func witnessBorrowedAuxiliaryGeometry*(lease: NativeAuxiliaryLease,
+        index: uint8): tuple[offset, length: uint32] =
+      ## Copy immutable geometry without handing out the image owner.
+      let image = lease.image
+      assert image != nil
+      witnessNativeMixedLoopGeometry(image[], index)
+
+  when defined(pvmMixedLoopArenaWitness):
+    proc witnessBorrowedAuxiliaryImage*(lease: NativeAuxiliaryLease, index: uint8,
+        expected: openArray[byte]): tuple[offset, length: uint32] =
+      ## Verify the live RX bytes without exposing the row-owned image pointer.
+      let image = lease.image
+      assert image != nil and auxiliaryEntryMatches(lease, index, NativeAuxiliaryKind.SelfLoop)
+      witnessNativeMixedLoopImage(image[], index, expected)
+
+  proc borrowAuxiliaryLocked(runtime: ptr NativeRuntimeStorage, data: var NativeSessionStorage,
+      exact: bool, lease: var NativeAuxiliaryLease, info: var NativeAuxiliaryBorrowInfo) =
+    ## The caller holds the lock and has compared the complete ordered source request.
+    info.settled = true
+    info.matched = exact
+    let key = runtime.mixedKey
+    info.pending = exact and runtime.slots[key.slot].location in
+      {CompletionLocation.Queued, CompletionLocation.Running}
+    if not runtime.stopping and exact and not runtime.mixedBorrowed and
+        runtime.slots[key.slot].location == CompletionLocation.Complete and
+        not runtime.slots[key.slot].cancelled:
+      assert matchesRow(runtime, key) and runtime.slots[key.slot].completion.ready
+      runtime.mixedBorrowed = true
+      observeMixedPublication(data, key)
+      lease = NativeAuxiliaryLease(runtime: runtime, image: addr runtime.slots[key.slot].completion,
+        key: key, owner: runtime.mixedOwner)
+      info.mask = auxiliaryEntries(lease)
+      info.pairRefused = runtime.mixedPairRefused
+
+  proc borrowNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet,
+      lease: var NativeAuxiliaryLease): NativeMixedLoopBorrow =
+    ## Keep the existing Read-primary loop-only selection and exact comparison path.
+    ## Compare only bounded active payloads here; malformed coordinates cannot match.
+    assert emptyAuxiliaryLease(lease), "borrow requires empty output lease"
     result = default(NativeMixedLoopBorrow)
     if not mixedLoopPrimaryReady(session) or requested.count == 0 or
         requested.count > uint8(NativeMixedLoopEntryLimit): return
@@ -972,46 +1146,59 @@ when NativeReadCycleEnabled:
     assert anchor != nil
     let runtime = addr anchor.storage
     if not tryAcquire(runtime.lock): return
-    result.settled = true
-    let key = runtime.mixedKey
-    let exact = key.generation != 0 and
+    let exact = runtime.mixedKey.generation != 0 and
       sameKey(runtime.mixedOwner, runtime.slots[data.slot].key) and
-      sameNativeMixedLoopSet(runtime.mixedSet, requested)
-    result.pending = exact and runtime.slots[key.slot].location in
-      {CompletionLocation.Queued, CompletionLocation.Running}
-    if not runtime.stopping and exact and not runtime.mixedBorrowed and
-        runtime.slots[key.slot].location == CompletionLocation.Complete and
-        not runtime.slots[key.slot].cancelled:
-      assert matchesRow(runtime, key) and runtime.slots[key.slot].completion.ready
-      runtime.mixedBorrowed = true
-      observeMixedPublication(data[], key)
-      result.image = addr runtime.slots[key.slot].completion
-      result.mask = nativeMixedLoopEntries(runtime.slots[key.slot].completion)
-      result.pairRefused = runtime.mixedPairRefused
+      sameNativeAuxiliaryLoops(runtime.mixedRequest, requested)
+    borrowAuxiliaryLocked(runtime, data[], exact, lease, result)
     for index in 0..<int(requested.count):
+      # Rejected out-of-range coordinates never enter the certified refusal-token helper.
       if mixedLoopRefused(runtime.slots[data.slot].mixedRefusals, requested.proofs[index].header):
         result.refusedMask = result.refusedMask or (1'u8 shl index)
     result.refused = result.refusedMask == uint8((1'u32 shl int(requested.count))-1)
     release(runtime.lock)
 
-  proc borrowNativeMixedLoop*(session: NativeSession,
-      proof: NativeMixedLoop): NativeMixedLoopBorrow =
-    borrowNativeMixedLoops(session, singleNativeMixedLoop(proof))
-
-  proc returnNativeMixedLoop*(session: NativeSession) =
-    ## The frame restores the original checked handler before releasing the borrow.
-    ## Complete any pending revocation while retaining the credit until unmapping.
+  proc borrowNativeAuxiliary*(session: NativeSession, expected: NativeImageKey,
+      requested: var NativeAuxiliaryPlan, lease: var NativeAuxiliaryLease): NativeAuxiliaryBorrowInfo =
+    ## Try once for the exact current owner and complete ordered typed proof set.
+    ## Failures leave an empty lease; occupancy/size never substitutes for authority.
+    assert emptyAuxiliaryLease(lease), "borrow requires empty output lease"
+    result = default(NativeAuxiliaryBorrowInfo)
+    if expected.kind != NativeKind.RegisterRing or not matchesNativeImage(session, expected,
+        NativeKind.RegisterRing) or requested.sourceEpoch != expected.epoch or
+        not requested.complete: return
     let data {.cursor.} = session.data
-    assert data != nil and data.invocation and data.slot >= 0
+    assert data != nil and data.slot == expected.slot
     let anchor {.cursor.} = data.runtime
     assert anchor != nil
     let runtime = addr anchor.storage
+    if not tryAcquire(runtime.lock): return
+    let owner = JobKey(slot: expected.slot, generation: expected.generation,
+      ticket: expected.ticket, epoch: expected.epoch, kind: expected.kind)
+    let exact = runtime.mixedKey.generation != 0 and sameKey(runtime.mixedOwner, owner) and
+      matchesRow(runtime, owner) and runtime.slots[owner.slot].location == CompletionLocation.Installed and
+      sameNativeAuxiliaryPlan(runtime.mixedRequest, requested)
+    borrowAuxiliaryLocked(runtime, data[], exact, lease, result)
+    for index in 0..<requested.len:
+      # Report typed lowering refusals independently of aggregate byte occupancy.
+      if auxiliaryRefused(runtime.slots[data.slot].mixedRefusals,
+          auxiliaryPlanToken(requested, uint8(index))):
+        result.refusedMask = result.refusedMask or (1'u8 shl index)
+    result.refused = result.refusedMask == uint8((1'u32 shl requested.len)-1)
+    release(runtime.lock)
+
+  proc returnNativeAuxiliary*(lease: var NativeAuxiliaryLease) =
+    ## The frame restores every saved handler before discharging this exact return.
+    ## Revocation leaves the image live until then. Clear the private pointer before
+    ## retirement unlocks to unmap; the parked host request survives worker cleanup.
+    let runtime = lease.runtime
+    assert runtime != nil and lease.ready
+    let key = lease.key
     acquire(runtime.lock)
-    let key = runtime.mixedKey
-    assert key.generation != 0 and runtime.mixedBorrowed and
-      sameKey(runtime.mixedOwner, runtime.slots[data.slot].key) and
+    assert runtime.mixedBorrowed and sameKey(runtime.mixedKey, key) and
+      sameKey(runtime.mixedOwner, lease.owner) and matchesRow(runtime, key) and
       runtime.slots[key.slot].location == CompletionLocation.Complete
     runtime.mixedBorrowed = false
+    `=wasMoved`(lease)
     if runtime.slots[key.slot].cancelled: retireMixedLoopLocked(runtime)
     release(runtime.lock)
 
@@ -1026,6 +1213,8 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
   if anchor == nil: return
   let runtime = addr anchor.storage
   acquire(runtime.lock)
+  when NativeReadCycleEnabled:
+    var retired = takeRetiredAuxiliaryRequest(runtime)
   if runtime.started and not runtime.stopping and runtime.active < high(int):
     inc runtime.active
     data.invocation = true
@@ -1047,6 +1236,7 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
   # Closed observation must not erase terminal Unavailable state or implicitly retry failed lowering
   # when an explicitly restarted empty runtime later accepts this still-unregistered source.
   release(runtime.lock)
+  when NativeReadCycleEnabled: retired = default(NativeAuxiliaryRequest)
   if data.invocation:
     collectNative(session)
     if data.allowed: data.invocationImageKey = nativeInstalledKey(session)
@@ -1686,6 +1876,25 @@ when NativeReadCycleEnabled:
     if data == nil: return false
     data.readRouteValid and sameNativeReadCycle(data.readProof, cycle)
 
+  proc checkedNativeCycleOperations(proof: NativeReadCycle, destination: uint32,
+      registers: RegisterFile, gas, remaining: uint64, context: NativeCycleContext,
+      lastHeader: var uint32): uint64 =
+    ## Both owners validate the same role, budget and continuation receipt.
+    if not validNativeCycleReceipt(proof.layout, destination, gas, remaining, context):
+      abortNativeReceipt()
+    if context.lastCompleted == NativeCycleNoCompleted: return 0
+    let role = NativeCycleRole(context.lastCompleted)
+    if nativeCycleSuccessor(proof, role, registers) != destination: abortNativeReceipt()
+    lastHeader = proof.layout.sites[role].header
+    let readSpan = NativeCycleSpans[NativeCycleRole.Read]
+    let spent = remaining-context.remaining
+    if context.paidRead == 0 and spent > high(uint64)-readSpan: abortNativeReceipt()
+    if context.paidRead == 1: spent else: spent+readSpan
+
+  func nativeCycleReceiptBranched(context: NativeCycleContext): bool =
+    context.visits[NativeCycleRole.Store] != 0 or context.visits[NativeCycleRole.Tail] != 0 or
+      context.visits[NativeCycleRole.Outer] != 0 or context.visits[NativeCycleRole.Gate] != 0
+
   proc runNativeCycle*(session: NativeSession, registers: var RegisterFile,
       context: var NativeCycleContext, lastHeader: var uint32): uint32 =
     ## Validate the entered receipt before exposing its budgets and exact continuation.
@@ -1695,21 +1904,13 @@ when NativeReadCycleEnabled:
     let gas = context.gas
     let remaining = context.remaining
     result = enterNativeReadCycle(data.image, registers, context)
-    if not validNativeCycleReceipt(data.readProof.layout, result, gas, remaining, context):
-      abortNativeReceipt()
+    let operations = checkedNativeCycleOperations(data.readProof, result, registers, gas,
+      remaining, context, lastHeader)
     if context.lastCompleted == NativeCycleNoCompleted: return
-    let role = NativeCycleRole(context.lastCompleted)
-    if nativeCycleSuccessor(data.readProof, role, registers) != result: abortNativeReceipt()
-    lastHeader = data.readProof.layout.sites[role].header
-    let readSpan = NativeCycleSpans[NativeCycleRole.Read]
-    let spent = remaining - context.remaining
-    if context.paidRead == 0 and spent > high(uint64) - readSpan: abortNativeReceipt()
-    let operations = if context.paidRead == 1: spent else: spent + readSpan
     if operations != 0: data.invocationUsed = true
     if data.calls < high(uint64): inc data.calls
-    if data.operations <= high(uint64) - operations: data.operations += operations
-    if (context.visits[NativeCycleRole.Store] != 0 or context.visits[NativeCycleRole.Tail] != 0 or
-        context.visits[NativeCycleRole.Outer] != 0 or context.visits[NativeCycleRole.Gate] != 0):
+    if data.operations <= high(uint64)-operations: data.operations += operations
+    if nativeCycleReceiptBranched(context):
       if data.branchCalls < high(uint64): inc data.branchCalls
       if hasNativeCycleBackedge(context.visits) and data.headerCalls < high(uint64):
         inc data.headerCalls
@@ -1732,6 +1933,19 @@ when NativeReadCycleEnabled:
     if branch and data.mixedBranchCalls < high(uint64): inc data.mixedBranchCalls
     if repeatedHeader and data.mixedHeaderCalls < high(uint64): inc data.mixedHeaderCalls
     data.mixedOperations = addNativeCount(data.mixedOperations, operations)
+
+  proc runBorrowedAuxiliaryCycle*(session: NativeSession, lease: NativeAuxiliaryLease,
+      index: uint8, proof: NativeReadCycle, registers: var RegisterFile,
+      context: var NativeCycleContext, lastHeader: var uint32): uint32 =
+    ## A validated auxiliary receipt credits that family without qualifying primary Ring work.
+    let gas = context.gas
+    let remaining = context.remaining
+    result = enterBorrowedAuxiliaryCycle(lease, index, registers, context)
+    let operations = checkedNativeCycleOperations(proof, result, registers, gas, remaining,
+      context, lastHeader)
+    if operations != 0:
+      recordNativeMixedLoop(session, operations, hasNativeCycleBackedge(context.visits),
+        nativeCycleReceiptBranched(context))
 
 proc nativeOperationCount*(session: NativeSession): uint64 {.inline.} =
   ## Actual execution detection needs only owner-local counters, even during a runtime borrow.

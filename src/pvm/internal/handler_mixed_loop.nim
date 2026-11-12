@@ -121,8 +121,9 @@ when declared(FlatFrame):
     let epoch = nativeEpoch(f.nativeSession)
     if epoch == 0: return
     if f.mixedSource.epoch != epoch: f.mixedSource = FlatMixedLoopSource(epoch: epoch)
-    if f.mixedSource.count == uint8(NativeMixedLoopCandidateLimit) or
-        f.mixedSource.checks == uint8(NativeMixedLoopReconstructionLimit): return
+    if int(f.mixedSource.count)+int(f.mixedSource.cycleToken != 0) >= NativeMixedLoopCandidateLimit or
+        int(f.mixedSource.checks)+int(f.mixedSource.cycleChecks) >= NativeMixedLoopReconstructionLimit:
+      return
     let token = pc+1
     for index in 0..<int(f.mixedSource.count):
       if f.mixedSource.candidates[index] == token: return
@@ -163,6 +164,7 @@ when declared(FlatFrame):
     if readOnly: f.mixedSource.readOnlySeen = true
     f.mixedSource.candidates[int(f.mixedSource.count)] = token
     inc f.mixedSource.count
+    if f.auxiliaryHeat.valid: observeFlatAuxiliaryLoop(f, proof, f.mixedSource.count-1)
     when defined(pvmMixedLoopWitness):
       let exitPc = f.plan.facts[int(f.sites[int(proof.exitHeader)])].pc
       echo "MIXED_LOOP_PROOF,", pc, ",", proof.first, ",", exitPc, ",", proof.price,
@@ -244,6 +246,9 @@ when declared(FlatFrame):
     let receipt: NativeMixedLoopReceipt = nativeMixedLoopReceipt(boundProof, funded, raw,
       f.info.registers)
     if not receipt.valid: abortNativeReceipt()
+    when defined(pvmTypedAuxiliaryWitness):
+      if f.auxiliaryPlan != nil:
+        echo "TYPED_AUX_LOOP,", off, ",", receipt.visits, ",", receipt.paid
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       inc f.mixedWitnessEntries
     if receipt.paid:
@@ -303,24 +308,22 @@ when declared(FlatFrame):
       enterFlatMixedLoop(f, off, f.mixedWitnessProof, image, enterNativeMixedLoop)
 
   proc flatMixedLoopEntry(f: var FlatFrame, off: uint32): uint32 =
-    let image = f.mixedImage
     let requested = f.mixedProofs
-    if image == nil or requested == nil: return flatCharge(f, off)
+    if not f.auxiliaryLease.ready or requested == nil: return flatCharge(f, off)
     for index in 0..<int(requested[].count):
       if (f.mixedMask and (1'u8 shl index)) != 0 and requested[].proofs[index].header == off:
         template selected(entry, registers, context: untyped): untyped =
-          enterNativeMixedLoopAt(entry, uint8(index), registers, context)
-        return enterFlatMixedLoop(f, off, requested[].proofs[index], image, selected)
+          enterBorrowedAuxiliaryLoop(entry, uint8(index), registers, context)
+        return enterFlatMixedLoop(f, off, requested[].proofs[index], addr f.auxiliaryLease, selected)
     abortNativeReceipt()
 
   proc borrowFlatMixedLoopSegment(f: var FlatFrame,
       requested: ptr NativeMixedLoopSet): NativeMixedLoopBorrow =
     ## Borrow the arena once, and patch only the proof slots the immutable image actually published.
-    assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
-    result = borrowNativeMixedLoops(f.nativeSession, requested[])
-    if result.image == nil: return
+    assert not f.auxiliaryLease.ready and f.mixedProofs == nil and f.mixedMask == 0
+    result = borrowNativeMixedLoops(f.nativeSession, requested[], f.auxiliaryLease)
+    if not f.auxiliaryLease.ready: return
     f.mixedProofs = requested
-    f.mixedImage = result.image
     f.mixedMask = result.mask
     when defined(pvmMixedLoopWitness):
       f.mixedArenaWitness = default(array[NativeMixedLoopEntryLimit, FlatMixedArenaWitness])
@@ -337,8 +340,7 @@ when declared(FlatFrame):
   proc returnFlatMixedLoopSegment(f: var FlatFrame) =
     ## Restore every original checked header before dropping either borrow or releasing the arena.
     let requested = f.mixedProofs
-    let image = f.mixedImage
-    assert requested != nil and image != nil
+    assert requested != nil and f.auxiliaryLease.ready
     for index in 0..<int(requested[].count):
       if (f.mixedMask and (1'u8 shl index)) == 0: continue
       let header = requested[].proofs[index].header
@@ -348,19 +350,18 @@ when declared(FlatFrame):
         if (f.mixedMask and (1'u8 shl index)) == 0: continue
         let proof {.cursor.} = requested[].proofs[index]
         let counts = f.mixedArenaWitness[index]
-        let geometry = witnessNativeMixedLoopGeometry(image[], uint8(index))
+        let geometry = witnessBorrowedAuxiliaryGeometry(f.auxiliaryLease, uint8(index))
         let pc = f.plan.facts[int(f.sites[int(proof.header)])].pc
         echo "MIXED_ARENA_ENTRY,", pc, ",", index, ",", counts.entries, ",", counts.visits,
           ",", counts.refusals, ",", counts.paid, ",", counts.operations, ",", counts.branches,
-          ",", counts.repeatedHeaders, ",", image[].codeBytes, ",", f.mixedMask,
+          ",", counts.repeatedHeaders, ",", auxiliaryCodeBytes(f.auxiliaryLease), ",", f.mixedMask,
           ",", geometry.offset, ",", geometry.length
-    f.mixedImage = nil
     f.mixedProofs = nil
     f.mixedMask = 0
     when defined(pvmMixedLoopWitness):
       echo "MIXED_LOOP_SEGMENT,", f.mixedWitnessEntries, ",", f.mixedWitnessVisits, ",",
-        f.mixedWitnessRefusals, ",", image[].codeBytes
-    returnNativeMixedLoop(f.nativeSession)
+        f.mixedWitnessRefusals, ",", auxiliaryCodeBytes(f.auxiliaryLease)
+    returnNativeAuxiliary(f.auxiliaryLease)
 
   when defined(pvmSharedAsyncWitness) or defined(pvmMixedLoopEntryWitness):
     proc witnessFlatMixedDiscovery*(program: Program, checks, accepted: int,
