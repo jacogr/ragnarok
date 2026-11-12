@@ -24,6 +24,7 @@ import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
+import ./metadata_store
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
@@ -137,9 +138,9 @@ type
     valid: bool
   FlatPlan* = ref object ## Immutable admission, or a private derived catalogue owned by an exclusive frame/stream.
     source: Program
-    facts: seq[FlatFact]
+    facts: MetadataStore[FlatFact]
     # A materialized start stores its global ordinal plus one; operand and still-lazy PCs keep zero.
-    factAt: seq[uint32]
+    factAt: MetadataStore[uint32]
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
@@ -182,7 +183,7 @@ type
     handlers: seq[FlatHandler]
     arguments: seq[FlatArgs]
     sites: seq[uint32]
-    compiledForPc: seq[uint32]
+    compiledForPc: MetadataStore[uint32]
     sourceMemory: Memory
     sourcePages: seq[PageDescription]
     roBase, rwBase, stackBase: uint64
@@ -1728,7 +1729,8 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   fact.sourceCount = 1
   fact.nodeCount = 1
   FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
-    facts: @[fact], factAt: @[], pricePcs: @[], cycles: cycles, jumps: @[], limits: limits,
+    facts: singletonMetadataStore(fact), factAt: default(MetadataStore[uint32]), pricePcs: @[],
+        cycles: cycles, jumps: @[], limits: limits,
     allowNative: false, singleStep: true))
 
 proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
@@ -1800,7 +1802,8 @@ proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
 proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   ## Materialize one complete containing block, giving every interior resume its original quotas.
   ## The cache exclusively owns this derived plan. The immutable admission owner stays untouched.
-  ## Reserve global fact slots once so native adjacency proofs keep their original index space.
+  ## Preserve global logical fact slots so native adjacency proofs keep their original index space.
+  ## Allocate payload chunks only on writes; untouched blocks retain implicit zero metadata.
   ## Only resolved blocks (including existing branch prelinks) fill those slots and their quotas.
   let requested = instructionHeader(f.plan.source, CodeAddress(uint64(pc)))
   if requested.error != ProgramError.None: return false
@@ -1810,8 +1813,8 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     f.plan = FlatPlan(source: original.source, limits: original.limits, cycles: original.cycles,
       jumps: original.jumps, allowNative: original.allowNative, singleStep: false,
       admission: original, admittedFacts: original.admittedFacts, codeBytes: original.codeBytes,
-      factAt: newSeq[uint32](int(original.codeBytes)), ranks: original.ranks,
-      facts: newSeq[FlatFact](int(original.admittedFacts)))
+      factAt: initMetadataStore[uint32](int(original.codeBytes)), ranks: original.ranks,
+      facts: initMetadataStore[FlatFact](int(original.admittedFacts)))
   let owner = f.plan
   if owner.factAt[int(pc)] != 0: return true
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
@@ -1843,8 +1846,10 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     dec index
     inc count
     if owner.facts[index].opcode != 2: inc nodes
-    owner.facts[index].sourceCount = count
-    owner.facts[index].nodeCount = nodes
+    var fact = owner.facts[index]
+    fact.sourceCount = count
+    fact.nodeCount = nodes
+    owner.facts[index] = fact
   assert owner.factAt[int(pc)] != 0
   true
 
@@ -1888,7 +1893,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     f.preparationFailure = FlatError.PreparationLimitExceeded
     return flatStop
   f.preparationUsed+=neededWork
-  if f.compiledForPc.len == 0: f.compiledForPc = newSeq[uint32](f.plan.factAt.len)
+  if f.compiledForPc.len == 0: f.compiledForPc = initMetadataStore[uint32](f.plan.factAt.len)
   let origin = uint32(f.handlers.len)
   var index = start
   var first = true
@@ -2264,7 +2269,7 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
-    compiledForPc: @[], sourceMemory: memory, sourcePages: @[],
+    compiledForPc: default(MetadataStore[uint32]), sourceMemory: memory, sourcePages: @[],
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: default(
         RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
@@ -3849,7 +3854,8 @@ type FlatStream* = object
   ## A reusable exclusive cache retains program coordinates/handlers and counters, never CPU or memory.
   handlers: seq[FlatHandler]
   arguments: seq[FlatArgs]
-  sites, compiledForPc: seq[uint32]
+  sites: seq[uint32]
+  compiledForPc: MetadataStore[uint32]
   sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
   nativeOriginal: nil FlatHandler
   nativeInstallation: FlatNativeInstallation
@@ -3976,6 +3982,11 @@ func planFacts*(plan: FlatPlan): uint64 =
   ## Report the full admitted source count; lazy materialization never changes its resource obligation.
   if not plan.singleStep: return uint64(plan.admittedFacts)
   uint64(plan.facts.len)
+
+func metadataPayloadBytes*(frame: FlatFrame): uint64 =
+  ## Copied allocated fact/map payload excludes directory and executable-handler storage.
+  uint64(allocatedElements(frame.plan.facts))*uint64(sizeof(FlatFact)) +
+    uint64(allocatedElements(frame.plan.factAt)+allocatedElements(frame.compiledForPc))*4
 
 func materializedFacts*(frame: FlatFrame): uint64 =
   ## Copied occupancy reports only blocks requested by resolution, including branch prelinks.
