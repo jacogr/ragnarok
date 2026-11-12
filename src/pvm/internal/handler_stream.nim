@@ -3985,6 +3985,8 @@ func planFacts*(plan: FlatPlan): uint64 =
 
 func metadataPayloadBytes*(frame: FlatFrame): uint64 =
   ## Copied allocated fact/map payload excludes directory and executable-handler storage.
+  ## A default or moved frame owns no metadata.
+  if frame.plan == nil: return 0
   uint64(allocatedElements(frame.plan.facts))*uint64(sizeof(FlatFact)) +
     uint64(allocatedElements(frame.plan.factAt)+allocatedElements(frame.compiledForPc))*4
 

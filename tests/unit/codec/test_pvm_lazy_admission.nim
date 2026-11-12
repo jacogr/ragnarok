@@ -73,6 +73,12 @@ assert materializedOrdinal(earlier, CodeAddress(2800)) == 1401
 checkRun(independent, 100)
 assert materializedFacts(independent) == 2 and materializedFacts(earlier) == 4
 
+# A frame move transfers the actual payload and leaves the source observation empty.
+let transferredBytes = metadataPayloadBytes(independent)
+let movedFrame = move(independent)
+assert transferredBytes > 0 and metadataPayloadBytes(movedFrame) == transferredBytes
+assert metadataPayloadBytes(independent) == 0
+
 # An interior-first entry still admits its complete containing block, including its original charge.
 var interior = frame(plan, 900, true)
 checkRun(interior, 900, true)

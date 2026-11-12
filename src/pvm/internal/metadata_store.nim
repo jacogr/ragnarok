@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded execution metadata with contiguous small stores and lazy large chunks.
-## Only large stores own a directory. An exclusive frame or stream moves the store.
+## One chunk spans a small extent, so a directory would add an allocation and
+## indirection while retaining the same payload. Large extents allocate only
+## touched chunks. An exclusive frame or stream moves the store.
 
 import std/assertions
 
