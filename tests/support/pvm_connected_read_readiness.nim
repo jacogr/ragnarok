@@ -21,12 +21,18 @@ proc holdConnectedReadiness*(runtime: NativeRuntime) =
   armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
 
 proc checkWorker(runtime: NativeRuntime, phase: NativePhase, registered, completed,
-    completions: int) =
-  ## Each witness has one owner and submits exactly one real job.
+    completions: int, submitted = 1'u64) =
+  ## Bind the primary and, after Ready use, its one deterministically queued auxiliary.
   let observed = runtime.runtimeInfo
-  assert observed.phase == phase and observed.registered == registered and observed.active == 0
-  assert observed.submitted == 1 and observed.completed == uint64(completed)
-  assert observed.completions == completions
+  if observed.phase != phase or observed.registered != registered or observed.active != 0 or
+      observed.submitted != submitted or observed.completed != uint64(completed) or
+      observed.completions != completions:
+    # Keep a failed native packet actionable without weakening any exact counter.
+    echo "CONNECTED_READINESS_WORKER_MISMATCH,", ord(observed.phase), ",", observed.registered,
+      ",", observed.active, ",", observed.submitted, ",", observed.completed, ",",
+          observed.completions,
+      ",", ord(phase), ",", registered, ",0,", submitted, ",", completed, ",", completions
+    assert false, "connected readiness: exact worker counters"
 
 proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
     backend: PvmBackend, sample: int) =
@@ -45,7 +51,7 @@ proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
       checkWorker(runtime, NativePhase.Idle, 0, 1, 0)
     else:
       assert state == NativeState.Ready
-      checkWorker(runtime, NativePhase.Idle, 1, 1, 0)
+      checkWorker(runtime, NativePhase.Queued, 2, 1, 0, submitted = 2)
   if ConnectedReadinessRefused or sample < 2:
     assert backend == PvmBackend.Interpreted
     assert observed.nativeFragments == 0 and observed.nativeCodeBytes == 0
@@ -81,6 +87,9 @@ proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
     assert preparedNativeState(prepared).value == NativeState.Pending
     checkWorker(runtime, NativePhase.Done, 1, 1, 1)
     echo "CONNECTED_READINESS_PARKED,1,1,1,1"
+    # Keep the auxiliary offered by later Ready calls queued, preserving primary-only work.
+    # Native auxiliary execution and ownership have their own complete arena witnesses.
+    pauseNativeCompiler(runtime, true)
   when ConnectedReadinessRefused:
     if sample == 4:
       # A surviving refused owner holds no slot and keeps its checked behavior after close.
@@ -98,7 +107,10 @@ proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
 
 proc finishConnectedReadiness*(runtime: NativeRuntime) =
   ## The caller drops the prepared owner before proving final native credit retirement.
-  checkWorker(runtime, NativePhase.Idle, 0, 1, 0)
+  let submitted = if ConnectedReadinessRefused: 1'u64 else: 2'u64
+  checkWorker(runtime, NativePhase.Idle, 0, 1, 0, submitted)
+  pauseNativeCompiler(runtime, false)
   assert close(runtime)
-  checkWorker(runtime, NativePhase.Idle, 0, 1, 0)
-  echo "CONNECTED_READINESS_DONE,", ord(ConnectedReadinessRefused), ",", ConnectedReadinessCalls, ",1,1,0"
+  checkWorker(runtime, NativePhase.Idle, 0, 1, 0, submitted)
+  echo "CONNECTED_READINESS_DONE,", ord(ConnectedReadinessRefused), ",", ConnectedReadinessCalls,
+    ",", submitted, ",1,0"
