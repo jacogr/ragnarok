@@ -808,6 +808,41 @@ when defined(pvmSharedAsyncWitness):
         observed.nativeHeaderCalls == 0, "purePrefixControl: folded=" & $folded
       assert runtime.close()
 
+  proc adjacentNativePrefix() =
+    ## A ready two-operation prefix inside an adjacent checked pair remains callable on every visit.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    pauseNativeCompiler(runtime, true)
+    # A adds to R3 and compares to R4. B's equality branch returns to A until A exits.
+    let wire = [0'u8, 0, 17, 149, 0x33, 1, 200, 0x55, 5, 170, 0x43, 9,
+      132, 0x55, 0, 81, 5, 0xf4, 50, 0, 0x49, 0x92, 0]
+    let owner = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0)).value
+    let base = input(owner, 2048)
+    let memory = memoryOf(base).value
+    var cpu = machineInfo(base).value
+    cpu.registers[3] = RegisterValue(0)
+    cpu.registers[4] = RegisterValue(2048)
+    cpu.registers[5] = RegisterValue(0)
+    let source = captureMachine(owner, memory, cpu).value
+    let code = prepared(owner, runtime)
+    let limit = ExecutionStepLimit(10239)
+    let cold = execute(source, limit, code)
+    assert cold.error == StepError.None and cold.value.exit == StepExit.Halt
+    assert cold.value.backend == PvmBackend.Interpreted
+    assert uint64(machineInfo(cold.value.machine).value.registers[3]) == 2048
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    let ready = execute(source, limit, code)
+    assert ready.error == StepError.None and ready.value.exit == StepExit.Halt
+    assert ready.value.backend == PvmBackend.Jit
+    assert machineInfo(ready.value.machine).value == machineInfo(cold.value.machine).value
+    assert memoryOf(ready.value.machine).value == memory
+    let observed = preparedInfo(code).value
+    assert observed.nativeFragments == 1 and observed.nativeCalls == 2048
+    assert observed.nativeOperations == 4096
+    assert runtime.close()
+
   proc doneFinalDrop() =
     ## An uncollected successful image also occupies credit and must be reclaimed by final owner retirement.
     let runtime = newNativeRuntime()
@@ -1480,6 +1515,7 @@ proc runSharedAsync*() =
     immediateLoops()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
+    adjacentNativePrefix()
     when NativeReadCycleEnabled:
       runMixedLoopSource()
       when defined(pvmPaidMixedLoopWitness):
