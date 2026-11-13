@@ -36,7 +36,6 @@ type
     stage: Stage
     left: int8 # Copied profile latency stays within0..100 throughout execution.
     dependencies: uint32
-    clobbers: uint16
     units: Units
 
 func error*(r: GasResult): GasError =
@@ -227,6 +226,10 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     return GasResult(status: GasError.InvalidStart)
   var rob = default(array[32, Entry])
   var count = 0
+  # Non-move entries receive consecutive ordinals starting at one. A producer
+  # below the current head is ready, so retirement needs no register-table updates.
+  var firstOrdinal = 1'u64
+  var producers = default(array[13, uint64])
   var busy = 0'u32 # A bit is set exactly while that active entry has nonzero remaining latency.
   var waiting = 0'u32 # Bits mark exactly the active entries in Stage.Waiting.
   var transitioning = 0'u32 # Bits mark exactly the active Decoding and Executing entries.
@@ -265,21 +268,23 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
             cost.cycles = 1
         slots -= cost.slots
         if item.opcode == 100:
-          # Rename every outstanding producer; a ready source removes the destination's old producer.
-          for i in 0..<count:
-            if (rob[i].clobbers and cost.sources) != 0:
-              rob[i].clobbers = rob[i].clobbers or cost.destinations
-            else:
-              # Unrelated producers no longer own the moved-to register.
-              rob[i].clobbers = rob[i].clobbers and not cost.destinations
+          # The move names the source's producer without taking a buffer slot.
+          producers[int(byte(item.d))] = producers[int(byte(item.a))]
         else:
-          # Capture read-after-write dependencies before replacing the destination producer.
+          # Read old producers before publishing the new destination's slot.
           var deps = 0'u32
-          for i in 0..<count:
-            if (rob[i].clobbers and cost.sources) != 0: deps = deps or (1'u32 shl i)
-            rob[i].clobbers = rob[i].clobbers and not cost.destinations
+          var sources = uint32(cost.sources)
+          while sources != 0:
+            let producer = producers[int(lowestEntryIndex(sources))]
+            if producer >= firstOrdinal:
+              # Producers at or after the head belong to the current compact buffer.
+              deps = deps or (1'u32 shl int(producer-firstOrdinal))
+            sources = sources and (sources-1)
+          if cost.destinations != 0:
+            # Every writing profile names one register, including conditional assignments.
+            producers[int(lowestEntryIndex(uint32(cost.destinations)))] = firstOrdinal+uint64(count)
           rob[count] = Entry(stage: Stage.Decoding, left: cost.cycles,
-            dependencies: deps, clobbers: cost.destinations, units: cost.units)
+            dependencies: deps, units: cost.units)
           if cost.cycles != 0: busy = busy or (1'u32 shl count) # The enclosing count<32 guard proves this shift.
           transitioning = transitioning or (1'u32 shl count)
           inc count
@@ -359,4 +364,5 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
         busy = busy shr retired
         waiting = waiting shr retired
         transitioning = transitioning shr retired
+      firstOrdinal += uint64(retired)
       count -= retired
