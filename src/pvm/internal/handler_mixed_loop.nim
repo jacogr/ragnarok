@@ -23,8 +23,6 @@ when declared(FlatFrame):
         not flatWalkCompleteSource(f, header, source, walk) or
         walk.operations < NativeMixedLoopMinimum or walk.terminal >= NativeEntryLimit or
         f.handlers[int(walk.terminal)] != flatBranch[171]: return
-    let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
-    if price.error != GasError.None or uint64(price.value) != source.price: return
     let priceIndex = f.plan.facts[int(source.first)].priceIndex
     var proof = NativeMixedLoop(header: header, first: source.first, terminal: walk.terminal,
       price: source.price, epoch: epoch, span: uint8(source.span), count: uint8(walk.operations))
@@ -63,7 +61,10 @@ when declared(FlatFrame):
             walk.terminal: 0'u64 else: original.args.x))
       inc node
     if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
-    if proof.complete: result = proof
+    if not proof.complete: return
+    # Reprice only a route that can actually become a certificate.
+    let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
+    if price.error == GasError.None and uint64(price.value) == source.price: result = proof
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
     ## Bound exact source reconstruction to cold resolved BNEs with a plausible byte store.

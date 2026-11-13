@@ -112,11 +112,12 @@ when declared(FlatFrame):
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =
     ## A full unpaid entry may run natively. The original header handles partial, paid and gas stops.
-    if f.info.blockCharged or f.barrier != flatStop or f.pricingKind != 0 or
-        not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.RegisterRing):
+    if f.info.blockCharged or f.barrier != flatStop or f.pricingKind != 0:
       return false
     let charge = f.arguments[int(header)]
-    if f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x: return false
+    if f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x or
+        not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.RegisterRing):
+      return false
     let rotation = nativeRingRotation(f.nativeSession, header)
     if rotation > 2: return false
     var context = NativeRingContext(gas: uint64(f.info.gas), remaining: f.remaining,

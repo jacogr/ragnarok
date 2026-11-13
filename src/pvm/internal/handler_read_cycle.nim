@@ -30,18 +30,17 @@ when declared(FlatFrame):
     var source = default(FlatSourceInterval)
     if not flatCompleteOriginalHeader(f, pc, uint32(opcodes.len), resolved, source) or
         resolved != header or source.span != uint32(opcodes.len): return false
-    let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
-    if price.error != GasError.None or uint64(price.value) != source.price: return false
     var walk = default(FlatSourceSummary)
     if not flatWalkCompleteSource(f, header, source, walk): return false
     part = default(FlatCyclePart)
     part.site = NativeCycleSite(header: header, first: first, price: source.price)
     part.terminal = walk.terminal
+    let priceIndex = f.plan.facts[int(first)].priceIndex
     var node = header + 1
     for index in 0..<opcodes.len:
       # The immutable fact is the opcode authority, including an original folded noop.
       let fact = f.plan.facts[int(first) + index]
-      if fact.opcode != opcodes[index] or fact.priceIndex != f.plan.facts[int(first)].priceIndex:
+      if fact.opcode != opcodes[index] or fact.priceIndex != priceIndex:
         return false
       if fact.opcode == 2: continue
       let decoded = flatSourcePayload(f.plan, fact)
@@ -55,7 +54,9 @@ when declared(FlatFrame):
       part.operations[index] = NativeOperation(opcode: fact.opcode, slots: decoded.args.slots,
         immediate: immediate)
       inc node
-    true
+    # Independently reprice the complete checked shape before granting admission.
+    let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
+    price.error == GasError.None and uint64(price.value) == source.price
 
   proc flatCycleJump[Code: static[int]](f: FlatFrame, part: FlatCyclePart,
       target: var uint32): bool =
