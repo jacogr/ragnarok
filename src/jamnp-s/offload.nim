@@ -35,7 +35,7 @@ proc `==`*(a, b: JobId): bool {.borrow.}
 proc `$`*(id: JobId): string {.borrow.}
   ## Diagnostic printing preserves the generation without permitting implicit integer conversion.
 when OffloadEnabled:
-  import std/[os, strutils, locks, monotimes, times, rawthreads, syncio, envvars, assertions]
+  import std/[os, strutils, locks, monotimes, times, rawthreads, syncio, envvars]
   import std/posix/posix
   import ../bandersnatch/bandersnatch
   type
@@ -307,67 +307,71 @@ when OffloadEnabled:
       if slot.phase == phase: inc result # Observe ownership without consuming or releasing a job.
     release(pool.lock)
 
-  proc offloadSelfTest*() {.raises.} =
+  proc offloadSelfTest*(): bool {.raises.} =
     ## Exercise default result safety, completed capacity and collection before any QUIC engine exists.
     var pool = default(OffloadPool)
-    assert startPool(pool)
+    if not (startPool(pool)): return false
     defer: stopPool(pool)
     var ids = default(array[4, JobId])
-    assert not collectPool(pool).ready
+    if not (not collectPool(pool).ready): return false
     for i in 0..<4: ids[i] = submitPool(pool, false) # Each admitted snapshot must produce its own generation.
     let started = getMonoTime()
     while phaseCount(pool, Done) != 4:
-      assert (getMonoTime() - started).inSeconds < 20
+      if not ((getMonoTime() - started).inSeconds < 20): return false
       pause() # There is no network owner in this completion-capacity test.
-    assert submitPool(pool, false) == JobId(0) # Four completed owners still reject a fifth job.
+    if not (submitPool(pool, false) == JobId(0)): return false
     var seen = default(array[4, bool])
     for i in 0..<4:
       let polled = collectPool(pool)
-      assert polled.ready and polled.completion.outcome == Verified
+      if not (polled.ready and polled.completion.outcome == Verified): return false
       var found = false
       for index, id in ids:
         if id == polled.completion.id:
-          assert not seen[index]
+          if not (not seen[index]): return false
           seen[index] = true
           found = true # A duplicate or fabricated completion cannot satisfy this ownership proof.
-      assert found
-    assert not collectPool(pool).ready
+      if not (found): return false
+    if not (not collectPool(pool).ready): return false
     # Generations are never reused: the last representable ID is valid, but the following submission rejects.
     acquire(pool.lock)
     pool.next = high(uint64) - 1
     release(pool.lock)
     let last = submitPool(pool, false)
-    assert last == JobId(high(uint64))
-    assert submitPool(pool, false) == JobId(0)
+    if not (last == JobId(high(uint64))): return false
+    if not (submitPool(pool, false) == JobId(0)): return false
     let exhausted = getMonoTime()
     while phaseCount(pool, Done) != 1:
-      assert (getMonoTime() - exhausted).inSeconds < 20
+      if not ((getMonoTime() - exhausted).inSeconds < 20): return false
       pause() # The final job retains the same owned bytes/worker semantics as earlier generations.
     let final = collectPool(pool)
-    assert final.ready and final.completion.id == last and final.completion.outcome == Verified
-    assert not collectPool(pool).ready
+    if not (final.ready and final.completion.id == last and final.completion.outcome ==
+        Verified): return false
+    if not (not collectPool(pool).ready): return false
     progress "OFFLOAD_EXHAUSTED"
     progress "OFFLOAD_SELFTEST 4"
+    true
 
-  proc offloadHeldShutdownTest*() {.raises.} =
+  proc offloadHeldShutdownTest*(): bool {.raises.} =
     ## Exercise join with two held running owners plus two queued owners, before any FFI borrow begins.
     var pool = default(OffloadPool)
-    assert startPool(pool)
+    if not (startPool(pool)): return false
     defer: stopPool(pool)
-    for i in 0..<4: assert submitPool(pool, false) != JobId(0) # Four original inputs remain owned at shutdown.
+    for i in 0..<4:
+      if submitPool(pool, false) == JobId(0): return false
     let started = getMonoTime()
     while phaseCount(pool, Running) != 2:
-      assert (getMonoTime() - started).inSeconds < 20
+      if not ((getMonoTime() - started).inSeconds < 20): return false
       pause() # This focused hold test owns no event loop or network callbacks.
-    assert busyPool(pool) == 0
+    if not (busyPool(pool) == 0): return false
     tickPool(pool)
     progress "OFFLOAD_HELD_SHUTDOWN 4" # Deferred stop releases holds, drops queued work and joins both workers.
+    true
 else:
-  proc offloadSelfTest*() =
+  proc offloadSelfTest*(): bool =
     ## Ordinary binaries cannot claim worker lifecycle coverage.
-    discard
+    false
 
 when not OffloadEnabled:
-  proc offloadHeldShutdownTest*() =
+  proc offloadHeldShutdownTest*(): bool =
     ## Ordinary binaries cannot claim held-worker shutdown coverage.
-    discard
+    false

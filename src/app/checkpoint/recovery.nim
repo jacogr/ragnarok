@@ -4,7 +4,6 @@
 ## Explicit operator trust binds a complete recovered map to one sealed head.
 ## Recovery creates one retained head with unset finality; no ancestor or consensus proof is inferred.
 
-import std/assertions
 import ../chain
 import ./[identity as checkpoint_identity, codec as checkpoint_codec, file as checkpoint_file]
 import ../../codec/bounded
@@ -61,7 +60,8 @@ proc recoverApplicationChain*(state: StateStoreSnapshot, sealedHeader: openArray
   if captured.value.slot != uint32(expected.slot):
     return ApplicationRecoveryResult(status: ApplicationRecoveryError.ContextMismatch)
   let resumed = initApplicationChain(genesisView(captured))
-  assert resumed.error == ApplicationChainError.None # Exact initialized capture permits a policy-preserving fork.
+  if resumed.error != ApplicationChainError.None:
+    return ApplicationRecoveryResult(status: ApplicationRecoveryError.ContextMismatch)
   ApplicationRecoveryResult(status: ApplicationRecoveryError.None, completed: resumed.value)
 
 func envelopeFailure*(outcome: ApplicationRecoveryResult): ApplicationCheckpointResult[

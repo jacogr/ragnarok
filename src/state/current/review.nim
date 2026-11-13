@@ -4,7 +4,6 @@
 ## Review one qualified current successor using only its original full child parameter tuple.
 ## Targeted account observations remain separate from full semantic validity, installation and root/finality policy.
 
-import std/assertions
 import ./[state as current_state, globals as current_globals, profile as current_profile]
 import ../economic_profile
 import ../account/review/plan as account_review_plan
@@ -121,7 +120,7 @@ proc failedCurrentReview[T, U](outcome: CurrentReviewResult[T]): CurrentReviewRe
     # Default refusal remains explicitly uninitialized.
     CurrentReviewResult[U](status: CurrentReviewError.Uninitialized)
   of CurrentReviewError.None:
-    assert false # The checked entry contract forbids dropping a successful original payload.
+
     CurrentReviewResult[U](status: CurrentReviewError.Uninitialized)
 
 proc reviewCurrentState*(source: CurrentStateSerialization,

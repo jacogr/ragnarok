@@ -4,7 +4,6 @@
 ## Fixed detached pending-ticket retention accepts only sealed proof results for a current finalized epoch context.
 ## Pool contents are prospective GP inputs, never canonical inclusion or sealer-schedule authority.
 
-import std/assertions
 import ./ticket_validation
 import ../codec/[header, tickets]
 import ../codec/state/[safrole, trie]
@@ -47,7 +46,8 @@ proc advance*(pool: var PendingTicketPool, source: TicketSource, now: StateTime)
   if uint32(now) div duration != epoch or uint32(now) mod duration >= tail:
     return TicketPoolError.InvalidWindow
   let population = source.pendingCount
-  assert population > 0 and population <= MaxPendingNetworkTickets div 2
+  if population <= 0 or population > MaxPendingNetworkTickets div 2:
+    return TicketPoolError.NoSource
   let context = source.contextHash
   if not pool.active or pool.context != context:
     pool.clear()
@@ -92,7 +92,6 @@ proc retain*(pool: var PendingTicketPool, ticket: CheckedNetworkTicket,
       pool.entries[index] = ticket
       inc pool.count
       return TicketPoolError.None
-  assert false # Fixed capacity and a checked smaller limit prove an unused row exists.
   TicketPoolError.Full
 
 proc ticketAt*(pool: PendingTicketPool, ordinal: int): CheckedNetworkTicket {.requires: ordinal >=
@@ -103,5 +102,4 @@ proc ticketAt*(pool: PendingTicketPool, ordinal: int): CheckedNetworkTicket {.re
     if pool.entries[index].valid:
       if seen == ordinal: return pool.entries[index]
       inc seen
-  assert false # The private count is maintained only with occupied-row insertion/removal.
   default(CheckedNetworkTicket)

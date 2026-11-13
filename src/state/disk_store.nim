@@ -4,7 +4,6 @@
 ## Explicit-close durable complete-state owner stages private updates before atomic publication.
 ## Ordinary retained StateStore snapshots/forks keep their memory contract after close or IO refusal.
 
-import std/assertions
 import ./store
 import ./paged/state as paged_state
 import ../storage/file/repository as file_repository
@@ -530,7 +529,9 @@ proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot
   if store.pagedMode:
     # Actual native selection, authoring, barriers and uncertainty detection occur only under the caller's excluded IO lease.
     let cache = store.pagedCache
-    assert cache != nil # Successful cached snapshot admission above proves the private active-cache invariant.
+    if cache == nil:
+      store.failPaged()
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
     if cache.pending and not replay:
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RetirementPending) # Bound authored storage before another candidate can be created.
     if not contextFits(uint64(context.len), store.pagedConfig, true):

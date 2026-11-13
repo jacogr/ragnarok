@@ -257,7 +257,7 @@ proc prepareLightDelta*(before: PreparedLightSnapshot, sequence: LightDeltaSeque
       for index in 0..<proof.value.len: output[cursor+index] = proof.value[index]
       cursor += proof.value.len
     else: cursor += EditBytes # Zero-initialized reserved forget fields have one canonical representation.
-  assert cursor == output.len-32
+  if cursor != output.len-32: return failed[PreparedLightDelta](LightDeltaError.InvalidFormat)
   let hashed = blake2b256(output.toOpenArray(0, cursor-1))
   if hashed.error != CryptoError.None: return failed[PreparedLightDelta](
       LightDeltaError.BackendFailure)
@@ -339,9 +339,11 @@ proc verified(input: openArray[byte], before: PreparedLightSnapshot, expected: L
     let size = int(number(input, cursor+34))
     cursor += EditBytes
     if tag == 0:
+      if old >= forgotten.len: return failed[DeltaData](LightDeltaError.InvalidFormat)
       forgotten[old] = key
       inc old
     else:
+      if fresh >= proofs.len: return failed[DeltaData](LightDeltaError.InvalidFormat)
       var nodes = newSeq[EncodedStateNode](count)
       for slot in 0..<count:
         var raw = default(array[64, byte])
@@ -353,7 +355,8 @@ proc verified(input: openArray[byte], before: PreparedLightSnapshot, expected: L
       cursor += size
       proofs[fresh] = LightStateProof(key: key, proof: StateProof(nodes: nodes, value: value))
       inc fresh
-  assert cursor == stop and fresh == admitted and old == removed
+  if cursor != stop or fresh != admitted or old != removed:
+    return failed[DeltaData](LightDeltaError.InvalidFormat)
   let changed = before.update(proofs, forgotten)
   if changed.error != LightSnapshotError.None: return snapshotFailure[DeltaData](changed)
   let after = array[32, byte](changed.value.checksum)

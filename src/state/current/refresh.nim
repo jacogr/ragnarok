@@ -4,7 +4,6 @@
 ## Execute frozen admitted service reconstruction using actual successor payloads/metadata/histories and original namespace identities.
 ## Output is detached mutable declarations only; complete current logical qualification and authority remain separate.
 
-import std/assertions
 import ./refresh/plan as current_refresh_plan
 import ./[request_keys as current_request_keys, identities as current_identities]
 import ../supplied/logical_inventory as supplied_logical_inventory
@@ -72,7 +71,9 @@ proc executeCurrentRefresh*(plan: CurrentRefreshPlan): CurrentRefreshResult =
     if decoded.error != ServiceMetadataError.None:
       return CurrentRefreshResult(status: CurrentRefreshError.MetadataFailure,
           metadataReason: decoded.error)
-    assert decoded.value.consumed == raw.len # Canonical version zero consumes the exact105-byte wire already admitted by the plan.
+    if decoded.value.consumed != raw.len:
+      return CurrentRefreshResult(status: CurrentRefreshError.MetadataFailure,
+          metadataReason: ServiceMetadataError.NonCanonical)
     output[i] = StateService(service: row.service, metadata: decoded.value.metadata,
       storage: newSeq[StateStorageItem](row.storage), preimages: newSeq[StatePreimageItem](
           row.preimages), requests: newSeq[StateRequestItem](row.requests))

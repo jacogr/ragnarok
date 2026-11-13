@@ -4,7 +4,6 @@
 ## Bounded CE 128 descending-inclusive requests and complete response validation.
 ## Captured headers provide parent-linked context only; no execution, trust or canonical publication occurs.
 
-import std/assertions
 import ../../codec/[bounded, header, block_codec]
 import ../../crypto/primitives
 
@@ -103,8 +102,8 @@ proc decodeAncestorResponse*(request: AncestorRequest, payload: openArray[byte],
       return AncestorResponseResult[AncestorResponse](status: AncestorResponseError.BlockFailure,
         blockReason: decoded)
     let consumed = decoded.value.consumed
-    assert consumed > 0 and consumed <= payload.len -
-        offset # Successful codec extents stay inside the supplied view.
+    if consumed <= 0 or consumed > payload.len-offset:
+      return AncestorResponseResult[AncestorResponse](status: AncestorResponseError.BackendFailure)
     let component = decoded.value.owner.blockHeader.value
     let owner = component.readHeader.value.owner
     let info = owner.headerInfo.value

@@ -7,7 +7,6 @@
 ## Exposes header and marker source types, explicit optional markers, owned codecs and copied
 ## validator/ticket/offender access.
 
-import std/assertions
 import ./[natural, bounded, assurances, tickets]
 
 type
@@ -683,7 +682,8 @@ proc encodeHeader*(value: Header, config: HeaderConfig, output: var openArray[by
   var cursor = 0
   putUnsigned(value.unsigned, output, cursor)
   put(array[96, byte](value.seal), output, cursor)
-  assert cursor == size
+  if cursor != size:
+    return HeaderResult[int](status: HeaderError.InvalidOwner)
   HeaderResult[int](status: HeaderError.None, completed: size)
 
 proc encodeUnsignedHeader*(value: UnsignedHeader, config: HeaderConfig, output: var openArray[
@@ -706,7 +706,8 @@ proc encodeUnsignedHeader*(value: UnsignedHeader, config: HeaderConfig, output: 
     return HeaderResult[int](status: alias)
   var cursor = 0
   putUnsigned(value, output, cursor)
-  assert cursor == measured.value
+  if cursor != measured.value:
+    return HeaderResult[int](status: HeaderError.InvalidOwner)
   measured
 
 proc encodeEpochMarker*(value: EpochMarker, config: HeaderConfig, output: var openArray[
@@ -886,7 +887,8 @@ proc winningTicketAt*(owner: OwnedWinnersMarker, index: int): HeaderResult[
     return HeaderResult[WinningTicket](status: HeaderError.InvalidIndex)
   let start = layout.ticketStart+33*index
   let parsed = decodeWinningTicket(data.wire.toOpenArray(start, start+32))
-  assert parsed.error == HeaderError.None
+  if parsed.error != HeaderError.None:
+    return HeaderResult[WinningTicket](status: parsed.error)
   HeaderResult[WinningTicket](status: HeaderError.None, completed: parsed.value.value)
 
 proc headerOffenderAt*(owner: OwnedUnsignedHeader, index: int): HeaderResult[

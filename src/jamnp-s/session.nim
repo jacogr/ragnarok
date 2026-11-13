@@ -11,7 +11,7 @@ from ./identity import preferredInitiator
 from ../codec/state/safrole import StateEdKey
 import ./network
 
-import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
+import std/[os, strutils, monotimes, times, syncio, envvars]
 import ../lib/[logging, stop_signal]
 import ../quic/transport
 import ./[protocol, alpn]
@@ -751,7 +751,7 @@ proc runPeer*(options: Options): bool {.raises.} =
     progress "proof rejected or timed out ", peer.completed, " ", peer.healthy, " ", peer.rejected,
         " ", peer.cancelled
 
-proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
+proc fuzzPeer(input: openArray[byte], server, fin: bool): bool {.raises: [].} =
   ## Fuzz incremental framing and DER policy without creating a UDP endpoint or TLS engine.
   let data = if input.len > 0: unsafeAddr input[0] else: nil
   discard validPeer(data, csize_t(input.len), [])
@@ -761,31 +761,32 @@ proc fuzzPeer(input: openArray[byte], server, fin: bool) {.raises: [].} =
   for i, value in input: state.received[i] = value
   let extent = frameExtent(addr peer, addr state)
   # Complete frames are bounded, exact and cleanly terminated.
-  if extent.complete: assert extent.valid and fin and input.len == (if server: 37 else: 7)
-  if fin and input.len < (if server: 5 else: 4): assert not extent.valid # Partial-header EOF is immediate rejection.
+  if extent.complete and (not extent.valid or not fin or input.len != (if server: 37 else: 7)):
+    return false
+  not (fin and input.len < (if server: 5 else: 4) and extent.valid)
 
-proc peerSelfTest*() =
+proc peerSelfTest*(): bool =
   ## Deterministic malformed-input coverage remains independently testable before native transport setup.
   # Rejection and repeated close/reset settlement preserve listener health and count one terminal result.
   var listener = Peer(server: true, service: true, listening: true)
   var rejected = default(StreamState)
   finishStream(addr listener, addr rejected, false)
   finishStream(addr listener, addr rejected, false)
-  assert not listener.failed and listener.completed == 1 and listener.rejected == 1
+  if not (not listener.failed and listener.completed == 1 and listener.rejected == 1): return false
   var healthy = default(StreamState)
   finishStream(addr listener, addr healthy, true)
-  assert not listener.failed and listener.healthy == 1
+  if not (not listener.failed and listener.healthy == 1): return false
   # The one-shot matrix still fails a rejected exchange, and existing engine failures remain latched.
   var bounded = Peer(server: true)
   var refused = default(StreamState)
   finishStream(addr bounded, addr refused, false)
-  assert bounded.failed
+  if not (bounded.failed): return false
   listener.failed = true
   var afterFailure = default(StreamState)
   finishStream(addr listener, addr afterFailure, false)
-  assert listener.failed
-  assert checkedLength([0'u8, 0, 0, 0], 0).value == 0
-  assert checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None
+  if not (listener.failed): return false
+  if not (checkedLength([0'u8, 0, 0, 0], 0).value == 0): return false
+  if not (checkedLength([255'u8, 255, 255, 255], 1024).error != FrameError.None): return false
   # Known valid frames exercise every partial prefix with and without FIN, complementing random malformed inputs.
   var request = newSeq[byte](37)
   request[0] = 143
@@ -798,10 +799,10 @@ proc peerSelfTest*() =
     var peer = Peer(server: server)
     for length in 0..wire.len:
       var frame = StreamState(received: wire, receivedLength: length)
-      assert frameExtent(addr peer, addr frame) == (false, true)
+      if not (frameExtent(addr peer, addr frame) == (false, true)): return false
       frame.readFin = true
       let extent = frameExtent(addr peer, addr frame)
-      assert extent == (length == wire.len, length == wire.len)
+      if not (extent == (length == wire.len, length == wire.len)): return false
   var state = 0x51554943'u64
   # Xorshift produces reproducible parser coverage bytes, not cryptographic randomness.
   for iteration in 0..<10000:
@@ -811,8 +812,10 @@ proc peerSelfTest*() =
       state = state xor (state shr 7)
       state = state xor (state shl 17)
       input[index] = byte(state and 255)
-    fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1), iteration mod 2 == 0, iteration mod 3 == 0)
+    if not fuzzPeer(input.toOpenArray(0, iteration mod 129 - 1), iteration mod 2 == 0,
+        iteration mod 3 == 0): return false
   progress "Nim QUIC selftest: 10000 malformed DER/frame cases passed"
+  true
 
 ## Retained two-peer IPv6 lifecycle policy shares this module's private owners and callbacks.
 
@@ -820,7 +823,7 @@ proc preferred(local, remote: array[32, byte]): bool {.raises: [].} =
   ## The development mesh and validator owner share one pinned preferred-initiator implementation.
   preferredInitiator(StateEdKey(local), StateEdKey(remote))
 
-proc meshSelfTest*() =
+proc meshSelfTest*(): bool =
   ## Test ordering, both final-byte high bits and direction symmetry without any cryptographic secret material.
   # Exercise all high-bit combinations with both possible lexicographic orders.
   for highA in [0'u8, 128'u8]:
@@ -831,14 +834,15 @@ proc meshSelfTest*() =
         var a, b = default(array[32, byte])
         a[0] = firstA; b[0] = 1
         a[31] = highA; b[31] = highB
-        assert preferred(a, b) == ((highA != highB) xor (firstA < 1))
-        assert preferred(a, b) != preferred(b, a)
+        if not (preferred(a, b) == ((highA != highB) xor (firstA < 1))): return false
+        if not (preferred(a, b) != preferred(b, a)): return false
   var a, b = default(array[32, byte])
   b[31] = 127
-  assert preferred(a, b) # Ordering reaches the final byte without treating 127 as high.
+  if not (preferred(a, b)): return false
   b[31] = 128
-  assert not preferred(a, b) # Exactly 128 changes the parity.
+  if not (not preferred(a, b)): return false
   progress "MESH_POLICY_OK"
+  true
 
 proc liveMesh(peer: ptr Peer): int {.raises: [].} =
   ## Count live stream owners; a settled reply alone does not prove all native close callbacks have retired.

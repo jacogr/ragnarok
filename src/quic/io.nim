@@ -7,7 +7,7 @@
 ## Exposes dispatcher and UDP endpoint ownership, descriptor registration, bounded
 ## wait/send/receive and explicit close operations.
 
-import std/[assertions, oserrors, nativesocket, syncio]
+import std/[oserrors, nativesocket, syncio]
 import std/posix/posix
 import ./address
 export address
@@ -339,33 +339,37 @@ proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte], sourcePort: va
   result = endpoint.receive(buffer, remote)
   if remote.valid: sourcePort = remote.port
 
-proc retirementSelfTest*(ipv6: bool) =
+proc retirementSelfTest*(ipv6: bool): bool =
   ## Replay the original idle/ready retirement matrix on both supported controlled-topology families.
   let dispatcher = newDispatcher()
   defer: dispatcher.close()
   # Reusing one dispatcher catches stale registrations after descriptors are closed/recycled.
   for iteration in 0..<256:
     var endpoint = default(UdpEndpoint)
-    assert endpoint.open(ipv6, 0)
-    assert endpoint.isOpen and endpoint.port != 0
-    assert dispatcher.register(endpoint)
-    assert not dispatcher.register(endpoint)
+    if not endpoint.open(ipv6, 0): return false
+    defer:
+      dispatcher.unregister(endpoint)
+      endpoint.close()
+    if not (endpoint.isOpen and endpoint.port != 0): return false
+    if not (dispatcher.register(endpoint)): return false
+    if dispatcher.register(endpoint): return false
     var ready = default(array[2, Ready])
     var payload = [99'u8]
     var source: uint16 = 0
-    assert endpoint.receive(payload, source) == -2 and source == 0
+    if not (endpoint.receive(payload, source) == -2 and source == 0): return false
     # Alternating cases retire either a quiet descriptor or one with unread queued data.
     if iteration mod 2 == 0:
-      assert endpoint.send(addr payload[0], 1, endpoint.port) == 1
-      assert dispatcher.wait(10, ready) == 1
-      assert ready[0].descriptor == endpoint.descriptor and not ready[0].failed
+      if not (endpoint.send(addr payload[0], 1, endpoint.port) == 1): return false
+      if not (dispatcher.wait(10, ready) == 1): return false
+      if not (ready[0].descriptor == endpoint.descriptor and not ready[0].failed): return false
     else:
       # Idle waits must not manufacture readiness for an empty nonblocking UDP socket.
-      assert dispatcher.wait(0, ready) == 0
+      if not (dispatcher.wait(0, ready) == 0): return false
     dispatcher.unregister(endpoint)
     endpoint.close()
     endpoint.close()
-    assert not endpoint.isOpen and endpoint.port == 0
-    assert dispatcher.wait(0, ready) == 0
+    if not (not endpoint.isOpen and endpoint.port == 0): return false
+    if not (dispatcher.wait(0, ready) == 0): return false
   echo "UDP_RETIREMENTS ipv6=", ipv6, " rounds=256"
+  true
 

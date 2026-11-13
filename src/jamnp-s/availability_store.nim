@@ -3,7 +3,6 @@
 
 ## Bounded private detached storage accepts only complete authenticated CE137 distributions; it confers no assurance duty.
 
-import std/assertions
 import ./availability_proof
 import ../codec/bounded
 import ../state/availability/specifier
@@ -68,16 +67,13 @@ func sameSpecifier(a, b: AvailabilitySpecifier): bool =
         b.bundleLength) and
     uint16(a.erasureShards) == uint16(b.erasureShards) and uint16(a.segmentCount) == uint16(b.segmentCount)
 
-proc removeOldest(store: var AvailabilityStore) =
-  ## A bounded scan selects the oldest insertion/access before freeing one complete entry.
+func oldestEntry(store: AvailabilityStore, removed: array[MaxAvailabilityEntries, bool]): int =
+  ## Select the oldest retained entry outside the staged eviction set.
   var oldest = -1
   for index in 0..<MaxAvailabilityEntries:
-    if store.entries[index].used:
+    if store.entries[index].used and not removed[index]:
       if oldest < 0 or store.entries[index].age < store.entries[oldest].age: oldest = index
-  assert oldest >= 0 and store.count > 0
-  store.bytes -= store.entries[oldest].bytes
-  store.entries[oldest] = default(Entry)
-  dec store.count
+  oldest
 
 proc remember*(store: var AvailabilityStore, transfer: VerifiedAvailabilityTransfer): AvailabilityStoreError =
   ## Preflight all refusals before cloning or eviction; private clones isolate external ARC lifetimes from later workers.
@@ -98,21 +94,31 @@ proc remember*(store: var AvailabilityStore, transfer: VerifiedAvailabilityTrans
       store.entries[index].age = store.next
       return AvailabilityStoreError.None # Identical authenticated content keeps the private original; no duplicate payload is retained.
   let detached = detachVerifiedAvailability(transfer, store.limits.bytes)
-  assert detached.error == AvailabilityTransferError.None # Private successful transfer size already satisfies the exact clone admission.
-  while uint64(store.count) >= uint64(store.limits.entries) or store.bytes > uint64(
+  if detached.error != AvailabilityTransferError.None: return AvailabilityStoreError.InvalidTransfer
+  var removed = default(array[MaxAvailabilityEntries, bool])
+  var count = store.count
+  var retained = store.bytes
+  while uint64(count) >= uint64(store.limits.entries) or retained > uint64(
       store.limits.bytes)-bytes:
-    store.removeOldest() # Positive capacity and an individually fitting payload guarantee an available victim.
+    let oldest = store.oldestEntry(removed)
+    if oldest < 0 or count <= 0 or store.entries[oldest].bytes > retained:
+      return AvailabilityStoreError.Conflict
+    removed[oldest] = true
+    retained -= store.entries[oldest].bytes
+    dec count
   var position = -1
   for index in 0..<MaxAvailabilityEntries:
-    if not store.entries[index].used:
+    if removed[index] or not store.entries[index].used:
       position = index
       break
-  assert position >= 0
+  if position < 0: return AvailabilityStoreError.LimitExceeded
+  for index in 0..<MaxAvailabilityEntries:
+    if removed[index]: store.entries[index] = default(Entry)
   inc store.next
   store.entries[position] = Entry(used: true, age: store.next, bytes: bytes,
       transfer: detached.value)
-  store.bytes += bytes
-  inc store.count
+  store.bytes = retained+bytes
+  store.count = count+1
   AvailabilityStoreError.None
 
 proc find*(store: var AvailabilityStore, request: AvailabilityRequest): AvailabilityStoreResult =

@@ -52,8 +52,14 @@ and navigation. Keep operator instructions in the applicable usage guide.
   explicit borrowed inputs must remain stable during calls. Never export mutable snapshot storage.
 - Failed/default tagged results carry only reasons. Hide discriminators/payloads behind read-only,
   success-guarded accessors; raw Nimony variant fields are not guarded. Unported results remain gates.
+- Production code must not use runtime assertions (`assert`, `doAssert`, or native equivalents)
+  or deliberately crash on failure. Validate inputs and invariants before mutation or publication.
+  Return a typed refusal and preserve the last valid state. Recover at the boundary that owns the
+  operation: reject the invalid block, request, or peer session and keep the node available.
+  Handle local storage, resource, and backend faults separately from consensus rejection. Retain
+  assertions in tests and compile-time checks for static facts.
 - Nimony arithmetic wraps. Prove bounds before addition/multiplication/narrowing, initialize local
-  scalars/pointers explicitly, and preserve assertions/range/bounds contracts in optimized builds.
+  scalars/pointers explicitly, and preserve range and bounds checks in optimized builds.
   Use ARC/Clang LTO; profile before optimizing, never weaken semantics to improve measurements.
 - Keep networking nonblocking with bounded dispatcher work, no thread per connection/stream.
   Keep the proof pool bounded and join it on shutdown. Foreign resources require explicit lifetimes

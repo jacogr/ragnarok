@@ -9,7 +9,7 @@
 ## is incomplete. The dispatcher owns upgrade policy, message assembly,
 ## request execution and subscription state.
 
-import std/[assertions, atomics, ioring, locks, streamio, threadpool]
+import std/[atomics, ioring, locks, streamio, threadpool]
 import std/http/httpparse as http_parse
 import ./wire
 
@@ -78,8 +78,7 @@ proc cancelWatch(s: ptr StreamExchange) =
   ## kernel owns the operation, so Linux builds select epoll.
   if s.watching:
     discard submitPollRemove(s.fd)
-    assert s.readiness != PendingReadiness
-    s.watching = false
+    if s.readiness != PendingReadiness: s.watching = false
 
 proc pump*(stream: RpcWireStream) =
   ## Drive one-shot readiness on the same dispatcher lane each turn.
@@ -91,6 +90,7 @@ proc pump*(stream: RpcWireStream) =
     atomicStore(s.readable, true, moRelease)
     s.wake()
     return
+  if atomicLoad(s.stopping, moAcquire) or atomicLoad(s.done, moAcquire): return
   acquire(s.lock)
   let wantsRead = s.waiter.fn != nil and s.waitFor == SocketReadable
   let deadline = s.readDeadline
@@ -98,7 +98,9 @@ proc pump*(stream: RpcWireStream) =
   if wantsRead:
     s.readiness = PendingReadiness
     s.watching = true
-    discard submitPollAdd(s.fd, deadline, {evRead}, resPtr = addr s.readiness)
+    # A bounded registration also bounds retirement if cancellation is deferred.
+    discard submitPollAdd(s.fd, earlier(deadline, afterMs(5000)), {evRead},
+        resPtr = addr s.readiness)
 
 proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
   ## The single owner can safely change the shared stream deadline between operations.
@@ -211,7 +213,8 @@ proc `=destroy`*(stream: RpcWireStream) =
   let s = stream.exchange
   if s != nil:
     stream.stop()
-    while not atomicLoad(s.done, moAcquire):
+    while not atomicLoad(s.done, moAcquire) or
+        (s.watching and s.readiness == PendingReadiness):
       pollRpcStreams()
       discard pause(1000)
     deinitLock(s.lock)
@@ -222,14 +225,15 @@ proc `=wasMoved`*(stream: var RpcWireStream) {.nodestroy.} =
   ## Move cleanup authority while the task retains the same address.
   stream.exchange = nil
 
-proc start*(stream: var RpcWireStream, fd: cint) =
-  ## Transfer a configured accepted descriptor into stock stream ownership.
-  assert not stream.active and fd >= 0
+proc start*(stream: var RpcWireStream, fd: cint): bool =
+  ## Take the descriptor on success. The caller retains it on refusal.
+  if stream.active or fd < 0: return false
   let s = cast[ptr StreamExchange](alloc0(sizeof(StreamExchange)))
   s[] = StreamExchange(fd: fd)
   initLock(s.lock)
   stream.exchange = s
   submit(delay(run(fd, s)), -1)
+  true
 
 proc takeInput*(stream: var RpcWireStream, input: var WireInput): bool =
   ## Move one complete framing result without borrowing the reader.
@@ -255,12 +259,14 @@ proc writing*(stream: RpcWireStream): bool =
   let s = stream.exchange
   s != nil and atomicLoad(s.outputReady, moAcquire)
 
-proc send*(stream: var RpcWireStream, output: var string) =
+proc send*(stream: var RpcWireStream, output: var string): bool =
   ## Hand off one complete wire frame or upgrade response with a bounded send budget.
   let s = stream.exchange
-  assert s != nil and not stream.writing
+  if s == nil or stream.writing: return false
   s.cancelWatch()
+  if s.watching: return false
   s.output = move(output)
   s.outputDeadline = afterMs(5000)
   atomicStore(s.outputReady, true, moRelease)
   s.wake()
+  true

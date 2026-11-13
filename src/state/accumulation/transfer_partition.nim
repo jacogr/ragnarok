@@ -4,7 +4,6 @@
 ## Current GP fnpartitionxfers: stable deferred-transfer scheduling with incarnation-bound supervision.
 ## Pure owned plans retain exact input records/prior; round selection and publication belong to their callers.
 
-import std/assertions
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]
 import ../../codec/c2_records
@@ -105,10 +104,12 @@ proc partitionTransferAt*(plan: PreparedTransferPartition, kind: TransferPartiti
     return TransferPartitionResult[DeferredTransfer](
         status: TransferPartitionError.InvalidIndex) # Bound the whole register-sized ordinal before narrowing.
   let data = plan.data
-  assert data != nil # Successful count retains this initialized owner.
+  if data == nil:
+    return TransferPartitionResult[DeferredTransfer](status: TransferPartitionError.Uninitialized)
   let source = if kind == TransferPartitionKind.Accepted: data.accepted[int(uint64(
       index))] else: data.queued[int(uint64(index))]
-  assert source >= 0 and source < data.values.len # Only preparation writes these bounded private source ordinals.
+  if source < 0 or source >= data.values.len:
+    return TransferPartitionResult[DeferredTransfer](status: TransferPartitionError.InvalidIndex)
   TransferPartitionResult[DeferredTransfer](status: TransferPartitionError.None,
       completed: data.values[source])
 
@@ -184,7 +185,7 @@ proc prepareAccumulationTransferPartition*(prior: StateStoreSnapshot,
     else:
       inc acceptedCount
       if not repeated:
-        assert recipientCount < recipients.len # At most one present recipient is added per visited source row.
+        if recipientCount >= recipients.len: fail(TransferPartitionError.LimitExceeded)
         recipients[recipientCount] = Recipient(service: target, supervisor: supervisor)
         inc recipientCount
   var values = newSeq[DeferredTransfer](transfers.len)

@@ -7,7 +7,6 @@
 ## Exposes authorization profiles and snapshots, state entry construction/decoding and bounded
 ## per-core authorizer access.
 
-import std/assertions
 import ../[natural, bounded, assurances]
 import ./[layout as state_layout, trie as state_trie]
 from ../work/report as work_report import AuthorizerHash
@@ -172,7 +171,8 @@ proc decodeAuthorization*(kind: AuthorizationKind, input: openArray[byte],
     if kind == AuthorizationKind.Pools:
       # Re-read validated framing without retaining offsets detached from the owner.
       let parsed = poolCount(input.toOpenArray(cursor, input.len-1))
-      assert parsed.error == AuthorizationError.None # Full preflight and stable input prove the repeated parse succeeds.
+      if parsed.error != AuthorizationError.None:
+        return AuthorizationResult[AuthorizationRead](status: parsed.error)
       count = int(parsed.value.count)
       cursor += parsed.value.prefix
     data.rows[core] = newSeq[AuthorizerHash](count)

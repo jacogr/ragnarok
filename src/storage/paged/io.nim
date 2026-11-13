@@ -4,7 +4,6 @@
 ## Directory-relative bounded paged IO with separate writer leases and immutable-epoch flock pins.
 ## Resources are explicit-close/move-only. Independent epoch directory descriptors survive writer retirement.
 
-import std/assertions
 import std/posix/posix
 import ./[codec as paged_codec, stream as paged_stream]
 import ../managed/manifest as managed_manifest
@@ -335,7 +334,7 @@ proc openNamed(file: var PagedFile, directory: PagedDirectory, child: string,
   let checked = directory.check
   if checked != FileError.None: return checked
   let data = directory.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   if pin != PagedPin.Shared and not data.writer: return FileError.WrongIdentity
   var name = child
   let flags = O_CLOEXEC or O_NONBLOCK or noFollow or
@@ -380,7 +379,7 @@ proc openTemporary(file: var PagedFile, directory: PagedDirectory, limit: ByteLi
   let checked = directory.check
   if checked != FileError.None: return checked
   let owner = directory.data
-  assert owner != nil
+  if owner == nil: return FileError.Uninitialized
   if writerRequired and not owner.writer: return FileError.WrongIdentity
   let stream = temporaryNative()
   if stream == nil: return FileError.IoFailure
@@ -419,7 +418,7 @@ proc openPendingWidth(file: var PagedFile, directory: PagedDirectory, width: int
   let checked = directory.check
   if checked != FileError.None: return PagedIoResult[bool](status: checked)
   let owner = directory.data
-  assert owner != nil
+  if owner == nil: return PagedIoResult[bool](status: FileError.Uninitialized)
   var metadata = default(Stat)
   if not named(owner.fd, "CURRENT.next", metadata):
     if posix.errno() == missing: return PagedIoResult[bool](status: FileError.None,
@@ -442,7 +441,7 @@ proc readSelection(directory: PagedDirectory, width: int): PagedIoResult[seq[byt
   let checked = directory.check
   if checked != FileError.None: return PagedIoResult[seq[byte]](status: checked)
   let data = directory.data
-  assert data != nil
+  if data == nil: return PagedIoResult[seq[byte]](status: FileError.Uninitialized)
   var name = "CURRENT"
   var fd = openAt(data.fd, name.toCString(), O_RDONLY or O_CLOEXEC or O_NONBLOCK or noFollow, 0)
   if fd < 0: return PagedIoResult[seq[byte]](status: FileError.IoFailure)
@@ -544,7 +543,7 @@ proc matchesPrefix*(file: var PagedFile, expected: var PagedFile,
   if verified != FileError.None: return verified
   let actual = file.data
   let reference = expected.data
-  assert actual != nil and reference != nil
+  if actual == nil or reference == nil: return FileError.Uninitialized
   if actual.size > reference.size: return FileError.RecoveryMismatch
   let readLimit = uint64(budget.readBytes)
   let chunks = actual.size div uint64(PagedPageBytes)+(if actual.size mod uint64(PagedPageBytes) ==
@@ -553,7 +552,8 @@ proc matchesPrefix*(file: var PagedFile, expected: var PagedFile,
       budget.ioCalls): return FileError.LimitExceeded
   let source = input(actual)
   let replay = input(reference)
-  assert source.read != nil and source.extent != nil and replay.read != nil and replay.extent != nil
+  if source.read == nil or source.extent == nil or replay.read == nil or replay.extent == nil:
+    return FileError.IoFailure
   var left = default(array[PagedPageBytes, byte])
   var right = default(array[PagedPageBytes, byte])
   var offset = 0'u64
@@ -578,7 +578,7 @@ proc matchesManifestPrefix(file: var PagedFile, bytes: openArray[byte],
   let checked = file.check
   if checked != FileError.None: return checked
   let actual = file.data
-  assert actual != nil
+  if actual == nil: return FileError.Uninitialized
   if bytes.len != width or actual.size > uint64(
       bytes.len): return FileError.RecoveryMismatch
   let calls = if actual.size == 0: 1'u64 else: 2'u64
@@ -586,7 +586,7 @@ proc matchesManifestPrefix(file: var PagedFile, bytes: openArray[byte],
       budget.ioCalls): return FileError.LimitExceeded
   var raw = default(array[PagedManifestBytes, byte])
   let source = input(actual)
-  assert source.read != nil and source.extent != nil
+  if source.read == nil or source.extent == nil: return FileError.IoFailure
   let count = int(actual.size)
   if count > 0:
     # Even a one-byte or checksum-fragment staging file must match the independently reconstructed manifest.
@@ -718,7 +718,7 @@ proc synchronize*(file: PagedFile): FileError =
   let checked = file.check
   if checked != FileError.None: return checked
   let data = file.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   if sync(data.fd) != 0:
     data.poisoned = true
     return FileError.IoFailure
@@ -729,7 +729,7 @@ proc synchronize*(directory: PagedDirectory): FileError =
   let checked = directory.check
   if checked != FileError.None: return checked
   let data = directory.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   if sync(data.fd) != 0: FileError.IoFailure else: FileError.None
 
 proc fileIdentity*(file: PagedFile): PagedIoResult[PagedFileIdentity] =
@@ -737,7 +737,7 @@ proc fileIdentity*(file: PagedFile): PagedIoResult[PagedFileIdentity] =
   let checked = file.check
   if checked != FileError.None: return PagedIoResult[PagedFileIdentity](status: checked)
   let data = file.data
-  assert data != nil
+  if data == nil: return PagedIoResult[PagedFileIdentity](status: FileError.Uninitialized)
   PagedIoResult[PagedFileIdentity](status: FileError.None,
     completed: PagedFileIdentity(ready: true, file: data.identity, directory: data.namespace,
         size: data.size))
@@ -759,7 +759,7 @@ proc pendingAbsent*(directory: PagedDirectory): FileError =
   let checked = directory.check
   if checked != FileError.None: return checked
   let data = directory.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   var metadata = default(Stat)
   if named(data.fd, "CURRENT.next", metadata): return FileError.AlreadyExists
   if posix.errno() != missing: return FileError.IoFailure
@@ -771,7 +771,7 @@ proc replaceSelection(directory: PagedDirectory, bytes: openArray[byte], width: 
   let checked = directory.pendingAbsent
   if checked != FileError.None: return checked
   let data = directory.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   if not data.writer or bytes.len != width: return FileError.WrongIdentity
   var pending = "CURRENT.next"
   var fd = openAt(data.fd, pending.toCString(), O_RDWR or O_CREAT or O_EXCL or O_CLOEXEC or
@@ -808,7 +808,7 @@ proc epochExists*(directory: PagedDirectory, epoch: ManagedEpoch): PagedIoResult
   let checked = directory.check
   if checked != FileError.None: return PagedIoResult[bool](status: checked)
   let data = directory.data
-  assert data != nil
+  if data == nil: return PagedIoResult[bool](status: FileError.Uninitialized)
   let name = epochName(epoch)
   if name.error != FileError.None: return PagedIoResult[bool](status: name.error)
   var metadata = default(Stat)
@@ -825,7 +825,7 @@ proc removePinned*(directory: PagedDirectory, file: PagedFile): FileError =
   if verified != FileError.None: return verified
   let a = directory.data
   let b = file.data
-  assert a != nil and b != nil
+  if a == nil or b == nil: return FileError.Uninitialized
   if not a.writer or not b.exclusive or not directory.sameDirectory(
       file): return FileError.WrongIdentity
   var name = b.name
@@ -838,7 +838,7 @@ proc initialAbsent*(directory: PagedDirectory): FileError =
   let checked = directory.check
   if checked != FileError.None: return checked
   let data = directory.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   var metadata = default(Stat)
   if named(data.fd, "CURRENT", metadata): return FileError.AlreadyExists
   if posix.errno() != missing: return FileError.IoFailure
@@ -861,7 +861,7 @@ proc openGraphScratch(file: var PagedFile, directory: PagedDirectory, extent: ui
   let created = openTemporary(file, directory, limit, false, false)
   if created != FileError.None: return created
   let data = file.data
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   var status = -1.cint
   while status != 0:
     # Repeating the identical anonymous extent after EINTR is idempotent and never changes a selected file.
@@ -896,13 +896,13 @@ proc readFullHeader*(file: var PagedFile, chain: StorageChainId, root: StateRoot
   if checked != FileError.None:
     return PagedIoResult[FullPagedResult[FullPagedHeader]](status: checked)
   let data = file.data
-  assert data != nil
+  if data == nil:
+    return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.Uninitialized)
   if data.size < uint64(PagedPageBytes):
     return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.UnsupportedLayout)
   var raw = default(array[PagedPageBytes, byte])
   let source = input(data)
-  assert source.read != nil
-  if not source.read(PagedOffset(0), raw):
+  if source.read == nil or not source.read(PagedOffset(0), raw):
     return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.IoFailure)
   PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.None,
     completed: decodeFullPagedHeader(raw, chain, root, limits, contextLimit))
@@ -938,7 +938,9 @@ proc validateFullFile*(file: var PagedFile, directory: PagedDirectory, header: F
   if opened != FileError.None:
     return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](status: opened)
   let workspace = temporary.data
-  assert workspace != nil
+  if workspace == nil:
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](
+        status: FileError.IoFailure)
   let admitted = validateFullPaged(input(data), graphScratch(workspace), header, selected, limits)
   if admitted.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
     # Source identity checks decide whether the held source also needs poisoning after a scratch-only failure.
@@ -989,7 +991,7 @@ proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: ni
       limits.admission.scratchBytes)
   if opened != FileError.None: return PagedIoResult[FullPagedBuildResult](status: opened)
   let workspace = temporary.data
-  assert workspace != nil
+  if workspace == nil: return PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
   let built = buildFullPaged(PagedOutput(source: input(data), append: appender(data)),
     graphScratch(workspace), producer, header, limits, context)
   sealFull(data, built)
@@ -1018,7 +1020,7 @@ proc compactFullFile*(file: var PagedFile, source: var PagedFile, directory: Pag
   let opened = openGraphScratch(temporary, directory, shape.entries*2, policy.scratchBytes)
   if opened != FileError.None: return PagedIoResult[FullPagedBuildResult](status: opened)
   let workspace = temporary.data
-  assert workspace != nil
+  if workspace == nil: return PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
   let built = compactFullPaged(PagedOutput(source: input(data), append: appender(data)),
     input(original), graphScratch(workspace), checked, target, limits)
   sealFull(data, built)

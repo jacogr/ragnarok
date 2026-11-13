@@ -4,7 +4,7 @@
 ## Strict versioned physical trie-record batches; validates shape/budgets before node hashes.
 ## Record validation is local integrity, not complete graph verification or chain authority.
 
-import std/[algorithm, assertions]
+import std/[algorithm]
 import ./node/records as node_records
 import ../codec/state/[trie as state_trie, layout as state_layout]
 import ../codec/bounded
@@ -226,9 +226,10 @@ proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: 
       var next = 0
       for record in records:
         if plan.mode == PrefixMode.All or plan.containsPrefix(hashPrefix(record.digest)):
+          if next >= identities.len: return RecordError.InvalidFormat
           identities[next] = record.digest
           inc next
-      assert next == identities.len # Whole-prefix counting and stable raw input must select the same complete groups.
+      if next != identities.len: return RecordError.InvalidFormat
       let duplicate = duplicateIdentities(identities)
       if duplicate != RecordError.None: return duplicate
   for record in records:
@@ -294,7 +295,8 @@ proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: Re
     else:
       putHash(output, offset, array[32, byte](record.left)); offset += 32
       putHash(output, offset, array[32, byte](record.right)); offset += 32
-  assert offset == output.len-int(suffixBytes) # Strict bounded writer ends exactly at the reserved trailer.
+  if offset != output.len-int(suffixBytes):
+    return RecordResult[seq[byte]](status: RecordError.InvalidFormat)
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
 proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
@@ -492,6 +494,7 @@ proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError 
   for index in 0..<shape.count:
     # Dense/endpoint fallback checks every address; sparse groups include every possible full-width duplicate.
     if plan.mode == PrefixMode.All or plan.containsPrefix(number(input, offset+1)):
+      if next >= identities.len: return RecordError.InvalidFormat
       identities[next] = StateNodeHash(readHash(input, offset+1))
       inc next
     let tag = input[offset]
@@ -502,7 +505,7 @@ proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError 
       offset += size
     else:
       offset += 64
-  assert next == identities.len # Validated stable input and complete prefix groups must agree exactly.
+  if next != identities.len: return RecordError.InvalidFormat
   duplicateIdentities(identities)
 
 proc ignorePreparation[T](state: var T, info: RecordCollectionInfo) =

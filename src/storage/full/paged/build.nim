@@ -4,7 +4,6 @@
 ## Replay-bound full-state artifact construction uses one record, fixed pages and a bounded digest stack.
 ## Successful construction includes complete graph admission; borrowed producer/output/scratch never escape.
 
-import std/assertions
 import ./[codec as full_paged_codec, stream as full_paged_stream]
 import ../../paged/[codec as paged_codec, stream as paged_stream]
 import ../../node/records as node_records
@@ -150,7 +149,9 @@ proc appendRaw(output: PagedOutput, bytes: openArray[byte], work: var Build): bo
   ## Positive completion means every input byte appended; caller callbacks own partial-write uncertainty.
   if not output.admitAppend(uint64(bytes.len), work): return false
   let callback = output.append
-  assert callback != nil # Admission checked the immutable callback before consuming any output.
+  if callback == nil:
+    work.fail(FullPagedBuildError.Uninitialized)
+    return false
   let succeeded = callback(bytes)
   completeAppend(succeeded, work)
 
@@ -160,7 +161,9 @@ proc flush(output: PagedOutput, work: var Build): bool =
   for index in work.filled..<4096: work.page[index] = 0 # Explicit zero padding, never stale preceding data.
   if not output.admitAppend(uint64(work.page.len), work): return false
   let callback = output.append
-  assert callback != nil # Borrow the existing page only after mutable accounting has finished.
+  if callback == nil:
+    work.fail(FullPagedBuildError.Uninitialized)
+    return false
   let succeeded = callback(work.page) # No page copy and no overlapping mutable owner argument.
   if not completeAppend(succeeded, work): return false
   work.filled = 0

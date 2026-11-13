@@ -9,7 +9,7 @@
 
 import ../lib/logging
 
-import std/[strutils, assertions]
+import std/strutils
 import ../codec/bounded
 import ../quic/address
 export address
@@ -130,7 +130,7 @@ proc argumentCount*(options: Options): int =
 
 proc argument*(options: Options, index: Positive): string =
   ## Preserve one-based CLI positions without consulting process-global arguments again.
-  assert options.parsed and index <= options.positional.len
+  if not options.parsed or index > options.positional.len: return ""
   options.positional[index - 1]
 
 proc ancestorPaths*(options: Options): seq[string] =

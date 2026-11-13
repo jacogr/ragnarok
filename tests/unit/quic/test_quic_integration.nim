@@ -109,7 +109,7 @@ proc main() {.raises.} =
   let args = @[getEnv("RAGNAROK_TEST_WIRES"), getEnv("RAGNAROK_TEST_RELOAD")]
   assert args[0].len > 0 and args[1].len > 0, "missing prepared native fixtures"
   let original = readBytes(args[0] & "/0.bin")
-  integrationSelfTest()
+  assert integrationSelfTest()
   banks(args[0], args[1])
   for i in 0..<20: owners(original) # Warm exactly the measured small-snapshot workload.
   let before = getOccupiedMem()

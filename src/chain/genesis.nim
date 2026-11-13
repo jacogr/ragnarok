@@ -271,7 +271,7 @@ proc capturePieceLength(validators: ValidatorCount): ErasurePieceLength =
   ## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
   ## At most 342 candidates are checked; no allocation or erasure encoding occurs here.
   let count = uint64(validators)
-  assert count >= 6 and count <= 1023 and count mod 3 == 0
+
   var shards = count div 3 + 1
   while 4104 mod (2 * shards) != 0:
     dec shards # One always divides 2052, so the search terminates before a zero divisor.
@@ -303,7 +303,7 @@ proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
   if metadata.error != StateComponentError.None:
     return RpcTicketAttempts(0) # Only the successful owner supplies the pending population.
   let pending = uint64(metadata.value.validators)
-  assert pending >= 6 # The exact roster decoder established a nonzero valid population.
+  if pending < 6: return RpcTicketAttempts(0)
   # The 4096-slot ceiling proves multiplication and ceiling-division addition cannot overflow.
   RpcTicketAttempts((2 * slots + pending - 1) div pending)
 
@@ -343,6 +343,8 @@ proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
   if validators.value.consumed != roster.len: return invalidGenesis() # No trailing state bytes.
   let count = validatorCount(validators.value.value)
   if count.error != StateComponentError.None: return invalidGenesis() # Only owned rosters supply context.
+  let population = uint64(count.value)
+  if population < 6 or population > 1023 or population mod 3 != 0: return invalidGenesis()
   let clock = decodeStateTime(time)
   if clock.error != StateComponentError.None: return invalidGenesis() # C(11) must encode an exact slot.
   if clock.value.consumed != time.len: return invalidGenesis() # Reject extended time encodings.
@@ -360,7 +362,7 @@ proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
   if hashed.error != CryptoError.None: return invalidGenesis() # A native hash failure is not a zero identity.
   GenesisResult(status: GenesisError.None, completed: BlockSnapshot(ready: true, fuzzSeed: fuzzSeed,
     state: state,
-    pieceLength: capturePieceLength(ValidatorCount(count.value)),
+    pieceLength: capturePieceLength(ValidatorCount(population)),
     ticketLimit: captureTicketAttempts(state, CoreCount(cores), EpochSlots(parameters.get(
         epochPeriod))),
     sealedHeader: decoded.value.owner, activePopulation: ValidatorCount(count.value),
