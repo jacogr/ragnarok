@@ -1,27 +1,44 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Exact checked stream binding for a copied three-header register-loop certificate.
+## Bind copied register-loop certificates to their original checked stream.
 
 when declared(FlatFrame):
-  proc flatRingCertificate(f: FlatFrame, headers: array[3, uint32]): NativeRegisterRing =
+  when NativeCheckedReadEnabled and defined(pvmX86Jit):
+    proc flatNativeAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32
+
+  proc flatRingHeaderMatches(f: FlatFrame, header, terminal: uint32, index, count: int): bool =
+    ## Only the actual charged handlers and their positively linked terminal branches are eligible.
+    let charged = f.handlers[int(header)]
+    let ending = f.handlers[int(terminal)]
+    when NativeCheckedReadEnabled and defined(pvmX86Jit):
+      if count == 2:
+        if index == 0:
+          return ending == flatBranch[170] and (charged == flatChargedAdjacent[true, false] or
+            charged == flatChargedAdjacent[true, true] or charged == flatNativeAdjacent[true])
+        return ending == flatBranch[81] and (charged == flatChargedAdjacent[false, false] or
+          charged == flatChargedAdjacent[false, true] or charged == flatNativeAdjacent[false])
+    case index
+    of 0:
+      ending == flatBranch[82] and (charged == flatChargedShape[200, 139, 82, true] or
+        charged == flatChargedShape[200, 139, 82, false])
+    of 1:
+      ending == flatBranch[88] and (charged == flatChargedShape[131, -1, 88, true] or
+        charged == flatChargedShape[131, -1, 88, false])
+    else:
+      ending == flatBranch[173] and (charged == flatChargedShape[151, 152, 173, true] or
+        charged == flatChargedShape[151, 152, 173, false])
+
+  proc flatRingCertificate(f: FlatFrame, headers: openArray[uint32]): NativeRegisterRing =
     ## Copy complete original blocks with no source resolution, pricing or invocation borrows.
     result = default(NativeRegisterRing)
     if f.plan == nil or f.plan.singleStep or f.pricingKind != 0 or
         f.preparationFailure != FlatError.None:
       return
-    let shapeA: FlatHandler = flatChargedShape[200, 139, 82, true]
-    let shapeB: FlatHandler = flatChargedShape[131, -1, 88, true]
-    let shapeC: FlatHandler = flatChargedShape[151, 152, 173, true]
-    let checkedA: FlatHandler = flatChargedShape[200, 139, 82, false]
-    let checkedB: FlatHandler = flatChargedShape[131, -1, 88, false]
-    let checkedC: FlatHandler = flatChargedShape[151, 152, 173, false]
-    let branchA: FlatHandler = flatBranch[82]
-    let branchB: FlatHandler = flatBranch[88]
-    let branchC: FlatHandler = flatBranch[173]
+    assert headers.len in 2..3
     const spans = [3'u32, 2, 3]
     var ring = default(NativeRegisterRing)
-    for index in 0..2:
+    for index in 0..<headers.len:
       let header = headers[index]
       let span = spans[index]
       if header >= NativeEntryLimit: return
@@ -29,14 +46,7 @@ when declared(FlatFrame):
       if uint64(terminal) >= uint64(f.handlers.len) or
           uint64(terminal) >= uint64(f.arguments.len) or uint64(terminal) >= uint64(f.sites.len):
         return
-      let charged = f.handlers[int(header)]
-      let ending = f.handlers[int(terminal)]
-      if index == 0:
-        if (charged != shapeA and charged != checkedA) or ending != branchA: return
-      elif index == 1:
-        if (charged != shapeB and charged != checkedB) or ending != branchB: return
-      else:
-        if (charged != shapeC and charged != checkedC) or ending != branchC: return
+      if not flatRingHeaderMatches(f, header, terminal, index, headers.len): return
       let first = f.sites[int(header)]
       if uint64(first)+uint64(span) > uint64(f.plan.facts.len): return
       let root = f.plan.facts[int(first)]
@@ -101,14 +111,39 @@ when declared(FlatFrame):
     flatSelectRingHandlers[false](f, headers)
     true
 
+  when NativeCheckedReadEnabled and defined(pvmX86Jit):
+    proc flatObserveNativeAdjacent(f: var FlatFrame, first, second: uint32) {.noinline.} =
+      ## One closed checked round can nominate an x86 pair without creating or publishing code.
+      let epoch = nativeRingAdmissionEpoch(f.nativeSession)
+      if epoch == 0: return
+      let ring = flatRingCertificate(f, [first, second])
+      if not ring.complete: return
+      nominateNativeRing(f.nativeSession, ring, epoch)
+      # Further checked visits use the normal workers while this candidate owns the nomination.
+      f.handlers[int(first)] = flatChargedAdjacent[true, false]
+      f.handlers[int(second)] = flatChargedAdjacent[false, false]
+
+    proc flatNativeAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32 =
+      ## Only the installed image may consume a whole unpaid block; all other states stay checked.
+      var destination = flatStop
+      if flatTryNativeRing(f, off, destination): return destination
+      flatChargedAdjacent[First, false](f, off)
+
   proc flatInstallNativeRing(f: var FlatFrame, ring: NativeRegisterRing) =
     ## Compare every source and pricing fact after restoring the same exclusive stream.
     let headers = [ring.blocks[0].header, ring.blocks[1].header, ring.blocks[2].header]
-    if flatRingCertificate(f, headers) != ring:
+    let count = nativeRingBlockCount(ring)
+    if flatRingCertificate(f, headers.toOpenArray(0, count-1)) != ring:
       invalidateNativeStream(f.nativeSession)
-    else:
-      flatSelectRingHandlers[true](f, headers)
-      f.nativeRingInstalled = true
+      return
+    when NativeCheckedReadEnabled and defined(pvmX86Jit):
+      if count == 2:
+        flatInstallNativePatch(f, headers[0], flatNativeAdjacent[true])
+        flatInstallNativePatch(f, headers[1], flatNativeAdjacent[false])
+        f.nativeRingInstalled = true
+        return
+    flatSelectRingHandlers[true](f, headers)
+    f.nativeRingInstalled = true
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =
     ## A full unpaid entry may run natively. The original header handles partial, paid and gas stops.
@@ -124,5 +159,6 @@ when declared(FlatFrame):
     destination = runNativeRing(f.nativeSession, f.info.registers, context)
     f.info.gas = MachineGas(context.gas)
     f.remaining = context.remaining
+    f.info.blockCharged = false
     f.reservation = 0 # A completed native branch leaves no checked reservation to refund.
     true

@@ -825,7 +825,7 @@ when NativeCheckedReadEnabled:
       loop.sourceSpan != 0 and candidate.header <= loop.exitHeader and loop.exitHeader <=
           candidate.terminal
     of NativeKind.RegisterRing:
-      for index in 0..2:
+      for index in 0..<nativeRingBlockCount(data.ring):
         let item = data.ring.blocks[index]
         if readOverlapsBlock(candidate, item.header, item.first, item.span): return true
       false

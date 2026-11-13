@@ -1091,21 +1091,44 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
       flatChargedStep(f, fixedLast, 131, -1, 88, destination)
     if destination != off: return destination
 
-proc flatChargedAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32 =
+when NativeCheckedReadEnabled and defined(pvmX86Jit):
+  proc flatObserveNativeAdjacent(f: var FlatFrame, first, second: uint32) {.noinline.}
+
+proc flatChargedAdjacent[First, Observe: static[bool]](f: var FlatFrame, off: uint32): uint32 =
   ## Follow the matching peer only through original cached branches and checked bodies.
   let bodySpan = when First: 2'u32 else: 1'u32
   # A published native prefix owns its original body entry, even in the shared checked layout.
   if f.nativeEntry > off and f.nativeEntry-off <= bodySpan: return flatCharge(f, off)
-  let peerHandler: FlatHandler = when First: flatChargedAdjacent[false] else: flatChargedAdjacent[true]
+  let peerHandler: FlatHandler = when First: flatChargedAdjacent[false,
+      Observe] else: flatChargedAdjacent[true, Observe]
   var destination = flatStop
   when First:
     flatChargedStep(f, off, 149, 200, 170, destination)
   else:
     flatChargedStep(f, off, 132, -1, 81, destination)
-  if f.handlers[int(destination)] != peerHandler: return destination
+  if f.handlers[int(destination)] != peerHandler:
+    when NativeCheckedReadEnabled and defined(pvmX86Jit) and not Observe:
+      let observingPeer: FlatHandler = when First: flatChargedAdjacent[false, true]
+        else: flatChargedAdjacent[true, true]
+      if f.handlers[int(destination)] != observingPeer: return destination
+    else:
+      return destination
   # Let the peer execute its own native bridge through the same original entry.
   if f.nativeEntry > destination and f.nativeEntry-destination <= 3-bodySpan: return destination
   let peer = destination
+  when NativeCheckedReadEnabled and defined(pvmX86Jit):
+    when Observe:
+      # Both backedges must have executed in this call before the worker can see a certificate.
+      when First:
+        flatChargedStep(f, peer, 132, -1, 81, destination)
+        if destination != off: return destination
+        flatObserveNativeAdjacent(f, off, peer)
+      else:
+        flatChargedStep(f, peer, 149, 200, 170, destination)
+        if destination != off: return destination
+        flatObserveNativeAdjacent(f, peer, off)
+      # The first block is unpaid again; let the same checked loop continue after discovery.
+      return flatChargedAdjacent[First, false](f, off)
   while true:
     # Every original block retains its reservation and exact paid/attempt checks.
     when First:
@@ -1129,10 +1152,20 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
   if f.handlers[int(branchOff)] == cached:
     # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
     when First == 149:
-      let checked: FlatHandler = flatChargedAdjacent[true]
+      when NativeCheckedReadEnabled and defined(pvmX86Jit):
+        if nativeEpoch(f.nativeSession) != 0:
+          let observed: FlatHandler = flatChargedAdjacent[true, true]
+          f.handlers[int(off)] = observed
+          return outcome
+      let checked: FlatHandler = flatChargedAdjacent[true, false]
       f.handlers[int(off)] = checked
     elif First == 132:
-      let checked: FlatHandler = flatChargedAdjacent[false]
+      when NativeCheckedReadEnabled and defined(pvmX86Jit):
+        if nativeEpoch(f.nativeSession) != 0:
+          let observed: FlatHandler = flatChargedAdjacent[false, true]
+          f.handlers[int(off)] = observed
+          return outcome
+      let checked: FlatHandler = flatChargedAdjacent[false, false]
       f.handlers[int(off)] = checked
     else:
       let checked: FlatHandler = flatChargedShape[First, Second, Branch, false]

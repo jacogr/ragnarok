@@ -814,9 +814,9 @@ when defined(pvmSharedAsyncWitness):
     let runtime = newNativeRuntime()
     assert launch(runtime)
     pauseNativeCompiler(runtime, true)
-    # A adds to R3 and compares to R4. B's equality branch returns to A until A exits.
-    let wire = [0'u8, 0, 17, 149, 0x33, 1, 200, 0x55, 5, 170, 0x43, 9,
-      132, 0x55, 0, 81, 5, 0xf4, 50, 0, 0x49, 0x92, 0]
+    # A adds to R3 and compares to R4. B returns via an ordinary jump, so no two-block ring is eligible.
+    let wire = [0'u8, 0, 19, 149, 0x33, 1, 200, 0x55, 5, 170, 0x43, 9,
+      132, 0x55, 0, 81, 5, 5, 50, 0, 40, 0xef, 0x49, 0x92, 2]
     let owner = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0)).value
     let base = input(owner, 2048)
     let memory = memoryOf(base).value
@@ -826,7 +826,7 @@ when defined(pvmSharedAsyncWitness):
     cpu.registers[5] = RegisterValue(0)
     let source = captureMachine(owner, memory, cpu).value
     let code = prepared(owner, runtime)
-    let limit = ExecutionStepLimit(10239)
+    let limit = ExecutionStepLimit(12286)
     let cold = execute(source, limit, code)
     assert cold.error == StepError.None and cold.value.exit == StepExit.Halt
     assert cold.value.backend == PvmBackend.Interpreted

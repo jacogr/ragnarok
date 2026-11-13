@@ -213,7 +213,7 @@ func nativeRegisterRingRotation*(image: NativeImage, header: uint32): uint64 =
   ## Select the bound entry without copying the full certificate on the execution path.
   when NativeCheckedReadEnabled:
     if image.ready and image.kind == NativeKind.RegisterRing:
-      for index in 0..2:
+      for index in 0..<nativeRingBlockCount(image.ringValue):
         if image.ringValue.blocks[index].header == header: return uint64(index)
   high(uint64)
 
@@ -231,6 +231,7 @@ proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
       context.entry > 2 or context.visits != [0'u64, 0, 0]:
     abortNativeReceipt()
   when NativeCheckedReadEnabled:
+    if context.entry >= uint64(nativeRingBlockCount(image.ringValue)): abortNativeReceipt()
     let entry = NativeRingIndex(context.entry)
     let gas = context.gas
     let remaining = context.remaining

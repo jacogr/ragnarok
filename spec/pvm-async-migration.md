@@ -201,6 +201,15 @@ that an overlarge resident image leaves the same owner available for linked publ
 frame witness continues to check partial budgets and fresh checked stream reentry, with its receipt
 identified as checked reentry.
 
+## x86-64 two-header register loop
+
+The same worker and image credit can publish the bounded register pair
+`149/200/170 → 132/81`. The checked stream must first execute both edges of a closed round,
+then certify the original instruction ordinals, charges, operands, and both branch targets.
+The worker runs after a qualifying invocation and installation rechecks the restored stream.
+The image enters either unpaid header and returns an original checked destination with exact
+gas and attempt debits. ARM64 keeps the checked pair.
+
 ## Remaining legacy admission witnesses
 
 The x86-64 cold wide probe, pending queue, boundary admission and both frame installers are retired.

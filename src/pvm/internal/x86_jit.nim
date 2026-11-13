@@ -592,7 +592,7 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
   var fixes: seq[X86RegionFixup] = @[]
   if rotating:
     # Entry zero falls through after the wrapper validates the complete rotation index.
-    for index in 1..2:
+    for index in 1..<count:
       put(code, [0x48'u8, 0x83, 0x7e, 40, byte(index)]) # CMP QWORD [RSI+40],index.
       regionEdge(code, fixes, blocks[index].header, 0x84, false) # JE guarded header.
   # The first rotation falls into reserved A; B/C still enter the original guarded prefix.
@@ -681,9 +681,10 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
   takeX86Instructions(code)
 
 proc x86CanonicalRegisterRing(ring: NativeRegisterRing): seq[byte] =
-  ## Reuse the canonical region builder with three distinct visit lanes.
+  ## Reuse the canonical region builder with a distinct visit lane per source block.
+  let count = nativeRingBlockCount(ring)
   var blocks = default(array[3, X86RegionBlock])
-  for index in 0..2:
+  for index in 0..<count:
     let item = ring.blocks[index]
     var body = default(X86Block)
     for operation in 0..<int(item.span)-1:
@@ -697,7 +698,7 @@ proc x86CanonicalRegisterRing(ring: NativeRegisterRing): seq[byte] =
   if round.enabled:
     result = x86RegionBytes(blocks, true, round)
     if result.len != 0: return
-  result = x86RegionBytes(blocks, true)
+  result = x86RegionBytes(blocks.toOpenArray(0, count-1), true)
 
 when declared(X86ResidentAccess):
   include ./x86_ring_operands
@@ -748,7 +749,7 @@ when declared(X86ResidentAccess):
 proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
   ## Prefer direct mapped operands; a declined map or extent keeps the qualified canonical renderer.
   when declared(X86ResidentAccess):
-    if ring.complete:
+    if nativeRingBlockCount(ring) == 3 and ring.complete:
       result = x86ResidentRegisterRing(ring, NativeImageByteLimit)
       if result.len != 0: return
   x86CanonicalRegisterRing(ring)

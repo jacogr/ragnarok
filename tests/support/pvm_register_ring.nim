@@ -297,6 +297,74 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
     assert close(runtime), "close register ring worker"
     assert runtimeInfo(runtime).registered == 0, "retire register ring image"
 
+  when defined(pvmX86Jit):
+    proc checkAdjacentRing() =
+      ## Train the real asynchronous worker on a literal pair at PCs unrelated to the guest benchmark.
+      let wire = [0'u8, 0, 17, 149, 0x33, 1, 200, 0x55, 5, 170, 0x43, 9,
+        132, 0x55, 0, 81, 5, 0xf4, 50, 0, 0x49, 0x92, 0]
+      let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+      let capturedMemory = captureMemory([], PageLimit(0))
+      assert decoded.error == ProgramError.None and capturedMemory.error == MachineError.None
+      let program = decoded.value
+      let memory = capturedMemory.value
+      let runtime = newNativeRuntime()
+      try:
+        assert start(runtime)
+      except:
+        assert false, "adjacent ring worker failed to start"
+      let limits = defaultPreparedLimits(Cycles)
+      let prepared = newPreparedProgram(program, limits, PvmBackend.Jit, runtime).value
+      let checked = newPreparedProgram(program, limits, PvmBackend.Interpreted).value
+      var cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10_000_000))
+      cpu.registers[4] = RegisterValue(2048)
+      let source = captureMachine(program, memory, cpu).value
+      var called = false
+      pauseNativeCompiler(runtime, true)
+      let cold = executeWithHost(source, called, noHost, ExecutionStepLimit(10240),
+        HostCallLimit(0), prepared)
+      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt and not called
+      assert cold.value.backend == PvmBackend.Interpreted
+      assert runtimeInfo(runtime).phase == NativePhase.Queued and runtimeInfo(runtime).submitted == 1
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      for pc in [0'u64, 9]:
+        # Two warm entry rotations must visit the real pair exactly once per guest invocation.
+        cpu.pc = CodeAddress(pc)
+        let fresh = captureMachine(program, memory, cpu).value
+        let before = preparedInfo(prepared).value
+        let ready = executeWithHost(fresh, called, noHost, ExecutionStepLimit(11000),
+          HostCallLimit(0), prepared)
+        let baseline = executeWithHost(fresh, called, noHost, ExecutionStepLimit(11000),
+          HostCallLimit(0), checked)
+        assert ready.error == StepError.None and baseline.error == StepError.None
+        assert ready.value.backend == PvmBackend.Jit and ready.value.exit == baseline.value.exit
+        assert machineInfo(ready.value.machine).value == machineInfo(baseline.value.machine).value
+        assert memoryOf(ready.value.machine).value == memoryOf(baseline.value.machine).value
+        let after = preparedInfo(prepared).value
+        assert after.nativeFragments == 1 and after.nativeCalls == before.nativeCalls+1
+        assert after.nativeOperations-before.nativeOperations == (if pc ==
+            0: 10238'u64 else: 10240'u64)
+      let firstPrice = uint64(blockGas(program, CodeAddress(0), Cycles).value)
+      let secondPrice = uint64(blockGas(program, CodeAddress(9), Cycles).value)
+      for pc in [0'u64, 9]:
+        # Original paid entry, unsigned gas debits and partial quota stay observable after publication.
+        cpu.pc = CodeAddress(pc)
+        for paid in [false, true]:
+          cpu.blockCharged = paid
+          for gas in [0'u64, firstPrice, firstPrice+secondPrice, high(uint64)]:
+            cpu.gas = MachineGas(gas)
+            let fresh = captureMachine(program, memory, cpu).value
+            for quota in [4096, 4097, 4098, 4100]:
+              let limit = ExecutionStepLimit(quota)
+              let baseline = executeWithHost(fresh, called, noHost, limit, HostCallLimit(0), checked)
+              let ready = executeWithHost(fresh, called, noHost, limit, HostCallLimit(0), prepared)
+              assert not called and baseline.error == ready.error
+              if ready.error == StepError.None:
+                assert baseline.value.exit == ready.value.exit
+                assert machineInfo(baseline.value.machine).value == machineInfo(
+                    ready.value.machine).value
+      assert close(runtime)
+
 func sixLaneWire(): array[38, byte] =
   ## Fit six lanes by saturating the ADD/SHR aliases to r12 and reusing r3 in the final branch.
   result = Wire
@@ -409,4 +477,5 @@ proc runRegisterRing*() =
       checkResidentAddWordImmediate()
     when defined(pvmSharedAsyncWitness):
       checkRuntimeRing()
+      when defined(pvmX86Jit): checkAdjacentRing()
   echo "PVM native register ring passed"
