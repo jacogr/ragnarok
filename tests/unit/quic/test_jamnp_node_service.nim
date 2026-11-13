@@ -517,7 +517,7 @@ proc main() {.raises.} =
   transcript(view)
   let beforeTranscript = getOccupiedMem()
   transcript(view)
-  assert getOccupiedMem() == beforeTranscript, "real stream/worker lifetimes release their ARC owners"
+  assertArcRelease(beforeTranscript, getOccupiedMem(), "node service stream/worker lifetimes")
   paired(false)
   paired(true)
   lifetime(view, false)
@@ -526,7 +526,7 @@ proc main() {.raises.} =
   for iteration in 0..<1000:
     lifetime(view, iteration mod 3 == 0) # Exercise successful and post-allocation failed TLS/native setup.
   let after = getOccupiedMem()
-  assert before == after, "complete node protocol ownership must release every factory allocation"
+  assertArcRelease(before, after, "node service factory allocations")
   recordArcRelease("jamnp_node_service", 1000, before, after)
   echo "jamnp node service: startup and stream lifetimes passed"
 try:
