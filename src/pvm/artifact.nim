@@ -6,6 +6,8 @@
 ## File loading is explicit; no application host ABI is inferred.
 
 import std/syncio
+when defined(linux) or defined(macosx):
+  import std/posix/posix
 import ../codec/natural
 import ./[program, machine]
 
@@ -257,7 +259,8 @@ proc initialMachine*(artifact: Artifact, name: string, gas: MachineGas): Artifac
   ArtifactResult[Machine](status: ArtifactError.None, completed: captured.value)
 
 proc loadArtifact*(path: string, limits: ArtifactLimits = defaultArtifactLimits()): ArtifactResult[Artifact] =
-  ## A bounded chunk reader checks the live stream, including growth after open; file cleanup is unconditional.
+  ## Size regular files from the open descriptor and read directly into their owned buffer.
+  ## The live stream decides the final extent, with bounded chunk reads for growth or unknown sizes.
   if path.len == 0 or path.len > 4096:
     return ArtifactResult[Artifact](status: ArtifactError.IoError)
   for character in path:
@@ -267,18 +270,43 @@ proc loadArtifact*(path: string, limits: ArtifactLimits = defaultArtifactLimits(
   if not open(file, path, fmRead):
     return ArtifactResult[Artifact](status: ArtifactError.IoError)
   defer: close(file)
+  let maximum = min(limits.bytes, uint64(MaxContainerLen))
   var bytes: seq[byte] = @[]
+  when defined(linux) or defined(macosx):
+    var metadata = default(Stat)
+    if posix.fstat(getFileHandle(file), metadata) == 0 and S_ISREG(metadata.st_mode) and
+        metadata.st_size >= 0:
+      # The descriptor ties size to this open file even if its pathname is replaced.
+      let size = uint64(metadata.st_size)
+      if size > maximum: return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
+      bytes = newSeqUninit[byte](int(size))
+      if uint64(bytes.len) != size:
+        return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
+      var filled = 0
+      while filled < bytes.len:
+        # Each read fills only its owned tail. A clean early EOF discards uninitialized bytes.
+        let requested = bytes.len-filled
+        let count = readBuffer(file, addr bytes[filled], requested)
+        if count < 0 or count > requested or failed(file):
+          return ArtifactResult[Artifact](status: ArtifactError.IoError)
+        if count == 0:
+          bytes.setLen(filled)
+          return decodeArtifact(bytes, limits)
+        filled += count
   var chunk = default(array[4096, byte])
   while true:
-    let count = readBuffer(file, addr chunk[0], chunk.len)
+    # Read one byte past the remaining allowance to distinguish exact EOF from excess input.
+    let remaining = maximum-uint64(bytes.len)
+    let requested = int(min(remaining, uint64(chunk.len-1)))+1
+    let count = readBuffer(file, addr chunk[0], requested)
     if count == 0:
       if failed(file): return ArtifactResult[Artifact](status: ArtifactError.IoError)
       break # Only clean EOF finishes the single exact artifact snapshot.
-    if count < 0: return ArtifactResult[Artifact](status: ArtifactError.IoError)
-    if uint64(bytes.len) > limits.bytes or uint64(count) > limits.bytes-uint64(bytes.len):
+    if count < 0 or count > requested or failed(file):
+      return ArtifactResult[Artifact](status: ArtifactError.IoError)
+    if uint64(count) > remaining:
       return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
     let first = bytes.len
-    if count > high(int)-first: return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
     let past = first+count
     # The chunk already holds every byte. Check growth before taking a pointer into the new span.
     bytes.growUnsafe(past)
