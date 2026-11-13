@@ -85,7 +85,9 @@ when declared(FlatFrame):
     if proof.epoch != 0: nominateNativeBitmap(f.nativeSession, proof)
 
   proc flatNativeBitmap(f: var FlatFrame, off: uint32): uint32 =
-    ## Call the saved charge worker for an unpaid refusal at Advance without reentering native.
+    ## A refused Read returns its original header with gas, attempts and guest registers
+    ## as they were before that block. Checked execution then charges and runs that block.
+    ## At Advance, call the saved charge worker directly to avoid reentering native.
     let original = f.nativeOriginal
     if original == nil or off != f.nativeEntry:
       return flatLocal(f, off, oracle.StepError.BackendFailure)

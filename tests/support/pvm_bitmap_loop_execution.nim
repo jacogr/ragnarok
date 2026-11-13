@@ -8,22 +8,9 @@ import ../../src/pvm/[machine, program, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/native_pipeline
 
-const bitmapBase = 32'u64*4096
+import ./pvm_bitmap_fixture
 
-proc bitmapOwner(): Program =
-  ## Entry PC4 falls into the scan at PC5. PCs51,53,58 halt, reset and trap respectively.
-  let wire = [0'u8, 0, 59, 0, 0, 0, 0, 1,
-    149, 0xbb, 1, 200, 0xc5, 5, 170, 0xb7, 40,
-    132, 0xbc, 1, 81, 0x0c, 244,
-    152, 0xbc, 1, 174, 0xac, 30,
-    152, 0xb6, 7, 174, 0x96, 29,
-    151, 0x66, 3, 200, 0x86, 6, 130, 0x66, 133, 0x66, 255,
-    208, 0xc6, 12, 132, 0xcc, 1, 40, 212,
-    50, 0, 51, 4, 42, 50, 0, 0,
-    63, 73, 146, 36, 73, 73, 42, 5]
-  let decoded = decodeJamProgram(wire, CodeAddress(4), ProgramByteLimit(128), JumpCountLimit(0))
-  assert decoded.error == ProgramError.None, "bitmap wire decodes"
-  decoded.value
+const bitmapBase = 32'u64*4096
 
 proc bitmapInput(owner: Program, memory: Memory, base = bitmapBase, finish = 1024'u64,
     midpoint = 8192'u64, lastWord = 512'u64, gas = 1000000'u64, pc = 4'u64): Machine =
@@ -43,7 +30,8 @@ proc bitmapInput(owner: Program, memory: Memory, base = bitmapBase, finish = 102
   assert captured.error == MachineError.None, "bitmap machine captures"
   captured.value
 
-proc compareBitmap(source: Machine, native, checked: PreparedProgram, budget: uint64): StepResult =
+proc compareBitmap(source: Machine, native, checked: PreparedProgram,
+    budget: uint64): StepResult =
   ## Compare the full public result and page against a separate checked owner.
   let expected = execute(source, ExecutionStepLimit(budget), checked)
   result = execute(source, ExecutionStepLimit(budget), native)
@@ -102,7 +90,8 @@ proc runBitmapLoopExecution*() =
         uint64(machineInfo(reset.value.machine).value.registers[4]) == 42
       let trap = compareBitmap(bitmapInput(owner, memory, lastWord = 0), native, checked, 20000)
       assert trap.error == StepError.None and trap.value.exit == StepExit.Panic
-      let fault = compareBitmap(bitmapInput(owner, memory, base = bitmapBase+4096), native, checked, 20000)
+      let fault = compareBitmap(bitmapInput(owner, memory, base = bitmapBase+4096), native,
+          checked, 20000)
       assert fault.error == StepError.None and fault.value.exit == StepExit.Fault and
         fault.value.faultPage == PageAddress(bitmapBase+4096)
       let low = compareBitmap(bitmapInput(owner, memory, base = 0), native, checked, 20000)

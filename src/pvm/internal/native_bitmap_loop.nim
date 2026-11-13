@@ -30,6 +30,7 @@ const
   BitmapSpans* = [3'u64, 2, 2, 2, 7]
   BitmapOpcodes* = [149'u8, 200, 170, 132, 81, 152, 174, 152, 174,
     151, 200, 130, 133, 208, 132, 40]
+  BitmapFixupCount* = 27 ## Ten budget guards, four read guards, five transfers and eight return stubs.
   BitmapNoCompleted* = 5'u64
   BitmapBaseOffset* = 64'u32
   BitmapLengthOffset* = 72'u32

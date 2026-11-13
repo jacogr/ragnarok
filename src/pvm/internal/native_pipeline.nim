@@ -1097,7 +1097,8 @@ proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
 
 when NativeReadCycleEnabled:
   func bitmapAdmissionEpoch*(session: NativeSession): uint64 =
-    ## Reuse the deferred primary ticket and its existing invocation horizon.
+    ## Cache one cold observation even during a short call. It has no ticket until
+    ## settled work qualifies the bound stream through the deferred primary mailbox.
     let data {.cursor.} = session.data
     if data == nil or not data.invocation or data.state != NativeState.Deferred or
         data.ticket != 0 or data.bitmap.epoch != 0: return 0
@@ -1442,6 +1443,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   ## credit table leaves execution checked and eligible evidence available for retry.
   ## A primary may revoke another owner's auxiliary for a credit. An installed primary
   ## can only be replaced at the qualified real-frame later-Read boundary.
+  ## A complete bitmap proof takes priority over Read, pure prefixes and register
+  ## loops for the deferred primary ticket. The installed bitmap image is terminal.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return
   collectNative(session)

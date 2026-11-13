@@ -3473,6 +3473,8 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   ## A zero budget returns StepLimitExceeded before the frame's preparation failure
   ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
+  ## A cold bitmap backedge stays with the exclusive cached stream across short calls.
+  ## The first segment with enough settled work consumes it for a source proof.
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -4089,7 +4091,8 @@ proc `=dup`*(source: FlatStream): FlatStream {.error.}
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Return the exclusive cache to the prepared owner with its admitted entries,
   ## cumulative preparation usage and native restoration state. Generated leaves
-  ## retain no invocation pointers.
+  ## retain no invocation pointers. A pending bitmap observation moves with its
+  ## original stream coordinates and is discarded with the stream on repricing.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
   if f.preparationFailure == FlatError.StreamAllocationRefused:

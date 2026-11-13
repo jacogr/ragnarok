@@ -2754,8 +2754,11 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
     labels: openArray[int]): bool =
   ## Every local edge is instruction-relative and bounded before publication.
   for fix in fixes:
-    if fix.target < 0 or fix.target >= labels.len: return false
-    let relative = int64(labels[fix.target])-int64(fix.at)
+    if fix.target < 0 or fix.target >= labels.len or fix.at < 0 or fix.at >= words.len:
+      return false
+    let target = labels[fix.target]
+    if target < 0 or target >= words.len: return false
+    let relative = int64(target)-int64(fix.at)
     if fix.condition < 16:
       if relative < -262144 or relative > 262143: return false
       words[fix.at] = 0x54000000'u32 or
@@ -2767,14 +2770,19 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
 
 when NativeReadCycleEnabled:
   proc encodeArmBitmapLoop*(loop: NativeBitmapLoop): seq[uint32] =
-    ## Keep guest lanes resident and stage the wrapped read address before debiting its block.
+    ## Reserve bounded instruction and fixup storage before emission. Refusal leaves no image.
+    ## Guest lanes stay resident. A rejected read leaves its block and registers untouched.
     if not loop.complete: return @[]
     const done = 13
     const refused = 5
     const outside = 10
     var labels = default(array[14, int])
-    var fixes: seq[ArmMemoryCycleFixup] = @[]
-    var words: seq[uint32] = @[]
+    # At most 173 words for the fixed shape, including wide prices and checked targets.
+    const wordCapacity = 192
+    var words = newSeqOfCap[uint32](wordCapacity)
+    if words.rawData == nil: return @[]
+    var fixes = newSeqOfCap[ArmMemoryCycleFixup](BitmapFixupCount)
+    if fixes.rawData == nil: return @[]
     # X17 owns the borrowed context, X2/X3 the exact budgets, and X4..X16 the guest lanes.
     cycleMove(words, 17, 1)
     cycleLoad(words, 2, 17, 0)
@@ -2820,21 +2828,22 @@ when NativeReadCycleEnabled:
       cycleStore(words, 1, 17, uint32(16+index*8))
       armCompactImmediate(words, 1, uint64(index))
       cycleStore(words, 1, 17, 56)
-      var body = default(ArmBlock)
-      body.compact = true
+      # Lend the same reserved buffer to the scalar emitter and the comparison emitter.
+      var body = ArmBlock(compact: true, words: move(words))
       # The read guard replaces its original shift, add and load as one staged word.
       let first = if role == BitmapBlock.Read: operation+3 else: operation
       for i in first..<operation+int(span)-1:
         let op = loop.operations[i]
         emitArmOperation(body, op.opcode, op.slots, op.immediate)
-      for word in body.words: words.add(word)
+      words = move(body.words)
       let branch = loop.operations[operation+int(span)-1]
       if role == BitmapBlock.Read:
         cycleEdge(words, fixes, ord(BitmapBlock.Advance), 16)
       else:
+        body.terminal = move(words)
         let condition = armBranchCompare(body, branch.opcode, branch.slots.aIndex,
           branch.slots.bIndex, branch.immediate)
-        for word in body.terminal: words.add(word)
+        words = move(body.terminal)
         let target = case role
           of BitmapBlock.Advance: outside+ord(BitmapExit.End)
           of BitmapBlock.Parity: ord(BitmapBlock.Advance)
@@ -2856,7 +2865,8 @@ when NativeReadCycleEnabled:
     cycleStore(words, 3, 17, 8)
     cycleMove(words, 0, 1)
     words.add(0xd65f03c0'u32) # RET.
-    if words.len > NativeImageByteLimit div 4 or not armMacroPatch(words, fixes, labels):
+    if words.len > wordCapacity or fixes.len != BitmapFixupCount or
+        not armMacroPatch(words, fixes, labels):
       return @[]
     words
 

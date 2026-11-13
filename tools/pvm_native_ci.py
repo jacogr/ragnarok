@@ -148,10 +148,12 @@ def qualify_policy(checks, compiler, shared_refusal=False):
 
 def shared_source_paths():
     """Bind both registered common mains, helper, exact goldens and their source-owned profiles."""
-    paths = [ROOT/'tests/support'/name for name in
-             ('pvm_bitmap_loop_execution.nim', 'pvm_shared_async.nim')]
+    paths = [ROOT/'tests/support'/name for name in ('pvm_bitmap_fixture.nim',
+             'pvm_bitmap_loop_execution.nim', 'pvm_bitmap_lowering_refusal.nim', 'pvm_shared_async.nim')]
     for directory, suite in (('codec', 'pvm_shared_async_arm'),
                              ('codec', 'pvm_shared_async_x86'),
+                             ('codec', 'pvm_bitmap_lowering_refusal_arm'),
+                             ('codec', 'pvm_bitmap_lowering_refusal_x86'),
                              ('state', 'pvm_runtime_policy_refused')):
         source = ROOT/'tests/unit'/directory/('test_'+suite+'.nim')
         paths.extend((source, source.with_suffix('.output'),
@@ -222,7 +224,25 @@ def qualify_shared(checks, compiler, host):
             build=built, run=observed, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
             evidence=str(evidence), evidence_sha256=hashlib.sha256(evidence.read_bytes()).hexdigest(),
             native_evidence=proof))
-    return dict(status='passed', production_defines=production, sources=identities, controls=rows)
+    # The actual heap cap runs on the matching host, with the same registered unit source and golden.
+    refusal = 'pvm_bitmap_lowering_refusal_arm' if isa == 'pvmArm64Jit' else 'pvm_bitmap_lowering_refusal_x86'
+    profile = NATIVE_REQUIREMENTS[refusal]
+    source = unit_source(refusal)
+    built, binary = checks.build(compiler, source, 'shared-'+refusal, defines=profile['defines'],
+        cflags=['-I'+str(ROOT/'native'/path) for path in profile['includes']])
+    if built['exit_code']:
+        raise RuntimeError('Bitmap lowering refusal build failed: '+built['log'])
+    observed = checks.command([binary], 'shared-'+refusal+'-run',
+        environment=unit_environment(compiler, refusal), timeout=30)
+    if observed['exit_code'] or observed['output'] != source.with_suffix('.output').read_text():
+        raise RuntimeError('Bitmap lowering refusal execution failed: '+observed['log'])
+    if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != digest
+           for path, digest in identities.items()):
+        raise ValueError('Shared native qualification source changed')
+    lowering = dict(suite=refusal, defines=profile['defines'], build=built, run=observed,
+        binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
+    return dict(status='passed', production_defines=production, sources=identities, controls=rows,
+        bitmap_lowering_refusal=lowering)
 
 
 def qualify_host(checks, compiler, host):

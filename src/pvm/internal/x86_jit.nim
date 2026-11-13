@@ -843,15 +843,20 @@ when defined(pvmX86Jit):
 
   when NativeReadCycleEnabled:
     proc encodeX86BitmapLoop*(loop: NativeBitmapLoop): seq[byte] =
-      ## Keep written guest lanes resident; the checked read stages its address in scratch.
+      ## Reserve bounded instruction and fixup storage before emission. Refusal leaves no image.
+      ## Written guest lanes stay resident. The checked read stages its address in scratch.
       if not loop.complete: return @[]
       const done = 13'u8
       const refused = 5'u8
       const outside = 10'u8
       let bank = x86ResidentAccess(0x1860'u32) # R5/R6/R11/R12 in RBX/RBP/R12/R13.
-      var code = default(X86Block)
+                                               # The fixed shape emits under 768 bytes even with full-width price and target immediates.
+      const byteCapacity = 768
+      var code = X86Block(bytes: newSeqOfCap[byte](byteCapacity))
+      if code.bytes.rawData == nil: return @[]
+      var fixes = newSeqOfCap[X86CycleFixup](BitmapFixupCount)
+      if fixes.rawData == nil: return @[]
       var labels = default(array[14, int])
-      var fixes: seq[X86CycleFixup] = @[]
       for hardware in [3'u8, 5, 12, 13]: saveX86ResidentRegister(code, hardware)
       const slots: array[4, range[0..12]] = [5, 6, 11, 12]
       for slot in slots: loadX86ResidentRegister(code, bank, slot)
@@ -921,9 +926,13 @@ when defined(pvmX86Jit):
       commitX86ResidentRegisters(code, bank)
       restoreX86ResidentRegisters(code, bank)
       put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3]) # Publish budgets and RET.
-      if code.bytes.len > NativeImageByteLimit: return @[]
+      if code.bytes.len > byteCapacity or fixes.len != BitmapFixupCount: return @[]
       for fix in fixes:
-        let delta = cast[uint32](int32(labels[int(fix.target)]-(fix.at+4)))
+        if int(fix.target) >= labels.len or fix.at < 0 or fix.at > code.bytes.len-4:
+          return @[]
+        let target = labels[int(fix.target)]
+        if target < 0 or target >= code.bytes.len: return @[]
+        let delta = cast[uint32](int32(target-(fix.at+4)))
         for shift in 0..<4: code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
       takeX86Instructions(code)
 
