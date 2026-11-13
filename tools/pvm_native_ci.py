@@ -254,6 +254,7 @@ def qualify_host(checks, compiler, host):
 
 
 MIXED_ARENA_WITNESS = 'tests/performance/pvm_mixed_arena_private.nim'
+PAID_MIXED_ALLOCATION_WITNESS = 'tests/performance/pvm_paid_mixed_allocation_private.nim'
 
 
 def qualify_mixed_arena(checks, compiler, host):
@@ -285,7 +286,18 @@ def qualify_mixed_arena(checks, compiler, host):
         if observed['exit_code'] or not complete:
             raise RuntimeError('Mixed arena qualification execution failed: '+observed['log'])
         rows.append(dict(slot=slot, defines=flags, build=built, run=observed))
-    return dict(status='passed', controls=rows)
+    # The capped control uses the same paid emitter and publisher with real recoverable refusal.
+    name = 'mixed-paid-allocation-refusal'
+    flags = [*production, 'nimMaxHeap=1', 'nimHardenOutOfMem']
+    built, binary = checks.build(compiler, ROOT/PAID_MIXED_ALLOCATION_WITNESS, name,
+        defines=flags, cflags=['-I'+str(ROOT/'native/pvm_jit')])
+    if built['exit_code']:
+        raise RuntimeError('Paid mixed allocation qualification build failed: '+built['log'])
+    observed = checks.command([binary], name+'-run', timeout=30)
+    if observed['exit_code'] or observed['output'] != 'MIXED_PAID_ALLOCATION_REFUSAL_OK\n':
+        raise RuntimeError('Paid mixed allocation qualification failed: '+observed['log'])
+    return dict(status='passed', controls=rows, allocation_refusal=dict(
+        defines=flags, build=built, run=observed))
 
 
 def read_width_source_paths():
@@ -381,7 +393,7 @@ def run():
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
-                 ROOT/MIXED_ARENA_WITNESS,
+                 ROOT/MIXED_ARENA_WITNESS, ROOT/PAID_MIXED_ALLOCATION_WITNESS,
                  ROOT/'tests/support/arc_evidence.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',

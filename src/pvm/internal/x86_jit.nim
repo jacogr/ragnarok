@@ -18,6 +18,7 @@ import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
+  from std/bitops import countSetBits
   import ./native_read_cycle
   import ./native_mixed_loop
   import ./native_bitmap_loop

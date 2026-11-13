@@ -105,7 +105,9 @@ The [mixed arena qualification](../tools/pvm_native_ci.py) also checks the exact
 aligned entry offsets, code cap and image move on the native host. Its two refusal builds verify
 that the publisher releases the arena when the first or second append fails. The publisher
 reports the failing slot after checking the unmap, and the second-slot run also requires a
-successful first append.
+successful first append. The paid emitter also reserves its instruction, fixup and scratch
+storage before emission. The recoverable heap-cap control requires an empty image on refusal
+and a successful retry with the same certificate.
 
 ## Qualification and retirement
 

@@ -14,6 +14,7 @@ import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
 when NativeReadCycleEnabled:
+  from std/bitops import countSetBits
   import ./[native_read_cycle, native_read_window]
   import ./native_mixed_loop
   import ./native_bitmap_loop
@@ -3388,6 +3389,10 @@ when NativeReadCycleEnabled:
       atCap = 1
       commit = 2
       firstGuard = 3
+      imageWords = NativeImageByteLimit div 4
+      operationWords = 64 # The two-page store is the largest body operation.
+      operationFixes = 11 # Address, extent, pointer and up to two bitmap proofs.
+      exitWords = 32      # Fixed budget branch, outside exit and common return.
     result = @[]
     if operations.len < 4 or operations.len > int(NativeReadFactLimit): return
     let branch = operations[operations.len-1]
@@ -3395,9 +3400,23 @@ when NativeReadCycleEnabled:
 
     # The borrowed register array and invocation context occupy X19/X20.
     # X21 holds the visit cap and X22 counts completed original visits.
-    var words = @[0xd10083ff'u32, 0xa90053f3'u32, 0xa9015bf5'u32]
+    # Check every backing allocation before using emitters whose appends assume capacity.
+    # Each body operation can run with the same reusable scratch capacity.
+    let operationCount = operations.len-1
+    let wordCapacity = min(imageWords, operationCount*(operationWords+3)+64)
+    var words = newSeqOfCap[uint32](wordCapacity)
+    var fixes = newSeqOfCap[ArmMemoryCycleFixup](operationCount*operationFixes+8)
+    var scratch = default(ArmReadSpan)
+    scratch.body = newArmRegionBody()
+    scratch.body.words = newSeqOfCap[uint32](operationWords)
+    scratch.guards = newSeqOfCap[ArmReadGuard](1)
+    if words.rawData == nil or fixes.rawData == nil or scratch.body.words.rawData == nil or
+        scratch.guards.rawData == nil:
+      return
     var labels = default(array[firstGuard+int(NativeReadFactLimit), int])
-    var fixes: seq[ArmMemoryCycleFixup] = @[]
+    words.add(0xd10083ff'u32) # SUB SP,SP,#32.
+    words.add(0xa90053f3'u32) # STP X19,X20,[SP].
+    words.add(0xa9015bf5'u32) # STP X21,X22,[SP,#16].
     cycleMove(words, 19, 0)
     cycleMove(words, 20, 1)
     cycleLoad(words, 21, 20, uint32(NativeMixedLoopVisitLimitOffset))
@@ -3412,36 +3431,45 @@ when NativeReadCycleEnabled:
 
     var written = 0'u32
     var emitted = 0'u32
-    for index in 0..<operations.len-1:
+    for index in 0..<operationCount:
+      # Either keep each emission within reserved storage or refuse the whole leaf.
+      if words.len > wordCapacity-operationWords: return
       let op = operations[index]
       let guard = firstGuard+index
+      let width = nativeMixedLoopStoreWidth(op.opcode)
+      if width == 0:
+        # The read and scalar emitters share one scratch bank. Drop the previous op's marks.
+        scratch.body.words.shrink(0)
+        scratch.body.writes = 0
+        scratch.body.reads = 0
       let encoding = nativeReadEncodingOpcode(op.opcode)
-      if nativeMixedLoopStoreWidth(op.opcode) != 0:
+      if width != 0:
         # Prove the exact current destination before committing the Store.
         armPaidLoopStore(words, fixes, op, guard)
         emitted = emitted or (1'u32 shl index)
       elif encoding >= 124 and encoding <= 130:
         # Keep the Load after all preceding Stores and observe the live bytes.
-        var span = default(ArmReadSpan)
-        span.body = newArmRegionBody()
-        emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
+        scratch.guards.shrink(0)
+        emitArmCheckedRead(scratch, op.slots, uint32(op.immediate and 0xffffffff'u64),
           range[124..130](encoding), encoding != op.opcode)
-        appendArmCycleRead(words, fixes, span, guard)
+        appendArmCycleRead(words, fixes, scratch, guard)
         emitted = emitted or (1'u32 shl index)
-        written = written or span.body.writes
+        written = written or scratch.body.writes
       elif supportedScalarOpcode(op.opcode):
         # A scalar result is available to every following operation in source order.
-        var scalar = newArmRegionBody()
-        emitArmOperation(scalar, op.opcode, op.slots, op.immediate)
-        for instruction in scalar.words:
+        emitArmOperation(scratch.body, op.opcode, op.slots, op.immediate)
+        for instruction in scratch.body.words:
           words.add(instruction)
-        written = written or scalar.writes
+        written = written or scratch.body.writes
       else:
         return
     if emitted == 0 or emitted != guards: return
+    # Each paid exit emits three words. The remaining prologue/epilogue budget is fixed.
+    if words.len > wordCapacity-exitWords-3*countSetBits(guards): return
 
     cycleAddImmediate(words, 22, 22, 1)
-    armCycleBranch(words, fixes, branch, repeatVisit)
+    cycleCompare(words, uint32(branch.slots.aIndex)+4, uint32(branch.slots.bIndex)+4)
+    cycleEdge(words, fixes, repeatVisit, 1) # B.NE on the original 64-bit operands.
     armCompactImmediate(words, 0, uint64(NativeMixedLoopExitBit))
     cycleAddRegister(words, 0, 0, 22)
     cycleEdge(words, fixes, commit, 16)

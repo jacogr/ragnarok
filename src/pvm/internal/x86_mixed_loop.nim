@@ -231,6 +231,10 @@ when declared(X86Block):
       visit = 0'u8
       capped = 1'u8
       outside = 2'u8
+      operationBytes = 160 # Three descriptor proofs and a load are the largest body operation.
+      operationFixes = 13  # Three per read descriptor plus miss and null guards.
+      exitBytes = 64       # Fixed comparison, loop edge and common scalar returns.
+      guardBytes = 10      # MOV, OR imm32, RET.
     result = @[]
     if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
       return
@@ -238,8 +242,12 @@ when declared(X86Block):
     let branch = operations[terminal]
     if branch.opcode != 171 or guards == 0: return
 
+    # Reserve and validate both buffers before any branch or operation is emitted.
+    let byteCapacity = min(NativeImageByteLimit, terminal*(operationBytes+guardBytes)+96)
     var code = default(X86Block)
-    var fixes: seq[X86CycleFixup] = @[]
+    code.bytes = newSeqOfCap[byte](byteCapacity)
+    var fixes = newSeqOfCap[X86CycleFixup](terminal*operationFixes+6)
+    if code.bytes.rawData == nil or fixes.rawData == nil: return
     var labels = default(X86MixedLoopLabels)
     var guardLabels = default(array[int(NativeReadFactLimit)-1, byte])
     var nextLabel = 3'u8
@@ -256,6 +264,8 @@ when declared(X86Block):
 
     labels[int(visit)] = code.bytes.len
     for index in 0..<terminal:
+      # Do not let a large final operation grow the checked allocation.
+      if code.bytes.len > byteCapacity-operationBytes: return
       let op = operations[index]
       let encoding = nativeReadEncodingOpcode(op.opcode)
       let width = nativeMixedLoopStoreWidth(op.opcode)
@@ -273,6 +283,7 @@ when declared(X86Block):
       else:
         return # The source certificate omits folded no-ops and binds the unique terminal.
     if emittedGuards != guards: return
+    if code.bytes.len > byteCapacity-exitBytes-guardBytes*countSetBits(guards): return
 
     put(code, [0x41'u8, 0xff, 0xc1]) # INC R9D after the complete original body.
     readAccess(code, access, branch.slots.aIndex, false)
@@ -300,7 +311,8 @@ when declared(X86Block):
     for fix in fixes:
       # The self-edge may patch backward. All targets and fixups remain image-local.
       let target = labels[int(fix.target)]
-      assert target > 0 and target < code.bytes.len
+      if target <= 0 or target >= code.bytes.len or fix.at < 0 or fix.at > code.bytes.len-4:
+        return
       let delta = cast[uint32](int32(target-(fix.at+4)))
       for shift in 0..<4:
         code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
