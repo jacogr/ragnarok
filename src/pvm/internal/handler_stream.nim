@@ -1667,25 +1667,10 @@ proc sourceRanks(source: Program, extent: uint64, count: uint32): FlatSourceRank
   ## Build one rank per 64 code bytes; only the validated marker bitmap is traversed.
   let words = int(extent div 64 + uint64(int(extent mod 64 != 0)))
   result = FlatSourceRanks(words: newSeq[uint64](words), prefixes: newSeq[uint32](words))
-  var word = 0'u64
-  var shift = 0
   var slot = 0
   var seen = 0'u32
-  for value in admissionMaskBytes(source):
-    word = word or (uint64(value) shl shift)
-    shift += 8
-    if shift == 64:
-      # All set bits are genuine instruction starts in the validated immutable owner.
-      result.words[slot] = word
-      result.prefixes[slot] = seen
-      let added = uint32(countSetBits(word))
-      assert seen <= count and added <= count-seen
-      seen += added
-      inc slot
-      shift = 0
-      word = 0
-  if shift != 0:
-    # Canonical high padding is zero, so the partial final word contributes no false starts.
+  for word in admissionMaskWords(source):
+    # All set bits are genuine instruction starts, including in the zero-padded final group.
     result.words[slot] = word
     result.prefixes[slot] = seen
     let added = uint32(countSetBits(word))
