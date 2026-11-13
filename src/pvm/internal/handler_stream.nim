@@ -11,6 +11,9 @@
 ## guest memory, budgets and callbacks. Restore and take move code-only state
 ## across calls. The executable cache retains no invocation pointers. Idle byte
 ## scratch has a separate lease and is restored before another invocation uses it.
+## A refused frame buffer or restore delta produces a local allocation error.
+## Extra writable runs allocate before their first store, with the whole guest
+## access preflighted before allocating or modifying private bytes.
 ##
 ## Node and preparation-work refusals stay with the active frame. A prepared
 ## owner retains admitted entries and cumulative occupancy under the same ceilings.
@@ -152,7 +155,7 @@ type
     codeBytes: uint32      # Logical PC extent remains known before a lazy map is allocated.
     ranks: FlatSourceRanks # Shared immutable source-global index, built once during admission.
     materialized: uint32   # Filled fact slots only; reserved array capacity is a separate cost.
-  FlatRegion = ref object ## Extra regions read the containing immutable owner until their first complete store.
+  FlatRegion = object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
     size, sourceFirst: int # Logical bytes and genuine sorted source slot survive optional payload allocation.
@@ -726,42 +729,54 @@ func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   if word >= uint64(f.dirtyPages.len): return true
   (f.dirtyPages[int(word)] and (1'u64 shl int(page and 63))) != 0
 
-proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
-    output: var openArray[byte]) =
+proc flatTryCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
+    output: var openArray[byte]): bool =
   ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
   let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
-  assert copied.error == MachineError.None
-  assert copied.value.index == expected.index and copied.value.access == expected.access
+  if copied.error != MachineError.None: return false
+  let actual = copied.value
+  actual.index == expected.index and actual.access == expected.access
 
-proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64) =
-  ## Whole-store preflight has succeeded; adjacent equal-permission pages belong to one captured run.
+proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
+    output: var openArray[byte]) =
+  ## Existing reset and publication callers require a previously matched owner and layout.
+  let copied = flatTryCopySourcePage(memory, slot, expected, output)
+  assert copied
+
+proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64): oracle.StepError =
+  ## Whole-store preflight has succeeded. Materialize a complete extra run
+  ## before its first write. A refusal changes neither dirty bits nor guest bytes.
   for index in 0..<f.extra.len:
     let region {.cursor.} = f.extra[index]
     if address >= region.first and address-region.first < uint64(region.size):
-      assert region.access == PageAccess.ReadWrite
-      assert region.size >= W and address-region.first <= uint64(region.size-W)
+      if region.access != PageAccess.ReadWrite or region.size < W or
+          address-region.first > uint64(region.size-W):
+        return oracle.StepError.InvalidMachine
       if region.bytes.len == 0:
-        # Ordinary managed OOM can now occur on first write; no guest byte or dirty bit changed yet.
-        assert region.size > 0 and region.size mod 4096 == 0
+        # The first write may need a managed allocation before any private bytes change.
+        if region.size mod 4096 != 0: return oracle.StepError.InvalidMachine
         let pages = region.size div 4096
-        assert region.sourceFirst >= 0 and pages <= f.sourcePages.len
-        assert region.sourceFirst <= f.sourcePages.len-pages
+        if region.sourceFirst < 0 or region.sourceFirst > f.sourcePages.len-pages:
+          return oracle.StepError.InvalidMachine
         var bytes = newSeqUninit[byte](region.size)
         # Managed refusal may return empty bytes; reject the actual extent before constructing any span.
-        assert bytes.len == region.size
+        if bytes.len != region.size: return oracle.StepError.ResidentAllocationRefused
         for page in 0..<pages:
           # Fill the complete temporary from this frame's retained owner before installing any payload.
           let source = region.sourceFirst+page
           let offset = page*4096
-          assert f.sourcePages[source].access == region.access
-          assert uint64(uint32(f.sourcePages[source].index))*4096 == region.first+uint64(offset)
-          flatCopySourcePage(f.sourceMemory, source, f.sourcePages[source],
-            bytes.toOpenArray(offset, offset+4095))
-        region.bytes = move(bytes)
-      else:
-        # Repeated stores retain the already materialized whole-run allocation.
-        assert region.bytes.len == region.size
-      return
+          let expected = f.sourcePages[source]
+          if expected.access != region.access or
+              uint64(uint32(expected.index))*4096 != region.first+uint64(offset) or
+              not flatTryCopySourcePage(f.sourceMemory, source, expected,
+                bytes.toOpenArray(offset, offset+4095)):
+            return oracle.StepError.InvalidMachine
+        f.extra[index].bytes = move(bytes)
+      elif region.bytes.len != region.size:
+        # A retained payload must still cover the entire admitted run.
+        return oracle.StepError.InvalidMachine
+      return oracle.StepError.None
+  oracle.StepError.None # The store uses one of the already resident primary runs.
 
 proc flatByte(f: FlatFrame, address: uint64, baseline: byte): byte =
   ## The caller supplies a genuine checked scalar/page byte; logical membership selects any private overlay.
@@ -788,7 +803,7 @@ proc flatSetByte(f: var FlatFrame, address: uint64, value: byte) =
     let r {.cursor.} = f.extra[i]
     if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.size):
       assert r.bytes.len == r.size # The whole store installed its complete payload before dirty marking.
-      r.bytes[int(address-r.first)] = value
+      f.extra[i].bytes[int(address-r.first)] = value
       return
   assert false, "validated writable byte must belong to a captured writable region"
 
@@ -825,7 +840,10 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
         oracle.StepError.AmbiguousAccessOrder)
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
-  flatMaterializeStore[W](f, address)
+  let materialized = flatMaterializeStore[W](f, address)
+  if materialized != oracle.StepError.None:
+    discard flatLocal(f, off, materialized)
+    return false
   flatMarkStore[W](f, address)
   for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
   true
@@ -2233,7 +2251,8 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
             # A baseline-backed extra is already restored through this immutable source owner.
             assert region.bytes.len == region.size
             let offset = int(address-region.first)
-            flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
+            flatCopySourcePage(memory, page, image,
+              f.extra[i].bytes.toOpenArray(offset, offset+4095))
           found = true
           break
       assert found
@@ -2271,12 +2290,13 @@ proc flatRegionPast(images: openArray[PageDescription], first: int): int =
 proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
     memory: Memory): FlatResult[FlatFrame] =
   ## Classify first, then construct one complete frame; failure owns no partial public payload.
-  assert plan != nil
-  assert images.len <= high(int) div sizeof(PageDescription)
   # Sorted genuine descriptions bound every physical bit, including RO and inaccessible observations.
   let dirtyWordCount = if images.len == 0: 0
     else: int((uint64(uint32(images[images.len-1].index)) shr 6)+1)
   var frame = flatFrameShell[false](plan, memory, info, images.len, dirtyWordCount)
+  if frame.dirtyPages.len != dirtyWordCount or
+      (images.len > 0 and frame.dirtyIndices.rawData == nil):
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
@@ -2293,8 +2313,10 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       lastRW = ordinal
     first = flatRegionPast(images, first)
     inc ordinal
-  # Classification already counted every accessible run; reserve only their reference slots.
+  # Reserve exact value storage so building a region needs no separate ref allocation.
   var regions = newSeqOfCap[FlatRegion](ordinal)
+  if ordinal > 0 and regions.rawData == nil:
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   var residentRW = false
   first = 0
   while first < images.len:
@@ -2304,7 +2326,8 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       continue
     let after = flatRegionPast(images, first)
     let pages = after-first
-    assert pages > 0 and pages <= high(int) div 4096
+    if pages > high(int) div 4096:
+      return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
     let address = uint64(uint32(image.index))*4096
     if regions.len == firstRW:
       # Only this first RW run may allocate foreign storage, before any legacy byte seq exists.
@@ -2317,7 +2340,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
         regions.add(FlatRegion(first: address, access: image.access,
           size: pages*4096, sourceFirst: first, bytes: @[]))
       of FreshRWStatus.NotSelected:
-        discard # The unchanged managed construction below is the only fallback path.
+        discard # The managed construction below owns the fallback.
       of FreshRWStatus.AllocationRefused:
         return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
       else:
@@ -2332,23 +2355,28 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       first = after
       continue
     # Preserve eager primary allocation and complete fill before deriving any frame/native view.
-    let region = FlatRegion(first: address, access: image.access,
+    var region = FlatRegion(first: address, access: image.access,
       size: pages*4096, sourceFirst: first, bytes: newSeqUninit[byte](pages*4096))
+    if region.bytes.len != region.size:
+      return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
     for page in first..<after:
       # All managed primary paths still restore complete pages before installing the final owner.
       let offset = (page-first)*4096
-      assert offset >= 0 and offset <= region.bytes.len-4096
-      flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
-    regions.add(region)
+      if not flatTryCopySourcePage(memory, page, images[page],
+          region.bytes.toOpenArray(offset, offset+4095)):
+        return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
+    regions.add(move(region))
     first = after
   frame.sourcePages = move(images)
-  # A sole writable run fills RW only; count its last-RW role once before reserving extra references.
+  # A sole writable run fills RW only; count its last-RW role once before reserving extra slots.
   let primaryCount = int(firstRO >= 0) + int(firstRW >= 0) +
     int(lastRW >= 0 and lastRW != firstRW)
   frame.extra = newSeqOfCap[FlatRegion](ordinal-primaryCount)
+  if ordinal > primaryCount and frame.extra.rawData == nil:
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   for i in 0..<regions.len:
     # Preserve firstRO/firstRW/lastRW precedence, including a sole writable run remaining RW.
-    let region {.cursor.} = regions[i]
+    var region = move(regions[i])
     if i == firstRO:
       frame.roBase = region.first
       frame.ro = move(region.bytes)
@@ -2359,8 +2387,11 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     elif i == lastRW:
       frame.stackBase = region.first
       frame.stack = move(region.bytes)
-    else: frame.extra.add(region)
+    else: frame.extra.add(move(region))
   FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+
+proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame]
+  ## The immutable memory-owner constructor is also used by captured page-image inputs.
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -2369,10 +2400,7 @@ proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: Machi
   let memory = captureMemory(images, plan.limits.pages)
   if memory.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
-  var layout = memoryLayout(memory.value)
-  assert layout.error == MachineError.None
-  var retained = machine.takeValue(layout)
-  buildFlatFrame(plan, retained, info, memory.value)
+  prepareFlatMemoryFrame(plan, memory.value, info)
 
 proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
   ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
@@ -3628,6 +3656,8 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
   if uint32(count.value) > uint32(plan.limits.pages):
     return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
   var layout = memoryLayout(memory)
+  if layout.error == MachineError.AllocationRefused:
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   if layout.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
   var retained = machine.takeValue(layout)
@@ -3726,7 +3756,8 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
       if apply and region.bytes.len != 0:
         # Baseline-backed extras accept the changed owner without allocating or physically copying bytes.
         let offset = int(address-region.first)
-        flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        flatCopySourcePage(posterior, page, description,
+          f.extra[i].bytes.toOpenArray(offset, offset+4095))
         inc copiedPages
       return true
   false
@@ -3800,6 +3831,8 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
   var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
+  if delta.error == MachineError.AllocationRefused:
+    return oracle.StepError.ResidentAllocationRefused
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var replace = delta.error != MachineError.None
   if not replace:
@@ -4017,13 +4050,14 @@ proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
   else:
     var found = false
     for index in 0..<f.extra.len:
-      let region = f.extra[index]
+      let region {.cursor.} = f.extra[index]
       if address >= region.first and address-region.first+4096 <= uint64(region.size):
         if region.bytes.len != 0:
           # Lazy extras use the already installed incoming baseline; materialized bytes need restoration.
           assert region.bytes.len == region.size
           let offset = int(address-region.first)
-          flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
+          flatCopySourcePage(f.sourceMemory, page, description,
+            f.extra[index].bytes.toOpenArray(offset, offset+4095))
         found = true
         break
     assert found
@@ -4040,6 +4074,9 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   var held = move(scratch)
   if held == nil: return prepareFlatMemoryFrame(plan, memory, info)
   var delta = changedMemoryPageSlots(held.baseline, memory)
+  if delta.error == MachineError.AllocationRefused:
+    scratch = move(held)
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   if delta.error != MachineError.None:
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)

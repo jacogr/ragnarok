@@ -201,8 +201,10 @@ ordinary/single-step/host execution and replacement. It is a local failure, with
 gas outcome or malformed-program/host-response substitution. Replacement constructs completely
 before moving code caches or committing, so refusal preserves the old stopped frame and its
 CPU, bytes, counters and descriptors. A mismatched idle lease is discarded before fresh
-construction as before. Managed metadata allocation retains its existing OOM behavior; this
-change does not claim whole-call OOM recovery.
+construction as before. The [checked frame](../src/pvm/internal/handler_stream.nim) also reports
+refusal of its managed buffers, including the first store that materializes a fragmented run.
+These checks cover frame storage. Code admission and immutable snapshot allocation have their
+own contracts.
 
 Full-page reset, dirty/changed-source reuse and host updates always restore complete source
 bytes even when the allocation was initially zero. Fresh-zero authority ends at construction;

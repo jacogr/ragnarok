@@ -11,10 +11,11 @@ The current implementation uses one [checked handler-stream engine](pvm-handler-
 both recursive and single-step execution; the earlier evaluator is removed. The adapter contracts
 below remain unchanged, with explicit local preparation admission as documented there.
 
-A selected fresh resident-allocation refusal is the local `ResidentAllocationRefused` reason,
-propagated through ordinary, single-step and host execution. It does not charge a guest outcome
-or claim a partial successor. Stopped-host replacement remains transactional; managed metadata
-OOM behavior and earlier admission/step/gas precedence stay unchanged. The
+A checked frame allocation refusal is the local `ResidentAllocationRefused` reason. Ordinary,
+single-step and host execution propagate it without publishing guest gas or a partial successor.
+This covers the selected fresh resident mapping, frame layout and buffers, and the first
+allocation for a lazy writable run. A refused changed-page delta preserves the idle lease
+or the stopped host frame for retry. The
 [resident-memory contract](pvm-retained-memory.md#fresh-first-rw-capture) owns profile selection,
 lifetime and complete restoration rules.
 
