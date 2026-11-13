@@ -1,6 +1,6 @@
 # Export and proof-page erasure chunks from executed bundles
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: GP 0.8.0 [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/erasure_coding.tex),
 work_packages_and_reports.tex availability specifier segment arm, pagedproofs
 and normalized I export ordering; erasure_coding.tex erasurecoding and code-word
 representation. Vector pin remains `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
@@ -24,8 +24,8 @@ retain a genuine empty export commitment (including its two allocated tree slots
 Preflight all aggregate encoded bytes, coding workspace and field products
 before export-tree hashing or payload extraction. At most 3072 exports and 48
 pages give 3120 rows. With k=segmentChunkBytes/2, total products are rows*k times
-31*(span-1)+d*(d-1)/2+(v-d)*(d-1), span=nextpow2(d). Nonempty coding workspace
-is 2d input bytes plus 2*(v+d+span) scalar-buffer bytes. The byte policy covers
+31*(span-1)+span*(span-1)/2+(v-d)*(span-1), span=nextpow2(d). Nonempty coding workspace
+is 2d input bytes plus 2*(v+2*span) scalar-buffer bytes. The byte policy covers
 encoded output plus that workspace; separate ExportCommitmentLimits cover
 export count, tree slots and hash preimages. Retained source storage, allocator
 headers, fixed 4104-byte stack segments and returned copies are separate.

@@ -59,11 +59,11 @@ check(6, Words6)
 check(9, Words9)
 check(51, Words51)
 check(1023, Words1023)
-# Constant polynomials exercise every Cantor bit through both basis conversions, including zero and all bits.
+# Four original words fill the interpolation domain. Equal values yield a constant polynomial.
 for word in [0'u16, 65535, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]:
-  let input = [ErasureWord(word), ErasureWord(word), ErasureWord(word)]
-  let code = encodeErasureWords(input, ErasureShards(6), generous()).value
-  for index in 0..<6:
+  let input = [ErasureWord(word), ErasureWord(word), ErasureWord(word), ErasureWord(word)]
+  let code = encodeErasureWords(input, ErasureShards(9), generous()).value
+  for index in 0..<9:
     assert uint16(code.codeWord(ErasureShardIndex(uint64(index))).value) == word, "constant polynomial and basis roundtrip"
 let input = [ErasureWord(0), ErasureWord(1), ErasureWord(65535)]
 let empty: seq[ErasureWord] = @[]
@@ -80,8 +80,8 @@ expect(default(ErasureWordCode).wordCodeInfo, ErasureWordError.Uninitialized)
 expect(default(ErasureWordCode).codeWord(ErasureShardIndex(0)), ErasureWordError.Uninitialized)
 expect(default(ErasureWordResult[ErasureWordCode]), ErasureWordError.Uninitialized)
 let code = encodeErasureWords(input, ErasureShards(6), generous()).value
-assert code.wordCodeInfo.value.products == 102, "independent exact small work count"
-assert code.wordCodeInfo.value.workspaceBytes == 14, "independent small workspace"
+assert code.wordCodeInfo.value.products == 108, "independent exact small work count"
+assert code.wordCodeInfo.value.workspaceBytes == 16, "independent small workspace"
 
 proc detached(): ErasureWordCode =
   ## Return a code after its original local input descriptor has retired.
@@ -93,7 +93,7 @@ assert uint16(detached().codeWord(ErasureShardIndex(5)).value) == uint16(code.co
 proc cycle() =
   ## Release completed output, coefficient workspace, inverse table and refused candidates.
   let done = encodeErasureWords(input, ErasureShards(6), generous()).value
-  assert done.wordCodeInfo.value.products == 102, "cycle completed work"
+  assert done.wordCodeInfo.value.products == 108, "cycle completed work"
   expect(encodeErasureWords(input, ErasureShards(6), ErasureWordLimits()),
       ErasureWordError.LimitExceeded)
 cycle()

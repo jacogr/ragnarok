@@ -86,11 +86,10 @@ proc finishUninvokedAccumulation*(service: PreparedAccumulationService): Accumul
   of AccumulationCodeStatus.Ready:
     AccumulationSkipResult[SkippedAccumulation](
       status: AccumulationSkipError.ExecutionRequired) # No zero-length shortcut or fabricated invalid-program outcome.
-  of AccumulationCodeStatus.Missing, AccumulationCodeStatus.Malformed,
-      AccumulationCodeStatus.Oversized:
+  of AccumulationCodeStatus.Missing, AccumulationCodeStatus.Oversized:
     AccumulationSkipResult[SkippedAccumulation](status: AccumulationSkipError.None,
       completed: SkippedAccumulation(data: SkipData(
-          service: service))) # Only the three certified non-executing reasons complete.
+          service: service))) # Only the two certified non-executing reasons complete.
 
 proc skipBlockService*(outcome: BlockSkippedAccumulation): AccumulationSkipResult[
     BlockAccumulationService] =

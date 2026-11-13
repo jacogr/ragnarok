@@ -1,6 +1,6 @@
 # Source-bound audit bundle erasure chunks
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: GP 0.8.0 [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/erasure_coding.tex),
 erasure_coding.tex erasurecoding/transpose/erasurecodinginv and code-word
 representation; work_packages_and_reports.tex availability specifier bundle arm
 and zeropadding. Vector pin remains `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
@@ -23,10 +23,10 @@ layer performs no hashing, availability Merklization or root/state certification
 Preflight native-int output representability and two aggregate local policies
 before copying original bytes or doing field work. With d originals, span the
 least power of two >=d, and k=chunkBytes/2, per-column products are
-31*(span-1)+d*(d-1)/2+(v-d)*(d-1). Total work is k times this quantity, including
+31*(span-1)+span*(span-1)/2+(v-d)*(span-1). Total work is k times this quantity, including
 repeated inverse setup in the current scalar implementation. The byte policy
 covers the retained encoded buffer plus simultaneous logical workspace:
-original bundle length + 2d input words + 2*(v+d+span) scalar buffers. Original
+original bundle length + 2d input bytes + 2*(v+2*span) scalar-buffer bytes. Original
 source retention, allocation headers/fixed stack data and returned chunk copies
 are separate. E4 length and validated dimensions bound all arithmetic below
 2^50. A scalar refusal aborts without publishing any encoded prefix.

@@ -112,7 +112,7 @@ proc bootstrap(chapters: seq[StateEntry], credit = false): PreparedAccumulationI
   for entry in chapters: entries.add(entry) # Complete source retains every supplied component.
   let state = newStateStore(entries, limits()).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(128),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))).value
   prepareAccumulationInvocation(service, default(StateEntropyWord), ServiceProbeLimit(1)).value
 
 ## Incoming transfers credit both initial dimensions once, with matching copied self and complete account backing.
@@ -322,7 +322,7 @@ proc boundCase(base: OwnedReport): BlockAccumulationContexts =
     [DeferredTransfer(destination: ServiceIndex(42), amount: TransferBalance(7))], [], roundConfig().inputs).value
   let mixedService = prepareAccumulationService(mixedInputs, InvocationServiceIndex(0),
       context.original.snapshot.value,
-    HeaderSlot(2), AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0),
+    HeaderSlot(2), AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1),
         preimageBytes: ByteLimit(1))).value
   assert mixedService.serviceInfo.value.transfers == 1 and mixedService.serviceInfo.value.operands > 0
   assert mixedService.serviceInputAt(InvocationInputIndex(0)).value.kind ==
@@ -339,7 +339,7 @@ proc boundCase(base: OwnedReport): BlockAccumulationContexts =
   assert uint64(credited.contextSelf.value.balance) == uint64(decodeServiceMetadata(original.bytes,
       ByteLimit(ServiceMetadataBytes)).value.metadata.balance)+7
   let service = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))).value
   let invocation = prepareBlockAccumulationInvocation(service, ServiceProbeLimit(1)).value
   result = prepareBlockAccumulationContexts(invocation, contextConfig()).value
   let initial = result.contextProjection.value.initialContext(AccumulationDimension.Regular).value

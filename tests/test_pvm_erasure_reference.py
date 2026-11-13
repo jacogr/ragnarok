@@ -5,8 +5,8 @@
 import re
 import unittest
 from pathlib import Path
-from pvm_erasure_reference import (BASIS, COORDINATES, inverse, interpolate, message,
-                                   multiply, original_count, polynomial, witnesses)
+from pvm_erasure_reference import (BASIS, COORDINATES, encode_words, inverse, interpolate, message,
+                                   multiply, original_count, polynomial, recover_words, witnesses)
 
 
 class ErasureReferenceTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class ErasureReferenceTests(unittest.TestCase):
         """Check basis invertibility and inversion for every nonzero index used by the transform."""
         self.assertEqual(len(COORDINATES), 65536)
         self.assertEqual(BASIS[0], 1)
-        for index in range(1, 1024):
+        for index in range(1, 2048):
             value = polynomial(index)
             self.assertEqual(multiply(value, inverse(value)), 1)
 
@@ -41,6 +41,16 @@ class ErasureReferenceTests(unittest.TestCase):
             actual = [int(n) for n in re.findall(r'\d+', block.replace("'u16", ''))]
             self.assertEqual(actual, expected)
 
+    def test_partial_word(self):
+        """A final missing high byte is zero in the last systematic row."""
+        source = message(6)
+        source[-1] &= 255
+        frozen = (Path(__file__).parent / 'support/pvm_erasure_vectors.nim').read_text()
+        block = re.search(r'PaddedWords6\* = \[(.*?)\]', frozen, re.S).group(1)
+        actual = [int(n) for n in re.findall(r'\d+', block.replace("'u16", ''))]
+        self.assertEqual(actual, encode_words(source, 6))
+        self.assertEqual(recover_words([5, 4, 0], [actual[5], actual[4], actual[0]], 6), source)
+
     def test_recovery(self):
         """Reconstruct originals from parity-only small sets and mixed 1023-validator erasures."""
         for validators, encoded in witnesses().items():
@@ -50,7 +60,7 @@ class ErasureReferenceTests(unittest.TestCase):
             if validators == 1023:
                 indices[-1] = 0
                 indices.reverse()
-            recovered = interpolate(indices, [encoded[i] for i in indices], range(count))
+            recovered = recover_words(indices, [encoded[i] for i in indices], validators)
             self.assertEqual(recovered, message(validators))
 
 

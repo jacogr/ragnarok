@@ -55,7 +55,7 @@ proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulation
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(10000), nodes: TrieNodeLimit(10000)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(ServiceMetadataBytes))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(4),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))).value
   let invocation = prepareAccumulationInvocation(service, default(StateEntropyWord),
       ServiceProbeLimit(1)).value
   prepareAccumulationContexts(invocation, config).value

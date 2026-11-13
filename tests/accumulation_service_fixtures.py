@@ -8,23 +8,16 @@ Exposes resolve and prepare for deterministic authored contexts; no PVM executio
 import hashlib
 import json
 import random
-from test_codec import reference_encode, reference_decode
+from test_codec import reference_encode
 
 
-# Interpret E(length(metadata)) || metadata || code with unbounded offsets and a separate local ceiling.
+# Classify the complete authenticated blob before standard program initialization.
 def resolve(raw, code_limit, preimage_limit):
+    if len(raw) > code_limit:
+        return 'Oversized', raw
     if len(raw) > preimage_limit:
-        return 'LimitExceeded', b''  # Resource refusal never becomes protocol ineligibility.
-    parsed = reference_decode(raw)
-    if parsed in ('truncated', 'noncanonical'):
-        return 'Malformed', b''  # The account definition supplies no code after malformed framing.
-    length, prefix = map(int, parsed.split())
-    if length > len(raw)-prefix:
-        return 'Malformed', b''  # Prove the complete metadata before taking the remaining suffix.
-    code = raw[prefix+length:]
-    if len(code) > code_limit:
-        return 'Oversized', code  # Protocol eligibility uses only the code suffix length.
-    return 'Ready', code
+        return 'LimitExceeded', b''
+    return 'Ready', raw
 
 
 # Seeded envelopes vary prefix boundaries, metadata, code and independent protocol/resource limits.

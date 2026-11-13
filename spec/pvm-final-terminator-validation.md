@@ -32,10 +32,9 @@ rustup run 1.99.0 cargo fmt --manifest-path tests/reference/polkavm_memory/Cargo
 
 `initializeMachine` now rejects a final fallthrough or conditional as
 `InitializationError.InvalidProgram` before materializing memory pages. Authorization,
-refinement and accumulation already use this shared boundary and retain their
-existing typed failure mappings. Rejection publishes no CPU or partially initialized
-memory and executes no prefix or host call. It does not fabricate a guest panic or
-change invocation-level gas normalization.
+refinement and accumulation use this shared boundary. Rejection occurs before CPU
+publication, instruction execution or host calls. At the current Gray Paper pin, the
+outer invocations normalize this failure as zero-gas panic.
 
 The raw decoder/stepper keep their paper behavior. `decodeJamProgram` now owns
 the shared check within the original bounded scan; both outer initialization and
@@ -88,11 +87,10 @@ Inventory remains219 failure families/2562 probes/341 native suites.
 
 The existing authorization-invocation, refinement-bootstrap and accumulation-machine
 suites carry the missing-successor witnesses through real historical code lookup,
-hashing, envelope preparation and mandatory entry selection. Authorization returns
-`InitializationFailure` with `InvalidProgram`; refinement and accumulation return
-their existing `InvalidProgram` alternatives. No failed result exposes an invocation
-or CPU. Unreachable bad suffixes still refuse; present-trap successors prepare and
-produce ordinary guest Panic when executed. Source code/bootstrap aliases survive
+hashing, envelope preparation and mandatory entry selection. The initializer returns
+`InvalidProgram` for the missing successor. The outer invocation returns zero-gas panic.
+An unreachable bad suffix also fails initialization. A present trap successor prepares
+successfully and panics if reached during execution. Source code/bootstrap aliases survive
 refusal unchanged. These are original fixtures with existing helper/link profiles.
 
 All three caller suites pass in checked release with their existing1000-cycle ARC

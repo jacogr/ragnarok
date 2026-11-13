@@ -110,6 +110,9 @@ for big in [false, true]:
       high(uint64)),
     default(RefinementInvocationLimits)).value
   check(terminal, if big: WorkKind.Big else: WorkKind.Bad, 0)
+let malformedBlob = refinementFixture([halt], malformed = true)
+check(runRefinementInvocation(malformedBlob, [], default(RefinementInputs), ExportOffset(7),
+    default(RefinementInvocationLimits)).value, WorkKind.Panic, 0)
 # Local errors expose their original stage/reason, with no normalizable output owner or partial gas accounting.
 assert run(default(PreparedRefinementBootstrap)).error == RefinementInvocationError.InvalidBootstrap
 var cap = refinementLimits()

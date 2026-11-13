@@ -159,11 +159,11 @@ proc boundaries(): SkippedAccumulation =
       bytes[0] = 255
       assert state.lookup(chapterKey(StateChapter(250))).value.bytes == @[9'u8, 4, 2]
     assert missing.serviceInfo.value.code == AccumulationCodeStatus.Missing
-    assert malformed.serviceInfo.value.code == AccumulationCodeStatus.Malformed
+    assert malformed.serviceInfo.value.code == AccumulationCodeStatus.Oversized
     assert oversized.serviceInfo.value.code == AccumulationCodeStatus.Oversized
     result = finishUninvokedAccumulation(missing).value
   # Valid empty and exact-limit nonempty code both require execution, not an empty-code fallback.
-  for source in [service(@[0'u8], true, 0), service(@[0'u8, 7], true, 1)]:
+  for source in [service(@[128'u8], true, 1), service(@[0'u8], true, 1), service(@[0'u8, 7], true, 2)]:
     assert finishUninvokedAccumulation(source).error == AccumulationSkipError.ExecutionRequired
   assert finishUninvokedAccumulation(default(PreparedAccumulationService)).error ==
       AccumulationSkipError.InvalidService
@@ -177,7 +177,7 @@ proc boundaries(): SkippedAccumulation =
       AccumulationSkipError.Uninitialized
   assert default(BlockSkippedAccumulation).skipBlockService.error ==
       AccumulationSkipError.Uninitialized
-  let ready = service(@[0'u8], true, 0)
+  let ready = service(@[0'u8], true, 1)
   let missing = result.skipService.value
   failHash(1)
   checkSkip(finishUninvokedAccumulation(missing).value, missing)
@@ -205,7 +205,7 @@ proc boundCase(base: OwnedReport): BlockSkippedAccumulation =
     let admitted = planBlockReports(context.staged, context.older, config()).value
     let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
     let round = planBlockInitialAccumulation(queue, roundConfig()).value
-    let limit = if mode == 3: 1'u64 else: 0'u64 # Final case proves the exact-size bound still requires execution.
+    let limit = if mode == 3: 2'u64 else: 0'u64 # Final case proves the exact-size bound still requires execution.
     let bound = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
       AccumulationServiceConfig(codeLimit: ServiceCodeLimit(limit), preimageBytes: ByteLimit(100000))).value
     let outcome = finishBlockUninvokedAccumulation(bound)
@@ -232,7 +232,7 @@ proc boundCase(base: OwnedReport): BlockSkippedAccumulation =
 ## Repeated complete/refused outcome construction releases every acyclic owner without touching source state.
 proc lifetime() =
   let sources = [service(@[0'u8], false, 0), service(@[128'u8], true, 0), service(@[0'u8, 7], true, 0)]
-  let ready = service(@[0'u8], true, 0)
+  let ready = service(@[0'u8], true, 1)
   for source in sources: discard finishUninvokedAccumulation(
       source) # Warm every successful branch before measurement.
   discard finishUninvokedAccumulation(ready)

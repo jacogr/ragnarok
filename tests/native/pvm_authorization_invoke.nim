@@ -30,9 +30,11 @@ check(refused, AuthorizationInvocationError.LimitExceeded)
 let lookup = authorizationRun(authorizationFixture(code, malformedState = true))
 check(lookup, AuthorizationInvocationError.LookupFailure)
 assert lookup.lookupError == HistoricalLookupError.MalformedState
-let initialization = authorizationRun(authorizationFixture(code, overrideBytes = @[0'u8, 1]))
+cap = authorizationLimits()
+cap.initialization.pages = PageLimit(0)
+let initialization = authorizationRun(fixture, cap)
 check(initialization, AuthorizationInvocationError.InitializationFailure)
-assert initialization.initializationError == InitializationError.InvalidEnvelope
+assert initialization.initializationError == InitializationError.LimitExceeded
 cap = authorizationLimits()
 cap.encoding = FetchEncodingLimit(0)
 let fetch = authorizationRun(fixture, cap)

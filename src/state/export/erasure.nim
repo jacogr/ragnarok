@@ -120,10 +120,9 @@ proc prepareExportErasure*(source: BundleErasure, limits: ExportErasureLimits): 
   let rows = count+pages
   let original = int(geometry.originalShards)
   let validators = int(uint16(geometry.shards))
-  var span = 1
-  while span < original: span *= 2 # Originals <=342 prove span <=512 before doubling.
-  let perColumn = uint64(31*(span-1)+original*(original-1) div 2+(validators-original)*(original-1))
-  let scalarBytes = uint64(validators+original+span)*2
+  let columnLimits = encodingLimits(geometry)
+  let perColumn = uint64(columnLimits.products)
+  let scalarBytes = uint64(columnLimits.bytes)
   let products = rows*(geometry.segmentChunkBytes div 2)*perColumn
   let retained = uint64(validators)*rows*geometry.segmentChunkBytes
   let workspace = if rows == 0: 0'u64 else: uint64(original)*2+scalarBytes
@@ -139,20 +138,19 @@ proc prepareExportErasure*(source: BundleErasure, limits: ExportErasureLimits): 
   # Empty exports require no scalar input, inverse table or coefficient allocation.
   if rows > 0:
     var input = newSeq[ErasureWord](original)
-    let scalarLimits = ErasureWordLimits(bytes: ByteLimit(scalarBytes), products: FieldProductLimit(perColumn))
     var row = 0
     # Final normalized item/segment ordering includes synthesized zero exports for every failed item.
     for itemIndex in 0..<report.reportInfo.value.items:
       let item = report.reportItem(FetchItemIndex(uint64(itemIndex))).value
       for segmentIndex in 0..<int(uint64(item.refinedInfo.value.exports)):
         let segment = item.refinedSegment(ExportCount(uint64(segmentIndex))).value
-        if not encodeSegment(segment, row, int(rows), geometry, input, encoded, scalarLimits):
+        if not encodeSegment(segment, row, int(rows), geometry, input, encoded, columnLimits):
           fail(ExportErasureError.EncodingFailure)
         inc row
     # Proof pages follow every original data segment; each page is encoded independently with no extra framing.
     for page in 0..<int(pages):
       let segment = commitment.commitmentPage(ExportPageIndex(uint64(page))).value
-      if not encodeSegment(segment, row, int(rows), geometry, input, encoded, scalarLimits):
+      if not encodeSegment(segment, row, int(rows), geometry, input, encoded, columnLimits):
         fail(ExportErasureError.EncodingFailure)
       inc row
     if uint64(row) != rows: fail(ExportErasureError.EncodingFailure) # Never publish an incomplete private buffer.

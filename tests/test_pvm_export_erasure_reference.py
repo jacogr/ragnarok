@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 from pvm_export_erasure_reference import witnesses
-from pvm_erasure_reference import interpolate, original_count
+from pvm_erasure_reference import recover_words, original_count
 
 
 def frozen(source, name):
@@ -51,7 +51,7 @@ class ExportErasureReferenceTests(unittest.TestCase):
         restored = [bytearray() for _ in range(3)]
         for offset in range(0, len(page[0]), 2):
             values = [int.from_bytes(page[index][offset:offset+2], 'little') for index in indices]
-            for chunk, word in zip(restored, interpolate(indices, values, range(3))):
+            for chunk, word in zip(restored, recover_words(indices, values, 6)):
                 chunk.extend(word.to_bytes(2, 'little'))
         self.assertEqual(b''.join(restored), witnesses()['Paged']['rows'][-1])
 

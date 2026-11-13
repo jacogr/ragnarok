@@ -102,11 +102,10 @@ let policy = batchPolicy()
 for kind in [Missing, Malformed, Oversized]:
   # Each certified skip reason preserves incoming credit; the actual execution can provide to the skipped service.
   let fixture = skippedFixture(kind)
-  let skip = skipped(fixture, limit = (if kind == Oversized: 0'u64 else: 512'u64))
+  let skip = skipped(fixture, limit = (if kind in [Malformed, Oversized]: 0'u64 else: 512'u64))
   let expectedStatus = (case kind
     of Missing: AccumulationCodeStatus.Missing
-    of Malformed: AccumulationCodeStatus.Malformed
-    of Oversized: AccumulationCodeStatus.Oversized)
+    of Malformed, Oversized: AccumulationCodeStatus.Oversized)
   assert skip.skipInfo.value.code == expectedStatus
   let execution = batchExecution(fixture, 0)
   let plan = prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value,
