@@ -12,6 +12,7 @@ import ./[native_read_body, native_register_ring]
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   import ./native_mixed_loop
+  import ./native_bitmap_loop
   when defined(pvmMixedLoopArenaWitness):
     import std/syncio
 when defined(pvmX86Jit):
@@ -322,6 +323,32 @@ when NativeCheckedReadEnabled:
     nativeReadStatus(image, registers, context) == NativeReadOutcome.Completed
 
 when NativeReadCycleEnabled:
+  proc lowerNativeBitmapLoop*(loop: NativeBitmapLoop): NativeImage =
+    ## Publish one bounded read-only region through the shared executable arena.
+    result = default(NativeImage)
+    if not nativePlatformSupported() or not loop.complete: return
+    when defined(pvmX86Jit):
+      var encoded = encodeX86BitmapLoop(loop)
+      const unitBytes = 1
+    else:
+      var encoded = encodeArmBitmapLoop(loop)
+      const unitBytes = 4
+    if encoded.len == 0 or encoded.len > NativeImageByteLimit div unitBytes: return
+    let handle = createNativeArena()
+    if handle == nil: return
+    let offset = arenaPublish(handle, addr encoded[0], uint32(encoded.len))
+    if offset < 0:
+      arenaRelease(handle)
+      return
+    result = NativeImage(handle: handle, offset: uint32(offset),
+      bytesValue: uint64(encoded.len*unitBytes), kindValue: NativeKind.BitmapLoop)
+
+  proc enterNativeBitmapLoop*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeBitmapContext): uint32 =
+    ## Borrow the private register file and current frame's read descriptor for one native call.
+    if not image.ready or image.kind != NativeKind.BitmapLoop: return NativeEntryFailure
+    arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+
   when defined(pvmMixedLoopArenaWitness):
     proc mixedLoopArenaAddress(handle: nil pointer): nil pointer {.cdecl,
         importc: "pvm_mixed_arena_address", header: "mixed_arena_proof.h".}

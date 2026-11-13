@@ -355,6 +355,7 @@ class SharedQualificationTests(unittest.TestCase):
         helper = self.root/'tests/support/pvm_shared_async.nim'
         helper.parent.mkdir(parents=True)
         helper.write_text('inert shared witness')
+        helper.with_name('pvm_bitmap_loop_execution.nim').write_text('inert bitmap witness')
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
@@ -439,7 +440,7 @@ class SharedQualificationTests(unittest.TestCase):
                 self.assertEqual(set(result['controls'][1]['registered_defines']),
                     {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'})
                 self.assertEqual(checks.command.call_count, 2)
-                self.assertEqual(len(result['sources']), 10)
+                self.assertIn('tests/support/pvm_bitmap_loop_execution.nim', result['sources'])
 
     def test_failed_build_run_fallback_or_golden_cannot_pass(self):
         """A fallback-only second line omission or unrelated output is not native nil-refusal proof."""

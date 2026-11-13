@@ -20,6 +20,7 @@ import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
   import ./native_read_cycle
   import ./native_mixed_loop
+  import ./native_bitmap_loop
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.
@@ -839,6 +840,92 @@ when defined(pvmX86Jit):
     else: put(code, [0x0f'u8, condition])
     fixes.add(X86CycleFixup(at: code.bytes.len, target: target))
     cycleWord(code, 0)
+
+  when NativeReadCycleEnabled:
+    proc encodeX86BitmapLoop*(loop: NativeBitmapLoop): seq[byte] =
+      ## Keep written guest lanes resident; the checked read stages its address in scratch.
+      if not loop.complete: return @[]
+      const done = 13'u8
+      const refused = 5'u8
+      const outside = 10'u8
+      let bank = x86ResidentAccess(0x1860'u32) # R5/R6/R11/R12 in RBX/RBP/R12/R13.
+      var code = default(X86Block)
+      var labels = default(array[14, int])
+      var fixes: seq[X86CycleFixup] = @[]
+      for hardware in [3'u8, 5, 12, 13]: saveX86ResidentRegister(code, hardware)
+      const slots: array[4, range[0..12]] = [5, 6, 11, 12]
+      for slot in slots: loadX86ResidentRegister(code, bank, slot)
+      put(code, [0x4c'u8, 0x8b, 0x0e, 0x4c, 0x8b, 0x56, 8]) # R9/R10 are gas and remaining.
+      var operation = 0
+      for role in BitmapBlock:
+        let index = uint8(ord(role))
+        let span = int(BitmapSpans[ord(role)])
+        let price = loop.sites[role].price
+        labels[int(index)] = code.bytes.len
+        put(code, [0x49'u8, 0x83, 0xfa, byte(span)]) # CMP R10,span.
+        cycleEdge(code, fixes, 0x82, refused+index)
+        immediate(code, 0xb8, price)
+        put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX.
+        cycleEdge(code, fixes, 0x82, refused+index)
+        if role == BitmapBlock.Read:
+          put(code, [0x8b'u8, 0x47, 64, 0x89, 0xe9, 0x8d, 0x04, 0xc8]) # EAX = low32(R8 + R6*8).
+          put(code, [0x48'u8, 0x2b, 0x46, byte(BitmapBaseOffset)]) # SUB RAX,[RSI+base].
+          cycleEdge(code, fixes, 0x82, refused+index)
+          put(code, [0x48'u8, 0x8b, 0x4e, byte(BitmapLengthOffset), 0x48, 0x83, 0xe9, 8])
+          cycleEdge(code, fixes, 0x82, refused+index)
+          put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,extent-8.
+          cycleEdge(code, fixes, 0x87, refused+index)
+          put(code, [0x48'u8, 0x8b, 0x4e, byte(BitmapPointerOffset), 0x48, 0x85, 0xc9])
+          cycleEdge(code, fixes, 0x84, refused+index)
+          put(code, [0x48'u8, 0x8b, 0x2c, 0x01]) # MOV RBP,[RCX+RAX].
+          immediate(code, 0xb8, price)
+        put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x83, 0xea, byte(span)]) # SUB gas/quota.
+        put(code, [0x48'u8, 0xff, 0x46, byte(16+int(index)*8)]) # INC visits.
+        put(code, [0x48'u8, 0xc7, 0x46, 56])
+        cycleWord(code, uint32(index))
+        # The guard replaces the original shift, add and load only on successful entry.
+        let first = if role == BitmapBlock.Read: operation+3 else: operation
+        for i in first..<operation+span-1:
+          let op = loop.operations[i]
+          emitX86OperationAccess(code, bank, op.opcode, op.slots, op.immediate)
+        let branch = loop.operations[operation+span-1]
+        if role == BitmapBlock.Read:
+          cycleEdge(code, fixes, 0, uint8(ord(BitmapBlock.Advance)))
+        else:
+          readAccess(code, bank, branch.slots.aIndex, false)
+          if role == BitmapBlock.Parity:
+            put(code, [0x48'u8, 0x85, 0xc0]) # TEST RAX,RAX against the certified zero.
+          else:
+            readAccess(code, bank, branch.slots.bIndex, true)
+            put(code, [0x48'u8, 0x39, 0xc8])
+          let target = case role
+            of BitmapBlock.Advance: outside+uint8(ord(BitmapExit.End))
+            of BitmapBlock.Parity: uint8(ord(BitmapBlock.Advance))
+            of BitmapBlock.Midpoint: outside+uint8(ord(BitmapExit.Reset))
+            else: outside+uint8(ord(BitmapExit.Trap))
+          let condition = if role in {BitmapBlock.Advance,
+              BitmapBlock.Parity}: 0x84'u8 else: 0x83'u8
+          cycleEdge(code, fixes, condition, target)
+        operation += span
+      for role in BitmapBlock:
+        labels[int(refused)+ord(role)] = code.bytes.len
+        put(code, [0xb8'u8])
+        cycleWord(code, loop.sites[role].header)
+        cycleEdge(code, fixes, 0, done)
+      for side in BitmapExit:
+        labels[int(outside)+ord(side)] = code.bytes.len
+        put(code, [0xb8'u8])
+        cycleWord(code, loop.exits[side])
+        cycleEdge(code, fixes, 0, done)
+      labels[int(done)] = code.bytes.len
+      commitX86ResidentRegisters(code, bank)
+      restoreX86ResidentRegisters(code, bank)
+      put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3]) # Publish budgets and RET.
+      if code.bytes.len > NativeImageByteLimit: return @[]
+      for fix in fixes:
+        let delta = cast[uint32](int32(labels[int(fix.target)]-(fix.at+4)))
+        for shift in 0..<4: code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
+      takeX86Instructions(code)
 
   when defined(pvmX86Jit) and NativeCheckedReadEnabled:
     proc readBodyReturn(code: var X86Block, status: uint32) =
