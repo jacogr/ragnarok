@@ -229,6 +229,21 @@ try:
     assert runPvmCode(parsed, diagnostic), diagnostic
     assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic, "artifact witness 156: \"PVM_CODE_OK\" in diagnostic and \"actual=interpreted\" in diagnostic"
     assert loadArtifact(path).error == ArtifactError.None, "artifact witness 157: loadArtifact(path).error == ArtifactError.None"
+    # An optional section spans two full reads and leaves a short final read.
+    var padded = raw
+    padded.setLen(padded.len-1)
+    section(padded, 201, newSeq[byte](8197))
+    padded.add(0)
+    seal(padded)
+    contents = newString(padded.len)
+    for i, octet in padded: contents[i] = char(octet)
+    writeFile(path, contents)
+    var fileLimits = defaultArtifactLimits()
+    fileLimits.bytes = uint64(padded.len)
+    let extended = loadArtifact(path, fileLimits)
+    assert extended.error == ArtifactError.None and uint64(entry(extended.value, "main").value) == 0
+    dec fileLimits.bytes
+    assert loadArtifact(path, fileLimits).error == ArtifactError.LimitExceeded
     assert parseOptions(@["--pvm-code", path, "--pvm-entry", "missing"], parsed, diagnostic), "artifact witness 158: parseOptions(@[\"--pvm-code\", path, \"--pvm-entry\", \"missing\"], parsed, diagnostic)"
     assert not runPvmCode(parsed, diagnostic) and "MissingExport" in diagnostic,
         "artifact witness 159: not runPvmCode(parsed, diagnostic) and \"MissingExport\" in diagnostic" &
