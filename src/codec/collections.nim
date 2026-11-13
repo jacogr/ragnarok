@@ -6,7 +6,6 @@
 ## Exposes typed scalar schemas, canonical set/dictionary codecs and immutable collection
 ## accessors.
 
-import std/assertions
 import ./[natural, fixed_unsigned, bounded]
 
 type
@@ -229,11 +228,12 @@ type
       ## Require checked scalar encoding into the caller-owned output span.
 
 proc put[T: CollectionScalar and CollectionFamily](value: T, output: var openArray[byte],
-    cursor: var int) =
-  ## Parent preflight already proves scalar encoding succeeds; keep cursor commits inside this module.
+    cursor: var int): CollectionError =
+  ## Commit one preflighted scalar and propagate any encoder refusal.
   let encoded = encodeScalar(value, output.toOpenArray(cursor, output.high))
-  assert encoded.error == CollectionError.None # Whole-parent preflight establishes this complete field.
+  if encoded.error != CollectionError.None: return encoded.error
   cursor += encoded.value
+  CollectionError.None
 
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
   ## Detect intersection by address distance without overflowing endpoint sums, including empty encodings.
@@ -384,7 +384,9 @@ proc encodeSetImpl[T: CollectionScalar and CollectionFamily](values: openArray[T
     for i in 0..<prefix.len: output[i] = prefix.bytes[i]
     cursor = prefix.len
   # All scalar writes are infallible after complete stable-source preflight.
-  for value in values: put(value, output, cursor)
+  for value in values:
+    let written = put(value, output, cursor)
+    if written != CollectionError.None: return CollectionResult[int](status: written)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
 proc encodeSet*[T: CollectionScalar and CollectionFamily](values: openArray[T],
@@ -496,8 +498,10 @@ proc encodeDictionary*[K, V: CollectionScalar and CollectionFamily](values: open
   var cursor = int(prefix.len)
   # Preserve key/value association and caller-supplied value order exactly.
   for pair in values:
-    put(pair.key, output, cursor)
-    put(pair.value, output, cursor)
+    let key = put(pair.key, output, cursor)
+    if key != CollectionError.None: return CollectionResult[int](status: key)
+    let value = put(pair.value, output, cursor)
+    if value != CollectionError.None: return CollectionResult[int](status: value)
   CollectionResult[int](status: CollectionError.None, completed: cursor)
 
 proc setCount*[T: CollectionScalar and CollectionFamily](owner: OwnedSet[T]): CollectionResult[

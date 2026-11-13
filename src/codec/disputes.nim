@@ -7,7 +7,6 @@
 ## Exposes dispute records and immutable snapshots, encoding/decoding, inspection and bounded
 ## verdict/judgment/evidence access.
 
-import std/assertions
 import ./[natural, bounded, assurances]
 
 type
@@ -334,7 +333,8 @@ proc encodeDisputes*(value: Disputes, config: DisputeConfig,
     output[cursor] = byte(fault.valid); inc cursor
     put(array[32, byte](fault.key))
     put(array[64, byte](fault.signature))
-  assert cursor == required
+  if cursor != required:
+    return DisputeResult[int](status: DisputeError.InvalidOwner)
   measured
 
 proc disputesInfo*(owner: OwnedDisputes): DisputeResult[DisputeInfo] {.raises: [].} =

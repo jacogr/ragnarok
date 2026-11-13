@@ -194,7 +194,7 @@ proc close(slot: var Connection) =
 
 proc close*(server: var Server) {.requires: server.lease == nil.} =
   ## Request retirement for every stream before joining any of them.
-  assert not server.transportMode, "use closeTransport for a detached dispatcher"
+  if server.transportMode: return # The caller must retire the independently owned bridge.
   for slot in mitems(server.connections):
     # Release accepted sockets before listener.
     slot.close()
@@ -475,10 +475,9 @@ proc processHead(slot: var Connection, header: string, tags: http_msg.HttpTags, 
 
 proc processFrame(slot: var Connection, parsed: FrameResult, info: ClientInfo, now: int64) =
   ## Apply control and message-assembly policy to one detached framing result.
-  if parsed.status == invalid:
+  if parsed.status != complete:
     slot.reject(1002, now)
     return
-  assert parsed.status == complete
   case parsed.opcode
   of 8: # A close body is either empty or a legal status code followed by UTF-8 text.
     let payload = parsed.payload
@@ -585,11 +584,12 @@ proc tick*(server: var Server, peers: uint32) =
         break
     if free < 0 or not nonblocking(accepted):
       discard posix.close(accepted)
-    else:
+    elif server.connections[free].stream.start(accepted):
       server.connections[free].fd = -1
-      server.connections[free].stream.start(accepted)
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
+    else:
+      discard posix.close(accepted)
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
       port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
       light: server.light, lightDisk: server.lightDisk,
@@ -651,8 +651,7 @@ proc tick*(server: var Server, peers: uint32) =
       if inputEnded: slot.close()
       continue
     if slot.stream.active:
-      slot.stream.send(slot.output)
-      slot.streamWriting = true
+      slot.streamWriting = slot.stream.send(slot.output)
       continue
     when declared(rpcDirectTestSockets):
       let written = writePending(slot.fd, slot.output, slot.offset)

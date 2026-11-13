@@ -180,30 +180,32 @@ proc main(): int =
       let retained = getOccupiedMem()
       progress "MESH_CLEAN ", baseline, " ", retained
       return (if retained <= baseline + 65536: 0 else: 2) # Fixed ARC bookkeeping is bounded after complete cleanup.
-    if options.argumentCount() == 1 and options.argument(1) == "--mesh-selftest": meshSelfTest(); return 0
+    if options.argumentCount() == 1 and options.argument(1) == "--mesh-selftest":
+      if meshSelfTest(): return 0
+      return 1
     # The composition selftest needs only codec/crypto, with no TLS session or filesystem fixture.
     if options.argumentCount() == 1 and options.argument(1) == "--integration-selftest":
       if not IntegrationEnabled: return 2
-      integrationSelfTest()
-      return 0
+      if integrationSelfTest(): return 0
+      return 1
     # Completion-capacity checks create workers but no native transport.
     if options.argumentCount() == 1 and options.argument(1) == "--offload-selftest":
       if not OffloadEnabled: return 2
-      offloadSelfTest()
-      return 0
+      if offloadSelfTest(): return 0
+      return 1
     # Held shutdown owns threads but has not entered a Rust call or started networking.
     if options.argumentCount() == 1 and options.argument(1) == "--offload-held-shutdown":
       if not OffloadEnabled: return 2
-      offloadHeldShutdownTest()
-      return 0
+      if offloadHeldShutdownTest(): return 0
+      return 1
     # Parser tests create no native transport or socket.
     if options.argumentCount() == 1 and options.argument(1) == "--selftest":
-      peerSelfTest()
-      return 0
+      if peerSelfTest(): return 0
+      return 1
     # Probe the real selector backend independently of TLS setup.
     if options.argumentCount() == 1 and options.argument(1) == "--io-selftest":
-      ioSelfTest()
-      return 0
+      if ioSelfTest(): return 0
+      return 1
     if options.argumentCount() == 8 and options.argument(8) == "soak":
       # Keep the same process and ARC allocator across all independently owned endpoint sessions.
       let rounds = parseInt(getEnv("RAGNAROK_SOAK_ROUNDS"))

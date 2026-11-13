@@ -191,7 +191,8 @@ proc admit*(cache: LightStateCache, updates: openArray[LightStateProof]): LightC
   var next = 0
   # Merge exact sorted maps once, sharing unchanged lookup owners and replacing equal keys.
   while old < data.entries.len or fresh < verified.len:
-    assert next < entries.len
+    if next >= entries.len: return LightCacheResult[LightStateCache](
+        status: LightCacheError.BackendFailure)
     if fresh == verified.len or (old < data.entries.len and compareKey(data.entries[old].key,
         verified[fresh].key) < 0):
       entries[next] = data.entries[old]
@@ -201,7 +202,8 @@ proc admit*(cache: LightStateCache, updates: openArray[LightStateProof]): LightC
       entries[next] = verified[fresh]
       inc fresh
     inc next
-  assert next == entries.len
+  if next != entries.len: return LightCacheResult[LightStateCache](
+      status: LightCacheError.BackendFailure)
   LightCacheResult[LightStateCache](status: LightCacheError.None,
     completed: LightStateCache(data: CacheData(root: data.root, limits: data.limits,
       entries: entries, valueBytes: bytes)))
@@ -245,10 +247,12 @@ proc forget*(cache: LightStateCache, keys: openArray[StateKey]): LightCacheResul
   for index in 0..<data.entries.len:
     let entry = data.entries[index] # Keep retained proof access indexed through the immutable cache owner.
     if not contains(ordered, entry.key):
-      assert next < entries.len
+      if next >= entries.len: return LightCacheResult[LightStateCache](
+          status: LightCacheError.BackendFailure)
       entries[next] = entry # Retained views share immutable proof results rather than raw mutable buffers.
       inc next
-  assert next == entries.len
+  if next != entries.len: return LightCacheResult[LightStateCache](
+      status: LightCacheError.BackendFailure)
   LightCacheResult[LightStateCache](status: LightCacheError.None,
     completed: LightStateCache(data: CacheData(root: data.root, limits: data.limits,
       entries: entries, valueBytes: bytes)))
@@ -263,7 +267,7 @@ proc newLightStateCache*(root: StateRoot, updates: openArray[LightStateProof],
   let admitted = empty.admit(updates)
   if admitted.error != LightCacheError.None: return admitted # Failures expose no partially restored cache.
   let data = admitted.value.data
-  assert data != nil # Every owner reference is still local to this constructor until return.
+  if data == nil: return LightCacheResult[LightStateCache](status: LightCacheError.BackendFailure)
   data.limits = limits
   admitted
 

@@ -423,6 +423,9 @@ proc produceNetworkTicket*(source: TicketSource, key: BsKey, local: StateEdKey,
       NetworkTicketError.InvalidEpoch)
   if uint8(attempt) > 1: return ticketFailure[CheckedNetworkTicket](
       NetworkTicketError.InvalidPacket)
+  if selected.pending.len == 0 or selected.pending.len > 1023 or
+      selected.pendingBs.len != selected.pending.len:
+    return ticketFailure[CheckedNetworkTicket](NetworkTicketError.NoSource)
   let twice = uint64(selected.duration)*2
   let attempts = twice div uint64(selected.pending.len)+uint64(ord(twice mod uint64(
       selected.pending.len) != 0))
@@ -441,7 +444,6 @@ proc produceNetworkTicket*(source: TicketSource, key: BsKey, local: StateEdKey,
       signer = index
       break # An arbitrary TLS identity or unrelated private key cannot sign for a registered position.
   if signer < 0: return ticketFailure[CheckedNetworkTicket](NetworkTicketError.WrongRecipient)
-  assert selected.pendingBs.len > 0 and selected.pendingBs.len <= 1023
   var members = newSeq[byte](selected.pendingBs.len*32)
   for index in 0..<selected.pendingBs.len:
     let member = array[32, byte](selected.pendingBs[index])
@@ -470,6 +472,7 @@ proc produceNetworkTicket*(source: TicketSource, key: BsKey, local: StateEdKey,
   let proxy = selected.pending[int(uint64(selector) mod uint64(selected.pending.len))]
   let packet = ticketPacket(TicketEpoch(selected.epoch+1), Ticket(attempt: attempt,
       proof: TicketProof(array[784, byte](signed.value))))
-  assert packet.error == TicketPacketError.None
+  if packet.error != TicketPacketError.None:
+    return ticketFailure[CheckedNetworkTicket](NetworkTicketError.InvalidPacket)
   verifyNetworkTicket(source, packet.value, TicketRecipient(local: proxy, peer: local, now: now,
       connectivityEpoch: connectivityEpoch, delivery: TicketDelivery.Proxy))

@@ -8,7 +8,6 @@
 ## Exposes explicit ticket/key schedules, Safrole state codecs and copied
 ## pending-validator/sealer/accumulated-ticket access.
 
-import std/assertions
 import ../[natural, bounded, assurances]
 import ./[layout as state_layout, trie as state_trie, safrole as state_safrole]
 from ../header import WinningTicket, WinningTicketId, EpochSlots
@@ -193,7 +192,8 @@ proc decodeSafroleState*(input: openArray[byte], config: SafroleStateConfig): Sa
         status: checked.error) # Failure returns neither partial child owners nor progress.
   let layout = checked.value
   let pending = decodeStateValidators(input.toOpenArray(0, layout.pending-1), config.validators)
-  assert pending.error == StateComponentError.None # Stable input and the first scan proved the exact roster prefix.
+  if pending.error != StateComponentError.None:
+    return SafroleStateResult[SafroleStateRead](status: pending.error)
   let data = SafroleStateData(pending: pending.value.value, root: StateRingRoot(fixed[144](input,
       layout.pending)),
     accumulator: newSeq[WinningTicket](layout.count))
@@ -259,7 +259,8 @@ proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): Safro
   if error != StateComponentError.None: return SafroleStateResult[StateEntry](
       status: error) # Final size is known before any allocation.
   let pending = validatorEntry(ValidatorChapter.Staging, source.pending, config.validators)
-  assert pending.error == StateComponentError.None # Reused no-allocation sizing proved the stable roster source.
+  if pending.error != StateComponentError.None:
+    return SafroleStateResult[StateEntry](status: pending.error)
   var entry = StateEntry(key: chapterKey(StateChapter(4)), value: newSeq[byte](size))
   var cursor = 0
   put(pending.value.value, entry.value, cursor)
@@ -284,7 +285,8 @@ proc safroleInfo*(owner: SafroleStateSnapshot): SafroleStateResult[SafroleStateI
   if data == nil: return SafroleStateResult[SafroleStateInfo](
       status: StateComponentError.InvalidOwner) # Default handles are not state.
   let validators = validatorCount(data.pending)
-  assert validators.error == StateComponentError.None # Only a fully validated roster can be stored in this owner.
+  if validators.error != StateComponentError.None:
+    return SafroleStateResult[SafroleStateInfo](status: validators.error)
   let slots = if data.schedule.kind == SealerKind.Tickets: data.schedule.ticketValues.len else: data.schedule.keyValues.len # Read selected branch only.
   SafroleStateResult[SafroleStateInfo](status: StateComponentError.None,
     completed: SafroleStateInfo(

@@ -313,9 +313,9 @@ proc resetGraph(visit: var GraphVisit) =
       unmark(visit.seen, index) # Existing complete-record admission keeps its per-record reset contract.
     visit.leaves.setLen(0)
 
-proc freezeGraphUnion(visit: GraphVisit): seq[int] =
+proc freezeGraphUnion(visit: GraphVisit, indices: var seq[int]): bool =
   ## Scan only retained bitmap words into one exact, intrinsically ordered inventory without sorting or growth.
-  result = newSeq[int](visit.retainedCount)
+  indices = newSeq[int](visit.retainedCount)
   var next = 0
   for word, present in visit.retained:
     var remaining = present
@@ -323,11 +323,12 @@ proc freezeGraphUnion(visit: GraphVisit): seq[int] =
     while remaining != 0:
       # Only a marked existing physical position can reach this output; unused final-word bits remain clear.
       if (remaining and 1) != 0:
-        result[next] = word*64+bit
+        if next >= indices.len: return false
+        indices[next] = word*64+bit
         inc next
       remaining = remaining shr 1
       inc bit
-  assert next == result.len # Per-record union counting and canonical freezing must agree exactly.
+  next == indices.len
 
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
@@ -719,7 +720,8 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
         default(array[31, byte]), source.limits.codec.trie, visit, counts)
       if checked != RepositoryError.None:
         return RepositoryResult[RepositorySelection](status: checked)
-    exact = freezeGraphUnion(visit)
+    if not freezeGraphUnion(visit, exact):
+      return RepositoryResult[RepositorySelection](status: RepositoryError.InvalidGraph)
     bytes = visit.retainedBytes # No traversal scratch or growable capacity survives in the accepted selection.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
@@ -747,7 +749,7 @@ proc exportRepositorySelection*(selection: RepositorySelection,
   if uint64(data.indices.len) > maximum or data.valueBytes > uint64(limits.valueBytes):
     return RepositoryResult[seq[TrieRecord]](status: RepositoryError.LimitExceeded)
   let source = data.source.data
-  assert source != nil
+  if source == nil: return RepositoryResult[seq[TrieRecord]](status: RepositoryError.Uninitialized)
   var records = newSeq[TrieRecord](data.indices.len)
   for index in 0..<data.indices.len:
     let position = data.indices[index]
@@ -910,7 +912,7 @@ proc measureRepositorySelection*(selection: RepositorySelection,
   var size = uint64(empty.value)
   let maximum = min(uint64(limits.encoded), uint64(high(int)))
   let source = data.source.data
-  assert source != nil
+  if source == nil: return RepositoryResult[int](status: RepositoryError.Uninitialized)
   for ordinal in 0..<data.indices.len:
     let index = data.indices[ordinal]
     let fixed = if source.table.records[index].kind == TrieRecordKind.Leaf: 72'u64 else: 97'u64
@@ -937,7 +939,7 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
   ## Full-width nonnegative extents and the independent whole-output ceiling are checked before narrowing.
   ## Reservations grant no record/graph authority; callers own their framing, checksum and outer interpretation.
   ## No raw records or validation flag are accepted; mutable collections still use the strict record codec.
-  ## Failure carries only Uninitialized/LimitExceeded; success owns bytes independent of every source owner.
+  ## Success owns bytes independent of every source owner.
   let measured = measureRepositorySelection(selection, limits)
   if measured.error != RepositoryError.None:
     return RepositoryResult[seq[byte]](status: measured.error) # No failed extent authorizes output allocation.
@@ -949,9 +951,9 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
   if bodyBytes > maximum-reserved:
     return RepositoryResult[seq[byte]](status: RepositoryError.LimitExceeded)
   let data = selection.data
-  assert data != nil # Exact measurement succeeded only for a private initialized immutable selection.
+  if data == nil: return RepositoryResult[seq[byte]](status: RepositoryError.Uninitialized)
   let source = data.source.data
-  assert source != nil # Selection construction retained its independently admitted source view.
+  if source == nil: return RepositoryResult[seq[byte]](status: RepositoryError.Uninitialized)
   const Magic = "RAGNAROK-RECORDS-V1\n"
   var output = newSeq[byte](int(reserved+bodyBytes))
   let prefix = int(prefixBytes)
@@ -981,7 +983,8 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
       offset += 32
       putCollectionHash(output, offset, cell.right)
       offset += 32 # Physical format retains both complete edges, including the left address's high bit.
-  assert offset == output.len-int(suffixBytes) # The writer must end exactly before the reserved suffix.
+  if offset != output.len-int(suffixBytes):
+    return RepositoryResult[seq[byte]](status: RepositoryError.InvalidRecords)
   RepositoryResult[seq[byte]](status: RepositoryError.None, completed: output)
 
 proc encodeRepositorySelection*(selection: RepositorySelection,
@@ -995,7 +998,7 @@ proc cloneRepositorySelection*(selection: RepositorySelection,
   let data = selection.data
   if data == nil: return RepositoryResult[NodeRepository](status: RepositoryError.Uninitialized)
   let source = data.source.data
-  assert source != nil
+  if source == nil: return RepositoryResult[NodeRepository](status: RepositoryError.Uninitialized)
   let inherited = source.limits.codec.trie
   let required = limits.codec.trie
   let oldPolicy = [uint64(inherited.items), uint64(inherited.nodes),

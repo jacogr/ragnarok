@@ -3,7 +3,6 @@
 
 ## Fresh canonical all-local shard checks and durable renewal derive a bounded assurance bitfield; returned facts alone grant no reusable signing authority.
 
-import std/assertions
 import ./[assurance_duty, assurance_store, assurance_record, availability_proof]
 import ../chain/genesis
 import ../codec/[assurances, bounded, report_owned]
@@ -98,8 +97,11 @@ proc confirm(owner: var AssuranceStore, specifier: AvailabilitySpecifier,
   if retained.error != AssuranceStoreError.None:
     return AssurancePossessionResult[bool](status: AssurancePossessionError.StorageFailure,
         storageReason: retained)
-  let info = retained.value.storedInfo.value
-  assert uint64(info.retainUntil) >= uint64(now)+AssuranceRetentionSeconds, "sealed renewal commits the complete new promise"
+  let info = retained.value.storedInfo
+  if info.error != AssuranceStoreError.None or uint64(now) > high(uint64)-AssuranceRetentionSeconds:
+    return AssurancePossessionResult[bool](status: AssurancePossessionError.Faulted)
+  if uint64(info.value.retainUntil) < uint64(now)+AssuranceRetentionSeconds:
+    return AssurancePossessionResult[bool](status: AssurancePossessionError.Faulted)
   AssurancePossessionResult[bool](status: AssurancePossessionError.None, completed: true)
 
 proc qualifyStoredAssurance*(owner: var AssuranceStore, source: BlockSnapshotResult,

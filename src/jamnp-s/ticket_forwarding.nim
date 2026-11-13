@@ -3,7 +3,7 @@
 
 ## Timed proxy broadcast owns bounded exact native requests and detached checked proofs, never a canonical graph or CPU lease.
 
-import std/[assertions, monotimes, times]
+import std/[monotimes, times]
 import ./[node, connections, read_stream, read_client, ticket_packet, ticket_validation, ticket_pool]
 import ../codec/[bounded, header, tickets]
 import ../codec/state/[safrole, trie]
@@ -142,13 +142,14 @@ proc advance*(owner: var TicketForwarding, streams: var NodeService, source: Tic
     owner.duration = duration
     owner.epoch = epoch
     owner.local = streams.localIdentity
-    owner.population = source.currentCount
+    let population = source.currentCount
     let pending = source.pendingCount
-    assert pending > 0 and pending <= MaxPendingNetworkTickets div 2
+    if population <= 0 or population > MaxTicketRecipients or pending <= 0 or
+        pending > MaxPendingNetworkTickets div 2: return false
+    owner.population = population
     owner.limit = pending*2 # Validate the bound before multiplying the actual population.
     owner.rows = newSeq[ForwardRow](owner.limit)
     owner.recipients = newSeq[StateEdKey](owner.population)
-    assert owner.population <= MaxTicketRecipients and owner.limit <= MaxPendingNetworkTickets
     for index in 0..<owner.population: owner.recipients[index] = source.currentAt(index)
     owner.configured = true
     owner.lastBlock = default(array[32, byte])
@@ -191,9 +192,15 @@ proc poll*(owner: var TicketForwarding, streams: var NodeService, clock: MonoTim
     if completed.error == ReadError.Unavailable and not expired: continue
     let row = owner.exchanges[index].row
     let recipient = owner.exchanges[index].recipient
-    assert row >= 0 and row < owner.count
+    if row < 0 or row >= owner.count or recipient < 0 or recipient >= owner.population:
+      discard streams.cancelRequest(owner.exchanges[index].ticket)
+      owner.clearExchange(index)
+      continue
     let status = owner.rows[row].status[recipient]
-    assert status in [1'u8, 3, 5]
+    if status notin [1'u8, 3, 5]:
+      discard streams.cancelRequest(owner.exchanges[index].ticket)
+      owner.clearExchange(index)
+      continue
     if not expired and completed.error == ReadError.None:
       owner.rows[row].status[recipient] = 6
       if owner.delivered < high(uint64): inc owner.delivered
@@ -226,7 +233,7 @@ proc dispatch*(owner: var TicketForwarding, streams: var NodeService, now: State
     if peer.error != NodeError.None: continue
     let request = decodeReadRequest(ReadKind.TicketDistribution, owner.rows[
         row].proof.packet.packetBytes)
-    assert request.error == ReadError.None
+    if request.error != ReadError.None: continue
     let admitted = streams.request(peer.value, request.value, ByteLimit(0))
     if admitted.error != NodeError.None: continue # Shared quota pressure consumes no cryptographic or transmission attempt.
     for index in 0..<MaxTicketForwards:
@@ -236,5 +243,6 @@ proc dispatch*(owner: var TicketForwarding, streams: var NodeService, now: State
             recipient: ordinal, started: clock)
         inc owner.active
         return true
-    assert false # The charged count proved an unused exchange slot before Native admission.
+    discard streams.cancelRequest(admitted.value)
+    return false
   false

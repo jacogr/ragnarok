@@ -4,7 +4,6 @@
 ## Bounded main-thread retention of complete hash-checked reports, independent of canonical state graphs.
 ## Cached content has no guarantee, execution, availability or judgment authority.
 
-import std/assertions
 import ./[read_stream, read_validation]
 import ../chain/reports
 
@@ -57,16 +56,19 @@ proc identity(request: ReadRequest): array[32, byte] {.requires: request.valid a
   result = default(array[32, byte])
   for index in 0..<32: result[index] = payload[index]
 
-proc removeOldest(cache: var ReportCache) =
+proc removeOldest(cache: var ReportCache): bool =
   ## One bounded scan removes the least recently inserted/accessed owner before retaining the replacement.
   var oldest = -1
   for index in 0..<cache.entries.len:
     if cache.entries[index].used:
       if oldest < 0 or cache.entries[index].age < cache.entries[oldest].age: oldest = index
-  assert oldest >= 0 and cache.count > 0
-  cache.bytes -= cache.entries[oldest].reply.byteLength
+  if oldest < 0 or cache.count <= 0: return false
+  let bytes = cache.entries[oldest].reply.byteLength
+  if bytes > cache.bytes: return false
+  cache.bytes -= bytes
   dec cache.count
   cache.entries[oldest] = default(CacheEntry)
+  true
 
 proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheError =
   ## Only a complete sealed verifier result can enter retention; peer bytes and guessed hashes cannot populate it directly.
@@ -92,7 +94,7 @@ proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheEr
   let frozen = captureReadReply(checked.request, wire)
   if frozen.error != ReadError.None: return ReportCacheError.BackendFailure
   while cache.count >= MaxCachedReports or cache.bytes > MaxReportCacheBytes-wire.len:
-    cache.removeOldest() # Private invariant guarantees a nonempty victim whenever capacity/bytes need reclamation.
+    if not cache.removeOldest(): return ReportCacheError.BackendFailure
   if cache.entries.len == 0:
     cache.entries = newSeq[CacheEntry](MaxCachedReports) # Allocate bounded slots only on the first accepted report.
   var position = -1
@@ -100,7 +102,7 @@ proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheEr
     if not cache.entries[index].used:
       position = index
       break
-  assert position >= 0
+  if position < 0: return ReportCacheError.BackendFailure
   inc cache.next
   cache.entries[position] = CacheEntry(used: true, identity: hash, age: cache.next,
       reply: frozen.value)

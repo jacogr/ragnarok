@@ -3,7 +3,6 @@
 
 ## Incremental bounded CE139/140/148 group grammar shares no heap or canonical state with native callbacks.
 
-import std/assertions
 import ../codec/natural
 
 type
@@ -118,6 +117,9 @@ proc segmentSelections*(kind: SegmentRequestKind, payload: openArray[byte]): Seg
   var selections = newSeq[SegmentSelection](cursor.itemCount)
   var offset, ordinal = 0
   while offset < payload.len:
+    let prefix = if kind == SegmentRequestKind.Segments: 32 else: 34
+    if payload.len-offset <= prefix:
+      return SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.InvalidFormat)
     var selected = default(SegmentSelection)
     for index in 0..<32: selected.root[index] = payload[offset+index]
     offset += 32
@@ -125,13 +127,19 @@ proc segmentSelections*(kind: SegmentRequestKind, payload: openArray[byte]): Seg
       selected.shard = uint16(payload[offset]) or (uint16(payload[offset+1]) shl 8)
       offset += 2
     let count = decode(payload.toOpenArray(offset, payload.len-1))
-    assert count.ok
+    if not count.ok:
+      return SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.InvalidFormat)
     offset += count.consumed
-    for index in 0..<int(uint64(count.value)):
+    let items = uint64(count.value)
+    if items > uint64((payload.len-offset) div 2) or items > uint64(selections.len-ordinal):
+      return SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.InvalidFormat)
+    for index in 0..<int(items):
       selected.index = uint16(payload[offset]) or (uint16(payload[offset+1]) shl 8)
       offset += 2
       selections[ordinal] = selected
       inc ordinal
+  if ordinal != selections.len:
+    return SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.InvalidFormat)
   SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.None,
       completed: selections)
 

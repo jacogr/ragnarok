@@ -4,7 +4,7 @@
 ## Stable application node host manages inbound replies and bounded checked outbound reads through exact Services leases.
 ## Close this host before retiring Services storage; peer claims never select local finality.
 
-import std/[assertions, monotimes, times]
+import std/[monotimes, times]
 import ./services
 import ./preimage_followup
 import ./work_dispatch
@@ -1269,7 +1269,7 @@ proc submitProduction(owner: var ApplicationNode, now: StateTime): bool {.raises
   if owner.producing or not owner.prepareProduction(now): return false
   let services = owner.services
   if services == nil: return false
-  assert owner.productionAttempt >= 0 and owner.productionAttempt < 2
+  if owner.productionAttempt < 0 or owner.productionAttempt >= 2: return false
   let admitted = services[].beginTicketProduction(owner.streams.localIdentity, now,
       owner.streams.connectivityEpoch, TicketAttempt(uint8(owner.productionAttempt)))
   if admitted.error != StateProofAdmissionError.None: return false

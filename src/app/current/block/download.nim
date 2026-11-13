@@ -4,7 +4,6 @@
 ## CE 128 one-child request and bounded incremental response adapter over the independent current raw-block input owner.
 ## Native callbacks copy bytes/observe FIN; producers explicitly enqueue or lend Ready input to a joined worker later.
 
-import std/assertions
 import ../../[chain, candidate]
 import ./input as current_block_input
 import ../../services
@@ -383,7 +382,11 @@ proc collectPreparation*(download: var CurrentBlockDownload, id: CurrentBlockDow
     discard download.fail(reason)
     return CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: false,
         refused: reason)
-  assert completion.kind == PreparationCompletionKind.CurrentCompleted
+  if completion.kind != PreparationCompletionKind.CurrentCompleted:
+    let reason = CurrentBlockDownloadFailure(status: CurrentBlockDownloadError.Uninitialized)
+    discard download.fail(reason)
+    return CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: false,
+        refused: reason)
   let prepared = completion.currentValue
   if prepared.error == CurrentBlockInputError.NeedsAncestors:
     download.pending.demand = prepared.ancestorDemand

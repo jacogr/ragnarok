@@ -200,10 +200,12 @@ proc tick*(server: var McpServer, context: QueryContext) =
       let error = osLastError()
       discard posix.close(accepted)
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP connection setup failed: " & $int32(error))
-    else:
+    elif server.connections[free].stream.start(accepted, maxBodyBytes = MaxMcpBody):
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted, maxBodyBytes = MaxMcpBody)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "MCP connection accepted")
+    else:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP stream could not start")
   else:
     let error = osLastError()
     if not retryableSocketError(error):

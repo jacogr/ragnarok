@@ -4,7 +4,6 @@
 ## Published TraceStep composition owns one pre-state, full block and post-state in normative order.
 ## Wire capture validates framing and complete opaque roots, not STF execution, signatures or chain authority.
 
-import std/assertions
 import ./state as trace_state
 import ../store
 import ../../codec/[block_codec, bounded]
@@ -132,10 +131,11 @@ proc copyTraceStep*(step: TraceStep, bytes: ByteLimit): TraceStepResult[seq[byte
     inc offset # Original validated child extents prove every destination coordinate.
   let middle = data.body.blockInfo.value.consumed
   let encoded = data.body.encodeOwnedBlock(output.toOpenArray(offset, offset+middle-1))
-  assert encoded.error == FrameError.None and encoded.value == middle
+  if encoded.error != FrameError.None or encoded.value != middle:
+    return fail[seq[byte]](TraceStepError.InvalidOwner)
   offset += middle
   for octet in last:
     output[offset] = octet
     inc offset # The final field exactly fills the already admitted total output.
-  assert offset == output.len
+  if offset != output.len: return fail[seq[byte]](TraceStepError.InvalidOwner)
   TraceStepResult[seq[byte]](status: TraceStepError.None, completed: output)

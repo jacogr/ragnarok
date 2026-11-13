@@ -4,7 +4,6 @@
 ## Bounded main-thread retention of complete hash-checked preimages, independent of canonical state graphs.
 ## Cached content has no guarantee, execution, availability or judgment authority.
 
-import std/assertions
 import ./[read_stream, read_validation]
 
 const MaxCachedPreimages* = 8 ## Fixed row capacity, independent of untrusted peer/preimage counts.
@@ -56,16 +55,19 @@ proc identity(request: ReadRequest): array[32, byte] {.requires: request.valid a
   result = default(array[32, byte])
   for index in 0..<32: result[index] = payload[index]
 
-proc removeOldest(cache: var PreimageCache) =
+proc removeOldest(cache: var PreimageCache): bool =
   ## One bounded scan removes the least recently inserted/accessed owner before retaining the replacement.
   var oldest = -1
   for index in 0..<MaxCachedPreimages:
     if cache.entries[index].used:
       if oldest < 0 or cache.entries[index].age < cache.entries[oldest].age: oldest = index
-  assert oldest >= 0 and cache.count > 0
-  cache.bytes -= cache.entries[oldest].reply.byteLength
+  if oldest < 0 or cache.count <= 0: return false
+  let bytes = cache.entries[oldest].reply.byteLength
+  if bytes > cache.bytes: return false
+  cache.bytes -= bytes
   dec cache.count
   cache.entries[oldest] = default(CacheEntry)
+  true
 
 proc remember*(cache: var PreimageCache, checked: CheckedReadReply): PreimageCacheError =
   ## Only a complete sealed verifier result can enter retention; peer bytes and guessed hashes cannot populate it directly.
@@ -87,13 +89,13 @@ proc remember*(cache: var PreimageCache, checked: CheckedReadReply): PreimageCac
   let frozen = captureReadReply(checked.request, wire)
   if frozen.error != ReadError.None: return PreimageCacheError.BackendFailure
   while cache.count >= MaxCachedPreimages or cache.bytes > MaxPreimageCacheBytes-wire.len:
-    cache.removeOldest() # Private invariant guarantees a nonempty victim whenever capacity/bytes need reclamation.
+    if not cache.removeOldest(): return PreimageCacheError.BackendFailure
   var position = -1
   for index in 0..<MaxCachedPreimages:
     if not cache.entries[index].used:
       position = index
       break
-  assert position >= 0
+  if position < 0: return PreimageCacheError.BackendFailure
   inc cache.next
   cache.entries[position] = CacheEntry(used: true, identity: hash, age: cache.next,
       reply: frozen.value)

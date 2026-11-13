@@ -494,7 +494,8 @@ proc commit*(store: var LightPagedStore, job: PreparedLightPublication): LightSt
   if before.error != LightStoreError.None: return LightStoreResult[LightStorageSnapshot](
       status: before.error) # Defaults and quarantine cannot mutate native state.
   let cache = store.cache
-  assert cache != nil
+  if cache == nil: return LightStoreResult[LightStorageSnapshot](
+      status: LightStoreError.RecoveryRequired)
   let source = job.source
   let target = job.target
   if source == nil or target == nil: return LightStoreResult[LightStorageSnapshot](
@@ -552,7 +553,8 @@ proc prepareLightRetirement*(store: LightPagedStore): LightStoreResult[PreparedL
   if selected.error != LightStoreError.None: return LightStoreResult[PreparedLightRetirement](
       status: selected.error) # Default/quarantined caches grant no cleanup job.
   let cache = store.cache
-  assert cache != nil
+  if cache == nil: return LightStoreResult[PreparedLightRetirement](
+      status: LightStoreError.RecoveryRequired)
   if not cache.pending: return LightStoreResult[PreparedLightRetirement](
       status: LightStoreError.NotReady) # No directory wildcard or inferred predecessor.
   LightStoreResult[PreparedLightRetirement](status: LightStoreError.None,
@@ -566,7 +568,8 @@ proc retire*(store: var LightPagedStore, job: PreparedLightRetirement): LightSto
   if selected.error != LightStoreError.None: return LightStoreResult[PagedReclamation](
       status: selected.error) # Uncertain owners require fresh startup.
   let cache = store.cache
-  assert cache != nil
+  if cache == nil: return LightStoreResult[PagedReclamation](
+      status: LightStoreError.RecoveryRequired)
   let expected = job.current
   if job.owner == nil or expected == nil or not job.previous.initialized: return LightStoreResult[
       PagedReclamation](status: LightStoreError.NotReady) # Default jobs have no deletion authority.

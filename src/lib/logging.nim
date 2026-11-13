@@ -5,7 +5,7 @@
 ## Producers never wait for the queue or perform output IO. Close joins after all producers retire;
 ## draining close can wait for a blocked output sink. Handles borrow their fixed-address owner.
 
-import std/[assertions, strutils, locks, rawthreads, atomics, times]
+import std/[strutils, locks, rawthreads, atomics, times]
 
 type
   LogLevel* {.pure.} = enum ## Increasing verbosity; Off admits no records.
@@ -203,7 +203,7 @@ proc submitLog*(writer: LogWriter, target: LogTarget, level: LogLevel,
   ## Acceptance copies one bounded record; busy/full queues drop rather than wait for a sink.
   if not enabled(writer, target, level): return false
   let owner = writer.owner
-  assert owner != nil
+  if owner == nil: return false
   let record = encode(target, level, message)
   if not tryAcquire(owner.lock):
     discard atomicFetchAdd(owner.dropped, 1'u64, moRelaxed)
@@ -245,6 +245,8 @@ proc stderrSink(context: nil pointer, batch: string) {.raises: [].} =
 proc run(raw: pointer) =
   ## Condition-driven consumer copies a bounded batch under lock, then releases it before IO.
   let owner = cast[ptr Logger](raw)
+  let sink = owner.sink
+  if sink == nil: return
   while true:
     var records = default(array[LogBatchRecords, LogRecord])
     acquire(owner.lock)
@@ -253,8 +255,6 @@ proc run(raw: pointer) =
       release(owner.lock)
       let lost = atomicLoad(owner.dropped, moRelaxed)
       if lost > 0 and ord(owner.policy.levels[ord(LogTarget.Startup)]) >= ord(LogLevel.Warn):
-        let sink = owner.sink
-        assert sink != nil
         let warning = encode(LogTarget.Startup, LogLevel.Warn, "logging dropped=" & $lost)
         var text = ""
         for index in 0..<warning.used: text.add(warning.bytes[index])
@@ -270,8 +270,6 @@ proc run(raw: pointer) =
     for index in 0..<taken:
       let record = records[index]
       for at in 0..<record.used: batch.add(record.bytes[at])
-    let sink = owner.sink
-    assert sink != nil
     sink(owner.context, batch)
     discard atomicFetchAdd(owner.processed, uint64(taken), moRelaxed)
     discard atomicFetchAdd(owner.batches, 1'u64, moRelaxed)

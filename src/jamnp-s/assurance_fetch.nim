@@ -3,7 +3,6 @@
 
 ## Bounded source-free CE137 plans preserve canonical descriptors, original assurer coordinates and actual current/prior-epoch guarantor identities without allocating the Cartesian request product.
 
-import std/assertions
 import ./[assurance_duty, availability_proof]
 import ../chain/genesis
 import ../codec/[bounded, assurances, guarantees, report_owned]
@@ -191,9 +190,10 @@ proc captureAssuranceFetch*(source: BlockSnapshotResult, local: StateEdKey,
         validator: selected.value)
       inc row.info.targets
       inc targets
+    if used >= cores.len: return refused[AssuranceFetchPlan](AssuranceFetchError.InvalidState)
     cores[used] = row
     inc used
-  assert used == cores.len, "whole canonical pending-row count"
+  if used != cores.len: return refused[AssuranceFetchPlan](AssuranceFetchError.InvalidState)
   AssuranceFetchResult[AssuranceFetchPlan](status: AssuranceFetchError.None,
     completed: AssuranceFetchPlan(data: FetchData(info: AssuranceFetchInfo(duty: facts,
       plannedBytes: required, targets: targets), cores: move(cores), locals: move(locals))))

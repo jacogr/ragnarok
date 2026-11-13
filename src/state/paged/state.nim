@@ -186,7 +186,7 @@ proc preparePagedState*(source: StateStoreSnapshot, history: openArray[StateStor
     for record in exported.value.records:
       records[next] = record # Private export payloads become immutable before any prepared handle is published.
       inc next
-  assert next == records.len
+  if next != records.len: return refused[PreparedPagedState](PagedStateError.RecordConflict)
   records.sort(compareRecord)
   var unique = 0
   for index in 0..<records.len:
@@ -234,11 +234,10 @@ proc preparePagedState*(source: StateStoreSnapshot, history: openArray[StateStor
 proc producer*(prepared: PreparedPagedState): FullPagedProducer {.requires: prepared.data != nil.} =
   ## An owned immutable transport can safely outlive source maps and be replayed for explicit native cleanup.
   let data = prepared.data
-  assert data != nil # Preserve the guarded owner proof for the local alias.
 
   proc next(pass: int, ordinal: uint64, output: var TrieRecord): FullPagedProducerStep {.closure.} =
     ## Mutable producer outputs are detached; an external caller cannot mutate private prepared backing storage.
-    assert data != nil # This owned callback retains the immutable prepared backing.
+    if data == nil: return FullPagedProducerStep.Failed
     if ordinal >= uint64(data.records.len): return FullPagedProducerStep.End
     let stored = data.records[int(ordinal)]
     output = stored

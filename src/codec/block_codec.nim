@@ -6,7 +6,6 @@
 ## Exposes typed component, extrinsic and block snapshots, composition codecs and checked
 ## child/cause accessors.
 
-import std/assertions
 import ./[bounded, composite, owned, tickets, assurances, guarantees, disputes, header]
 
 type
@@ -271,14 +270,14 @@ proc aliases[kind: static[ComponentKind]](owner: Component[kind], output: var op
     size: int): bool =
   ## Reject overlap with any byte of an immutable component before an enclosing operation's first write.
   let data = owner.data
-  assert data != nil # Internal commit helpers require a validated retained child.
+  if data == nil: return true # An absent child cannot authorize an output write.
   overlaps(unsafeAddr data.wire[0], data.wire.len, addr output[0], size)
 
 proc put[kind: static[ComponentKind]](owner: Component[kind], output: var openArray[byte],
     cursor: var int) =
   ## Commit a previously validated private component interval; parent capacity/aliases are already proved.
   let data = owner.data
-  assert data != nil # Internal commit helpers require a validated retained child.
+  if data == nil: return # The enclosing encoder checks the final cursor before reporting success.
   # Exact immutable child bytes preserve existing C.2 framing without another protocol encoder implementation.
   for i in 0..<data.wire.len:
     output[cursor] = data.wire[i]
@@ -295,6 +294,7 @@ proc encodeComponent*[kind: static[ComponentKind]](owner: Component[kind], outpu
       status: FrameError.AliasedBuffers) # Private retained bytes remain immutable.
   var cursor = 0
   put(owner, output, cursor)
+  if cursor != size: return FrameResult[int](status: FrameError.InvalidOwner)
   FrameResult[int](status: FrameError.None, completed: size)
 
 proc advance(cursor: var int, length: int, config: FrameConfig): FrameError =
@@ -557,7 +557,8 @@ proc encodeExtrinsic*(source: Extrinsic, config: FrameConfig, output: var openAr
       status: FrameError.AliasedBuffers) # Include all later source bytes.
   var cursor = 0
   putExtrinsic(source, output, cursor)
-  assert cursor == size
+  if cursor != size:
+    return FrameResult[int](status: FrameError.InvalidOwner)
   FrameResult[int](status: FrameError.None, completed: size)
 
 proc extrinsicInfo*(owner: OwnedExtrinsic): FrameResult[ExtrinsicInfo] =
@@ -647,7 +648,8 @@ proc encodeBlock*(source: Block, config: FrameConfig, output: var openArray[byte
   if measured.error != FrameError.None: return FrameResult[int](status: measured.error)
   let size = measured.value.consumed
   let extrinsicData = source.extrinsic.data
-  assert extrinsicData != nil # Successful complete measurement proves this retained child exists.
+  if extrinsicData == nil:
+    return FrameResult[int](status: FrameError.InvalidOwner)
   if output.len < size: return FrameResult[int](status: FrameError.OutputTooSmall) # Whole capacity precedes pointer access.
   if overlaps(unsafeAddr source, sizeof(source), addr output[0], size):
     return FrameResult[int](status: FrameError.AliasedBuffers) # Protect borrowed block descriptors and their ARC handles.
@@ -656,7 +658,8 @@ proc encodeBlock*(source: Block, config: FrameConfig, output: var openArray[byte
   var cursor = 0
   put(source.header, output, cursor)
   putExtrinsic(extrinsicData.source, output, cursor)
-  assert cursor == size
+  if cursor != size:
+    return FrameResult[int](status: FrameError.InvalidOwner)
   FrameResult[int](status: FrameError.None, completed: size)
 
 proc decodeBlock*(input: openArray[byte], config: FrameConfig): FrameResult[BlockRead] =

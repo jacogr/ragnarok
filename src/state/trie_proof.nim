@@ -128,7 +128,7 @@ proc copySlice*(lookup: VerifiedStateLookup, offset, length: uint64,
   if not lookup.found:
     return StateProofResult[seq[byte]](status: StateProofError.MissingValue) # Even an empty requested slice cannot turn absence into a present-empty value.
   let data = lookup.proof.data
-  assert data != nil # Bind the already validated immutable owner before payload access.
+  if data == nil: return StateProofResult[seq[byte]](status: StateProofError.Uninitialized)
   let size = uint64(data.value.len)
   if offset > size or length > size-offset:
     return StateProofResult[seq[byte]](status: StateProofError.InvalidRange) # Subtraction rejects overflowing full-width coordinates before narrowing or allocation.
@@ -149,7 +149,7 @@ proc sameVerifiedLookup*(left, right: VerifiedStateLookup): StateProofResult[boo
   if left.found:
     let a = left.proof.data
     let b = right.proof.data
-    assert a != nil and b != nil # Genuine verified lookups retain both immutable witnesses.
+    if a == nil or b == nil: return StateProofResult[bool](status: StateProofError.Uninitialized)
     if a.value.len != b.value.len:
       return StateProofResult[bool](status: StateProofError.None, completed: false)
     for i in 0..<a.value.len:

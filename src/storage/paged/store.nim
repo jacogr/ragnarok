@@ -4,7 +4,6 @@
 ## Storage-only durable paged-light owners: exclusive writers, sealed candidates and independent pinned readers.
 ## Complete stream verification precedes selection. Explicit close and passive post-confirmation diagnostics preserve uncertainty.
 
-import std/assertions
 import ./[io as paged_io, codec as paged_codec, stream as paged_stream]
 import ../managed/manifest as managed_manifest
 import ../light/delta as light_delta
@@ -923,7 +922,7 @@ proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: P
       true, context)
   if replayed.error != PagedNativeError.None: return rejected[PagedPublication, bool](replayed)
   let cleanup = candidate.data
-  assert cleanup != nil
+  if cleanup == nil: return refused[PagedPublication](PagedNativeError.InvalidCandidate)
   let expected = cleanup.checked.manifest.bytes
   let removed = discardPagedCandidate(writer, candidate, default(PagedManifest))
   if removed.error != PagedNativeError.None: return rejected[PagedPublication, PagedReclamation](removed)
@@ -933,7 +932,7 @@ proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: P
       PagedBuildKind.Replacement, true, context)
   if prepared.error != PagedNativeError.None: return rejected[PagedPublication, StorageDurability](prepared)
   let authored = candidate.data
-  assert authored != nil
+  if authored == nil: return refused[PagedPublication](PagedNativeError.InvalidCandidate)
   if authored.checked.manifest.bytes != expected:
     return PagedNativeResult[PagedPublication](status: PagedNativeError.StreamFailure,
         streamCause: PagedStreamError.ChangedInput)

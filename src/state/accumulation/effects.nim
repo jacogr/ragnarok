@@ -5,7 +5,7 @@
 ## Exposes prepared pairs, guarded current accounts/info/queues/staging/privileges and controlled mutations with a versioned allocation cursor.
 ## Guest memory, gas, registers, execution verdicts and publication belong to their caller's PVM layer.
 
-import std/[assertions, algorithm]
+import std/[algorithm]
 import ../../codec/[bounded, composite]
 import ../../codec/state/[outputs as state_outputs, accounts as state_accounts,
     layout as state_layout, requests as state_requests, service_values as state_service_values,
@@ -320,7 +320,9 @@ proc effectRequestFactAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationRequestFact](
         status: AccumulationEffectError.InvalidIndex)
   let data = context.data
-  assert data != nil
+  if data == nil:
+    return AccumulationEffectResult[AccumulationRequestFact](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationRequestFact](status: AccumulationEffectError.None,
       completed: data.requestFacts.values[int(uint64(index))])
 
@@ -339,7 +341,9 @@ proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateK
     # Repeated touches retain one identity and share its raw bytes through checked indexed reads.
     let fact = retained.values[factIndex]
     let data = fact.data
-    assert data != nil
+    if data == nil:
+      return AccumulationEffectResult[StorageFactsData](
+          status: AccumulationEffectError.InvalidState)
     if uint32(data.identity.service) == uint32(service) and array[31, byte](data.identity.key) ==
         array[31, byte](key):
       if data.identity.raw.len != raw.len:
@@ -402,7 +406,9 @@ proc effectStorageFactAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationStorageFact](
         status: AccumulationEffectError.InvalidIndex)
   let data = context.data
-  assert data != nil
+  if data == nil:
+    return AccumulationEffectResult[AccumulationStorageFact](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationStorageFact](status: AccumulationEffectError.None,
       completed: data.storageFacts.values[int(uint64(index))])
 
@@ -682,7 +688,8 @@ proc effectModifiedAccountAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[ServiceIndex](
         status: AccumulationEffectError.InvalidIndex) # Bound before native narrowing.
   let data = context.data
-  assert data != nil # Successful count retains this initialized owner.
+  if data == nil:
+    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
       completed: data.modified.values[int(uint64(index))])
 
@@ -693,7 +700,8 @@ proc effectAccountModified*(context: AccumulationEffectContext,
   if count.error != AccumulationEffectError.None:
     return AccumulationEffectResult[bool](status: count.error) # No fabricated false result for absent tracking.
   let data = context.data
-  assert data != nil # Successful count retains this initialized owner.
+  if data == nil:
+    return AccumulationEffectResult[bool](status: AccumulationEffectError.InvalidState)
   for modifiedIndex in 0..<data.modified.values.len:
     let value = data.modified.values[modifiedIndex]
     if uint32(value) == uint32(service):
@@ -723,7 +731,9 @@ proc effectAccountWriteFactAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationAccountWriteFact](
         status: AccumulationEffectError.InvalidIndex) # Bound before native narrowing.
   let data = context.data
-  assert data != nil # Successful count retains this initialized owner.
+  if data == nil:
+    return AccumulationEffectResult[AccumulationAccountWriteFact](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationAccountWriteFact](status: AccumulationEffectError.None,
       completed: data.writeFacts.values[int(uint64(index))])
 
@@ -747,7 +757,8 @@ proc effectAccountWriteKeyAt*(context: AccumulationEffectContext,
   if uint64(index) >= uint64(count.value):
     return AccumulationEffectResult[StateKey](status: AccumulationEffectError.InvalidIndex) # Check the full-width ordinal before narrowing.
   let data = context.data
-  assert data != nil # Successful count proves this retained immutable owner is initialized.
+  if data == nil:
+    return AccumulationEffectResult[StateKey](status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[StateKey](status: AccumulationEffectError.None,
     completed: data.accountKeys.keys[int(uint64(index))])
 
@@ -773,7 +784,9 @@ proc effectCreatedAccountFactAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationCreatedAccount](
         status: AccumulationEffectError.InvalidIndex) # Check upper bits before native narrowing.
   let data = context.data
-  assert data != nil # The successful count validated this exact immutable owner.
+  if data == nil:
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
     completed: data.created.values[int(uint64(index))])
 
@@ -799,7 +812,9 @@ proc effectDeletedAccountFactAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationDeletedAccount](
         status: AccumulationEffectError.InvalidIndex) # Check upper bits before native narrowing.
   let data = context.data
-  assert data != nil # The successful count validated this exact immutable owner.
+  if data == nil:
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
     completed: data.deleted.values[int(uint64(index))])
 
@@ -813,7 +828,9 @@ proc effectDeletedAccountStateAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[StateStoreSnapshot](
         status: AccumulationEffectError.InvalidIndex)
   let data = context.data
-  assert data != nil # The successful count validates this exact immutable selected context.
+  if data == nil:
+    return AccumulationEffectResult[StateStoreSnapshot](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[StateStoreSnapshot](status: AccumulationEffectError.None,
     completed: data.deleted.states[int(uint64(index))])
 
@@ -839,7 +856,9 @@ proc effectCreatedAccountAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationCreatedAccount](
         status: AccumulationEffectError.InvalidIndex) # Bound before narrowing.
   let data = context.data
-  assert data != nil # Successful count established the retained immutable owner.
+  if data == nil:
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
     completed: data.created.values[int(uint64(index))])
 
@@ -865,7 +884,9 @@ proc effectDeletedAccountAt*(context: AccumulationEffectContext,
     return AccumulationEffectResult[AccumulationDeletedAccount](
         status: AccumulationEffectError.InvalidIndex) # Prove the native index before narrowing.
   let data = context.data
-  assert data != nil # Successful count proves this immutable owner is initialized.
+  if data == nil:
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: AccumulationEffectError.InvalidState)
   AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
     completed: data.deleted.values[int(uint64(index))])
 
@@ -1009,7 +1030,9 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.Uninitialized)
   let previous = data.regular.data
-  assert previous != nil # Private construction preserves initialized children for every published pair.
+  if previous == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.InvalidState)
   let candidate = successorData(previous, previous.accounts)
   candidate.output = YieldValue(present: true, commitment: commitment)
   let current = AccumulationEffectContext(data: candidate)
@@ -1079,7 +1102,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # No default pair authorizes account lookup or retained bytes.
   let previous = data.regular.data
-  assert previous != nil # Only private constructors publish initialized children.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let size = uint64(bytes.len)
   if size >= uint64(high(uint32))-1:
     fail(AccumulationEffectError.InvalidLength) # Current request lengths exclude both reserved namespace prefixes.
@@ -1111,7 +1135,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   for provisionIndex in 0..<previous.provisions.values.len:
     let provision = previous.provisions.values[provisionIndex]
     let retained = provision.data
-    assert retained != nil # Published provision sequences contain initialized owners only.
+    if retained == nil:
+      fail(AccumulationEffectError.InvalidState)
     if uint32(retained.service) == uint32(service) and retained.bytes == bytes:
       fail(AccumulationEffectError.AlreadyProvided) # Duplicate refusal requires no additional record capacity.
   if uint64(previous.provisions.values.len) >= uint64(limits.items) or
@@ -1318,7 +1343,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   if uint64(key.len) > uint64(limit) or uint64(value.len) > uint64(limit):
     fail(AccumulationEffectError.LimitExceeded) # Bound both borrowed extents before hashing/allocation.
   let previous = data.regular.data
-  assert previous != nil # Private constructors retain complete current account snapshots.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   let service = target
   let accountKey = chapterServiceKey(StateChapter(255), service)
@@ -1417,7 +1443,9 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     return AccumulationEffectResult[AccumulationStorageChange](
         status: AccumulationEffectError.Uninitialized) # Defaults own no target.
   let current = data.regular.data
-  assert current != nil # Private pairs retain both complete dimensions.
+  if current == nil:
+    return AccumulationEffectResult[AccumulationStorageChange](
+        status: AccumulationEffectError.InvalidState)
   recordAccumulationStorage(effects, key, value, parameters, limit,
       current.initial.contextInfo.value.service)
 
@@ -1446,7 +1474,8 @@ proc recordAccumulationBless*(effects: AccumulationEffects, proposed: array[3, u
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize manager operations.
   let previous = data.regular.data
-  assert previous != nil # Private effect constructors retain initialized current snapshots.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let currentSnapshot = previous.privileges
   let current = currentSnapshot.privilegeInfo
   if current.error != PrivilegeError.None:
@@ -1549,7 +1578,8 @@ proc recordAccumulationAssign*(effects: AccumulationEffects, core: Authorization
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # Defaults cannot authorize queue replacement.
   let previous = data.regular.data
-  assert previous != nil # Every private pair retains complete children.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let info = previous.privileges.privilegeInfo.value
   if uint64(core) >= uint64(info.cores):
     fail(AccumulationEffectError.InvalidCore) # Bound the nominal core before native narrowing.
@@ -1629,7 +1659,8 @@ proc recordAccumulationDesignate*(effects: AccumulationEffects, validators: open
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize delegation.
   let previous = data.regular.data
-  assert previous != nil # All private pair constructors retain complete current versions.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let roles = previous.privileges.privilegeInfo.value
   if uint64(config.cores) != uint64(roles.cores):
     fail(AccumulationEffectError.InvalidState) # The complete state fixes the profile, not the proposed roster.
@@ -1682,7 +1713,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   if uint32(source.length) >= high(uint32)-1:
     fail(AccumulationEffectError.InvalidLength) # Validate public proposals before funding, probing or namespace hashing.
   let previous = data.regular.data
-  assert previous != nil # Private pairs retain complete current contexts.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   let roles = previous.privileges.privilegeInfo.value
   let selectedFunder = currentAccountMetadata(previous.accounts, funder)
@@ -1817,7 +1849,9 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     return AccumulationEffectResult[AccumulationServiceChange](
         status: AccumulationEffectError.Uninitialized) # Defaults own no funding source.
   let current = data.regular.data
-  assert current != nil # Private pairs retain both initialized dimensions.
+  if current == nil:
+    return AccumulationEffectResult[AccumulationServiceChange](
+        status: AccumulationEffectError.InvalidState)
   recordAccumulationNew(effects, source, parameters, probes,
       current.initial.contextInfo.value.service, AccumulationFundingMode(0))
 
@@ -1834,7 +1868,8 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # Default effects cannot select a target account.
   let previous = data.regular.data
-  assert previous != nil # Private pairs retain complete current versions.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   let key = chapterServiceKey(StateChapter(255), target)
   let found = previous.accounts.lookup(key)
@@ -1896,7 +1931,9 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
   let current = data.regular.data
-  assert current != nil # Private effect pairs retain both initialized dimensions.
+  if current == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.InvalidState)
   recordAccumulationUpgrade(effects, codeHash, accumulationGas, transferGas,
       current.initial.contextInfo.value.service)
 
@@ -1910,7 +1947,8 @@ proc recordAccumulationSupervisor*(effects: AccumulationEffects, target, supervi
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # A default pair owns no invocation authority.
   let previous = data.regular.data
-  assert previous != nil # Private pairs retain complete initialized dimensions.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   let selected = currentAccountMetadata(previous.accounts, target)
   if selected.error != AccumulationEffectError.None:
@@ -1980,7 +2018,8 @@ proc prepareAccumulationTransfer*(effects: AccumulationEffects,
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Funding requires an actual deposit schedule.
   let previous = data.regular.data
-  assert previous != nil # Private constructors retain complete current snapshots.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let original = currentAccountMetadata(previous.accounts, funder)
   if original.error != AccumulationEffectError.None:
     if original.error == AccumulationEffectError.UnknownService and uint32(funder) == uint32(
@@ -2033,7 +2072,9 @@ proc prepareAccumulationTransfer*(effects: AccumulationEffects,
     return AccumulationEffectResult[PreparedAccumulationTransfer](
         status: AccumulationEffectError.Uninitialized) # Defaults retain no source account.
   let previous = data.regular.data
-  assert previous != nil # Successful preparation retains a current context.
+  if previous == nil:
+    return AccumulationEffectResult[PreparedAccumulationTransfer](
+        status: AccumulationEffectError.InvalidState)
   prepareAccumulationTransfer(effects, destination, amount, gas, memo, parameters,
       previous.initial.contextInfo.value.service, AccumulationFundingMode(0))
 
@@ -2048,9 +2089,11 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
   if plan == nil:
     fail(AccumulationEffectError.Uninitialized) # A default handle grants no prepared transfer.
   let data = plan.source.data
-  assert data != nil # Only successful preparation creates a source-bound plan.
+  if data == nil:
+    fail(AccumulationEffectError.InvalidState)
   let previous = data.regular.data
-  assert previous != nil # Prepared immutable pairs always retain their current child.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let count = previous.transfers.values.len
   if uint64(count) >= uint64(limit) or count >= high(int) div sizeof(DeferredTransfer):
     fail(AccumulationEffectError.LimitExceeded) # Prove count+1 and typed allocation extent before appending.
@@ -2105,7 +2148,8 @@ proc recordAccumulationDirectTransfer*(effects: AccumulationEffects, funder: Ser
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Funding requires the actual deposit schedule.
   let previous = data.regular.data
-  assert previous != nil # Private pairs retain initialized current dimensions.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   let source = currentAccountMetadata(previous.accounts, funder)
   if source.error != AccumulationEffectError.None:
@@ -2209,7 +2253,8 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Preserve the validated invocation-profile contract.
   let previous = data.regular.data
-  assert previous != nil # Initialized pairs retain a complete regular account owner.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   let self = previous.initial.contextInfo.value.service
   if uint64(target) > uint64(high(uint32)):
     fail(AccumulationEffectError.UnknownService) # Full-width IDs never alias a valid service after narrowing.
@@ -2343,7 +2388,8 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Funding cannot use a fabricated schedule.
   let previous = data.regular.data
-  assert previous != nil # Private pair construction retains initialized current contexts.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   if uint32(length) >= high(uint32)-1:
     fail(AccumulationEffectError.InvalidLength) # Current length HUH precedes all target/history work.
   let self = previous.initial.contextInfo.value.service
@@ -2432,7 +2478,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
   let current = data.regular.data
-  assert current != nil # Private pairs retain initialized dimensions.
+  if current == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.InvalidState)
   recordAccumulationSolicit(effects, hash, length, parameters,
       current.initial.contextInfo.value.service)
 
@@ -2451,7 +2499,8 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Expunge age requires genuine validated parameters.
   let previous = data.regular.data
-  assert previous != nil # Published pairs retain initialized current contexts.
+  if previous == nil:
+    fail(AccumulationEffectError.InvalidState)
   if uint32(length) >= high(uint32)-1:
     fail(AccumulationEffectError.InvalidLength) # Current length HUH precedes all target/history work.
   let self = previous.initial.contextInfo.value.service
@@ -2562,6 +2611,8 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
   let current = data.regular.data
-  assert current != nil # Private pairs retain initialized dimensions.
+  if current == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.InvalidState)
   recordAccumulationForget(effects, hash, length, parameters,
       current.initial.contextInfo.value.service)

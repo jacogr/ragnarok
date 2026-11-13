@@ -6,7 +6,6 @@
 ## Exposes refinement contexts, explicit import alternatives, work-item/package codecs and
 ## retained item/blob access.
 
-import std/assertions
 import ../[natural, bounded, composite]
 import ./[digest as work_digest, report as work_report]
 
@@ -462,7 +461,8 @@ proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
   # Identity selectors are interpreted only within the previously proved complete manifest extent.
   for i in 0..<imports.value:
     let reference = decodeImportReference(input.toOpenArray(cursor, cursor+33))
-    assert reference.error == PackageError.None
+    if reference.error != PackageError.None:
+      return PackageResult[ItemLayout](status: reference.error)
     let added = dependency(state, reference.value.value)
     # Distinct dependencies are globally bounded.
     if added != PackageError.None:
@@ -579,7 +579,8 @@ proc encodeWorkItem*(value: WorkItem, config: PackageConfig, output: var openArr
     return PackageResult[int](status: PackageError.AliasedBuffers)
   var cursor = 0
   putItem(value, output, cursor)
-  assert cursor == measured.value
+  if cursor != measured.value:
+    return PackageResult[int](status: PackageError.InvalidOwner)
   measured
 
 proc capture(input: openArray[byte], layout: Layout): PackageData {.raises: [].} =
@@ -674,7 +675,8 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
   putNumber(value.items.len, output, cursor)
   # Preflight proved all nested item fields before this first package write.
   for item in value.items: putItem(item, output, cursor)
-  assert cursor == required
+  if cursor != required:
+    return PackageResult[int](status: PackageError.InvalidOwner)
   PackageResult[int](status: PackageError.None, completed: required)
 
 proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageResult[
@@ -797,7 +799,8 @@ proc importAt*(owner: OwnedWorkItem, index: int): PackageResult[ImportReference]
     return PackageResult[ImportReference](status: PackageError.InvalidIndex) # Never narrow or multiply an invalid index.
   let start = item.value.imports+34*index
   let parsed = decodeImportReference(data.wire.toOpenArray(start, start+33))
-  assert parsed.error == PackageError.None
+  if parsed.error != PackageError.None:
+    return PackageResult[ImportReference](status: parsed.error)
   PackageResult[ImportReference](status: PackageError.None, completed: parsed.value.value)
 
 proc extrinsicAt*(owner: OwnedWorkItem, index: int): PackageResult[ExtrinsicCommitment] {.raises: [].} =
@@ -813,7 +816,8 @@ proc extrinsicAt*(owner: OwnedWorkItem, index: int): PackageResult[ExtrinsicComm
     return PackageResult[ExtrinsicCommitment](status: PackageError.InvalidIndex) # Bounds precede address arithmetic.
   let start = item.value.extrinsics+36*index
   let parsed = decodeExtrinsicCommitment(data.wire.toOpenArray(start, start+35))
-  assert parsed.error == PackageError.None
+  if parsed.error != PackageError.None:
+    return PackageResult[ExtrinsicCommitment](status: parsed.error)
   PackageResult[ExtrinsicCommitment](status: PackageError.None, completed: parsed.value.value)
 
 proc copy(data: PackageData, start, length: int, output: var openArray[byte]): PackageResult[

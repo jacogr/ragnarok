@@ -4,7 +4,6 @@
 ## Complete canonical CE128/129/136/143 read backends. Run outside native callbacks under a host read
 ## lease; only frozen bounded wire replies survive publication. No light-state map is accepted.
 
-import std/assertions
 import ./[read_stream, block_service, preimage_announcement]
 import ../chain/[genesis, provider, reports]
 import ../codec/[bounded, natural]
@@ -29,11 +28,13 @@ func hashAt(payload: openArray[byte]): BlockHash {.requires: payload.len >= 32.}
   for index in 0..<32: raw[index] = payload[index]
   BlockHash(raw)
 
-proc appendFrame(output: var seq[byte], payload: seq[byte]) =
+proc appendFrame(output: var seq[byte], payload: seq[byte]): bool =
   ## Callers preflight the aggregate ceiling; each message has one E4 and no count prefix.
-  assert payload.len <= MaxReadReplyBytes-4 and output.len <= MaxReadReplyBytes-payload.len-4
+  if payload.len > MaxReadReplyBytes-4 or output.len > MaxReadReplyBytes-payload.len-4:
+    return false
   for index in 0..<4: output.add(byte((uint32(payload.len) shr (8*index)) and 255))
   for octet in payload: output.add(octet)
+  true
 
 proc stateReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Select a contiguous sorted range first, then build both boundary witnesses in one map pass.
@@ -102,8 +103,8 @@ proc stateReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   let size = boundaries.len+pairs.len+8 # Both independently bounded owners fit the hard local ceiling.
   if uint64(size) > budget and count != 1: return readFailure[ReadReply](ReadError.LimitExceeded)
   var wire: seq[byte] = @[]
-  appendFrame(wire, boundaries)
-  appendFrame(wire, pairs)
+  if size > MaxReadReplyBytes or not appendFrame(wire, boundaries) or not appendFrame(wire, pairs):
+    return readFailure[ReadReply](ReadError.LimitExceeded)
   captureReadReply(request, wire)
 
 proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
@@ -132,7 +133,7 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
     if hashed.error != CryptoError.None: return readFailure[ReadReply](ReadError.BackendFailure)
     if array[32, byte](hashed.value) != expected: continue # Truncated storage-key collisions cannot substitute another blob.
     var wire: seq[byte] = @[]
-    appendFrame(wire, bytes)
+    if not appendFrame(wire, bytes): return readFailure[ReadReply](ReadError.LimitExceeded)
     return captureReadReply(request, wire)
   readFailure[ReadReply](ReadError.Unavailable)
 
@@ -169,7 +170,7 @@ proc reportReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
     if encoded.error != OwnershipError.None or encoded.value != body.len:
       return readFailure[ReadReply](ReadError.BackendFailure)
     var wire: seq[byte] = @[]
-    appendFrame(wire, body) # CE136 carries the bare report, excluding guarantee slot, credentials and any sequence count.
+    if not appendFrame(wire, body): return readFailure[ReadReply](ReadError.LimitExceeded)
     captureReadReply(request, wire)
   of ReportReadError.Missing, ReportReadError.Uninitialized:
     readFailure[ReadReply](ReadError.Unavailable) # Missing content resets the exact requesting stream.

@@ -198,7 +198,10 @@ proc initializeManagedDiskChain*(disk: var DiskStateStore, path: string, chain: 
   if initialized.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: initialized)
-  assert uint64(disk.generation.value) == uint64(generation)
+  let actual = disk.generation
+  if actual.error != DiskStoreError.None or uint64(actual.value) != uint64(generation):
+    discard disk.close()
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
 
 proc acquireDiskChain(disk: var DiskStateStore, path: string, chain: StorageChainId,

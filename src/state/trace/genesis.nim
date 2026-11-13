@@ -3,7 +3,6 @@
 
 ## Published Genesis wire owns a full header and one complete opaque RawState, without implicit trust.
 
-import std/assertions
 import ./state as trace_state
 import ../store
 import ../../codec/[header, bounded]
@@ -111,7 +110,8 @@ proc copyTraceGenesis*(source: TraceGenesis, bytes: ByteLimit): TraceGenesisResu
   var output = newSeq[byte](data.consumed)
   let head = data.header.headerInfo.value.consumed
   let encoded = data.header.encodeOwnedHeader(output.toOpenArray(0, head-1))
-  assert encoded.error == HeaderError.None and encoded.value == head
+  if encoded.error != HeaderError.None or encoded.value != head:
+    return fail[seq[byte]](TraceGenesisError.InvalidOwner)
   let state = data.state.copyTraceState(bytes).value
   for index in 0..<state.len: output[head+index] = state[
       index] # Exact child extents fit the preflighted complete destination.

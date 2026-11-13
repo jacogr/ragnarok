@@ -5,7 +5,7 @@
 ## The caller owns the HTTP listener, stable bridge/task-state storage and joined IO-runtime lifetime.
 ## An idle stock recv cannot yet be interrupted by bridge closure: retain storage until both tasks finish.
 
-import std/[assertions, atomics, websocket, ioring]
+import std/[atomics, websocket, ioring]
 import std/httpserver as http
 import ./transport_bridge as transport
 import ./wire
@@ -27,8 +27,7 @@ proc transferred*(state: var WebSocketTaskState): uint64 =
 proc progress(state: ptr WebSocketTaskState) =
   ## Each state has one producer; guarded counting cannot wrap into false progress.
   let count = atomicLoad(state.frames, moRelaxed)
-  assert count < high(uint64)
-  atomicStore(state.frames, count + 1, moRelease)
+  if count < high(uint64): atomicStore(state.frames, count + 1, moRelease)
 
 proc yieldTransport() {.passive.} =
   ## Public reactor timeout yields a bounded task turn without blocking a pool worker on a native sleep.

@@ -4,7 +4,7 @@
 ## Stable authenticated node stream owner. Native callbacks retain only protocol bytes/facts;
 ## host code collects fixed read tasks and supplies frozen replies after managed CPU work.
 
-import std/[assertions, monotimes, times]
+import std/[monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
 import ./network
 import ./work_stream
@@ -274,21 +274,33 @@ func localStream(peer: NodePeer, number: NativeStreamId): bool =
   ## IETF bit zero names client/server initiation independently of the connection's local direction.
   ((uint64(number) and 1) == 0) == peer.initiated
 
+proc failAccounting(owner: var NodeService) =
+  ## Quarantine this transport on inconsistent local credit, retaining frames until native retirement.
+  owner.failure = NodeError.BackendFailure
+  owner.stopping = true
+  owner.node.stop()
+
+proc replaceCharge(used: var uint64, previous, next, limit: uint64): bool =
+  ## Admit a replacement charge without mutating counters on refusal.
+  if previous > used: return false
+  let other = used-previous
+  if other > limit or next > limit-other: return false
+  used = other+next
+  true
+
 proc releaseFrame(owner: var NodeService, index: int) =
   ## Final native retirement revokes tickets and refunds exactly the owned frame's byte charges.
   let frame = addr owner.frames[index]
-  if frame.kind in [FrameKind.Client, FrameKind.SharingClient]:
-    assert frame.inputBytes <= owner.clientUsed
-    owner.clientUsed -= frame.inputBytes
-  elif frame.inputHandshake:
-    assert frame.inputBytes <= owner.handshakeUsed
-    owner.handshakeUsed -= frame.inputBytes
-  else:
-    assert frame.inputBytes <= owner.inputUsed
-    owner.inputUsed -= frame.inputBytes
-  assert frame.outputBytes <= owner.outputUsed and frame.replyBytes <= owner.replyUsed
-  owner.outputUsed -= frame.outputBytes
-  owner.replyUsed -= frame.replyBytes
+  let refundedInput =
+    if frame.kind in [FrameKind.Client, FrameKind.SharingClient]:
+      replaceCharge(owner.clientUsed, frame.inputBytes, 0, ClientBudget)
+    elif frame.inputHandshake:
+      replaceCharge(owner.handshakeUsed, frame.inputBytes, 0, HandshakeBudget)
+    else:
+      replaceCharge(owner.inputUsed, frame.inputBytes, 0, InputBudget)
+  let refundedOutput = replaceCharge(owner.outputUsed, frame.outputBytes, 0, OutputBudget)
+  let refundedReply = replaceCharge(owner.replyUsed, frame.replyBytes, 0, ReplyBudget)
+  if not refundedInput or not refundedOutput or not refundedReply: owner.failAccounting()
   frame[] = default(Frame)
 
 proc closeFrame(owner: var NodeService, index: int) =
@@ -300,7 +312,9 @@ proc closeFrame(owner: var NodeService, index: int) =
     let peerPosition = owner.peerIndex(frame.peer)
     if peerPosition >= 0 and owner.peers[peerPosition].readQueued and owner.peers[
         peerPosition].readIndex == index:
-      assert owner.callbacks == 0
+      if owner.callbacks != 0:
+        owner.failAccounting()
+        return
       discard owner.node.cancelStreamOpens(frame.peer) # Public native cancellation suppresses delayed open callbacks before this slot is reusable.
       owner.peers[peerPosition].readQueued = false
     owner.releaseFrame(index) # A cancelled queued intent or already-retired complete stream owns no live native handle.
@@ -316,10 +330,9 @@ proc accountClient(owner: var NodeService, index: int) =
   if bytes > frame.inputBytes or frame.client.writtenBytes >
       frame.offset: frame.activity = owner.now
   frame.offset = frame.client.writtenBytes
-  assert frame.inputBytes <= owner.clientUsed
-  owner.clientUsed -= frame.inputBytes
-  assert bytes <= ClientBudget-owner.clientUsed
-  owner.clientUsed += bytes
+  if not replaceCharge(owner.clientUsed, frame.inputBytes, bytes, ClientBudget):
+    owner.failAccounting()
+    return
   frame.inputBytes = bytes
 
 proc accountSharingClient(owner: var NodeService, index: int) =
@@ -329,10 +342,9 @@ proc accountSharingClient(owner: var NodeService, index: int) =
   let written = frame.sharingClient.writtenBytes
   if bytes > frame.inputBytes or written > frame.offset: frame.activity = owner.now
   frame.offset = written
-  assert frame.inputBytes <= owner.clientUsed
-  owner.clientUsed -= frame.inputBytes
-  assert bytes <= ClientBudget-owner.clientUsed
-  owner.clientUsed += bytes
+  if not replaceCharge(owner.clientUsed, frame.inputBytes, bytes, ClientBudget):
+    owner.failAccounting()
+    return
   frame.inputBytes = bytes
 
 proc accountWork(owner: var NodeService, index: int) =
@@ -340,10 +352,9 @@ proc accountWork(owner: var NodeService, index: int) =
   let frame = addr owner.frames[index]
   let bytes = frame.work.receivedBytes
   if bytes > frame.inputBytes: frame.activity = owner.now
-  assert frame.inputBytes <= owner.inputUsed
-  owner.inputUsed -= frame.inputBytes
-  assert bytes <= InputBudget-owner.inputUsed
-  owner.inputUsed += bytes
+  if not replaceCharge(owner.inputUsed, frame.inputBytes, bytes, InputBudget):
+    owner.failAccounting()
+    return
   frame.inputBytes = bytes
 
 proc accountSharing(owner: var NodeService, index: int) =
@@ -352,10 +363,9 @@ proc accountSharing(owner: var NodeService, index: int) =
   let bytes = frame.sharing.receivedBytes
   let written = frame.sharing.writtenBytes
   if bytes > frame.inputBytes or written > frame.offset: frame.activity = owner.now
-  assert frame.inputBytes <= owner.inputUsed
-  owner.inputUsed -= frame.inputBytes
-  assert bytes <= InputBudget-owner.inputUsed
-  owner.inputUsed += bytes
+  if not replaceCharge(owner.inputUsed, frame.inputBytes, bytes, InputBudget):
+    owner.failAccounting()
+    return
   frame.inputBytes = bytes
   frame.offset = written
 
@@ -363,10 +373,9 @@ proc accountRead(owner: var NodeService, index: int) =
   ## Heap-backed batch requests retain their physical input charge until the actual native close.
   let frame = addr owner.frames[index]
   let bytes = frame.read.bufferedBytes
-  assert frame.inputBytes <= owner.inputUsed
-  owner.inputUsed -= frame.inputBytes
-  assert bytes <= InputBudget-owner.inputUsed
-  owner.inputUsed += bytes
+  if not replaceCharge(owner.inputUsed, frame.inputBytes, bytes, InputBudget):
+    owner.failAccounting()
+    return
   frame.inputBytes = bytes
 
 proc accountAnnouncement(owner: var NodeService, index: int) =
@@ -379,21 +388,17 @@ proc accountAnnouncement(owner: var NodeService, index: int) =
   frame.offset = offset
   let output = uint64(frame.announcement.pendingOutputBytes)
   if output > 0 and frame.outputBytes == 0: frame.outputStarted = owner.now
-  if frame.inputHandshake:
-    assert frame.inputBytes <= owner.handshakeUsed
-    owner.handshakeUsed -= frame.inputBytes
-    assert input <= HandshakeBudget-owner.handshakeUsed
-    owner.handshakeUsed += input
-  else:
-    assert frame.inputBytes <= owner.inputUsed
-    owner.inputUsed -= frame.inputBytes
-    assert input <= InputBudget-owner.inputUsed
-    owner.inputUsed += input
+  var chargedInput = if frame.inputHandshake: owner.handshakeUsed else: owner.inputUsed
+  var chargedOutput = owner.outputUsed
+  let inputLimit = if frame.inputHandshake: HandshakeBudget else: InputBudget
+  if not replaceCharge(chargedInput, frame.inputBytes, input, inputLimit) or
+      not replaceCharge(chargedOutput, frame.outputBytes, output, OutputBudget):
+    owner.failAccounting()
+    return
+  if frame.inputHandshake: owner.handshakeUsed = chargedInput
+  else: owner.inputUsed = chargedInput
+  owner.outputUsed = chargedOutput
   frame.inputBytes = input
-  assert frame.outputBytes <= owner.outputUsed
-  owner.outputUsed -= frame.outputBytes
-  assert output <= OutputBudget-owner.outputUsed
-  owner.outputUsed += output
   frame.outputBytes = output
 
 proc bindPersistent(owner: var NodeService, index: int, local: bool): bool =
@@ -482,6 +487,9 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
   defer: dec owner.callbacks
   var position = owner[].frameIndex(peer, stream)
   if event == 0:
+    if owner.stopping:
+      streamAbort(stream)
+      return
     let peerPosition = owner[].peerIndex(peer)
     if localStream(peer, stream.streamId) and peerPosition >= 0 and owner.peers[
         peerPosition].readQueued:
@@ -694,14 +702,22 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.judgmentEnabled = false
   owner.node.close()
   for index in 0..<owner.frames.len:
-    assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
+    if owner.frames[index].kind != FrameKind.Empty:
+      owner.failure = NodeError.BackendFailure
+      owner.releaseFrame(index)
   owner.frames = @[]
   owner.peers = @[]
   owner.local = default(LocalContext)
   owner.node.releaseClosedStorage()
   owner.opened = false
-  assert owner.inputUsed == 0 and owner.handshakeUsed == 0 and owner.outputUsed == 0 and
-      owner.replyUsed == 0 and owner.clientUsed == 0
+  if owner.inputUsed != 0 or owner.handshakeUsed != 0 or owner.outputUsed != 0 or
+      owner.replyUsed != 0 or owner.clientUsed != 0:
+    owner.failure = NodeError.BackendFailure
+  owner.inputUsed = 0
+  owner.handshakeUsed = 0
+  owner.outputUsed = 0
+  owner.replyUsed = 0
+  owner.clientUsed = 0
 
 proc stop*(owner: var NodeService) =
   ## Callback-safe intent revokes new work; it does not join or release a host's canonical read lease.

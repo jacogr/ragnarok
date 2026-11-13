@@ -3,7 +3,6 @@
 
 ## Closed canonical CE137 acquisition and existing-coordinate probes verify exact assigned data before synchronized retention or restoration; fixed completion facts grant no signing capability.
 
-import std/assertions
 import ../../jamnp-s/[assurance_duty, assurance_store, assurance_record, availability_proof]
 import ../../chain/genesis
 import ../../codec/[bounded, assurances, report_owned, owned]
@@ -242,7 +241,8 @@ proc executeAssuranceAcquisition*(job: AssuranceAcquisitionJob,
     return AssuranceAcquisitionResult[AssuranceAcquisitionInfo](
         status: AssuranceAcquisitionError.StorageFailure, storageReason: stored)
   let record = stored.value.storedInfo
-  assert record.error == AssuranceStoreError.None, "sealed successful store receipt has fixed metadata"
+  if record.error != AssuranceStoreError.None:
+    return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.Faulted)
   AssuranceAcquisitionResult[AssuranceAcquisitionInfo](status: AssuranceAcquisitionError.None,
     completed: AssuranceAcquisitionInfo(duty: duty.dutyInfo.value, core: data.core,
       validator: duty.localIndex(data.ordinal).value, record: record.value))

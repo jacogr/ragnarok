@@ -4,7 +4,6 @@
 ## Initialize a trace replay chain only from independently supplied header/state anchors and full Parameters.
 ## The published Genesis file cannot select its own trust or infer a chain profile.
 
-import std/assertions
 import ../chain
 import ../../chain/[genesis, parameters, provider]
 import ../../codec/[header, bounded]
@@ -61,7 +60,8 @@ proc bootstrapTraceChain*(source: TraceGenesis, trust: TraceBootstrapTrust,
   let header = source.traceGenesisHeader.value
   var wire = newSeq[byte](header.headerInfo.value.consumed)
   let encoded = header.encodeOwnedHeader(wire)
-  assert encoded.error == HeaderError.None
+  if encoded.error != HeaderError.None or encoded.value != wire.len:
+    return TraceBootstrapResult(status: TraceBootstrapError.InvalidOwner)
   let state = source.traceGenesisState.value.traceStateSnapshot.value
   let captured = captureBlockSnapshot(wire, state, parameters)
   if captured.error != GenesisError.None:

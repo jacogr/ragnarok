@@ -5,7 +5,7 @@
 ## The host pauses RPC and all aliases, collects the actual IO outcome, then installs canonical/RPC state.
 ## There is no cancel-as-rollback operation: joined shutdown preserves every operation that entered IO.
 
-import std/[assertions, locks, rawthreads]
+import std/[locks, rawthreads]
 import ./chain as disk_chain
 import ../light/store as light_store
 import ../../state/disk_store
@@ -44,7 +44,7 @@ type
     lock: Lock
     changed: Cond
     thread: RawThread
-    started, stopping: bool
+    started, stopping, entered: bool
     phase: DiskWorkerPhase
     next: uint64
     identity: nil WorkerIdentity
@@ -132,40 +132,38 @@ func lightRetirementValue*(completion: DiskPublicationCompletion): LightStoreRes
   ## Keep actual light cleanup outcomes separate from both full-state and light core publication.
   completion.lightRetirementOutcome
 
-proc execute(worker: ptr DiskPublicationWorker) =
+proc execute(worker: ptr DiskPublicationWorker): bool =
   ## Never touch host canonical/RPC owners; all temporary ARC aliases retire before publishing Done.
   let disk = worker.disk
   case worker.operation
   of DiskOperation.LightPublication:
     let light = worker.light
     let publication = worker.lightPublication
-    assert light != nil and publication != nil
+    if light == nil or publication == nil: return false
     worker.lightOutcome = light[].commit(publication[])
   of DiskOperation.LightRetirement:
     let light = worker.light
     let retirement = worker.lightRetirement
-    assert light != nil and retirement != nil
+    if light == nil or retirement == nil: return false
     worker.lightRetirementOutcome = light[].retire(retirement[])
   of DiskOperation.Retirement:
-    assert disk != nil # Full-state operations retain their distinct complete-store owner.
     let retirement = worker.retirement
-    assert retirement != nil
+    if disk == nil or retirement == nil: return false
     worker.retirementOutcome = commitPagedRetirement(disk[], retirement[])
   of DiskOperation.Maintenance:
-    assert disk != nil # Full-state operations retain their distinct complete-store owner.
     let maintenance = worker.maintenance
-    assert maintenance != nil
+    if disk == nil or maintenance == nil: return false
     worker.maintenanceOutcome = commitDiskMaintenance(disk[], maintenance[])
   of DiskOperation.CurrentPublication:
-    assert disk != nil # Full-state operations retain their distinct complete-store owner.
     let publication = worker.currentPublication
-    assert publication != nil
+    if disk == nil or publication == nil: return false
     worker.outcome = commitDiskPublication(disk[], publication[])
   of DiskOperation.Publication:
-    assert disk != nil # Full-state operations retain their distinct complete-store owner.
     let publication = worker.publication
-    assert publication != nil
+    if disk == nil or publication == nil: return false
     worker.outcome = commitDiskPublication(disk[], publication[]) # Every payload uses the same excluded activation and receipt lifetime.
+
+  true
 
 proc run(raw: pointer) =
   ## Condition-driven one-slot execution performs no network callbacks or host installation.
@@ -179,8 +177,9 @@ proc run(raw: pointer) =
       return # Queued-only shutdown enters no IO; an already executing operation always reaches Done first.
     worker.phase = DiskWorkerPhase.Executing
     release(worker.lock)
-    execute(worker)
+    let entered = execute(worker)
     acquire(worker.lock)
+    worker.entered = entered
     worker.phase = DiskWorkerPhase.Done # All operation-stack aliases have retired before host access is permitted.
 
 proc start*(worker: var DiskPublicationWorker): bool {.raises.} =
@@ -387,7 +386,9 @@ proc submitRetirement*(worker: var DiskPublicationWorker, light: var LightPagedS
 
 proc completion(worker: var DiskPublicationWorker): DiskPublicationCompletion =
   ## Only Done collection or joined Done shutdown moves the actual selected operation result once.
-  if worker.operation == DiskOperation.LightPublication:
+  if not worker.entered:
+    DiskPublicationCompletion(status: DiskCompletionKind.NotExecuted)
+  elif worker.operation == DiskOperation.LightPublication:
     DiskPublicationCompletion(status: DiskCompletionKind.LightCompleted, lightOutcome: move(
         worker.lightOutcome))
   elif worker.operation == DiskOperation.LightRetirement:

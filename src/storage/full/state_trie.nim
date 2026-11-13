@@ -150,16 +150,18 @@ proc writeSplit(ordered: openArray[WriteIndex], first, stop, depth: int): int =
   lower
 
 proc buildInitial(ordered: openArray[WriteIndex], writes: openArray[StateEntry],
-    first, stop, depth: int): nil TrieNode =
+    first, stop, depth: int, invalid: var bool): nil TrieNode =
   ## Build each final node once from a sorted unique range sharing the previous key bits.
   if first == stop: return nil # An empty partition has the canonical empty identity.
   if stop-first == 1:
     let write = writes[ordered[first].position]
     return leaf(write.key, write.value) # Singleton leaves need no intervening unary branches.
-  assert depth < 248 # Distinct full keys must split before exhausting their serialized bits.
+  if depth >= 248:
+    invalid = true
+    return nil
   let split = writeSplit(ordered, first, stop, depth)
-  let left = buildInitial(ordered, writes, first, split, depth+1)
-  let right = buildInitial(ordered, writes, split, stop, depth+1)
+  let left = buildInitial(ordered, writes, first, split, depth+1, invalid)
+  let right = buildInitial(ordered, writes, split, stop, depth+1, invalid)
   branch(left, right) # Retain unary branches whenever their nonempty child contains multiple leaves.
 
 proc remove(node: nil TrieNode, key: StateKey, depth: int): nil TrieNode =
@@ -192,7 +194,7 @@ proc insert(node: nil TrieNode, added: TrieNode, depth: int): nil TrieNode =
   branch(insert(node.left, added, depth+1), node.right)
 
 proc mergeWrites(node: nil TrieNode, ordered: openArray[WriteIndex],
-    writes: openArray[TrieWrite], first, stop, depth: int): nil TrieNode =
+    writes: openArray[TrieWrite], first, stop, depth: int, invalid: var bool): nil TrieNode =
   ## Copy the union of affected paths once, sharing every complete subtree without a routed write.
   if first == stop: return node # An untouched subtree retains its exact published owner identity.
   if stop-first == 1:
@@ -201,7 +203,9 @@ proc mergeWrites(node: nil TrieNode, ordered: openArray[WriteIndex],
       return remove(node, write.key, depth) # Absent deletion propagates the original identity unchanged.
     return insert(node, leaf(write.key, write.value),
         depth) # Replacement never retains both leaf versions in a cached sum.
-  assert depth < 248 # Unique routed write keys must partition before the complete key domain ends.
+  if depth >= 248:
+    invalid = true
+    return nil
   var left: nil TrieNode = nil
   var right: nil TrieNode = nil
   if node != nil:
@@ -212,8 +216,8 @@ proc mergeWrites(node: nil TrieNode, ordered: openArray[WriteIndex],
       left = node.left # Immutable children remain independently retained while both candidates are built.
       right = node.right
   let split = writeSplit(ordered, first, stop, depth)
-  let changedLeft = mergeWrites(left, ordered, writes, first, split, depth+1)
-  let changedRight = mergeWrites(right, ordered, writes, split, stop, depth+1)
+  let changedLeft = mergeWrites(left, ordered, writes, first, split, depth+1, invalid)
+  let changedRight = mergeWrites(right, ordered, writes, split, stop, depth+1, invalid)
   if node != nil and not node.leaf and changedLeft == left and changedRight == right:
     return node # A multi-key absent-delete batch must preserve revision and shared branch identities.
   branch(changedLeft, changedRight) # Normalize only the final children after all routed deletions/replacements.
@@ -323,7 +327,9 @@ proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult
         return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Deleted bytes release budget before insertion.
       inc count
       total += size
-  let candidate = mergeWrites(data.root, ordered, writes, 0, ordered.len, 0)
+  var invalid = false
+  let candidate = mergeWrites(data.root, ordered, writes, 0, ordered.len, 0, invalid)
+  if invalid: return TrieResult[FullStateTrie](status: TrieError.BackendFailure)
   if nodeCount(candidate) > uint64(limits.trie.nodes):
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Exact final topology refuses before any hashing.
   let hashed = hashCandidate(candidate, limits.trie.perValue)
@@ -369,7 +375,9 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Preserve the final-map extent contract.
   if uint64(entries.len) > high(uint64) div 249:
     return TrieResult[FullStateTrie](status: TrieError.LengthOverflow) # Bound every cached topology addition before building.
-  let candidate = buildInitial(ordered, entries, 0, ordered.len, 0)
+  var invalid = false
+  let candidate = buildInitial(ordered, entries, 0, ordered.len, 0, invalid)
+  if invalid: return TrieResult[FullStateTrie](status: TrieError.BackendFailure)
   if nodeCount(candidate) > uint64(limits.trie.nodes):
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Exact topology refuses before any cryptographic operation.
   let hashed = hashCandidate(candidate, limits.trie.perValue)
@@ -396,7 +404,8 @@ proc prove*(trie: FullStateTrie, key: StateKey,
           limits.valueBytes):
         return TrieResult[StateProof](status: TrieError.LimitExceeded) # Only present raw bytes consume the output-value ceiling.
       break # A matching or different-key singleton is terminal evidence.
-    assert count <= 248 # Complete private graphs have at most 248 branch levels.
+    if count > 248:
+      return TrieResult[StateProof](status: TrieError.BackendFailure)
     current = if one(key, count-1): current.right else: current.left
   var nodes = newSeq[EncodedStateNode](count)
   var payload: seq[byte] = @[]
@@ -404,7 +413,8 @@ proc prove*(trie: FullStateTrie, key: StateKey,
   var next = 0
   # The retained immutable owner keeps both walks identical, including selected empty children.
   while current != nil:
-    assert next < nodes.len # The first walk proved this exact descriptor extent.
+    if next >= nodes.len:
+      return TrieResult[StateProof](status: TrieError.BackendFailure)
     if current.leaf:
       let encoded = encodeStateLeaf(current.key, current.payload, data.limits.trie.perValue)
       if encoded.error != StateLayoutError.None:
@@ -422,9 +432,11 @@ proc prove*(trie: FullStateTrie, key: StateKey,
       (if left == nil: default(StateNodeHash) else: left.digest),
       (if right == nil: default(StateNodeHash) else: right.digest))
     inc next
-    assert next <= 248 # Bound the next MSB-first key-bit lookup before access.
+    if next > 248:
+      return TrieResult[StateProof](status: TrieError.BackendFailure)
     current = if one(key, next-1): right else: left
-  assert next == nodes.len # Empty roots/children and terminal leaves fill the complete bounded path exactly.
+  if next != nodes.len:
+    return TrieResult[StateProof](status: TrieError.BackendFailure)
   TrieResult[StateProof](status: TrieError.None, completed: StateProof(nodes: nodes,
       value: payload))
 
@@ -449,8 +461,7 @@ proc baseChild(base: nil TrieNode, depth: int, right: bool): nil TrieNode =
 proc exportSize(node, base: nil TrieNode, depth: int, limits: TrieExportLimits,
     count, bytes: var uint64): TrieError =
   ## Preflight detached record/value extents without allocating or hashing any node.
-  if omitted(node, base): return TrieError.None
-  assert node != nil # Omitted empty nodes returned before this bound access.
+  if node == nil or omitted(node, base): return TrieError.None
   if count >= uint64(limits.records) or count >= uint64(high(int) div sizeof(TrieRecord)):
     return TrieError.LimitExceeded # Check descriptor count before increment or later allocation.
   inc count
@@ -459,30 +470,35 @@ proc exportSize(node, base: nil TrieNode, depth: int, limits: TrieExportLimits,
       return TrieError.LimitExceeded # Aggregate payload subtraction prevents wrapping.
     bytes += uint64(node.payload.len)
   else:
+    if depth >= 248: return TrieError.BackendFailure
     let left = exportSize(node.left, baseChild(base, depth, false), depth+1, limits, count, bytes)
     if left != TrieError.None: return left # A refused child cannot expose a partial export.
     return exportSize(node.right, baseChild(base, depth, true), depth+1, limits, count, bytes)
   TrieError.None
 
-proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord], next: var int) =
+proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord],
+    next: var int): bool =
   ## Emit children before parents, deep-copying values and retaining no canonical graph aliases.
-  if not omitted(node, base):
-    assert node != nil # Preflight and omission establish a complete physical node.
-    if node.leaf:
-      var copied = newSeq[byte](node.payload.len)
-      for i in 0..<node.payload.len: copied[i] = node.payload[i] # Published backing never escapes.
-      output[next] = TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
-        key: node.key, payload: copied)
-      inc next
-    else:
-      exportNodes(node.left, baseChild(base, depth, false), depth+1, output, next)
-      exportNodes(node.right, baseChild(base, depth, true), depth+1, output, next)
-      let left = node.left
-      let right = node.right
-      output[next] = TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
-        left: (if left == nil: default(StateNodeHash) else: left.digest),
-        right: (if right == nil: default(StateNodeHash) else: right.digest))
-      inc next
+  if node == nil or omitted(node, base): return true
+  if not node.leaf:
+    if depth >= 248: return false
+    if not exportNodes(node.left, baseChild(base, depth, false), depth+1, output, next) or
+        not exportNodes(node.right, baseChild(base, depth, true), depth+1, output, next):
+      return false
+  if next >= output.len: return false
+  if node.leaf:
+    var copied = newSeq[byte](node.payload.len)
+    for i in 0..<node.payload.len: copied[i] = node.payload[i]
+    output[next] = TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
+      key: node.key, payload: copied)
+  else:
+    let left = node.left
+    let right = node.right
+    output[next] = TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
+      left: (if left == nil: default(StateNodeHash) else: left.digest),
+      right: (if right == nil: default(StateNodeHash) else: right.digest))
+  inc next
+  true
 
 proc exportTrieChanges*(base, target: FullStateTrie,
     limits: TrieExportLimits): TrieResult[TrieExport] =
@@ -497,8 +513,8 @@ proc exportTrieChanges*(base, target: FullStateTrie,
   if checked != TrieError.None: return TrieResult[TrieExport](status: checked)
   var records = newSeq[TrieRecord](int(count))
   var next = 0
-  exportNodes(selected.root, prior.root, 0, records, next) # Preflight proves every exact slot before allocation.
-  assert next == records.len # Child-before-parent emission must fill the complete bounded descriptor extent.
+  if not exportNodes(selected.root, prior.root, 0, records, next) or next != records.len:
+    return TrieResult[TrieExport](status: TrieError.BackendFailure)
   let metadata = target.commitment
   TrieResult[TrieExport](status: TrieError.None, completed: TrieExport(base: base.commitment.root,
     root: metadata.root, entries: uint64(metadata.entries), nodes: metadata.nodes,
