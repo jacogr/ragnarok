@@ -7,15 +7,16 @@ import std/[assertions, cmdline]
 import ../../src/state/erasure/words as erasure_words
 import ../../src/codec/bounded
 import ../../src/codec/work/report as work_report
+import ../support/pvm_erasure_vectors
 
 proc check[T](outcome: ErasureWordResult[T], reason: ErasureWordError) =
   ## Observe the runtime alternative before attempting deliberate failed extraction.
   assert outcome.error == reason, "word guard control"
 let input = [ErasureWord(33059), ErasureWord(33335), ErasureWord(33641)]
-let cap = ErasureWordLimits(bytes: ByteLimit(26), products: FieldProductLimit(102))
+let cap = ErasureWordLimits(bytes: ByteLimit(28), products: FieldProductLimit(108))
 let done = encodeErasureWords(input, ErasureShards(6), cap)
 check(done, ErasureWordError.None)
-assert uint16(done.value.codeWord(ErasureShardIndex(5)).value) == 35941, "independent parity control"
+assert uint16(done.value.codeWord(ErasureShardIndex(5)).value) == Words6[5], "independent parity control"
 let missing = default(ErasureWordResult[ErasureWordCode])
 let shards = encodeErasureWords(input, ErasureShards(7), cap)
 check(shards, ErasureWordError.InvalidShards)
