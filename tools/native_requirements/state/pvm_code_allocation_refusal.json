@@ -1,6 +1,6 @@
 {
   "defines": ["nimMaxHeap=1", "nimHardenOutOfMem"],
-  "directory": "codec",
+  "directory": "state",
   "includes": [],
   "libraries": [],
   "observers": [],
