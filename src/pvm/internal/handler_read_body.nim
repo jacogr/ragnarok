@@ -93,7 +93,8 @@ when declared(FlatFrame):
   proc flatNativeReadBody(f: var FlatFrame, off: uint32): uint32 =
     ## Require the exact complete reservation. Refusal replays the original paid body.
     let original = f.nativeOriginal
-    assert original != nil and off == f.nativeEntry
+    if original == nil or off != f.nativeEntry:
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch == 0 or read.epoch != f.nativeInstalledEpoch or off != read.header+1 or
         not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
@@ -103,23 +104,25 @@ when declared(FlatFrame):
       return original(f, off)
     if not f.readContextReady:
       prepareFlatReadContext(f)
-    if not runNativeReadBody(f.nativeSession, f.info.registers, f.readContext):
-      return original(f, off)
-    read.terminal
+    case runNativeReadBody(f.nativeSession, f.info.registers, f.readContext)
+    of NativeReadOutcome.Completed: read.terminal
+    of NativeReadOutcome.Refused: original(f, off)
+    of NativeReadOutcome.Failed: flatLocal(f, off, oracle.StepError.BackendFailure)
 
-  proc runFlatReadContinuationCold(f: var FlatFrame): bool {.noinline.} =
+  proc runFlatReadContinuationCold(f: var FlatFrame): NativeReadOutcome {.noinline.} =
     ## Publish fresh descriptors only once the combined register transaction commits.
     var context = [initNativeReadRegion(f.stackBase, f.stack),
       flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
-    if not runNativeReadBody(f.nativeSession, f.info.registers, context): return false
-    f.readContext = context
-    f.readContextReady = true
-    true
+    result = runNativeReadBody(f.nativeSession, f.info.registers, context)
+    if result == NativeReadOutcome.Completed:
+      f.readContext = context
+      f.readContextReady = true
 
   proc flatNativeReadContinuation(f: var FlatFrame, off: uint32): uint32 =
     ## Preflight the successor against the counters left by the first paid reservation.
     let original = f.nativeOriginal
-    assert original != nil and off == f.nativeEntry
+    if original == nil or off != f.nativeEntry:
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch == 0 or read.epoch != f.nativeInstalledEpoch or off != read.header+1 or
         not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
@@ -134,7 +137,10 @@ when declared(FlatFrame):
       runNativeReadBody(f.nativeSession, f.info.registers, f.readContext)
     else:
       runFlatReadContinuationCold(f)
-    if not committed: return original(f, off)
+    case committed
+    of NativeReadOutcome.Refused: return original(f, off)
+    of NativeReadOutcome.Failed: return flatLocal(f, off, oracle.StepError.BackendFailure)
+    of NativeReadOutcome.Completed: discard
     # The first cached fallthrough clears the paid bit and the second header immediately sets it.
     f.info.gas = MachineGas(uint64(f.info.gas)-continuation.price)
     f.remaining-=uint64(NativeReadContinuationSpan)

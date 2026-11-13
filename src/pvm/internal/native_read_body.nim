@@ -8,6 +8,9 @@ import ./[jit_rules, native_ir]
 
 export native_ir.NativeCheckedReadEnabled
 
+type NativeReadOutcome* {.pure.} = enum ## A failed native return grants no replay authority.
+  Failed, Refused, Completed
+
 const
   NativeReadSuccess* = 1'u32          ## Every staged register write committed.
   NativeReadRefusal* = high(uint32)   ## No guest write occurred.

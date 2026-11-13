@@ -164,21 +164,23 @@ proc lowerNative*(span: NativeSpan): NativeImage =
     result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count),
       kindValue: loop.kind)
 
-proc enterNative*(image: NativeImage, registers: var RegisterFile) =
-  ## Borrow only the current register file; a pure image must complete, and is never replayed after effects.
-  assert image.handle != nil and image.kind == NativeKind.PurePrefix
+proc enterNative*(image: NativeImage, registers: var RegisterFile): bool =
+  ## Confirm a completed register-only entry before the caller credits any native work.
+  if not image.ready or image.kind != NativeKind.PurePrefix: return false
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
-    assert arenaCall(image.handle, image.offset, addr registers[0]) == 1
+    arenaCall(image.handle, image.offset, addr registers[0]) == 1
+  else:
+    false
 
 proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
     context: var NativeLoopContext): uint32 =
   ## The region wrapper borrows two buffers for this call only.
   assert sizeof(RegisterFile) == 104 and sizeof(NativeLoopContext) == 24
-  if image.handle == nil or image.kind != NativeKind.ClosedRegisterLoop: abortNativeReceipt()
+  if not image.ready or image.kind != NativeKind.ClosedRegisterLoop: return NativeEntryFailure
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
   else:
-    abortNativeReceipt()
+    NativeEntryFailure
 
 proc lowerNativeRegisterRing*(ring: NativeRegisterRing): NativeImage =
   ## Validate and publish one bounded pure image in the selected platform arena.
@@ -231,7 +233,7 @@ proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
   assert sizeof(RegisterFile) == 104 and sizeof(NativeRingContext) == 48
   if not image.ready or image.kind != NativeKind.RegisterRing or
       context.entry > 2 or context.visits != [0'u64, 0, 0]:
-    abortNativeReceipt()
+    return NativeEntryFailure
   when NativeCheckedReadEnabled:
     let entry = NativeRingIndex(context.entry)
     let gas = context.gas
@@ -244,9 +246,9 @@ proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
     else:
       result = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
     if not validRingReceipt(image.ringValue, entry, result, gas, remaining, context, registers):
-      abortNativeReceipt()
+      return NativeEntryFailure
   else:
-    abortNativeReceipt()
+    NativeEntryFailure
 
 when NativeCheckedReadEnabled:
   func isReadBody*(image: NativeImage): bool =
@@ -292,14 +294,20 @@ when NativeCheckedReadEnabled:
       assert status == NativeReadSuccess or status == NativeReadRefusal
       status == NativeReadSuccess
 
+  proc nativeReadStatus*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeReadContext): NativeReadOutcome =
+    ## Only a genuine transactional refusal permits replay through the checked body.
+    if not isReadBody(image): return NativeReadOutcome.Failed
+    assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+    case arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+    of NativeReadSuccess: NativeReadOutcome.Completed
+    of NativeReadRefusal: NativeReadOutcome.Refused
+    else: NativeReadOutcome.Failed
+
   proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
       context: var NativeReadContext): bool =
-    ## A complete read body publishes registers once. A refused entry preserves the entire file.
-    if not isReadBody(image): return false
-    assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
-    let status = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
-    if status != NativeReadSuccess and status != NativeReadRefusal: abortNativeReceipt()
-    status == NativeReadSuccess
+    ## Direct ABI witnesses need only distinguish successful completion.
+    nativeReadStatus(image, registers, context) == NativeReadOutcome.Completed
 
 when NativeReadCycleEnabled:
   when defined(pvmMixedLoopArenaWitness):
@@ -446,9 +454,10 @@ when NativeReadCycleEnabled:
       sizeof(RegisterFile) == 104
     if index >= uint8(NativeMixedLoopEntryLimit) or (nativeMixedLoopEntries(image) and (
         1'u8 shl int(index))) == 0:
-      abortNativeReceipt()
+      return NativeEntryFailure
     let offset = image.mixedOffsets[int(index)]
-    assert uint64(offset)+uint64(image.mixedLengths[int(index)]) <= image.codeBytes
+    if uint64(offset)+uint64(image.mixedLengths[int(index)]) > image.codeBytes:
+      return NativeEntryFailure
     arenaRegion(image.handle, offset, addr registers[0], addr context)
 
   proc enterNativeMixedLoop*(image: NativeImage, registers: var RegisterFile,
@@ -483,7 +492,7 @@ when NativeReadCycleEnabled:
       context: var NativeCycleContext): uint32 =
     ## The region borrows the same private memory and register file for this call alone.
     assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
-    if not image.ready or image.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
+    if not image.ready or image.kind != NativeKind.ConnectedReadCycle: return NativeEntryFailure
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
 
   when defined(pvmX86Jit) and defined(pvmX86ResidentProof):

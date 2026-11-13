@@ -1313,6 +1313,13 @@ proc invalidateNativeStream*(session: NativeSession) =
     inc data.epoch
     data.state = NativeState.Deferred
 
+proc retireFailedNativeInvocation*(session: NativeSession) =
+  ## Drop a failed image after temporary segment borrows have been returned.
+  ## Leave this owner checked until a separate stream invalidation grants a new epoch.
+  invalidateNativeStream(session)
+  let data {.cursor.} = session.data
+  if data != nil: data.state = NativeState.Unavailable
+
 proc collectNative(session: NativeSession) =
   ## At an invocation boundary, try to collect the completion for the exact registration,
   ## ticket, source epoch and ABI. A busy lock or unfinished job leaves checked execution
@@ -1523,15 +1530,16 @@ func matchesNativeOperation*(session: NativeSession, index: int, opcode: byte,
   let op = data.span.operation(index)
   op.opcode == opcode and op.slots == slots and op.immediate == immediate
 
-proc runNativeSpan*(session: NativeSession, registers: var RegisterFile) =
+proc runNativeSpan*(session: NativeSession, registers: var RegisterFile): bool =
   ## The common checked bridge proves span/reservation before the backend sees fresh registers.
   let data {.cursor.} = session.data
-  assert data != nil and nativeSpanReady(session) and
-    matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix)
-  enterNative(data.image, registers)
+  if data == nil or not nativeSpanReady(session) or
+      not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return false
+  if not enterNative(data.image, registers): return false
   data.invocationUsed = true
   if data.calls < high(uint64): inc data.calls
   if data.operations <= high(uint64)-uint64(data.span.len): data.operations += uint64(data.span.len)
+  true
 
 func validLoopReceipt(loop: NativeLoopInfo, destination: uint32, gas, remaining: uint64,
     context: NativeLoopContext, left, right: uint64): bool =
@@ -1551,24 +1559,35 @@ func validLoopReceipt(loop: NativeLoopInfo, destination: uint32, gas, remaining:
   destination == loop.header and left < right and
     (context.remaining < span or context.gas < loop.price)
 
+when defined(pvmSharedAsyncWitness):
+  var refuseLoopReceipt {.threadvar.}: bool
+
+  proc corruptNextNativeLoopReceipt*() =
+    ## The next real closed-loop entry executes normally, then presents an invalid receipt.
+    refuseLoopReceipt = true
+
 proc runNativeLoop*(session: NativeSession, registers: var RegisterFile,
     context: var NativeLoopContext): uint32 =
   ## Only a validated receipt can return to checked dispatch or credit physical activity.
   let data {.cursor.} = session.data
   if data == nil or not nativeSpanReady(session) or
       not matchesNativeImage(session, data.imageKey,
-          NativeKind.ClosedRegisterLoop): abortNativeReceipt()
+          NativeKind.ClosedRegisterLoop): return NativeEntryFailure
   let loop = data.span.loopInfo
   let gas = context.gas
   let remaining = context.remaining
   if loop.kind != NativeKind.ClosedRegisterLoop or
-      remaining > high(uint64)-uint64(loop.sourceSpan): abortNativeReceipt()
+      remaining > high(uint64)-uint64(loop.sourceSpan): return NativeEntryFailure
   result = enterNativeLoop(data.image, registers, context)
+  when defined(pvmSharedAsyncWitness):
+    if refuseLoopReceipt:
+      refuseLoopReceipt = false
+      context.visits = 0
   let left = uint64(registers[loop.slots.aIndex])
   let right = if loop.rightKind == NativeLoopRightKind.Immediate: loop.rightImmediate
     else: uint64(registers[loop.slots.bIndex])
   if not validLoopReceipt(loop, result, gas, remaining, context, left, right):
-    abortNativeReceipt()
+    return NativeEntryFailure
   # Exact quota accounting plus the checked first reservation bound visits*sourceSpan.
   let operations = context.visits*uint64(loop.sourceSpan)
   data.invocationUsed = true
@@ -1617,9 +1636,11 @@ when NativeCheckedReadEnabled:
     ## The exact image checks the unpaid return and all debits before recording native work.
     let data {.cursor.} = session.data
     if data == nil or not nativeRingReady(session) or
-        not matchesNativeImage(session, data.imageKey, NativeKind.RegisterRing): abortNativeReceipt()
+        not matchesNativeImage(session, data.imageKey,
+            NativeKind.RegisterRing): return NativeEntryFailure
     let remaining = context.remaining
     result = enterNativeRegisterRing(data.image, registers, context)
+    if result == NativeEntryFailure: return
     let operations = remaining-context.remaining
     if operations == 0: return
     data.invocationUsed = true
@@ -1649,17 +1670,18 @@ when NativeCheckedReadEnabled:
     data != nil and readCertificate(data.readProof).sameReadBody(body)
 
   proc runNativeReadBody*(session: NativeSession, registers: var RegisterFile,
-      context: var NativeReadContext): bool =
+      context: var NativeReadContext): NativeReadOutcome =
     ## Only a completed image contributes native calls and original body operations.
     let data {.cursor.} = session.data
-    assert data != nil and nativeReadInfo(session).epoch != 0 and
-      matchesNativeImage(session, data.imageKey, NativeKind.CheckedReadBody)
-    if not enterNativeReadBody(data.image, registers, context): return false
+    if data == nil or nativeReadInfo(session).epoch == 0 or
+        not matchesNativeImage(session, data.imageKey, NativeKind.CheckedReadBody):
+      return NativeReadOutcome.Failed
+    result = nativeReadStatus(data.image, registers, context)
+    if result != NativeReadOutcome.Completed: return
     data.invocationUsed = true
     if data.calls < high(uint64): inc data.calls
     let count = uint64(readCertificate(data.readProof).len)
     if data.operations <= high(uint64)-count: data.operations += count
-    true
 
 when NativeReadCycleEnabled:
   func nativeReadCycleInfo*(session: NativeSession): NativeReadBodyInfo =
@@ -1680,20 +1702,22 @@ when NativeReadCycleEnabled:
       context: var NativeCycleContext, lastHeader: var uint32): uint32 =
     ## Validate the entered receipt before exposing its budgets and exact continuation.
     let data {.cursor.} = session.data
-    assert data != nil and nativeReadCycleInfo(session).epoch != 0 and
-      matchesNativeImage(session, data.imageKey, NativeKind.ConnectedReadCycle)
+    if data == nil or nativeReadCycleInfo(session).epoch == 0 or
+        not matchesNativeImage(session, data.imageKey, NativeKind.ConnectedReadCycle):
+      return NativeEntryFailure
     let gas = context.gas
     let remaining = context.remaining
     result = enterNativeReadCycle(data.image, registers, context)
-    if not validNativeCycleReceipt(data.readProof.layout, result, gas, remaining, context):
-      abortNativeReceipt()
+    if result == NativeEntryFailure or
+        not validNativeCycleReceipt(data.readProof.layout, result, gas, remaining, context):
+      return NativeEntryFailure
     if context.lastCompleted == NativeCycleNoCompleted: return
     let role = NativeCycleRole(context.lastCompleted)
-    if nativeCycleSuccessor(data.readProof, role, registers) != result: abortNativeReceipt()
+    if nativeCycleSuccessor(data.readProof, role, registers) != result: return NativeEntryFailure
     lastHeader = data.readProof.layout.sites[role].header
     let readSpan = NativeCycleSpans[NativeCycleRole.Read]
     let spent = remaining - context.remaining
-    if context.paidRead == 0 and spent > high(uint64) - readSpan: abortNativeReceipt()
+    if context.paidRead == 0 and spent > high(uint64) - readSpan: return NativeEntryFailure
     let operations = if context.paidRead == 1: spent else: spent + readSpan
     if operations != 0: data.invocationUsed = true
     if data.calls < high(uint64): inc data.calls

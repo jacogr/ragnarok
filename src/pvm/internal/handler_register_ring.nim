@@ -122,6 +122,9 @@ when declared(FlatFrame):
     var context = NativeRingContext(gas: uint64(f.info.gas), remaining: f.remaining,
         entry: rotation)
     destination = runNativeRing(f.nativeSession, f.info.registers, context)
+    if destination == NativeEntryFailure:
+      destination = flatLocal(f, header, oracle.StepError.BackendFailure)
+      return true # The invocation has stopped; the checked body must not replay it.
     f.info.gas = MachineGas(context.gas)
     f.remaining = context.remaining
     f.reservation = 0 # A completed native branch leaves no checked reservation to refund.
