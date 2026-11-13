@@ -309,6 +309,7 @@ class PolicyQualificationTests(unittest.TestCase):
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['passed']), \
                 patch.object(ci, 'qualify_shared', return_value=dict(status='passed')), \
+                patch.object(ci, 'qualify_mixed_arena', return_value=dict(status='passed')), \
                 patch.object(ci, 'qualify_read_widths', return_value=dict(status='passed')), \
                 patch.object(ci, 'qualify_policy', return_value=['passed']), \
                 patch('builtins.print'):
@@ -1026,6 +1027,22 @@ class QualificationTests(unittest.TestCase):
         refused = self.witness_receipt(False, refused=True)
         with self.assertRaisesRegex(ValueError,'word-group'):
             self.check(True,refused_receipt=refused.replace('ARM_WORD_GROUPS,0\n','ARM_WORD_GROUPS,5\n'))
+
+
+class MixedArenaQualificationTests(unittest.TestCase):
+    """Keep an ordinary image run and both injected publisher refusals in native qualification."""
+
+    def test_partial_publication_must_prove_the_second_slot_refusal(self):
+        """A first-slot failure cannot satisfy the run that must release a partially published arena."""
+        checks = Mock()
+        checks.build.return_value = (dict(exit_code=0), 'binary')
+        checks.command.side_effect = [
+            dict(exit_code=0, output='MIXED_ARENA_SINGLE_OK\nMIXED_ARENA_OK\n'),
+            dict(exit_code=0, output='MIXED_ARENA_PUBLISH_REFUSAL,0\nMIXED_ARENA_OK\n'),
+            dict(exit_code=0, output='MIXED_ARENA_PUBLISH_REFUSAL,0\nMIXED_ARENA_OK\n',
+                 log='mixed-arena-refuse-1-run.log')]
+        with self.assertRaisesRegex(RuntimeError, 'mixed-arena-refuse-1-run'):
+            ci.qualify_mixed_arena(checks, 'compiler', dict(system='Linux', machine='x86_64'))
 
 
 class ReadWidthQualificationTests(unittest.TestCase):

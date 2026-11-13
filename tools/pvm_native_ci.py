@@ -232,6 +232,39 @@ def qualify_host(checks, compiler, host):
     return qualify(checks, compiler, native=bool(flags))
 
 
+MIXED_ARENA_WITNESS = 'tests/performance/pvm_mixed_arena_private.nim'
+
+
+def qualify_mixed_arena(checks, compiler, host):
+    """Require published byte/entry checks and cleanup on refusal before and after the first append."""
+    production = native_defines(host['system'], host['machine'])
+    if not production:
+        # The standalone witness must execute on the real native publisher.
+        return dict(status='unavailable', controls=[])
+    rows = []
+    for slot in (None, 0, 1):
+        # A zero-length append reaches the real publisher's rejection at the chosen slot.
+        name = 'mixed-arena' if slot is None else 'mixed-arena-refuse-'+str(slot)
+        flags = [*production, 'pvmMixedLoopArenaWitness']
+        if slot is not None:
+            flags.append('pvmMixedLoopPublishFail='+str(slot))
+        built, binary = checks.build(compiler, ROOT/MIXED_ARENA_WITNESS, name, defines=flags,
+            cflags=['-I'+str(ROOT/'native/pvm_jit')])
+        if built['exit_code']:
+            raise RuntimeError('Mixed arena qualification build failed: '+built['log'])
+        observed = checks.command([binary], name+'-run', timeout=30)
+        if slot is None:
+            # The normal profile emits its final marker after all geometry and entry assertions.
+            complete = observed['output'].endswith('MIXED_ARENA_SINGLE_OK\nMIXED_ARENA_OK\n')
+        else:
+            # Each refusal variant must attest the chosen slot, with no positive image transcript.
+            complete = observed['output'] == f'MIXED_ARENA_PUBLISH_REFUSAL,{slot}\nMIXED_ARENA_OK\n'
+        if observed['exit_code'] or not complete:
+            raise RuntimeError('Mixed arena qualification execution failed: '+observed['log'])
+        rows.append(dict(slot=slot, defines=flags, build=built, run=observed))
+    return dict(status='passed', controls=rows)
+
+
 def read_width_source_paths():
     """Bind both ISA mains, literals, ABI/source checks and their discovered native profiles."""
     paths = [ROOT/'tests/support/pvm_shared_read_widths.nim',
@@ -325,6 +358,7 @@ def run():
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
+                 ROOT/MIXED_ARENA_WITNESS,
                  ROOT/'tests/support/arc_evidence.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
@@ -353,6 +387,10 @@ def run():
         report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
         if native and report['shared_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching shared native qualification')
+        report['mixed_arena_qualification'] = qualify_mixed_arena(
+            NativeChecks(BUILD), compiler, report['host'])
+        if native and report['mixed_arena_qualification']['status'] != 'passed':
+            raise RuntimeError('Missing matching mixed arena native qualification')
         report['read_width_qualification'] = qualify_read_widths(NativeChecks(BUILD), compiler, report['host'])
         if native and report['read_width_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching scalar read-width native qualification')
