@@ -37,6 +37,8 @@ when NativeReadCycleEnabled:
   import ./native_read_cycle
   export native_read_cycle
   import ./native_mixed_loop
+  import ./native_bitmap_loop
+  export native_bitmap_loop
 
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
@@ -84,6 +86,8 @@ type NativeRequest = object
     readProof: NativeReadStorage
     ring: NativeRegisterRing
     ringEpoch: uint64
+  when NativeReadCycleEnabled:
+    bitmap: NativeBitmapLoop
 
 when defined(pvmSharedAsyncWitness):
   type
@@ -165,6 +169,7 @@ type
       replacementArmed, replacedRead: bool
     when NativeReadCycleEnabled:
       readRouteValid: bool
+      bitmap: NativeBitmapLoop
     image: NativeImage
     imageKey: NativeImageKey
     invocationImageKey: NativeImageKey
@@ -263,8 +268,11 @@ func requestMatches(request: NativeRequest, key: JobKey): bool =
   else:
     when NativeReadCycleEnabled:
       # Nimony case arms cannot be conditional. Reject every other kind before using the ABI.
-      key.kind == NativeKind.ConnectedReadCycle and request.readProof.read.complete and
-        request.readProof.read.info.epoch == key.epoch
+      if key.kind == NativeKind.BitmapLoop:
+        request.bitmap.epoch == key.epoch and request.bitmap.complete
+      else:
+        key.kind == NativeKind.ConnectedReadCycle and request.readProof.read.complete and
+          request.readProof.read.info.epoch == key.epoch
     else:
       false
 
@@ -272,6 +280,7 @@ func acceptedKind(data: NativeSessionData): NativeKind =
   ## A nonzero ticket binds one immutable caller-side certificate until collection.
   assert data.ticket != 0
   when NativeReadCycleEnabled:
+    if data.bitmap.epoch == data.epoch: return NativeKind.BitmapLoop
     if data.readRouteValid and readCertificate(data.readProof).complete:
       return NativeKind.ConnectedReadCycle
   when NativeCheckedReadEnabled:
@@ -574,6 +583,10 @@ proc compilerRun(raw: pointer) =
             let cycle = runtime.request.readProof
             if releaseCompilerClaim(runtime, key):
               image = lowerNativeReadCycle(cycle)
+          elif key.kind == NativeKind.BitmapLoop:
+            let bitmap = runtime.request.bitmap
+            if releaseCompilerClaim(runtime, key):
+              image = lowerNativeBitmapLoop(bitmap)
           else:
             discard releaseCompilerClaim(runtime, key)
         else:
@@ -1082,6 +1095,22 @@ proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
       loop.sourceSpan == uint32(data.span.len)+1:
     data.span.promote(loop)
 
+when NativeReadCycleEnabled:
+  func bitmapAdmissionEpoch*(session: NativeSession): uint64 =
+    ## Cache one cold observation even during a short call. It has no ticket until
+    ## settled work qualifies the bound stream through the deferred primary mailbox.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or data.state != NativeState.Deferred or
+        data.ticket != 0 or data.bitmap.epoch != 0: return 0
+    data.epoch
+
+  proc nominateNativeBitmap*(session: NativeSession, bitmap: NativeBitmapLoop) =
+    ## Copy the complete source certificate without acquiring a credit or entering native code.
+    let data {.cursor.} = session.data
+    if data != nil and bitmap.epoch != 0 and bitmap.epoch == bitmapAdmissionEpoch(session) and
+        bitmap.complete:
+      data.bitmap = bitmap
+
 when NativeCheckedReadEnabled:
   func nativeRingAdmissionEpoch*(session: NativeSession): uint64 =
     ## Only deferred owner storage can retain a newly observed complete checked round.
@@ -1313,6 +1342,8 @@ proc invalidateNativeStream*(session: NativeSession) =
   if anchor == nil: return
   releaseNativeCredit(data)
   data.span = default(NativeSpan)
+  when NativeReadCycleEnabled:
+    data.bitmap = default(NativeBitmapLoop)
   when NativeCheckedReadEnabled:
     clearReadCertificate(data)
     data.readNominated = false
@@ -1412,6 +1443,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   ## credit table leaves execution checked and eligible evidence available for retry.
   ## A primary may revoke another owner's auxiliary for a credit. An installed primary
   ## can only be replaced at the qualified real-frame later-Read boundary.
+  ## A complete bitmap proof takes priority over Read, pure prefixes and register
+  ## loops for the deferred primary ticket. The installed bitmap image is terminal.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return
   collectNative(session)
@@ -1422,7 +1455,10 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     # A complete checked halt with settled work at the floor and the same unused image can arm
     # discovery. An unqualified call or missing observation clears the previous streak.
     # Physical retirement consumes the epoch's one replacement until stream invalidation.
-    let unused = not data.replacedRead and data.state == NativeState.Ready and data.image.ready and
+    let canReplace = when NativeReadCycleEnabled: data.imageKey.kind != NativeKind.BitmapLoop
+      else: true
+    let unused = canReplace and not data.replacedRead and data.state == NativeState.Ready and
+        data.image.ready and
       data.invocationImageKey.ticket != 0 and data.invocationImageKey == data.imageKey and
       data.invocationQualified and completedWork >= NativeInvocationFloor and
           not data.invocationUsed
@@ -1435,6 +1471,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   let anchor {.cursor.} = data.runtime
   assert anchor != nil
   let runtime = addr anchor.storage
+  let selectBitmap = when NativeReadCycleEnabled: data.bitmap.epoch == data.epoch
+    else: false
   let selectRead = when NativeCheckedReadEnabled:
     data.readNominated and data.readValidated and completedWork >= NativeInvocationFloor and
       (data.span.kind != NativeKind.ClosedRegisterLoop or data.replacedRead)
@@ -1448,8 +1486,9 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     not waitingRead and data.span.kind == NativeKind.PurePrefix and data.ringEpoch == data.epoch
   else:
     false
-  # Preserve read and certified self-loop precedence. A real ring outranks a bare pure prefix.
-  let candidate = if waitingRead: selectRead
+  # The complete bitmap route supersedes a prefix. Other read, loop and ring precedence stays intact.
+  let candidate = if selectBitmap: true
+    elif waitingRead: selectRead
     else: selectRing or data.span.len >= NativeMinimumOperations
   # Check admission under the mutex already required to release this invocation's lease.
   var submitted = false
@@ -1474,13 +1513,18 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     when NativeReadCycleEnabled:
       let selectCycle = selectRead and data.readRouteValid and readCertificate(
           data.readProof).complete
-      let kind = if selectCycle: NativeKind.ConnectedReadCycle else: stockKind()
+      let kind = if selectBitmap: NativeKind.BitmapLoop
+        elif selectCycle: NativeKind.ConnectedReadCycle
+        else: stockKind()
     else:
       let kind = stockKind()
     let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
       epoch: data.epoch, kind: kind)
     when NativeCheckedReadEnabled:
-      if selectRead:
+      if selectBitmap:
+        when NativeReadCycleEnabled:
+          runtime.request.bitmap = data.bitmap
+      elif selectRead:
         when NativeReadCycleEnabled:
           if selectCycle: runtime.request.readProof = data.readProof
           else: readCertificate(runtime.request.readProof) = readCertificate(data.readProof)
@@ -1510,7 +1554,7 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   when NativeCheckedReadEnabled:
     if data.readNominated and submitted:
       # Submission fixes the selected ABI; occupied work slots retain the qualified copied nomination.
-      if not selectRead:
+      if selectBitmap or not selectRead:
         clearReadCertificate(data)
       data.readNominated = false
     data.readValidated = false
@@ -1519,6 +1563,35 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   data.invocation = false
   data.allowed = false
   release(runtime.lock)
+
+when NativeReadCycleEnabled:
+  func nativeBitmapInfo*(session: NativeSession): NativeBitmapLoop =
+    ## Retrieve the exact ready proof once to bind the restored checked stream.
+    let data {.cursor.} = session.data
+    if data != nil and matchesNativeImage(session, data.imageKey, NativeKind.BitmapLoop):
+      return data.bitmap
+    default(NativeBitmapLoop)
+
+  proc runNativeBitmap*(session: NativeSession, key: NativeImageKey, registers: var RegisterFile,
+      context: var NativeBitmapContext): uint32 =
+    ## Credit whole original blocks only after validating the exact native receipt.
+    let data {.cursor.} = session.data
+    if data == nil or not matchesNativeImage(session, key, NativeKind.BitmapLoop):
+      return NativeEntryFailure
+    let gas = context.gas
+    let remaining = context.remaining
+    result = enterNativeBitmapLoop(data.image, registers, context)
+    if result == NativeEntryFailure: return
+    if not validBitmapReceipt(data.bitmap, result, gas, remaining, context, registers):
+      return NativeEntryFailure
+    let operations = remaining-context.remaining
+    if operations == 0: return
+    data.invocationUsed = true
+    if data.calls < high(uint64): inc data.calls
+    if data.branchCalls < high(uint64): inc data.branchCalls
+    if context.visits[BitmapBlock.Advance] > 1 and data.headerCalls < high(uint64):
+      inc data.headerCalls
+    if data.operations <= high(uint64)-operations: data.operations += operations
 
 func nativeSpanReady*(session: NativeSession): bool =
   ## Ready is separate from this invocation's conservative horizon; neither forces a losing short call.

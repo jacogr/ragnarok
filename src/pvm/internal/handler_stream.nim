@@ -238,6 +238,7 @@ type
       mixedWitnessProof: NativeMixedLoop
       mixedWitnessImage: nil ptr NativeImage
     when NativeReadCycleEnabled:
+      bitmapCandidate: uint32                 # A single deferred cold-edge observation for this frame.
       mixedSource: FlatMixedLoopSource
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
@@ -948,6 +949,10 @@ proc flatResolutionFailure(f: var FlatFrame, off: uint32): uint32 =
       oracle.StepError.InvalidPreparedProgram)
   flatStopExit(f, off, oracle.StepExit.Panic)
 
+when NativeReadCycleEnabled:
+  proc observeFlatBitmap(f: var FlatFrame, root: uint32)
+  proc installFlatBitmap(f: var FlatFrame, proof: NativeBitmapLoop)
+
 proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Resolve a source-owned sealed static target once and patch only this frame's private stream.
   let a = f.arguments[int(off)]
@@ -957,6 +962,15 @@ proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   f.arguments[int(off)].y = target
   let patched: FlatHandler = flatCachedJump[Code]
   f.handlers[int(off)] = patched
+  when NativeReadCycleEnabled and Code == 40:
+    # Observe only the cold backward edge of a complete read block with the bitmap source shape.
+    let last = f.sites[int(off)]
+    if f.bitmapCandidate == 0 and target < NativeEntryLimit and last >= 6 and
+        f.plan.facts[int(last)-4].opcode == 130 and f.plan.facts[int(last)-6].opcode == 151 and
+        f.plan.facts[int(last)-6].sourceCount == 7 and f.plan.facts[int(last)-6].pc > a.y and
+        bitmapAdmissionEpoch(f.nativeSession) != 0:
+      # The first trip can reach Read from a source suffix. The backedge may only now resolve Advance.
+      f.bitmapCandidate = target+1
   f.info.blockCharged = false
   target
 
@@ -2239,6 +2253,10 @@ proc installNative(f: var FlatFrame) =
     flatRestoreNativeInstallation(f)
   if f.nativeOriginal != nil: return
   when NativeReadCycleEnabled:
+    let bitmap = nativeBitmapInfo(f.nativeSession)
+    if bitmap.epoch != 0:
+      installFlatBitmap(f, bitmap)
+      return
     let cycle = nativeReadCycleInfo(f.nativeSession)
     if cycle.epoch != 0:
       installFlatReadCycle(f, cycle)
@@ -2537,6 +2555,8 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
   true
 
 include ./handler_trace_source
+when NativeReadCycleEnabled:
+  include ./handler_bitmap_loop
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
     proc buildFlatReadCycle(f: FlatFrame, read: NativeReadBody): NativeReadCycle
@@ -3453,6 +3473,8 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   ## A zero budget returns StepLimitExceeded before the frame's preparation failure
   ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
+  ## A cold bitmap backedge stays with the exclusive cached stream across short calls.
+  ## The first segment with enough settled work consumes it for a source proof.
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -3521,6 +3543,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)
+    if f.bitmapCandidate != 0 and settledNativeWork(f, limit) >= NativeInvocationFloor:
+      let root = f.bitmapCandidate-1
+      f.bitmapCandidate = 0
+      observeFlatBitmap(f, root)
   flatPromoteNativeLoop(f)
 
 when defined(pvmMixedLoopEntryWitness) and NativeReadCycleEnabled:
@@ -4049,6 +4075,7 @@ type FlatStream* = object
   nativeEntry: uint32
   nativeInstalledEpoch: uint64
   when NativeReadCycleEnabled:
+    bitmapCandidate: uint32
     mixedSource: FlatMixedLoopSource
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
@@ -4064,7 +4091,8 @@ proc `=dup`*(source: FlatStream): FlatStream {.error.}
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Return the exclusive cache to the prepared owner with its admitted entries,
   ## cumulative preparation usage and native restoration state. Generated leaves
-  ## retain no invocation pointers.
+  ## retain no invocation pointers. A pending bitmap observation moves with its
+  ## original stream coordinates and is discarded with the stream on repricing.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
   if f.preparationFailure == FlatError.StreamAllocationRefused:
@@ -4089,6 +4117,8 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   when NativeReadCycleEnabled:
     assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
     when defined(pvmPaidMixedLoopWitness): assert f.mixedPair == nil
+    result.bitmapCandidate = f.bitmapCandidate
+    f.bitmapCandidate = 0
     result.mixedSource = f.mixedSource
     f.mixedSource = default(FlatMixedLoopSource)
 
@@ -4128,6 +4158,8 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.nativeInstalledEpoch = stream.nativeInstalledEpoch
   f.nativeInstallation = stream.nativeInstallation
   when NativeReadCycleEnabled:
+    f.bitmapCandidate = stream.bitmapCandidate
+    stream.bitmapCandidate = 0
     f.mixedSource = stream.mixedSource
     stream.mixedSource = default(FlatMixedLoopSource)
   flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.

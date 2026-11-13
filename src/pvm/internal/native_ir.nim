@@ -26,7 +26,9 @@ const
 # See spec/pvm-async-migration.md for the retained ARM and x86 mechanical helpers.
 when NativeReadCycleEnabled:
   type NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
-    PurePrefix, ClosedRegisterLoop, CheckedReadBody, ConnectedReadCycle, RegisterRing, MixedSelfLoop
+    PurePrefix, ClosedRegisterLoop, CheckedReadBody, ConnectedReadCycle, RegisterRing,
+      MixedSelfLoop,
+      BitmapLoop
 else:
   type NativeKind* {.pure.} = enum ## Stock kinds retain their original ordinals.
     PurePrefix, ClosedRegisterLoop, CheckedReadBody, RegisterRing

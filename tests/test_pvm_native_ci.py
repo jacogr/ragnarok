@@ -340,7 +340,13 @@ class SharedQualificationTests(unittest.TestCase):
              'PVM shared async passed\n'),
             ('state', 'pvm_runtime_policy_refused',
              ['pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'],
-             'PASS runtime PVM policy\nPVM shared async refusal controls passed\n')):
+             'PASS runtime PVM policy\nPVM shared async refusal controls passed\n'),
+            ('codec', 'pvm_bitmap_lowering_refusal_arm',
+             ['nimHardenOutOfMem', 'nimMaxHeap=1', 'pvmArm64Jit'],
+             'PVM bitmap lowering refusal passed\n'),
+            ('codec', 'pvm_bitmap_lowering_refusal_x86',
+             ['nimHardenOutOfMem', 'nimMaxHeap=1', 'pvmX86Jit'],
+             'PVM bitmap lowering refusal passed\n')):
             source = self.root/'tests/unit'/directory/('test_'+suite+'.nim')
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text('inert main '+suite)
@@ -355,6 +361,9 @@ class SharedQualificationTests(unittest.TestCase):
         helper = self.root/'tests/support/pvm_shared_async.nim'
         helper.parent.mkdir(parents=True)
         helper.write_text('inert shared witness')
+        helper.with_name('pvm_bitmap_fixture.nim').write_text('inert bitmap fixture')
+        helper.with_name('pvm_bitmap_loop_execution.nim').write_text('inert bitmap witness')
+        helper.with_name('pvm_bitmap_lowering_refusal.nim').write_text('inert heap witness')
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
@@ -381,6 +390,8 @@ class SharedQualificationTests(unittest.TestCase):
             """Only the known complete positive or refusal transcript can count as an actual pass."""
             source = binaries[str(arguments[0])]
             output = source.with_suffix('.output').read_text()
+            if source.stem.startswith('test_pvm_bitmap_lowering_refusal_'):
+                return dict(exit_code=int(fault == 'heap-refusal'), log=name+'.log', output=output)
             if fault == 'fallback' and 'refused' in name:
                 output = 'PASS runtime PVM policy\n'
             elif fault == 'extra':
@@ -430,16 +441,26 @@ class SharedQualificationTests(unittest.TestCase):
                 checks, builds = self.tools()
                 result = ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine=machine))
                 self.assertEqual(result['status'], 'passed')
-                self.assertEqual([b['source'] for b in builds],
-                    [self.sources[normal], self.sources['pvm_runtime_policy_refused']])
+                lowering = result['bitmap_lowering_refusal']
+                refusal = 'pvm_bitmap_lowering_refusal_'+('arm' if machine == 'aarch64' else 'x86')
+                self.assertEqual(lowering['suite'], refusal)
+                self.assertEqual([b['source'] for b in builds], [
+                    self.sources[normal], self.sources['pvm_runtime_policy_refused'], self.sources[refusal]])
                 self.assertEqual([set(b['defines']) for b in builds],
                     [{isa, 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness'},
-                     {isa, isa+'Refuse', 'pvmSharedAsyncWitness'}])
+                     {isa, isa+'Refuse', 'pvmSharedAsyncWitness'},
+                     {isa, 'nimHardenOutOfMem', 'nimMaxHeap=1'}])
                 self.assertEqual(result['production_defines'], [isa])
                 self.assertEqual(set(result['controls'][1]['registered_defines']),
                     {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'})
-                self.assertEqual(checks.command.call_count, 2)
-                self.assertEqual(len(result['sources']), 10)
+                self.assertEqual(checks.command.call_count, 3)
+                self.assertIn('tests/support/pvm_bitmap_loop_execution.nim', result['sources'])
+
+    def test_heap_refusal_failure_blocks_shared_qualification(self):
+        """Passing the earlier native and arena controls cannot hide a failing heap witness."""
+        checks, _ = self.tools('heap-refusal')
+        with self.assertRaisesRegex(RuntimeError, 'Bitmap lowering refusal execution failed'):
+            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
 
     def test_failed_build_run_fallback_or_golden_cannot_pass(self):
         """A fallback-only second line omission or unrelated output is not native nil-refusal proof."""

@@ -16,6 +16,7 @@ import ./native_read_body
 when NativeReadCycleEnabled:
   import ./[native_read_cycle, native_read_window]
   import ./native_mixed_loop
+  import ./native_bitmap_loop
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -2753,8 +2754,11 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
     labels: openArray[int]): bool =
   ## Every local edge is instruction-relative and bounded before publication.
   for fix in fixes:
-    if fix.target < 0 or fix.target >= labels.len: return false
-    let relative = int64(labels[fix.target])-int64(fix.at)
+    if fix.target < 0 or fix.target >= labels.len or fix.at < 0 or fix.at >= words.len:
+      return false
+    let target = labels[fix.target]
+    if target < 0 or target >= words.len: return false
+    let relative = int64(target)-int64(fix.at)
     if fix.condition < 16:
       if relative < -262144 or relative > 262143: return false
       words[fix.at] = 0x54000000'u32 or
@@ -2765,6 +2769,107 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
   true
 
 when NativeReadCycleEnabled:
+  proc encodeArmBitmapLoop*(loop: NativeBitmapLoop): seq[uint32] =
+    ## Reserve bounded instruction and fixup storage before emission. Refusal leaves no image.
+    ## Guest lanes stay resident. A rejected read leaves its block and registers untouched.
+    if not loop.complete: return @[]
+    const done = 13
+    const refused = 5
+    const outside = 10
+    var labels = default(array[14, int])
+    # At most 173 words for the fixed shape, including wide prices and checked targets.
+    const wordCapacity = 192
+    var words = newSeqOfCap[uint32](wordCapacity)
+    if words.rawData == nil: return @[]
+    var fixes = newSeqOfCap[ArmMemoryCycleFixup](BitmapFixupCount)
+    if fixes.rawData == nil: return @[]
+    # X17 owns the borrowed context, X2/X3 the exact budgets, and X4..X16 the guest lanes.
+    cycleMove(words, 17, 1)
+    cycleLoad(words, 2, 17, 0)
+    cycleLoad(words, 3, 17, 8)
+    for slot in 5..12: cycleLoad(words, uint32(slot+4), 0, uint32(slot*8))
+    var operation = 0
+    for role in BitmapBlock:
+      let index = ord(role)
+      let span = uint32(BitmapSpans[index])
+      let price = loop.sites[role].price
+      labels[index] = words.len
+      cycleCompareImmediate(words, 3, span)
+      cycleEdge(words, fixes, refused+index, 3) # LO.
+      if price <= 4095:
+        cycleCompareImmediate(words, 2, uint32(price))
+      else:
+        armCompactImmediate(words, 1, price)
+        cycleCompare(words, 2, 1)
+      cycleEdge(words, fixes, refused+index, 3)
+      if role == BitmapBlock.Read:
+        # ADD W1,W12,W10,LSL#3. The private extent is clipped below the scalar wrap boundary.
+        words.add(0x0b0a0d81'u32)
+        cycleLoad(words, 6, 17, BitmapBaseOffset)
+        words.add(0xeb060021'u32) # SUBS X1,X1,X6. Borrow means the address precedes the base.
+        cycleEdge(words, fixes, refused+index, 3)
+        cycleLoad(words, 6, 17, BitmapLengthOffset)
+        words.add(0xf10020c6'u32) # SUBS X6,X6,#8.
+        cycleEdge(words, fixes, refused+index, 3)
+        cycleCompare(words, 1, 6)
+        cycleEdge(words, fixes, refused+index, 8) # HI.
+        cycleLoad(words, 6, 17, BitmapPointerOffset)
+        cycleCompareImmediate(words, 6, 0)
+        cycleEdge(words, fixes, refused+index, 0) # EQ.
+        words.add(0xf86168ca'u32) # LDR X10,[X6,X1]. Guard and budget checks are complete.
+      if price <= 4095:
+        cycleAddImmediate(words, 2, 2, uint32(price), true)
+      else:
+        armCompactImmediate(words, 1, price)
+        cycleAddRegister(words, 2, 2, 1, true)
+      cycleAddImmediate(words, 3, 3, span, true)
+      cycleLoad(words, 1, 17, uint32(16+index*8))
+      cycleAddImmediate(words, 1, 1, 1)
+      cycleStore(words, 1, 17, uint32(16+index*8))
+      armCompactImmediate(words, 1, uint64(index))
+      cycleStore(words, 1, 17, 56)
+      # Lend the same reserved buffer to the scalar emitter and the comparison emitter.
+      var body = ArmBlock(compact: true, words: move(words))
+      # The read guard replaces its original shift, add and load as one staged word.
+      let first = if role == BitmapBlock.Read: operation+3 else: operation
+      for i in first..<operation+int(span)-1:
+        let op = loop.operations[i]
+        emitArmOperation(body, op.opcode, op.slots, op.immediate)
+      words = move(body.words)
+      let branch = loop.operations[operation+int(span)-1]
+      if role == BitmapBlock.Read:
+        cycleEdge(words, fixes, ord(BitmapBlock.Advance), 16)
+      else:
+        body.terminal = move(words)
+        let condition = armBranchCompare(body, branch.opcode, branch.slots.aIndex,
+          branch.slots.bIndex, branch.immediate)
+        words = move(body.terminal)
+        let target = case role
+          of BitmapBlock.Advance: outside+ord(BitmapExit.End)
+          of BitmapBlock.Parity: ord(BitmapBlock.Advance)
+          of BitmapBlock.Midpoint: outside+ord(BitmapExit.Reset)
+          else: outside+ord(BitmapExit.Trap)
+        cycleEdge(words, fixes, target, condition)
+      operation += int(span)
+    for role in BitmapBlock:
+      labels[refused+ord(role)] = words.len
+      armCompactImmediate(words, 1, uint64(loop.sites[role].header))
+      cycleEdge(words, fixes, done, 16)
+    for side in BitmapExit:
+      labels[outside+ord(side)] = words.len
+      armCompactImmediate(words, 1, uint64(loop.exits[side]))
+      cycleEdge(words, fixes, done, 16)
+    labels[done] = words.len
+    for slot in [5, 6, 11, 12]: cycleStore(words, uint32(slot+4), 0, uint32(slot*8))
+    cycleStore(words, 2, 17, 0)
+    cycleStore(words, 3, 17, 8)
+    cycleMove(words, 0, 1)
+    words.add(0xd65f03c0'u32) # RET.
+    if words.len > wordCapacity or fixes.len != BitmapFixupCount or
+        not armMacroPatch(words, fixes, labels):
+      return @[]
+    words
+
   const
     armStorePageMiss = 12
     armStorePageExtent = 13

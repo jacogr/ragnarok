@@ -58,9 +58,14 @@ def validate_requirements(records):
         capped_pvm = {'pvm_checked_code_stream_refusal', 'pvm_code_allocation_refusal',
                       'pvm_frame_allocation_refusal', 'pvm_initialization_allocation_refusal',
                       'pvm_inner_transfer_allocation_refusal', 'pvm_publication_allocation_refusal'}
-        if name in capped_pvm or 'nimHardenOutOfMem' in defines:
+        bitmap_isa = {'pvm_bitmap_lowering_refusal_arm': 'pvmArm64Jit',
+                      'pvm_bitmap_lowering_refusal_x86': 'pvmX86Jit'}.get(name)
+        if name in capped_pvm or bitmap_isa or 'nimHardenOutOfMem' in defines:
             # Keep the recoverable cap tied to the PVM allocation refusal regressions.
-            if name not in capped_pvm or defines != {'nimMaxHeap=1', 'nimHardenOutOfMem'}:
+            expected = {'nimMaxHeap=1', 'nimHardenOutOfMem'}
+            if bitmap_isa:
+                expected.add(bitmap_isa)
+            if (name not in capped_pvm and not bitmap_isa) or defines != expected:
                 raise ValueError('Invalid native defines for recoverable heap cap: '+name)
         if 'pvmPaidMixedLoopWitness' in defines and (
                 name not in ('pvm_shared_async_arm', 'pvm_shared_async_x86')

@@ -13,7 +13,7 @@ when defined(pvmSharedAsyncWitness) and not defined(pvmSharedReadCycleOff) and (
     (defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(arm64) and
       (defined(linux) or defined(macosx)))):
   # Lexical host guards prevent Nimony from loading enabled-only helpers on the other ISA.
-  import ./[pvm_read_cycle_execution, pvm_mixed_loop_source]
+  import ./[pvm_read_cycle_execution, pvm_mixed_loop_source, pvm_bitmap_loop_execution]
 
 proc recordNativeQualification(kind: string, runtime: NativeRuntime, info: PreparedInfo,
     noRetryChecks = 0) =
@@ -1578,6 +1578,8 @@ proc runSharedAsync*() =
     purePrefixControl()
     adjacentNativePrefix()
     when NativeReadCycleEnabled:
+      diagnosticPhase("bitmapLoopExecution")
+      runBitmapLoopExecution()
       runMixedLoopSource()
       when defined(pvmPaidMixedLoopWitness):
         # Both maintained native profiles include deterministic paid fault and retry coverage.
