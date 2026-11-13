@@ -26,6 +26,31 @@ proc fixture(access: PageAccess): Memory =
   captureMemory(pages, PageLimit(3)).value
 
 let original = fixture(PageAccess.ReadWrite)
+block callerStorage:
+  # Caller storage crosses a page boundary and keeps its canaries on a late fault or local refusal.
+  let address = MemoryAddress(69631)
+  var bytes = [11'u8, 22, 33]
+  let inaccessible = fixture(PageAccess.Inaccessible)
+  let refused = readBytesInto(inaccessible, address, bytes, MemoryByteLimit(3))
+  assert refused.error == MachineError.Fault and uint32(refused.faultPage) == 69632
+  assert bytes == [11'u8, 22, 33]
+  assert readBytesInto(original, address, bytes, MemoryByteLimit(2)).error ==
+      MachineError.LimitExceeded
+  assert bytes == [11'u8, 22, 33]
+  assert readBytesInto(original, MemoryAddress(high(uint64)), bytes, MemoryByteLimit(3)).error ==
+      MachineError.InvalidRange
+  assert bytes == [11'u8, 22, 33]
+  let readable = fixture(PageAccess.ReadOnly)
+  let read = readBytesInto(readable, address, bytes, MemoryByteLimit(3))
+  assert read.error == MachineError.None and read.value
+  for index in 0..<bytes.len:
+    # A writable prefix and read-only suffix both follow the independent fixture pattern.
+    assert bytes[index] == byte((69631+index) mod 251)
+  var empty: array[0, byte] = []
+  assert readBytesInto(original, MemoryAddress(high(uint64)), empty, MemoryByteLimit(0)).value
+  assert readBytesInto(default(Memory), address, empty, MemoryByteLimit(0)).error ==
+      MachineError.InvalidOwner
+
 for offset in [0, 1, 503, 504, 505, 511, 512, 513, 4095, 4096]:
   for size in [0, 1, 2, 511, 512, 513, 1023, 1024, 1025, 4095, 4096, 4097, 8192]:
     # Compare aligned, unaligned and multiple-page reads with an independently calculated byte stream.
