@@ -16,8 +16,7 @@ import ./native_read_body
 when NativeReadCycleEnabled:
   from std/bitops import countSetBits
   import ./[native_read_cycle, native_read_window]
-  import ./native_mixed_loop
-  import ./native_bitmap_loop
+  import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -3380,6 +3379,8 @@ when NativeReadCycleEnabled:
       of 4: 0xb9000000'u32 # STR Wvalue.
       else: 0xf9000000'u32 # STR Xvalue.
     words.add(encoding or (17'u32 shl 5) or (uint32(operation.slots.aIndex)+4))
+
+  include ./arm64_fusion
 
   proc armPaidMixedLoopInstructions*(operations: openArray[NativeOperation], guards: uint32): seq[uint32] =
     ## Keep guest lanes resident across funded visits. Every memory guard

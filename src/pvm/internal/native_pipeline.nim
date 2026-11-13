@@ -7,9 +7,10 @@
 ## the worker before the host collects them. Credits bound image owners through unmapping.
 ## An invalid lowering request with a genuine queued row completes with an empty
 ## image. Collection returns that credit and the affected source stays checked.
-## Only a ConnectedReadCycle owner can queue the runtime's one immutable mixed-entry arena,
-## leaving a primary credit usable. Queued primary work claims first. Pressure may cancel the
-## auxiliary while borrowed. The last return completes retirement after the frame restores
+## One optional auxiliary arena belongs to an exact installed primary ticket. A ConnectedReadCycle
+## can request mixed self-loops. A low-coverage PurePrefix can request a checked static graph.
+## Either leaves a primary credit usable. Queued primary work claims first. Pressure may cancel
+## the auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
 ## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
 ## Another source can retain a ready primary while its auxiliary offer waits for retirement.
@@ -36,8 +37,7 @@ export native_ir, native_read_body, native_register_ring
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   export native_read_cycle
-  import ./native_mixed_loop
-  import ./native_bitmap_loop
+  import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
   export native_bitmap_loop
 
 when NativeCheckedReadEnabled:
@@ -142,6 +142,7 @@ type
     when NativeReadCycleEnabled:
       mixedKey, mixedOwner: JobKey ## One auxiliary arena and its exact installed primary ticket.
       mixedSet: NativeMixedLoopSet
+      fusionSet: seq[NativeFusionBlock] ## Moved POD request, stable until the worker/last borrow returns.
       mixedPairRefused: bool
       mixedBorrowed: bool
     when defined(pvmSharedAsyncWitness):
@@ -180,6 +181,8 @@ type
     workValid: bool
     when NativeReadCycleEnabled:
       mixedOffered: bool
+      fusionOffered, fusionSampled: bool
+      invocationNativeStart, lastNativeWork, lastSettledWork: uint64
       mixedObserved: JobKey
       mixedPublications, mixedCalls, mixedOperations, mixedHeaderCalls: uint64
       mixedBranchCalls: uint64
@@ -220,6 +223,7 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   for index in 0..<runtime.slots.len:
     # This hook is legal only before synchronization initialization and registration admission.
     `=wasMoved`(runtime.slots[index])
+  when NativeReadCycleEnabled: `=wasMoved`(runtime.fusionSet)
   runtime.initialized = false
   runtime.started = false
   runtime.stopping = false
@@ -230,6 +234,7 @@ proc `=destroy`(runtime: var NativeRuntimeStorage) =
   for index in 0..<runtime.slots.len:
     # Closed surviving clients retain the anchor until their own image/credit retirement finishes.
     `=destroy`(runtime.slots[index])
+  when NativeReadCycleEnabled: `=destroy`(runtime.fusionSet)
   if runtime.initialized:
     deinitCond(runtime.changed)
     deinitLock(runtime.lock)
@@ -309,6 +314,7 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
       runtime.mixedKey = default(JobKey)
       runtime.mixedOwner = default(JobKey)
       runtime.mixedSet = default(NativeMixedLoopSet)
+      runtime.fusionSet = default(seq[NativeFusionBlock])
       runtime.mixedPairRefused = false
       runtime.slots[index].state = Free
       return
@@ -472,17 +478,22 @@ when NativeReadCycleEnabled:
     runtime.mixedKey.generation != 0 and
       runtime.slots[runtime.mixedKey.slot].location == CompletionLocation.Queued
 
-  proc compileMixedLoop(runtime: ptr NativeRuntimeStorage) =
-    ## Copy the bounded certificate under the lock. The existing worker publishes its row.
+  proc compileAuxiliary(runtime: ptr NativeRuntimeStorage) =
+    ## Snapshot the self-loop request or borrow the stable moved fusion graph.
+    ## The running auxiliary row keeps both the input and image alive through settlement.
     let key = runtime.mixedKey
     assert matchesRow(runtime, key) and mixedLoopQueued(runtime)
-    let requested = runtime.mixedSet
     runtime.slots[key.slot].location = CompletionLocation.Running
     var image = default(NativeImage)
     var refused = 0'u8
     var pairRefused = false
+    let requested = runtime.mixedSet
     if releaseCompilerClaim(runtime, key):
-      image = lowerNativeMixedLoops(requested, refused, pairRefused)
+      if key.kind == NativeKind.StaticFusion:
+        # Running/cancelled rows retain the moved POD array until this worker settles.
+        image = lowerNativeFusion(runtime.fusionSet)
+      else:
+        image = lowerNativeMixedLoops(requested, refused, pairRefused)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
       compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
@@ -497,7 +508,7 @@ when NativeReadCycleEnabled:
           if runtime.slots[owner.slot].mixedRefusals[index] == 0:
             runtime.slots[owner.slot].mixedRefusals[index] = requested.proofs[proofIndex].header+1
             break
-    if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready:
+    if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready or image.kind != key.kind:
       runtime.slots[key.slot].location = CompletionLocation.Reclaiming
       when defined(pvmSharedAsyncWitness):
         compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ready)
@@ -506,7 +517,6 @@ when NativeReadCycleEnabled:
       acquire(runtime.lock)
       finishRetirement(runtime, key)
     else:
-      assert image.kind == NativeKind.MixedSelfLoop
       runtime.slots[key.slot].completion = move(image)
       runtime.mixedPairRefused = pairRefused
       runtime.slots[key.slot].location = CompletionLocation.Complete
@@ -536,7 +546,7 @@ proc compilerRun(raw: pointer) =
       return
     when NativeReadCycleEnabled:
       if runtime.work != WorkPhase.Queued:
-        compileMixedLoop(runtime)
+        compileAuxiliary(runtime)
         continue
     let key = runtime.key
     assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
@@ -965,11 +975,102 @@ when NativeReadCycleEnabled:
     ## Existing single-entry clients share the same arena and scheduling contract.
     offerNativeMixedLoops(session, singleNativeMixedLoop(proof))
 
+  func nativeFusionTraining*(session: NativeSession): bool =
+    ## One previous long settled call is required, with little work done by a ready prefix.
+    ## Existing checked read, ring and connected mixed ownership takes precedence.
+    let data {.cursor.} = session.data
+    if data == nil or data.fusionOffered or data.fusionSampled or
+        data.lastSettledWork < NativeFusionTrainingFloor or
+        data.lastNativeWork >= data.lastSettledWork div 16:
+      return false
+    matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix) and
+      not data.replacementArmed
+
+  func nativeFusionAvailable*(session: NativeSession): bool {.inline.} =
+    ## The ordinary path avoids the optional mailbox unless this owner trained or offered.
+    let data {.cursor.} = session.data
+    data != nil and (data.fusionOffered or nativeFusionTraining(session))
+
+  proc markNativeFusionSampled*(session: NativeSession) =
+    ## Pay for at most one sampling segment and graph construction per stream epoch.
+    let data {.cursor.} = session.data
+    if data != nil: data.fusionSampled = true
+
+  proc offerNativeFusion*(session: NativeSession, requested: var seq[NativeFusionBlock]): bool =
+    ## Transfer one bounded graph to the existing optional arena. Queue refusal
+    ## keeps the primary and checked stream usable. A submitted graph is tried once per epoch.
+    if requested.len < 2 or requested.len > NativeFusionBlockLimit: return false
+    let data {.cursor.} = session.data
+    if data == nil or data.fusionOffered or not data.fusionSampled or data.slot < 0 or
+        not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return false
+    for item in requested:
+      # The primary owns its original body even though the graph compiles asynchronously.
+      if not item.complete or nativeReadObservationOverlaps(session, NativeReadBodyInfo(
+          header: item.header, terminal: item.terminal, first: item.first,
+          last: item.first+item.span-1, epoch: data.epoch)):
+        return false
+    let anchor {.cursor.} = data.runtime
+    if anchor == nil: return false
+    let runtime = addr anchor.storage
+    if not tryAcquire(runtime.lock): return false
+    defer: release(runtime.lock)
+    if runtime.stopping or runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2 or
+        runtime.slots[data.slot].location != CompletionLocation.Installed: return false
+    var slot = -1
+    for index in 0..<runtime.slots.len:
+      if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64):
+        slot = index
+        break
+    if slot < 0 or runtime.slots[slot].location != CompletionLocation.Empty: return false
+    inc runtime.slots[slot].generation
+    inc runtime.nextTicket
+    let key = JobKey(slot: slot, generation: runtime.slots[slot].generation, epoch: data.epoch,
+      ticket: runtime.nextTicket, kind: NativeKind.StaticFusion)
+    runtime.fusionSet = move(requested)
+    runtime.mixedKey = key
+    runtime.mixedOwner = runtime.slots[data.slot].key
+    runtime.slots[slot].key = key
+    runtime.slots[slot].state = Live
+    runtime.slots[slot].location = CompletionLocation.Queued
+    if runtime.submitted < high(uint64): inc runtime.submitted
+    data.fusionOffered = true
+    data.mixedOffered = true
+    signal(runtime.changed)
+    true
+
+  type NativeFusionBorrow* = object
+    ## Both borrowed values are stable until the segment returns the auxiliary credit.
+    image*: nil ptr NativeImage
+    blocks*: nil ptr seq[NativeFusionBlock]
+
   proc observeMixedPublication(data: var NativeSessionStorage, key: JobKey) =
     ## Record each exact physical publication on its first owner observation.
     if sameKey(data.mixedObserved, key): return
     data.mixedObserved = key
     if data.mixedPublications < high(uint64): inc data.mixedPublications
+
+  proc borrowNativeFusion*(session: NativeSession): NativeFusionBorrow =
+    ## Only the installed prefix's exact live epoch can use the optional image.
+    result = default(NativeFusionBorrow)
+    let data {.cursor.} = session.data
+    if data == nil or not data.fusionOffered or data.slot < 0 or
+        not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return
+    let anchor {.cursor.} = data.runtime
+    if anchor == nil: return
+    let runtime = addr anchor.storage
+    if not tryAcquire(runtime.lock): return
+    defer: release(runtime.lock)
+    let key = runtime.mixedKey
+    if runtime.stopping or runtime.mixedBorrowed or key.kind != NativeKind.StaticFusion or
+        key.generation == 0 or key.epoch != data.epoch or not matchesRow(runtime, key) or
+        not sameKey(runtime.mixedOwner, runtime.slots[data.slot].key): return
+    if runtime.slots[key.slot].location != CompletionLocation.Complete or
+        runtime.slots[key.slot].cancelled or not runtime.slots[key.slot].completion.ready: return
+    runtime.mixedBorrowed = true
+    observeMixedPublication(data[], key)
+    result = NativeFusionBorrow(image: addr runtime.slots[key.slot].completion,
+      blocks: addr runtime.fusionSet)
 
   type NativeMixedLoopBorrow* = object
     image*: nil ptr NativeImage
@@ -1035,6 +1136,9 @@ when NativeReadCycleEnabled:
     if runtime.slots[key.slot].cancelled: retireMixedLoopLocked(runtime)
     release(runtime.lock)
 
+when NativeReadCycleEnabled:
+  func addNativeCount(left, right: uint64): uint64 {.inline.}
+
 proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
   ## Lease the runtime for the whole public call, even during unregistered checked execution.
   ## The source epoch binds proof and nominations. A credit is acquired separately when
@@ -1060,6 +1164,8 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
       data.readValidated = false
       # Ordinary calls invalidate availability without clearing the inactive discovery table.
       data.readDiscovery.active = false
+      when NativeReadCycleEnabled:
+        data.invocationNativeStart = addNativeCount(data.operations, data.mixedOperations)
       data.laterRead.observed = false
       data.laterRead.validated = false
     # Coarse shared horizon is necessary, not a claim of candidate-specific measured profitability.
@@ -1355,6 +1461,11 @@ proc invalidateNativeStream*(session: NativeSession) =
   data.nextScan = 0
   data.ticket = 0
   data.provenWork = 0
+  when NativeReadCycleEnabled:
+    data.fusionOffered = false
+    data.fusionSampled = false
+    data.lastNativeWork = 0
+    data.lastSettledWork = 0
   data.allowed = false
   if data.epoch == high(uint64): data.state = NativeState.Unavailable
   else:
@@ -1451,6 +1562,10 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Keep a source/epoch-bound maximum of ONE call, not the immediately prior input or a lifetime sum.
   # Short inputs neither manufacture eligibility nor revoke a genuinely long same-source observation.
   data.provenWork = max(data.provenWork, completedWork)
+  when NativeReadCycleEnabled:
+    let nativeWork = addNativeCount(data.operations, data.mixedOperations)
+    data.lastNativeWork = nativeWork-data.invocationNativeStart
+    data.lastSettledWork = completedWork
   when NativeCheckedReadEnabled:
     # A complete checked halt with settled work at the floor and the same unused image can arm
     # discovery. An unqualified call or missing observation clears the previous streak.

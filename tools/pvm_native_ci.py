@@ -149,7 +149,8 @@ def qualify_policy(checks, compiler, shared_refusal=False):
 def shared_source_paths():
     """Bind both registered common mains, helper, exact goldens and their source-owned profiles."""
     paths = [ROOT/'tests/support'/name for name in ('pvm_bitmap_fixture.nim',
-             'pvm_bitmap_loop_execution.nim', 'pvm_bitmap_lowering_refusal.nim', 'pvm_shared_async.nim')]
+             'pvm_bitmap_loop_execution.nim', 'pvm_bitmap_lowering_refusal.nim', 'pvm_shared_async.nim',
+             'pvm_static_fusion.nim')]
     for directory, suite in (('codec', 'pvm_shared_async_arm'),
                              ('codec', 'pvm_shared_async_x86'),
                              ('codec', 'pvm_bitmap_lowering_refusal_arm'),

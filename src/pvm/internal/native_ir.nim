@@ -27,8 +27,7 @@ const
 when NativeReadCycleEnabled:
   type NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
     PurePrefix, ClosedRegisterLoop, CheckedReadBody, ConnectedReadCycle, RegisterRing,
-      MixedSelfLoop,
-      BitmapLoop
+      MixedSelfLoop, BitmapLoop, StaticFusion
 else:
   type NativeKind* {.pure.} = enum ## Stock kinds retain their original ordinals.
     PurePrefix, ClosedRegisterLoop, CheckedReadBody, RegisterRing

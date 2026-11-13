@@ -8,6 +8,8 @@ import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[handler_stream, native_pipeline, native_platform]
 import ./pvm_owner_record
+when NativeReadCycleEnabled:
+  import ./pvm_static_fusion
 when defined(pvmSharedAsyncWitness) and not defined(pvmSharedReadCycleOff) and (
     (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
     (defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(arm64) and
@@ -1585,6 +1587,8 @@ proc runSharedAsync*() =
         # Both maintained native profiles include deterministic paid fault and retry coverage.
         runPaidMixedLoopSource()
       runMixedLoopMailbox()
+      diagnosticPhase("staticFusion")
+      runStaticFusion()
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")
       lateReadReplacement()

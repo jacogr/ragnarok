@@ -20,8 +20,7 @@ import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
   from std/bitops import countSetBits
   import ./native_read_cycle
-  import ./native_mixed_loop
-  import ./native_bitmap_loop
+  import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.
@@ -1415,6 +1414,7 @@ when defined(pvmX86Jit):
         cycleEdge(code, fixes, 0x83, unpaid) # JNC when the page is not already dirty.
 
       include ./x86_mixed_loop
+      include ./x86_fusion
 
       proc readCycleAdvance(code: var X86Block, access: X86ResidentAccess,
           slot: range[0..12], delta: byte) =
