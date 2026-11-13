@@ -133,7 +133,7 @@ block native_image_publication:
   assert refused == 0 and not pairRefused
   when pvmMixedLoopPublishFail >= 0:
     assert not image.ready and nativeMixedLoopEntries(image) == 0 and image.codeBytes == 0
-    echo "MIXED_ARENA_PUBLISH_REFUSAL,", pvmMixedLoopPublishFail
+    # Native qualification also requires the publisher's observed failure and cleanup receipt.
   else:
     assert image.ready and nativeMixedLoopEntries(image) == 3
     let first = witnessNativeMixedLoopImage(image, 0, encoded(candidates.proofs[0]))

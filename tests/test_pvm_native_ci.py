@@ -1033,16 +1033,19 @@ class MixedArenaQualificationTests(unittest.TestCase):
     """Keep an ordinary image run and both injected publisher refusals in native qualification."""
 
     def test_partial_publication_must_prove_the_second_slot_refusal(self):
-        """A first-slot failure cannot satisfy the run that must release a partially published arena."""
-        checks = Mock()
-        checks.build.return_value = (dict(exit_code=0), 'binary')
-        checks.command.side_effect = [
-            dict(exit_code=0, output='MIXED_ARENA_SINGLE_OK\nMIXED_ARENA_OK\n'),
-            dict(exit_code=0, output='MIXED_ARENA_PUBLISH_REFUSAL,0\nMIXED_ARENA_OK\n'),
-            dict(exit_code=0, output='MIXED_ARENA_PUBLISH_REFUSAL,0\nMIXED_ARENA_OK\n',
-                 log='mixed-arena-refuse-1-run.log')]
-        with self.assertRaisesRegex(RuntimeError, 'mixed-arena-refuse-1-run'):
-            ci.qualify_mixed_arena(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+        """Empty images from early failures or missing first appends cannot pass partial cleanup."""
+        for receipt in ('', 'MIXED_ARENA_PUBLISH_REFUSAL,0,0\n',
+                        'MIXED_ARENA_PUBLISH_REFUSAL,1,0\n'):
+            with self.subTest(receipt=receipt):
+                checks = Mock()
+                checks.build.return_value = (dict(exit_code=0), 'binary')
+                checks.command.side_effect = [
+                    dict(exit_code=0, output='MIXED_ARENA_SINGLE_OK\nMIXED_ARENA_OK\n'),
+                    dict(exit_code=0, output='MIXED_ARENA_PUBLISH_REFUSAL,0,0\nMIXED_ARENA_OK\n'),
+                    dict(exit_code=0, output=receipt+'MIXED_ARENA_OK\n',
+                         log='mixed-arena-refuse-1-run.log')]
+                with self.assertRaisesRegex(RuntimeError, 'mixed-arena-refuse-1-run'):
+                    ci.qualify_mixed_arena(checks, 'compiler', dict(system='Linux', machine='x86_64'))
 
 
 class ReadWidthQualificationTests(unittest.TestCase):

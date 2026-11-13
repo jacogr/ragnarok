@@ -257,8 +257,10 @@ def qualify_mixed_arena(checks, compiler, host):
             # The normal profile emits its final marker after all geometry and entry assertions.
             complete = observed['output'].endswith('MIXED_ARENA_SINGLE_OK\nMIXED_ARENA_OK\n')
         else:
-            # Each refusal variant must attest the chosen slot, with no positive image transcript.
-            complete = observed['output'] == f'MIXED_ARENA_PUBLISH_REFUSAL,{slot}\nMIXED_ARENA_OK\n'
+            # Slot 1 must refuse after slot 0 really appended, and slot 0 must refuse with no prior append.
+            published_slots = (1 << slot) - 1
+            complete = observed['output'] == (
+                f'MIXED_ARENA_PUBLISH_REFUSAL,{slot},{published_slots}\nMIXED_ARENA_OK\n')
         if observed['exit_code'] or not complete:
             raise RuntimeError('Mixed arena qualification execution failed: '+observed['log'])
         rows.append(dict(slot=slot, defines=flags, build=built, run=observed))
