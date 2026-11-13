@@ -456,7 +456,7 @@ proc infoResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners cannot authorize a fabricated write.
   hostSuccess[AccumulationDispatchError](response)
 
-func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
+func privilegeNumber(bytes: openArray[byte], offset, width: int): uint64 =
   ## Decode a completely captured fixed E4/E8 guest field without narrowing high role bits.
   result = 0
   for i in 0..<width:
@@ -692,7 +692,8 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return charged # No input capture or state work before affordability.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[10])), MemoryLength(60),
+  var bytes = default(array[60, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[10])), bytes,
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -704,7 +705,7 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Finite capture policy is a local refusal.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Only a genuine memory owner may supply creation fields.
-  let length = privilegeNumber(captured.value, 32, 4)
+  let length = privilegeNumber(bytes, 32, 4)
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](
@@ -716,11 +717,11 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return hostSuccess[AccumulationDispatchError](
         response) # Complete request and valid length precede full-width WHO.
   var hash = default(array[32, byte])
-  for i in 0..<32: hash[i] = captured.value[i] # Complete fixed capture proves all hash coordinates.
+  for i in 0..<32: hash[i] = bytes[i] # Complete fixed capture proves all hash coordinates.
   let proposal = AccumulationNewService(codeHash: CodeHash(hash),
-    length: RequestLength(uint32(length)), accumulationGas: Gas(privilegeNumber(captured.value, 36, 8)),
-    transferGas: Gas(privilegeNumber(captured.value, 44, 8)), gratis: AccountBalance(
-        privilegeNumber(captured.value, 52, 8)),
+    length: RequestLength(uint32(length)), accumulationGas: Gas(privilegeNumber(bytes, 36, 8)),
+    transferGas: Gas(privilegeNumber(bytes, 44, 8)), gratis: AccountBalance(
+        privilegeNumber(bytes, 52, 8)),
     desired: AccumulationDesiredService(uint64(cpu.registers[8])))
   let changed = recordAccumulationNew(context.effects, proposal, context.parameters,
       context.serviceProbes, ServiceIndex(uint32(funder)), AccumulationFundingMode(uint64(
@@ -844,7 +845,8 @@ proc invalidTransferModeResponse(context: DispatchContext, cpu: MachineInfo, mem
   var response = charged.value
   if response.action == HostAction.OutOfGas: return charged # The minimum fee proves no row input can matter.
   if uint64(cpu.registers[12]) != 0:
-    let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[12])), MemoryLength(128),
+    var memo = default(array[128, byte])
+    let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[12])), memo,
         context.copyLimit)
     case captured.error
     of MachineError.None: discard # Complete memo readability precedes both service existence checks.
@@ -935,13 +937,11 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
   var action = HostAction.Continue
   var code = 0'u64
   var deferredGas = 0'u64
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[12])), MemoryLength(128),
+  var memo = default(array[128, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[12])), memo,
       context.copyLimit)
   case captured.error
   of MachineError.None:
-    var memo = default(array[128, byte])
-    for i in 0..<128:
-      memo[i] = captured.value[i] # Complete fixed input capture precedes WHO/LOW/CASH checks.
     let rawFunder = uint64(cpu.registers[7])
     let funder = if rawFunder == high(uint64): self else: rawFunder
     if funder > uint64(high(uint32)):

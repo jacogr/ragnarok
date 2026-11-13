@@ -529,7 +529,9 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   var innerRegisters = default(RegisterFile)
   case writable.error
   of MachineError.None:
-    let bytes = memory.readBytes(address, MemoryLength(112), MemoryByteLimit(112)).value
+    var bytes = default(array[112, byte])
+    if memory.readBytesInto(address, bytes, MemoryByteLimit(112)).error != MachineError.None:
+      fail(InnerMachineError.InvalidMemory) # The writable preflight established the complete frame.
     for word in 0..<14:
       var value = 0'u64
       for octet in 0..<8: value = value or (uint64(bytes[word*8+octet]) shl (

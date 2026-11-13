@@ -78,8 +78,10 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
     return RefinementExportResult(status: RefinementExportError.None, completed: transition)
   transition.response.gas = MachineGas(credit-3521)
   let size = min(uint64(registers[8]), 4104'u64)
-  var input = readBytes(memory, MemoryAddress(uint64(registers[7])), MemoryLength(size),
-      MemoryByteLimit(4104))
+  var bytes = default(array[4104, byte])
+  let address = MemoryAddress(uint64(registers[7]))
+  let input = if size == 0: readableRange(memory, address, MemoryLength(0))
+    else: readBytesInto(memory, address, bytes.toOpenArray(0, int(size)-1), MemoryByteLimit(4104))
   case input.error
   of MachineError.None:
     discard # Even protocol-full contexts must first validate the complete selected input.
@@ -96,10 +98,6 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
   let next = count+1 # The preceding capacity bound proves next<=3072 and next*4104 fits every supported host int.
   if next > uint64(limits.items) or next*4104 > uint64(limits.bytes):
     return RefinementExportResult(status: RefinementExportError.LimitExceeded) # Local refusal is distinct from protocol FULL.
-  let payload = takeValue(input)
-  var bytes = default(array[4104, byte])
-  for index in 0..<payload.len:
-    bytes[index] = payload[index] # The initialized tail remains zero; clipped input is at most one segment.
   var segments = newSeqOfCap[SegmentData](int(next))
   for index in 0..<data.segments.len:
     segments.add(data.segments[index]) # Share immutable payloads, never the mutable sequence metadata.
