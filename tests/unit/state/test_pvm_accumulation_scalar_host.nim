@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Actual accumulation dispatch mixes scalar gas/checkpoint with owned unknown/yield observations.
+## Actual accumulation dispatch mixes scalar gas/checkpoint, fixed Yield reads and owned unknown observations.
 ## Literal bytes, effect commitments and host charges remain independent of callback representation.
 
 import std/[assertions, syncio]
@@ -91,5 +91,27 @@ block scalarCheckpointTerminal:
   for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
     # Underfunding precedes checkpoint assignment; unpublished guest bytes still belong to the final result.
     assert not done.effects.effectContext(dimension).value.effectInfo.value.hasYield
+
+block dirtyCrossingYield:
+  # The two-page read must include unpublished guest stores and remain independent of later stores.
+  let crossing = registerImmediate(7, 200703)
+  let instructions = [@[30'u8, 3, 255, 15, 3, 41],
+    @[30'u8, 3, 0, 16, 3, 73], crossing, @[10'u8, 27], @[10'u8, 19],
+    @[30'u8, 3, 255, 15, 3, 99], @[30'u8, 3, 0, 16, 3, 91], @[50'u8, 0]]
+  let execution = newExecutionWorker()
+  let prepared = guestProgram(instructions, worker = execution)
+  let done = run(prepared, execution, steps = 8, calls = 2)
+  assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
+  for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
+    let context = done.effects.effectContext(dimension).value
+    let bytes = array[32, byte](context.effectYield.value)
+    assert bytes[0] == 41 and bytes[1] == 73
+    for index in 2..<32: assert bytes[index] == 0
+  let finalRam = memoryOf(done.value.machine).value
+  assert uint64(load(finalRam, MemoryAddress(200703), AccessWidth(1)).value) == 99
+  assert uint64(load(finalRam, MemoryAddress(200704), AccessWidth(1)).value) == 91
+  let initial = memoryOf(prepared.accumulationMachine.value).value
+  assert uint64(load(initial, MemoryAddress(200703), AccessWidth(1)).value) == 0
+  assert uint64(load(initial, MemoryAddress(200704), AccessWidth(1)).value) == 0
 
 echo "PVM accumulation scalar and owned host checks passed"

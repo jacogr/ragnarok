@@ -18,6 +18,9 @@
 ## An invalid native return instead reports BackendFailure without publishing
 ## CPU, memory or gas. The segment returns its image borrows before the prepared
 ## owner retires the image and discards the invocation's frame and stream.
+##
+## A nominated fixed read can copy stopped RAM into a scalar callback. The
+## callback receives only values, while continuing replies keep dirty RAM local.
 
 import std/assertions
 import ./[program, machine, registers]
@@ -840,6 +843,18 @@ type
   FallibleScalarHostCallback*[Context; Reason: enum] = proc(context: var Context,
       call: HostCallId, cpu: MachineInfo): ScalarHostResult[Reason] {.nimcall, raises: [].}
     ## A local callback failure preserves its enum and never publishes partial engine state.
+  HostRead32Request* = object ## A copied natural range and caller budget, or an explicit skipped read.
+    read*: bool
+    address*: MemoryAddress
+    limit*: MemoryByteLimit
+  HostRead32*[Context; Reason: enum] = object ## Optional fixed-width observation for one selected scalar host.
+    call*: HostCallId
+    ## This pure selection runs before the reply. A false read supplies Uninitialized and zero bytes.
+    request*: nil proc(context: Context, cpu: MachineInfo): HostRead32Request
+      {.nimcall, raises: [], noSideEffect.}
+    ## The engine passes copied bytes and the exact read status, then applies only the scalar reply.
+    respond*: nil proc(context: var Context, cpu: MachineInfo, status: MachineError,
+      bytes: array[32, byte]): ScalarHostResult[Reason] {.nimcall, raises: [].}
   ResponseOnly = enum ## The response-only adapter has no callback-failure alternative.
     Reply
   ResponseCallback[Context] = proc(context: var Context,
@@ -853,12 +868,13 @@ type
     response: nil ResponseCallback[Context]
     fallible: nil FallibleCallback[Context, Reason]
   ScalarHostCallbacks[Context; Reason: enum] = object
-    ## Explicit scalar callers add three pointer slots; fixed fields avoid conditional record expansion.
+    ## Keep scalar routing and fixed-read selection invocation-local beside the owned fallback.
     response: nil ResponseCallback[Context]
     fallible: nil FallibleCallback[Context, Reason]
     scalarCalls: nil ScalarHostSelector
     scalarResponse: nil ScalarHostCallback[Context]
     scalarFallible: nil FallibleScalarHostCallback[Context, Reason]
+    read32: HostRead32[Context, Reason]
 
 include ./internal/backend_execution
 
@@ -914,15 +930,30 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
       if selector != nil:
         # Routing reads only the host identifier and cannot replay an already-effectful callback.
         scalar = selector(frame.hostCall)
-      if scalar:
+      when Fallible:
+        let readHandler = callbacks.read32.respond
+        let readCall = readHandler != nil and frame.hostCall == callbacks.read32.call
+      else:
+        const readCall = false
+      if scalar or readCall:
         let call = frame.hostCall
         let cpu = observeFlatHostScalars(frame)
         var response = default(ScalarHostResponse)
         when Fallible:
           # The selected scalar signature owns no memory and preserves the caller's typed refusal.
-          let selected = callbacks.scalarFallible
-          assert selected != nil
-          let reply = selected(context, call, cpu)
+          let reply = if readCall:
+            let request = callbacks.read32.request
+            if request == nil or readHandler == nil:
+              return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
+            let range = request(context, cpu)
+            var bytes = default(array[32, byte])
+            let status = if range.read: readFlatHost32(frame, range.address, range.limit, bytes)
+              else: MachineError.Uninitialized
+            readHandler(context, cpu, status, bytes)
+          else:
+            let selected = callbacks.scalarFallible
+            assert selected != nil
+            selected(context, call, cpu)
           case reply.kind
           of HostResultKind.Response: response = reply.value
           of HostResultKind.Failure:
@@ -1141,11 +1172,13 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
       {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, prepared: PreparedProgram,
     scalarCalls: ScalarHostSelector,
-    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
-  ## Explicitly select copied CPU callbacks; all other calls and foreign policies retain the owned handler.
+    scalarHandler: FallibleScalarHostCallback[Context, Reason],
+    read32: HostRead32[Context, Reason] = default(HostRead32[Context,
+        Reason])): HostExecutionResult[Reason] =
+  ## Select copied CPU callbacks and one optional fixed read. Foreign engines use the owned handler.
   hostSelected[Context, Reason, true, true, ScalarHostCallbacks[Context, Reason]](source, prepared, context,
     ScalarHostCallbacks[Context, Reason](fallible: handler, scalarCalls: scalarCalls,
-      scalarFallible: scalarHandler), stepLimit, hostLimit)
+      scalarFallible: scalarHandler, read32: read32), stepLimit, hostLimit)
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse
@@ -1255,7 +1288,9 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
       {.nimcall, raises: [].},
     steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
     selected: PvmBackend, scalarCalls: ScalarHostSelector,
-    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+    scalarHandler: FallibleScalarHostCallback[Context, Reason],
+    read32: HostRead32[Context, Reason] = default(HostRead32[Context,
+        Reason])): HostExecutionResult[Reason] =
   ## One-shot scalar-capable calls preserve the same complete owner admission and selected-backend policy.
   let code = programOf(source)
   if code.error != MachineError.None:
@@ -1264,7 +1299,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if prepared.error != PreparationError.None:
     return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
   executeWithHost(source, context, handler, steps, calls, prepared.value,
-    scalarCalls, scalarHandler)
+    scalarCalls, scalarHandler, read32)
 
 proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(
     NativeRuntime)): PreparedProgramCache =
@@ -1333,7 +1368,9 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
       {.nimcall, raises: [].},
     steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
     selected: PvmBackend, cache: PreparedProgramCache, scalarCalls: ScalarHostSelector,
-    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+    scalarHandler: FallibleScalarHostCallback[Context, Reason],
+    read32: HostRead32[Context, Reason] = default(HostRead32[Context,
+        Reason])): HostExecutionResult[Reason] =
   ## Explicit capabilities follow the same full cache key and exclusive prepared-owner admission.
   let code = programOf(source)
   if code.error != MachineError.None:
@@ -1344,7 +1381,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if prepared.error != PreparationError.None:
     return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
   executeWithHost(source, context, handler, steps, calls, prepared.value,
-    scalarCalls, scalarHandler)
+    scalarCalls, scalarHandler, read32)
 
 proc backendAvailability*(selected: PvmBackend): StepError =
   ## Refuse unavailable explicit optional policies before any application resource, host or guest effect opens.

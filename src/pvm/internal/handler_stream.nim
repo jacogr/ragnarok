@@ -3744,6 +3744,41 @@ proc observeFlatHostMemory*(f: var FlatFrame): Memory =
   let observed = tryObserveFlatHostMemory(f, result)
   assert observed == oracle.StepError.None
 
+proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimit,
+    output: var array[32, byte]): MachineError =
+  ## Copy a natural host range at the stopped PC, including unpublished guest stores.
+  ## The immutable mapping supplies permissions and clean bytes. Dirty resident slices are
+  ## copied into private temporary storage before the complete fixed result is exposed.
+  if not f.hostReady or f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or
+      f.info.pc != f.hostSnapshotPc:
+    return MachineError.InvalidOwner
+  var bytes = default(array[32, byte])
+  let checked = readBytesInto(f.sourceMemory, address, bytes, limit)
+  if checked.error != MachineError.None: return checked.error
+  let start = uint64(address)
+  var copied = 0
+  while copied < bytes.len:
+    let physical = start+uint64(copied) # Complete preflight bounded the whole natural interval.
+    let count = min(bytes.len-copied, 4096-int(physical mod 4096))
+    if flatDirty(f, PageIndex(uint32(physical div 4096))):
+      if physical >= f.stackBase and physical-f.stackBase+uint64(count) <= uint64(f.stack.len):
+        copyMem(addr bytes[copied], unsafeAddr f.stack[int(physical-f.stackBase)], count)
+      elif physical >= f.rwBase and physical-f.rwBase+uint64(count) <= uint64(f.rw.len):
+        copyMem(addr bytes[copied], unsafeAddr f.rw[int(physical-f.rwBase)], count)
+      else:
+        var resident = false
+        for slot in 0..<f.extra.len:
+          let region {.cursor.} = f.extra[slot]
+          if region.access == PageAccess.ReadWrite and physical >= region.first and
+              physical-region.first+uint64(count) <= uint64(region.bytes.len):
+            copyMem(addr bytes[copied], unsafeAddr region.bytes[int(physical-region.first)], count)
+            resident = true
+            break
+        if not resident: return MachineError.InvalidOwner # A dirty page must have resident bytes.
+    copied += count
+  output = bytes
+  MachineError.None
+
 proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
   ## Bind a genuine host stop without publishing memory; the callback receives only copied CPU state.
   assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host

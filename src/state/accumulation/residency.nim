@@ -173,11 +173,13 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
       {.nimcall, raises: [].},
     steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
     selected: PvmBackend, lease: ServiceExecutionLease, scalarCalls: ScalarHostSelector,
-    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason]
+    scalarHandler: FallibleScalarHostCallback[Context, Reason],
+    read32: HostRead32[Context, Reason] = default(HostRead32[Context,
+        Reason])): HostExecutionResult[Reason]
     {.requires: lease.owner != nil.} =
   ## Keep the admitted service lease active through scalar and owned callbacks and final publication.
   let owner = lease.owner
   assert owner != nil and owner[].busy
   assert owner[].slots[lease.index].backend == selected
   executeWithHost(source, context, handler, steps, calls, cycles, selected,
-    owner[].slots[lease.index].worker, scalarCalls, scalarHandler)
+    owner[].slots[lease.index].worker, scalarCalls, scalarHandler, read32)
