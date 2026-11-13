@@ -935,6 +935,35 @@ when defined(pvmSharedAsyncWitness):
       "failed credit: no automatic retry after restart"
     assert runtime.close(), "failed credit: joined final close"
 
+  proc invalidQueuedRequest() =
+    ## A real queued credit settles normally when the compiler refuses its request.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let steps = ExecutionStepLimit(6145)
+    pauseNativeCompiler(runtime, true)
+    let selected = prepared(owner, runtime)
+    verify(execute(source, steps, selected), source, 2048)
+    assert runtime.runtimeInfo.phase == NativePhase.Queued
+    rejectNextNativeCompilerRequest(runtime)
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    assert runtime.runtimeInfo.completions == 1 and runtime.runtimeInfo.completed == 1
+    let checked = execute(source, steps, selected)
+    verify(checked, source, 2048)
+    assert checked.value.backend == PvmBackend.Interpreted
+    assert preparedNativeState(selected).value == NativeState.Unavailable
+    assert runtime.runtimeInfo.registered == 0 and runtime.runtimeInfo.completions == 0
+    let following = prepared(owner, runtime)
+    verify(execute(source, steps, following), source, 2048)
+    waitNativeCompiler(runtime)
+    let done = execute(source, steps, following)
+    verify(done, source, 2048)
+    assert done.value.backend == PvmBackend.Jit and runtime.runtimeInfo.submitted == 2
+    assert runtime.close()
+
   proc runSharedAsyncRefusal*() =
     ## A real eligible worker job refuses allocation once; exact collection is permanently checked for this owner.
     when defined(pvmX86Jit):
@@ -1527,6 +1556,7 @@ proc runSharedAsync*() =
     deferredCreditProgress()
     exhaustedCreditNamespace()
     asyncLifecycle()
+    invalidQueuedRequest()
     diagnosticPhase("retainedCompletionFairness")
     retainedCompletionFairness()
     diagnosticPhase("parkedCompletionCapacity")
