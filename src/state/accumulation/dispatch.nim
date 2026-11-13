@@ -760,7 +760,8 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return charged # Affordability precedes memory capture and all state changes.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+  var hash = default(array[32, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[8])), hash,
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -772,9 +773,6 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture policy is not guest panic.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no code hash.
-  var hash = default(array[32, byte])
-  for i in 0..<32:
-    hash[i] = captured.value[i] # Exact fixed capture proves every source index.
   let raw = uint64(cpu.registers[7])
   let target = if raw == high(uint64): self else: raw
   if target > uint64(high(uint32)):
@@ -1054,7 +1052,8 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](response) # HUH preserves r8 and precedes memory/copy policy.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+  var hash = default(array[32, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[8])), hash,
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -1067,9 +1066,6 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture ceilings do not become guest panic or NONE.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
-  var hash = default(array[32, byte])
-  for i in 0..<32:
-    hash[i] = captured.value[i] # Fixed copied hash cannot alias mutable guest memory.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let rawTarget = uint64(cpu.registers[7])
   var target = current.effectInfo.value.service
@@ -1129,7 +1125,8 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](
         response) # HUH precedes memory/local copy policy and preserves r8.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+  var hash = default(array[32, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[8])), hash,
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -1142,9 +1139,6 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit copy policy cannot become panic or FULL.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners supply no hash.
-  var hash = default(array[32, byte])
-  for i in 0..<32:
-    hash[i] = captured.value[i] # Copied fixed input cannot alias guest memory in a published successor.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
   let raw = uint64(cpu.registers[7])
@@ -1187,7 +1181,8 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](response) # HUH precedes memory/copy policy and retains r8.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+  var hash = default(array[32, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[8])), hash,
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -1200,9 +1195,6 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Explicit capture policy cannot impersonate guest panic or HUH.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory owners grant no hash.
-  var hash = default(array[32, byte])
-  for i in 0..<32:
-    hash[i] = captured.value[i] # Fixed independent input cannot alias guest memory in a published owner.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
   let raw = uint64(cpu.registers[7])
