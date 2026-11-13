@@ -32,7 +32,7 @@ type
     of None:
       completed: ExportTransition
     else:
-      discard                      # No partial owner or charged reply escapes local refusal.
+      discard # No partial owner or charged reply escapes local refusal.
 
 func error*(outcome: RefinementExportResult): RefinementExportError =
   ## Inspect the reason without exposing a writable discriminator.
