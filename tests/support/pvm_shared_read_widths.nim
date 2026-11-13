@@ -159,12 +159,17 @@ when NativeCheckedReadEnabled:
       if width > 1: context[0] = initNativeReadRegion(0x20000, bytes.toOpenArray(0, width-2))
       var actual = initialRegisters()
       let before = actual
-      assert not enterNativeReadBody(compiled, actual, context) and actual == before, "late transaction rollback"
+      assert nativeReadStatus(compiled, actual, context) == NativeReadOutcome.Refused and
+        actual == before, "late transaction rollback"
       context[0] = initNativeReadRegion(0x20000, bytes.toOpenArray(0, width-1))
       var expected = before
       expected[1] = RegisterValue(0x6d)
       expected[2] = RegisterValue(Repeated[form])
       expected[7] = RegisterValue(11)
+      when defined(pvmSharedAsyncWitness):
+        assert nativeReadInvalidEntryWitness(compiled, actual, context) ==
+            NativeReadOutcome.Failed and
+          actual == before, "arena entry rejection grants no checked replay"
       assert enterNativeReadBody(compiled, actual, context) and actual == expected, "alias or recovery transaction"
 
 proc guest(opcode: byte, stack: bool, host = false): Program =

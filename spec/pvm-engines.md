@@ -52,6 +52,9 @@ External gas-plan/memo compatibility overloads remain independent-engine APIs; f
 own their fixed-cycle private memo. Single-step adapters retain their existing scope.
 No alternate interpreter is selected after an explicit foreign request.
 
+The [step adapter](../src/pvm/step.nim) owns the distinction between a certified native guard
+refusal and `BackendFailure`, including image retirement and guest state publication.
+
 ## Capabilities and qualification
 
 `polkavm-interpreted` is portable on the supported architectures. `polkavm-compiled` currently

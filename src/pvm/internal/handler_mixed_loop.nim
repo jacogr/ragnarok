@@ -158,7 +158,7 @@ when declared(FlatFrame):
     ## Credited native work is whole visits plus the original prefix, including folded
     ## no-ops; a prefix without a completed BNE credits work/calls but no branch/header.
     let boundProof {.cursor.}: NativeMixedLoop = certificate
-    assert off == boundProof.header
+    if off != boundProof.header: return flatLocal(f, off, oracle.StepError.BackendFailure)
     if f.info.blockCharged or f.barrier != flatStop: return flatCharge(f, off)
     let gas = uint64(f.info.gas)
     let funded = nativeMixedLoopBudget(boundProof.span, boundProof.price, gas, f.remaining)
@@ -175,13 +175,16 @@ when declared(FlatFrame):
     let raw: uint32 = enter(image[], f.info.registers, context)
     let receipt: NativeMixedLoopReceipt = nativeMixedLoopReceipt(boundProof, funded, raw,
       f.info.registers)
-    if not receipt.valid: abortNativeReceipt()
+    if not receipt.valid: return flatLocal(f, off, oracle.StepError.BackendFailure)
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       inc f.mixedWitnessEntries
     if receipt.paid:
-      assert receipt.next > off and receipt.next < boundProof.terminal
+      if receipt.next <= off or receipt.next >= boundProof.terminal or
+          uint64(receipt.next) >= uint64(f.sites.len):
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
       let ordinal = f.sites[int(receipt.next)]
-      assert ordinal >= boundProof.first and ordinal-boundProof.first < uint32(boundProof.span)
+      if ordinal < boundProof.first or ordinal-boundProof.first >= uint32(boundProof.span):
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
       let visits = uint64(receipt.visits)
       let reserved = visits+1
       let prefix = uint64(ordinal-boundProof.first)
@@ -243,7 +246,7 @@ when declared(FlatFrame):
         template selected(entry, registers, context: untyped): untyped =
           enterNativeMixedLoopAt(entry, uint8(index), registers, context)
         return enterFlatMixedLoop(f, off, requested[].proofs[index], image, selected)
-    abortNativeReceipt()
+    flatLocal(f, off, oracle.StepError.BackendFailure)
 
   proc borrowFlatMixedLoopSegment(f: var FlatFrame,
       requested: ptr NativeMixedLoopSet): NativeMixedLoopBorrow =

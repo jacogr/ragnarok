@@ -15,12 +15,13 @@ const
     ## Checked read admission requires a supported native lowerer.
   NativeReadCycleEnabled* = NativeCheckedReadEnabled and not defined(pvmSharedReadCycleOff)
     ## Use the connected ABI on supported native hosts, with an explicit feature-off control.
-  NativeSpanOperations* = 64   ## One independently compiled non-exiting span, not a profitability floor.
-  NativeMinimumOperations* = 2 ## Structural span floor shared by both lowerers.
-  NativeEntryLimit* = 262144'u32 ## Existing native-coordinate ceiling, with an exclusive past endpoint.
-  NativeImageByteLimit* = 4096 ## Complete image including return on either ISA.
-  NativeSessionLimit* = 4      ## Live, installed and retiring code registrations share these credits.
-  NativeInvocationFloor* = 4096'u64 ## Initial shared coarse policy; deliberately not a measured break-even.
+  NativeSpanOperations* = 64         ## One independently compiled non-exiting span, not a profitability floor.
+  NativeMinimumOperations* = 2       ## Structural span floor shared by both lowerers.
+  NativeEntryLimit* = 262144'u32     ## Existing native-coordinate ceiling, with an exclusive past endpoint.
+  NativeImageByteLimit* = 4096       ## Complete image including return on either ISA.
+  NativeSessionLimit* = 4            ## Live, installed and retiring code registrations share these credits.
+  NativeEntryFailure* = high(uint32) ## No valid stream coordinate or mixed receipt uses this value.
+  NativeInvocationFloor* = 4096'u64  ## Initial shared coarse policy; deliberately not a measured break-even.
 
 # See spec/pvm-async-migration.md for the retained ARM and x86 mechanical helpers.
 when NativeReadCycleEnabled:

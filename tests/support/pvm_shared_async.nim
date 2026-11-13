@@ -766,6 +766,36 @@ when defined(pvmSharedAsyncWitness):
     assert decoded.error == ProgramError.None, "foldedLoopOwner: literal program"
     decoded.value
 
+  proc invalidNativeReceipt() =
+    ## A real native loop mutates private registers before its receipt is deliberately corrupted.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let code = prepared(owner, runtime)
+    let quota = ExecutionStepLimit(6145)
+    let cold = execute(source, quota, code)
+    verify(cold, source, 2048)
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).registered == 1
+    let before = preparedInfo(code).value
+    corruptNextNativeLoopReceipt()
+    let failed = execute(source, quota, code)
+    assert failed.error == StepError.BackendFailure
+    let after = preparedInfo(code).value
+    assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).active == 0
+    assert after.nativeCalls == before.nativeCalls and after.nativeOperations ==
+        before.nativeOperations
+    # Reuse the same public owner after failure. No suspect code or mutable frame survives.
+    let recovered = execute(source, quota, code)
+    verify(recovered, source, 2048)
+    assert recovered.value.backend == PvmBackend.Interpreted
+    assert machineInfo(recovered.value.machine).value == machineInfo(cold.value.machine).value
+    assert memoryOf(recovered.value.machine).value == memoryOf(cold.value.machine).value
+    assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).submitted == 1
+    assert close(runtime)
+
   proc purePrefixControl() =
     ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
     if not nativePlatformSupported(): return
@@ -1513,6 +1543,7 @@ proc runSharedAsync*() =
     readyReservations()
     diagnosticPhase("immediateLoops")
     immediateLoops()
+    invalidNativeReceipt()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
     adjacentNativePrefix()

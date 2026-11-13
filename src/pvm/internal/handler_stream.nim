@@ -2100,7 +2100,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
 proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   ## One shared control bridge: full paid original prefix first, fresh registers only, no native replay.
   let original = f.nativeOriginal
-  assert original != nil and off == f.nativeEntry
+  if original == nil or off != f.nativeEntry:
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
   let span = nativeSpanInfo(f.nativeSession)
   if not nativeSpanReady(f.nativeSession) or
       not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.PurePrefix) or
@@ -2113,7 +2114,8 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
     let header = reservedEnd and not flatReservationHeaderFlag
     reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
   if reservedEnd <= span.last: return original(f, off)
-  runNativeSpan(f.nativeSession, f.info.registers)
+  if not runNativeSpan(f.nativeSession, f.info.registers):
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
   span.past
 
 func flatSourceHeader(f: FlatFrame, header, pc: uint32): bool =
@@ -2203,7 +2205,8 @@ proc flatPromoteNativeLoop(f: var FlatFrame) =
 proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
   ## The installed certificate is stable. Only an exact complete reservation authorizes first entry.
   let original = f.nativeOriginal
-  assert original != nil
+  if original == nil:
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
   let loop = nativeLoopInfo(f.nativeSession)
   if not nativeSpanReady(f.nativeSession) or loop.kind != NativeKind.ClosedRegisterLoop or
       not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
@@ -2216,6 +2219,7 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
       f.arguments[int(loop.header)].y != loop.sourceSpan: return original(f, off)
   var context = NativeLoopContext(gas: uint64(f.info.gas), remaining: f.remaining, visits: 0)
   result = runNativeLoop(f.nativeSession, f.info.registers, context)
+  if result == NativeEntryFailure: return flatLocal(f, off, oracle.StepError.BackendFailure)
   # The checked successor sees an unstarted block, including on a failed native next-visit guard.
   f.info.gas = MachineGas(context.gas)
   f.remaining = context.remaining
@@ -3513,6 +3517,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
     if reservedEnd > sourceFact+1:
       f.remaining+=uint64(reservedEnd-sourceFact-1)
+  if f.reason == oracle.StepError.BackendFailure: return
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)

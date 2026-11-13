@@ -14,6 +14,10 @@
 ##
 ## The checked handler stream implements opcode execution. Native engines and
 ## host adapters cross the same prepared-owner and immutable outcome contracts.
+## A certified native guard refusal may resume through its checked continuation.
+## An invalid native return instead reports BackendFailure without publishing
+## CPU, memory or gas. The segment returns its image borrows before the prepared
+## owner retires the image and discards the invocation's frame and stream.
 
 import std/assertions
 import ./[program, machine, registers]
@@ -635,8 +639,12 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == StepError.None)
     finishNativeReadObservation(frame, answer.error == StepError.None)
-  data.stream = takeFlatStream(frame)
-  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  if frame.reason == StepError.BackendFailure:
+    # Native effects may include writes without matching dirty bits. Drop the whole frame.
+    retireFailedNativeInvocation(data.native)
+  else:
+    data.stream = takeFlatStream(frame)
+    data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
@@ -1034,8 +1042,12 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
-  data.stream = takeFlatStream(frame)
-  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  if frame.reason == StepError.BackendFailure:
+    # Native effects may include writes without matching dirty bits. Drop the whole frame.
+    retireFailedNativeInvocation(data.native)
+  else:
+    data.stream = takeFlatStream(frame)
+    data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,

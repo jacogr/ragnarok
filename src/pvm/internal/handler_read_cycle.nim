@@ -157,7 +157,8 @@ when declared(FlatFrame):
   proc flatNativeReadCycle(f: var FlatFrame, off: uint32): uint32 =
     ## All borrows and the reservation receipt belong to this invocation only.
     let original = f.nativeOriginal
-    assert original != nil and off == f.nativeEntry
+    if original == nil or off != f.nativeEntry:
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     let read = nativeReadCycleInfo(f.nativeSession)
     if read.epoch == 0 or read.epoch != f.nativeInstalledEpoch or off != read.header+1 or
         not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
@@ -176,6 +177,7 @@ when declared(FlatFrame):
     context.dirtyWords = uint64(f.dirtyPages.len)
     var lastHeader = read.header
     result = runNativeCycle(f.nativeSession, f.info.registers, context, lastHeader)
+    if result == NativeEntryFailure: return flatLocal(f, off, oracle.StepError.BackendFailure)
     f.info.gas = MachineGas(context.gas)
     f.remaining = context.remaining
     if context.paidRead == 1:
