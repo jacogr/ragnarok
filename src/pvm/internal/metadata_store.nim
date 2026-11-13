@@ -33,13 +33,17 @@ proc `=wasMoved`*[T](store: var MetadataStore[T]) {.nodestroy, inline.} =
 
 proc initMetadataStore*[T: HasDefault](length: int): MetadataStore[T] =
   ## Bound the complete logical extent before choosing the small allocation or directory.
-  assert length >= 0 and length <= 4194304
+  if length < 0 or length > 4194304: return default(MetadataStore[T])
   if length <= MetadataChunkElements:
     # The direct sequence holds the complete small extent.
     return MetadataStore[T](direct: newSeq[T](length))
-  MetadataStore[T](sparse: MetadataChunks[T](length: length, allocated: 0,
-    entries: newSeq[seq[T]](length div MetadataChunkElements + int(
-        length mod MetadataChunkElements != 0))))
+  let chunks = length div MetadataChunkElements + int(length mod MetadataChunkElements != 0)
+  var entries = newSeq[seq[T]](chunks)
+  if entries.len != chunks: return default(MetadataStore[T])
+  let sparse: nil MetadataChunks[T] = MetadataChunks[T](length: length)
+  if sparse == nil: return default(MetadataStore[T])
+  sparse.entries = move(entries)
+  MetadataStore[T](sparse: sparse)
 
 func len*[T](store: MetadataStore[T]): int {.inline.} =
   ## Logical length includes unwritten elements of a large store.
@@ -64,26 +68,25 @@ func `[]`*[T: HasDefault](store: MetadataStore[T], index: int): T {.inline.} =
   if sparse.entries[chunk].len == 0: return default(T)
   sparse.entries[chunk][index mod MetadataChunkElements]
 
-proc `[]=`*[T: HasDefault](store: var MetadataStore[T], index: int, value: T) {.inline.} =
+proc writeMetadata*[T: HasDefault](store: var MetadataStore[T], index: int,
+    value: T): bool {.inline.} =
   ## Allocate a large chunk only after checking its logical slot.
   if index >= 0 and index < store.direct.len:
     store.direct[index] = value
-    return
+    return true
   let sparse {.cursor.} = store.sparse
-  if sparse == nil:
-    # A direct store can reach this path only with an invalid index.
-    assert false, "metadata index outside direct storage"
-    return
-  assert index >= 0 and index < sparse.length
+  if sparse == nil or index < 0 or index >= sparse.length: return false
   let chunk = index div MetadataChunkElements
   if sparse.entries[chunk].len == 0:
     # The last chunk may have fewer than the default number of elements.
     let count = min(MetadataChunkElements, sparse.length-chunk*MetadataChunkElements)
     sparse.entries[chunk] = newSeq[T](count)
+    if sparse.entries[chunk].len != count: return false
     sparse.allocated += count
   sparse.entries[chunk][index mod MetadataChunkElements] = value
+  true
 
 proc singletonMetadataStore*[T: HasDefault](value: T): MetadataStore[T] =
   ## The isolated one-instruction plan captures one initialized element.
   result = initMetadataStore[T](1)
-  result[0] = value
+  discard writeMetadata(result, 0, value)
