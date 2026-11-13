@@ -34,7 +34,7 @@ def validate_requirements(records):
         'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm', 'pvm_jit'},
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
         # Fixed heap-cap and backend profiles exercise refusal without allowing arbitrary compiler switches.
-        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
+        'defines': {'integration', 'nimMaxHeap=1', 'nimHardenOutOfMem', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
                     'pvmInnerPreparedReceipt', 'pvmPaidMixedLoopWitness', 'pvmResidentWitness',
@@ -55,6 +55,10 @@ def validate_requirements(records):
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
         defines = set(record['defines'])
+        if name == 'pvm_frame_allocation_refusal' or 'nimHardenOutOfMem' in defines:
+            # Keep the recoverable cap tied to the real frame refusal regression.
+            if name != 'pvm_frame_allocation_refusal' or defines != {'nimMaxHeap=1', 'nimHardenOutOfMem'}:
+                raise ValueError('Invalid native defines for recoverable heap cap: '+name)
         if 'pvmPaidMixedLoopWitness' in defines and (
                 name not in ('pvm_shared_async_arm', 'pvm_shared_async_x86')
                 or 'pvmSharedAsyncWitness' not in defines):

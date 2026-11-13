@@ -53,7 +53,9 @@ type
     access*: PageAccess
   MachineError* {.pure.} = enum ## Local API failures are distinct from guest panic/fault, with retained historical error identifiers.
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
-    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
+    InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange,
+      InvalidGasState,
+    AllocationRefused
   MachineResult*[T] = object ## Fault addresses belong to the failure reason; other failures carry no value or progress.
     case status: MachineError
     of None:
@@ -649,11 +651,14 @@ proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
 
 proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
-  ## Copy sorted mapping metadata without extracting page bytes; a default owner refuses before allocation.
+  ## Copy the complete sorted layout. A default owner or a refused allocation
+  ## produces only a local error.
   let data = memory.data
   if data == nil:
     return MachineResult[seq[PageDescription]](status: MachineError.InvalidOwner)
   var pages = newSeq[PageDescription](data.pages.len)
+  if pages.len != data.pages.len:
+    return MachineResult[seq[PageDescription]](status: MachineError.AllocationRefused)
   for slot in 0..<pages.len:
     # The immutable owner's validated order and permissions remain authoritative for every copied description.
     pages[slot] = PageDescription(index: data.pages[slot].index, access: data.pages[slot].access)

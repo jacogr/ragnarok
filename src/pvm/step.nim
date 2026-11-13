@@ -588,7 +588,7 @@ proc runForeignFrame(source: Machine, prepared: PreparedProgram,
   ## Implemented by the included optional adapter below the common host/result declarations.
 
 func frameCreationError(error: FlatError): StepError =
-  ## Preserve a selected OS-allocation refusal while retaining all historical admission mappings.
+  ## Preserve typed frame-allocation refusals and the existing admission mappings.
   if error == FlatError.ResidentAllocationRefused: StepError.ResidentAllocationRefused
   else: StepError.InvalidPreparedProgram
 
