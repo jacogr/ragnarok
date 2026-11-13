@@ -364,6 +364,7 @@ class SharedQualificationTests(unittest.TestCase):
         helper.with_name('pvm_bitmap_fixture.nim').write_text('inert bitmap fixture')
         helper.with_name('pvm_bitmap_loop_execution.nim').write_text('inert bitmap witness')
         helper.with_name('pvm_bitmap_lowering_refusal.nim').write_text('inert heap witness')
+        helper.with_name('pvm_static_fusion.nim').write_text('inert fusion witness')
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
@@ -455,6 +456,7 @@ class SharedQualificationTests(unittest.TestCase):
                     {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'})
                 self.assertEqual(checks.command.call_count, 3)
                 self.assertIn('tests/support/pvm_bitmap_loop_execution.nim', result['sources'])
+                self.assertIn('tests/support/pvm_static_fusion.nim', result['sources'])
 
     def test_heap_refusal_failure_blocks_shared_qualification(self):
         """Passing the earlier native and arena controls cannot hide a failing heap witness."""

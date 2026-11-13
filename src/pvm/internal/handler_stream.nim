@@ -37,7 +37,20 @@ import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
   when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness):
     import std/syncio
-  import ./[native_mixed_loop, native_platform]
+  import ./[native_mixed_loop, native_platform, native_fusion]
+  from ./jit_rules import supportedScalarOpcode
+
+  type
+    FlatFusionSample = object
+      ## Count a checked header under its one-based stream token.
+      token, count: uint32
+    FlatFusionSlot = object
+      ## Segment-local map from original header to rank slot.
+      token, index: uint32
+    FlatFusionProbe = object
+      ## One segment's sparse observation. No size depends on admitted source.
+      down, seed, taken: uint32
+      samples: array[1024, FlatFusionSample]
 
   type
     FlatMixedLoopSource = object
@@ -240,6 +253,10 @@ type
     when NativeReadCycleEnabled:
       bitmapCandidate: uint32                 # A single deferred cold-edge observation for this frame.
       mixedSource: FlatMixedLoopSource
+      fusionImage: nil ptr NativeImage
+      fusionBlocks: nil ptr seq[NativeFusionBlock]
+      fusionContext: nil ptr NativeFusionContext
+      fusionSlots: nil ptr array[256, FlatFusionSlot]
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
@@ -2569,6 +2586,7 @@ when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
     include ./handler_mixed_loop
     include ./handler_read_cycle
+    include ./handler_fusion
   include ./read_admission_probe
 
 when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
@@ -3263,13 +3281,15 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
     f.handlers[int(boundary)] = flatBudget
   body
 
-template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[bool]) =
+template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[bool],
+    SampleFusion: static[bool] = false, fusionProbe: untyped = nil) =
   ## The checked loop is shared by the ordinary and observed segments. Only the latter can discover.
   var node = entry
   while node != flatStop:
     assert int(node) < f.handlers.len
     let selected = f.handlers[int(node)]
     if selected == flatCharge:
+      when SampleFusion: observeFlatFusion(fusionProbe, node)
       # Preserve temporary barriers: select the first operation only after complete reservation/patching.
       when ObserveLater:
         node = flatReserveHeader[true](f, node)
@@ -3298,6 +3318,67 @@ template flatDispatchSegment(f: var FlatFrame, entry: uint32) =
     flatDispatchLoop(f, entry, false)
 
 when NativeReadCycleEnabled:
+  proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
+    ## Rebind the exact optional lease once per segment. Keep every other route
+    ## and the original checked worker for every linked block.
+    let borrowed = borrowNativeFusion(f.nativeSession)
+    let image = borrowed.image
+    let blocks = borrowed.blocks
+    if image == nil or blocks == nil:
+      if nativeFusionTraining(f.nativeSession) and f.remaining >= NativeFusionTrainingFloor:
+        markNativeFusionSampled(f.nativeSession)
+        var probe = FlatFusionProbe(down: 1, seed: 0x9e3779b9'u32)
+        flatDispatchLoop(f, entry, false, true, probe)
+        if f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Halt:
+          offerFlatFusion(f, probe)
+      else:
+        flatDispatchSegment(f, entry)
+      return
+    defer: returnNativeMixedLoop(f.nativeSession)
+    if blocks[].len > NativeFusionBlockLimit:
+      flatDispatchSegment(f, entry)
+      return
+    var patches = default(array[NativeFusionBlockLimit, uint32])
+    var slots = default(array[256, FlatFusionSlot])
+    var count = 0
+    for slot in 0..<blocks[].len:
+      if not nativeFusionEntry(image[], slot): continue
+      let header = blocks[][slot].header
+      if header >= uint32(f.handlers.len) or f.handlers[int(header)] != flatCharge:
+        # A conflict anywhere in the graph prevents all linked entries from acquiring authority.
+        flatDispatchSegment(f, entry)
+        return
+      let token = header+1
+      var at = int((token*0x9e3779b9'u32) shr 24)
+      while slots[at].token != 0: at = (at+1) and 255
+      slots[at] = FlatFusionSlot(token: token, index: uint32(slot))
+      patches[count] = header
+      inc count
+    if count == 0:
+      flatDispatchSegment(f, entry)
+      return
+    var context = NativeFusionContext(memory: NativeMixedLoopContext(
+      read: [initNativeReadRegion(f.stackBase, f.stack), flatRWReadRegion(f.rwBase, f.rw),
+        initNativeReadRegion(f.roBase, f.ro)],
+      writable: [NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len)),
+        NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))],
+      dirtyWords: uint64(f.dirtyPages.len)))
+    if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
+    if f.rw.len > 0: context.memory.writable[1].data = addr f.rw[0]
+    if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
+    f.fusionImage = image
+    f.fusionBlocks = blocks
+    f.fusionContext = addr context
+    f.fusionSlots = addr slots
+    for index in 0..<count: f.handlers[int(patches[index])] = flatFusionEntry
+    defer:
+      for index in 0..<count: f.handlers[int(patches[index])] = flatCharge
+      f.fusionContext = nil
+      f.fusionSlots = nil
+      f.fusionBlocks = nil
+      f.fusionImage = nil
+    flatDispatchSegment(f, entry)
+
   proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =
     ## A completed original BNE counts one full checked visit, including folded source facts.
     let probe = f.mixedProbe
@@ -3456,6 +3537,9 @@ when NativeReadCycleEnabled:
       if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
           mixedLoopPrimaryReady(f.nativeSession):
         runFlatMixedLoopSegment(f, offset)
+      elif not f.readProbe.observing and f.pricingKind == 0 and f.remaining >= NativeInvocationFloor:
+        if nativeFusionAvailable(f.nativeSession): runFlatFusionSegment(f, offset)
+        else: flatDispatchSegment(f, offset)
       else:
         flatDispatchSegment(f, offset)
     template selected() =
