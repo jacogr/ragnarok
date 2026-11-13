@@ -461,7 +461,6 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
   let opcode = codeByte(data, pc)
   let skip = distance(data.bytes, data.maskOffset, data.codeLength, int(pc))
-  let first = int(codeByte(data, pc + 1))
   # v_blob traversed every marked opcode with this same capped skip. Within the owner extent,
   # the next sequential position is therefore already a validated marked opcode, not an arbitrary byte.
   # pc<codeLength proves both subtractions below; no speculative successor addition can wrap.
@@ -481,6 +480,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.x = Immediate(extended(data, pc + 1, min(4, int(skip))))
   of 20:
     # Extended immediates always read eight bytes, independently of skip.
+    let first = int(codeByte(data, pc + 1))
     item.shape = OperandShape.ExtendedImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
@@ -489,7 +489,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   of 30..33:
     # The prefix chooses X width; remaining skipped bytes choose Y width.
     item.shape = OperandShape.TwoImmediates
-    let xlen = min(4, first mod 8)
+    let xlen = min(4, int(codeByte(data, pc + 1)) mod 8)
     item.x = Immediate(extended(data, pc + 2, xlen))
     item.y = Immediate(extended(data, pc + 2 + uint64(xlen), min(4, max(0, int(skip) - xlen - 1))))
   of 40:
@@ -498,6 +498,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.displacement = offsetOperand(data, pc + 1, min(4, int(skip)))
   of 50..62:
     # Register nibbles saturate at 12; they are not rejected or reduced modulo 13.
+    let first = int(codeByte(data, pc + 1))
     item.shape = OperandShape.RegisterImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
@@ -505,6 +506,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.x = Immediate(extended(data, pc + 2, min(4, max(0, int(skip) - 1))))
   of 70..73, 80..90:
     # These groups share X and register decoding; Y is immediate or signed offset.
+    let first = int(codeByte(data, pc + 1))
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     let xlen = min(4, (first div 16) mod 8)
@@ -520,6 +522,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
       item.displacement = offsetOperand(data, pc + 2 + uint64(xlen), ylen)
   of 100..110:
     # This group uniquely names the low nibble D and the high nibble A.
+    let first = int(codeByte(data, pc + 1))
     item.shape = OperandShape.TwoRegisters
     item.registerSlots.dSlot = boundedRegister(byte(first mod 16))
     item.d = RegisterIndex(byte(item.registerSlots.dSlot))
@@ -528,6 +531,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
   of 120..161, 170..175:
     # Both groups decode low A and high B; the last operand determines their shape.
+    let first = int(codeByte(data, pc + 1))
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.registerSlots.bSlot = boundedRegister(byte(first div 16))
@@ -544,6 +548,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
       item.displacement = offsetOperand(data, pc + 2, width)
   of 180:
     # Dynamic load-and-jump has a second descriptor byte before its two immediates.
+    let first = int(codeByte(data, pc + 1))
     item.shape = OperandShape.TwoRegistersTwoImmediates
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
@@ -554,6 +559,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.y = Immediate(extended(data, pc + 3 + uint64(xlen), min(4, max(0, int(skip) - xlen - 2))))
   of 190..230:
     # PR554: every current-paper owner masks the third-register destination to its low nibble.
+    let first = int(codeByte(data, pc + 1))
     item.shape = OperandShape.ThreeRegisters
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))

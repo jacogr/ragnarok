@@ -63,41 +63,41 @@ func profile(item: Instruction): Profile =
   ## Derive all syntactically read/written registers, including conditional-move fallbacks.
   result = Profile(sources: 0, destinations: 0, cycles: 1, slots: 1,
     units: aluUnit)
-  let a = bit(item.a)
-  let b = bit(item.b)
-  let d = bit(item.d)
   # Register roles follow the instruction mutations, not operand field names alone.
   case item.opcode
   of 20, 51..58, 80:
     # Immediate/direct loads and static load-jump only write A.
-    result.destinations = a
+    result.destinations = bit(item.a)
   of 50, 59..62, 70..73, 81..90:
     # Stores, indirect jump and immediate branches read A without a register write.
-    result.sources = a
+    result.sources = bit(item.a)
   of 100..110:
     # Unary and move operations read A and write D.
-    result.sources = a
-    result.destinations = d
+    result.sources = bit(item.a)
+    result.destinations = bit(item.d)
   of 120..123, 170..175:
     # Indirect stores and register branches read both decoded registers.
-    result.sources = a or b
+    result.sources = bit(item.a) or bit(item.b)
   of 124..161, 180:
     # Indirect loads, immediate arithmetic and indirect load-jump read B and write A.
-    result.sources = b
+    let a = bit(item.a)
+    result.sources = bit(item.b)
     result.destinations = a
     if item.opcode in {147'u8, 148'u8}:
       # The unselected conditional assignment retains the old destination value.
       result.sources = result.sources or a
   of 190..230:
     # Binary arithmetic reads A/B and writes D, including the conditional fallback.
-    result.sources = a or b
+    let d = bit(item.d)
+    result.sources = bit(item.a) or bit(item.b)
     result.destinations = d
     if item.opcode in {218'u8, 219'u8}: result.sources = result.sources or d
   else:
     # Trap, fallthrough, unlikely, host calls, immediate stores and static jump read no registers.
     discard
-  let overlap = (result.sources and result.destinations) != 0
-  let shiftOverlap = byte(item.a) == byte(item.d)
+  template overlap(): bool =
+    ## Calculate general source/destination aliasing only for overlap-priced instructions.
+    (result.sources and result.destinations) != 0
   # The exhaustive table retains separate latency, frontend demand and execution resources.
   case item.opcode
   of 0, 1:
@@ -148,20 +148,20 @@ func profile(item: Instruction): Profile =
     result.units = 2*aluUnit
   of 110, 132..134, 149, 151..153, 158, 200, 201, 210..212:
     # Simple full-width operations save one decode slot when a source is overwritten.
-    result.slots = (if overlap: 1 else: 2)
+    result.slots = (if overlap(): 1 else: 2)
   of 131, 138..140, 160, 190, 191, 226:
     # Word arithmetic and XNOR use two cycles and overlap-sensitive decode demand.
     result.cycles = 2
-    result.slots = (if overlap: 2 else: 3)
+    result.slots = (if overlap(): 2 else: 3)
   of 135, 192:
     # Word multiplication occupies the unique multiply unit for four cycles.
     result.cycles = 4
-    result.slots = (if overlap: 2 else: 3)
+    result.slots = (if overlap(): 2 else: 3)
     result.units = result.units or multiplyUnit
   of 150, 202:
     # Full-width multiplication has three-cycle latency.
     result.cycles = 3
-    result.slots = (if overlap: 1 else: 2)
+    result.slots = (if overlap(): 1 else: 2)
     result.units = result.units or multiplyUnit
   of 136, 137, 142, 143, 216, 217:
     # Comparisons have fixed three-cycle and three-slot costs.
@@ -194,10 +194,10 @@ func profile(item: Instruction): Profile =
   of 197..199, 221, 223:
     # Only the value source A, not the shift-count source B, affects this discount.
     result.cycles = 2
-    result.slots = (if shiftOverlap: 3 else: 4)
+    result.slots = (if byte(item.a) == byte(item.d): 3 else: 4)
   of 207..209, 220, 222:
     # Full-width variable shifts use the same A/D overlap predicate.
-    result.slots = (if shiftOverlap: 2 else: 3)
+    result.slots = (if byte(item.a) == byte(item.d): 2 else: 3)
   of 213..215:
     # Mixed-sign high multiplication has two additional cycles.
     result.cycles = (if item.opcode == 215: 6 else: 4)
@@ -210,7 +210,7 @@ func profile(item: Instruction): Profile =
   of 227..230:
     # Min/max overlap changes decode demand but not latency.
     result.cycles = 3
-    result.slots = (if overlap: 2 else: 3)
+    result.slots = (if overlap(): 2 else: 3)
   else:
     # Validated instructions exhaust the pinned opcode table.
     discard
