@@ -3,7 +3,6 @@
 
 ## Fuzzer-owned ephemeral complete maps feed the ordinary current candidate pipeline without production bootstrap trust.
 
-import std/assertions
 import ../[chain, candidate]
 import ../../chain/[genesis, parameters, provider]
 import ../../codec/[bounded, header, block_codec]
@@ -122,7 +121,8 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
         FuzzMessage](FuzzBackendError.UnsupportedFeature)
     let owned = request.fuzzHeader.value
     var bytes = newSeq[byte](owned.headerInfo.value.consumed)
-    assert owned.encodeOwnedHeader(bytes).error == HeaderError.None
+    if not (owned.encodeOwnedHeader(bytes).error == HeaderError.None):
+      return refused[FuzzMessage](FuzzBackendError.SeedContextFailure)
     let identity = blake2b256(bytes)
     if identity.error != CryptoError.None: return refused[FuzzMessage](FuzzBackendError.HashFailure)
     let ancestry = captureFuzzAncestry(owned, request.fuzzAncestors.value, config.ancestryLimits)
@@ -171,7 +171,8 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
         return refused[FuzzMessage](FuzzBackendError.UnknownParent)
     if not backend.executing:
       var bytes = newSeq[byte](backend.seedHeader.headerInfo.value.consumed)
-      assert backend.seedHeader.encodeOwnedHeader(bytes).error == HeaderError.None
+      if not (backend.seedHeader.encodeOwnedHeader(bytes).error == HeaderError.None):
+        return refused[FuzzMessage](FuzzBackendError.SeedContextFailure)
       let captured = captureFuzzSeedSnapshot(bytes, backend.seedState, config.parameters)
       if captured.error != GenesisError.None: return refused[FuzzMessage](
           FuzzBackendError.SeedContextFailure)

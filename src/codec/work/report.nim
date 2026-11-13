@@ -6,7 +6,6 @@
 ## Exposes report header/source/span types, borrowed report codecs, header codecs and report
 ## size measurement.
 
-import std/assertions
 import ../[natural, fixed_unsigned, bounded, composite]
 import ./digest as work_digest
 
@@ -374,6 +373,7 @@ proc encodeReportBorrowed*(source: WorkReport, pool: openArray[byte], coreCount:
   for i in 0..<value.digestCount:
     let encoded = encodeDigestBorrowed(value.digests[i], pool, ByteLimit(49152), output.toOpenArray(
         cursor, required-1))
-    assert encoded.error == CompositeError.None
+    if encoded.error != CompositeError.None:
+      return encoded
     cursor += encoded.written
   compositeWritten(cursor)

@@ -4,7 +4,6 @@
 ## Bounded validator/builder/other admission and canonical epoch gating. TLS callbacks supply
 ## authenticated identities; this module grants capacity only, never stream-specific privileges.
 
-import std/assertions
 import ./topology
 import ../chain/[genesis, provider]
 import ../codec/state/[safrole, consensus]
@@ -116,7 +115,7 @@ proc release*(policy: var ValidatorAdmission, slot: PeerSlot): bool =
   if not policy.slots[index].occupied: return false
   if not policy.slots[index].closing:
     let category = policy.slots[index].category
-    assert policy.counts[category] > 0
+    if policy.counts[category] == 0: return false
     dec policy.counts[category] # Closing entries were already removed from desired-role counts.
   policy.slots[index] = default(AdmittedPeer)
   true

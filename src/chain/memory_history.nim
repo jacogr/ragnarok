@@ -46,17 +46,21 @@ func branch(split: int, zero, one: HistoryNode): HistoryNode =
   let newest = if zero.newest > one.newest: zero.newest else: one.newest
   HistoryNode(split: split, zero: zero, one: one, oldest: oldest, newest: newest)
 
-func insertAt(node: HistoryNode, leaf: HistoryNode, split: int): HistoryNode =
+func insertAt(node: HistoryNode, leaf: HistoryNode, split: int): nil HistoryNode =
   ## Insert above the first later split; each recursive branch consumes a strictly greater bit.
   if node.split >= split:
     if bit(leaf.key, split) == 0: return branch(split, leaf, node)
     return branch(split, node, leaf)
   let zero = node.zero
   let one = node.one
-  assert zero != nil and one != nil # Only a terminal leaf has absent children and its split is 256.
+  if zero == nil or one == nil: return nil
   if bit(leaf.key, node.split) == 0:
-    return branch(node.split, insertAt(zero, leaf, split), one)
-  branch(node.split, zero, insertAt(one, leaf, split))
+    let inserted = insertAt(zero, leaf, split)
+    if inserted == nil: return nil
+    return branch(node.split, inserted, one)
+  let inserted = insertAt(one, leaf, split)
+  if inserted == nil: return nil
+  branch(node.split, zero, inserted)
 
 func insert(root: nil HistoryNode, saved: BlockSnapshotResult, ordinal: uint64): nil HistoryNode =
   ## Find the existing terminal key before allocating one leaf and the copied compressed path.
@@ -66,7 +70,7 @@ func insert(root: nil HistoryNode, saved: BlockSnapshotResult, ordinal: uint64):
   var selected: HistoryNode = root
   while selected.split < 256:
     let child = if bit(key, selected.split) == 0: selected.zero else: selected.one
-    assert child != nil
+    if child == nil: return nil
     selected = child # Increasing split values prove the fixed 256-bit traversal ceiling.
   var difference = 0
   while difference < 256 and bit(key, difference) == bit(selected.key, difference):

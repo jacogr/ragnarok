@@ -7,7 +7,6 @@
 ## Exposes entropy, time and validator roster domains, state-entry constructors, decoders and
 ## bounded validator access.
 
-import std/assertions
 import ../[natural, bounded, assurances]
 import ./[layout as state_layout, trie as state_trie]
 
@@ -192,7 +191,9 @@ proc decodeStateValidators*(input: openArray[byte],
     return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
         status: checked.error) # Parent and standalone validation agree.
   let count = natural.decode(input)
-  assert count.ok # The stable source's canonical count was proved by the scan.
+  if not (count.ok):
+    return StateComponentResult[StateComponentRead[ValidatorStateSnapshot]](
+        status: StateComponentError.NonCanonical)
   let data = ValidatorStateData(records: newSeq[StateValidator](int(uint64(count.value))))
   let owner = ValidatorStateSnapshot(data: data)
   var cursor = int(count.consumed)

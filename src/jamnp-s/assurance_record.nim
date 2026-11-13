@@ -3,7 +3,6 @@
 
 ## Exact per-shard persistence records check chain identity, complete metadata and CE137 proofs; record success alone is neither durable publication nor assurance authority.
 
-import std/assertions
 import ./availability_proof
 import ../state/availability/specifier
 import ../state/erasure/words
@@ -122,9 +121,9 @@ func number(wire: openArray[byte], start, width: int): uint64 {.requires: start 
     # At most eight octets make every shift fit the unsigned 64-bit accumulator.
     result = result or (uint64(wire[start+index]) shl (index*8))
 
-proc putNumber(wire: var seq[byte], start, width: int, value: uint64) =
+proc putNumber(wire: var seq[byte], start, width: int, value: uint64) {.requires:
+    start >= 0 and width >= 1 and width <= 8 and start <= wire.len and width <= wire.len-start.} =
   ## Encoder callers allocate the entire bounded record before writing fixed metadata extents.
-  assert start >= 0 and width >= 1 and width <= 8 and start <= wire.len and width <= wire.len-start
   for index in 0..<width:
     # All serialized numeric domains have already been proved to fit their declared widths.
     wire[start+index] = byte((value shr (index*8)) and 255)
@@ -223,6 +222,8 @@ proc encodeAssuranceRecord*(record: AssuranceRecord,
       status: AssuranceRecordError.PlanFailure, planReason: plan)
   if not admitted(info, plan.value, limits, false): return refused[seq[byte]](
       AssuranceRecordError.LimitExceeded)
+  if info.encodedBytes < uint64(AssuranceRecordHeaderBytes):
+    return refused[seq[byte]](AssuranceRecordError.InvalidFormat)
   var wire = newSeq[byte](int(info.encodedBytes))
   for index in 0..<8: wire[index] = byte(RecordMagic[index])
   for index in 0..<32:
@@ -248,9 +249,10 @@ proc encodeAssuranceRecord*(record: AssuranceRecord,
   for part in [data.transfer.bundleShard, data.transfer.segmentShards, data.transfer.justification]:
     # Extracted copies are immutable input; exact precharged lengths prove every final output index.
     for octet in part:
+      if position >= wire.len: return refused[seq[byte]](AssuranceRecordError.InvalidFormat)
       wire[position] = octet
       inc position
-  assert position == wire.len
+  if position != wire.len: return refused[seq[byte]](AssuranceRecordError.InvalidFormat)
   AssuranceRecordResult[seq[byte]](status: AssuranceRecordError.None, completed: wire)
 
 proc parseHeader(header: openArray[byte], chain: AssuranceChainId,
@@ -300,7 +302,8 @@ proc parseHeader(header: openArray[byte], chain: AssuranceChainId,
 
 proc verifyMetadata(header: openArray[byte]): AssuranceRecordResult[bool] =
   ## Callers have already charged whole-operation work and admitted the fixed header before this first hash.
-  assert header.len >= AssuranceRecordHeaderBytes
+  if header.len < AssuranceRecordHeaderBytes: return refused[bool](
+      AssuranceRecordError.InvalidFormat)
   let checksum = blake2b256(header.toOpenArray(0, 173))
   if checksum.error != CryptoError.None: return AssuranceRecordResult[bool](
       status: AssuranceRecordError.BackendFailure, cryptoReason: checksum.error)
@@ -350,7 +353,8 @@ proc decodeRecord(wire: openArray[byte], chain: AssuranceChainId,
   if uint64(wire.len) != info.encodedBytes: return refused[AssuranceRecord](
       AssuranceRecordError.InvalidFormat)
   let plan = plannedInfo(info)
-  assert plan.error == AvailabilityTransferError.None
+  if plan.error != AvailabilityTransferError.None: return AssuranceRecordResult[AssuranceRecord](
+      status: AssuranceRecordError.PlanFailure, planReason: plan)
   if not admitted(info, plan.value, limits, true): return refused[AssuranceRecord](
       AssuranceRecordError.LimitExceeded)
   let checksum = verifyMetadata(wire)

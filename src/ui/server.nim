@@ -334,10 +334,12 @@ proc tick*(server: var UiServer) =
       let error = osLastError()
       discard posix.close(accepted)
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI connection setup failed: " & $int32(error))
-    else:
+    elif server.connections[free].stream.start(accepted):
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "UI connection accepted")
+    else:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI stream could not start")
   else:
     let error = osLastError()
     if not retryableSocketError(error):

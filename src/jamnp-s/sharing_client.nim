@@ -4,7 +4,6 @@
 ## Source-free CE134 client framing sends two bounded messages and accepts exactly one96-byte response plus FIN.
 ## Native callbacks perform bounded I/O only; report-hash/signature verification belongs to the managed worker.
 
-import std/assertions
 import ./[sharing_wire, read_stream]
 import ../quic/transport
 import ../codec/bounded
@@ -63,16 +62,18 @@ func writtenBytes*(route: SharingClientRoute): int =
   ## Output progress refreshes scalar parent deadlines only.
   route.offset
 
-proc writeMessage(output: var seq[byte], cursor: var int, message: openArray[byte]) =
+proc writeMessage(output: var seq[byte], cursor: var int, message: openArray[byte]): bool =
   ## Caller-owned independent buffers have already passed complete-size preflight; subtraction guards every prefix/copy extent.
-  assert cursor >= 0 and cursor <= output.len
-  assert output.len-cursor >= 4 and message.len <= output.len-cursor-4
+  if cursor < 0 or cursor > output.len or output.len-cursor < 4 or
+      message.len > output.len-cursor-4 or uint64(message.len) > uint64(high(uint32)):
+    return false
   let length = uint32(message.len)
   for octet in 0..<4: output[cursor+octet] = byte((length shr (8*octet)) and 255)
   cursor += 4
   for octet in message:
     output[cursor] = octet
     inc cursor
+  true
 
 proc configureSharing*(route: var SharingClientRoute, request: SharedWorkRequest): ReadError =
   ## The parent reserves the complete output before calling; independent bounded copies contain no canonical state.
@@ -84,8 +85,8 @@ proc configureSharing*(route: var SharingClientRoute, request: SharedWorkRequest
   var output = newSeq[byte](9+sizes.value.headerBytes+sizes.value.bundleBytes)
   output[0] = 134
   var cursor = 1
-  writeMessage(output, cursor, first)
-  writeMessage(output, cursor, body)
+  if not writeMessage(output, cursor, first) or not writeMessage(output, cursor, body) or
+      cursor != output.len: return ReadError.InvalidRequest
   route = SharingClientRoute(configured: true, failure: ReadError.None, output: output)
   ReadError.None
 

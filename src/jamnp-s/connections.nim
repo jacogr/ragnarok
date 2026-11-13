@@ -257,7 +257,9 @@ proc notify(owner: var NodeConnections, peer: NodePeer, event: NodePeerEvent) =
   let callback = owner.peerCallback
   let context = owner.user
   if callback != nil and context != nil:
-    assert owner.callbackDepth < 64
+    if owner.callbackDepth >= 64:
+      owner.fail()
+      return
     inc owner.callbackDepth
     defer: dec owner.callbackDepth
     callback(context, peer, event) # Queue-only public operations prevent recursive engine driving.
@@ -341,9 +343,11 @@ proc release(owner: var NodeConnections, kind: ConnectionKind, position: int,
   let peer = token(kind, position, current)
   setState(owner, kind, position, default(ConnectionState))
   if current.logical >= 0 and current.announced:
-    assert current.logical < owner.locations.len and owner.locations[current.logical].occupied
-    assert owner.policy.release(PeerSlot(uint64(current.logical)))
-    owner.locations[current.logical] = default(Location)
+    if current.logical >= owner.locations.len or not owner.locations[current.logical].occupied:
+      owner.fail()
+    else:
+      if not owner.policy.release(PeerSlot(uint64(current.logical))): owner.fail()
+      owner.locations[current.logical] = default(Location)
     notify(owner, peer, if observed: NodePeerEvent.Closed else: NodePeerEvent.Retired)
   for index in 0..<owner.targets.len:
     if same(owner.targets[index].key, current.key):
@@ -479,7 +483,10 @@ proc dispatch(owner: var NodeConnections, kind: ConnectionKind, position: int,
     if admission != nil and context != nil:
       var allowed = false
       block:
-        assert owner.callbackDepth < 64
+        if owner.callbackDepth >= 64:
+          owner.fail()
+          streamAbort(stream)
+          return
         inc owner.callbackDepth
         defer: dec owner.callbackDepth
         allowed = admission(context, peer, stream) # Inspect only: no route or application byte owner exists yet.
@@ -498,7 +505,10 @@ proc dispatch(owner: var NodeConnections, kind: ConnectionKind, position: int,
   if callback == nil or context == nil:
     if event == 0: streamAbort(stream)
     return # Disabled applications do not retain unsolicited stream payloads.
-  assert owner.callbackDepth < 64
+  if owner.callbackDepth >= 64:
+    owner.fail()
+    if event != 3: streamAbort(stream)
+    return
   inc owner.callbackDepth
   defer: dec owner.callbackDepth
   callback(context, peer, stream, event) # No route access follows a callback that may cancel it.
@@ -545,7 +555,9 @@ proc rebuild(owner: var NodeConnections) =
   for epoch in [ValidatorEpoch.Current, ValidatorEpoch.Next, ValidatorEpoch.Previous]:
     for ordinal in 0..<topology.population(epoch):
       let found = topology.membershipAt(epoch, StateValidatorIndex(uint64(ordinal)))
-      assert found.error == TopologyError.None
+      if found.error != TopologyError.None:
+        owner.fail()
+        return
       let member = found.value
       let key = member.identity
       if same(key, owner.local) or same(key, nullValidator().ed25519): continue
@@ -553,7 +565,9 @@ proc rebuild(owner: var NodeConnections) =
       for index in 0..<count:
         if same(prepared[index].key, key): position = index; break
       if position < 0:
-        assert count < owner.maximum # Three codec-bounded rosters fit the derived3V capacity.
+        if count >= prepared.len:
+          owner.fail()
+          return
         position = count
         inc count
         prepared[position] = Target(key: key, missing: owner.now, nextAttempt: owner.now)
@@ -588,6 +602,7 @@ proc advance*(owner: var NodeConnections, view: ChainView,
   let outcome = owner.policy.advance(view, now, owner.limits)
   if outcome.error != AdmissionError.None or outcome.value != EpochUpdate.Applied: return outcome
   rebuild(owner)
+  if owner.stopping: return default(AdmissionResult[EpochUpdate])
   for index in 0..<owner.locations.len:
     let location = owner.locations[index]
     if location.occupied and (owner.policy.retiring(PeerSlot(uint64(index))) or
@@ -614,7 +629,9 @@ proc close*(owner: var NodeConnections) {.requires: owner.callbackDepth == 0.} =
     let location = owner.locations[index]
     if location.occupied: release(owner, location.kind, location.position, false)
   for index in 0..<owner.routes.len:
-    assert owner.routes[index].stream == default(NativeStream), "engine retirement must deliver final stream close"
+    if owner.routes[index].stream != default(NativeStream):
+      owner.fail()
+      owner.routes[index] = default(Route)
   let dispatcher = owner.dispatcher
   if dispatcher != nil: dispatcher.close() # Every transport has already unregistered its descriptor.
   owner.dispatcher = nil
@@ -711,6 +728,9 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
     owner.close()
     return ConnectionError.BackendFailure
   rebuild(owner)
+  if owner.stopping:
+    owner.close()
+    return ConnectionError.BackendFailure
   ConnectionError.None
 
 proc outgoingExists(owner: NodeConnections, key: StateEdKey): bool =

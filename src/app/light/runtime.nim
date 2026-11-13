@@ -140,7 +140,7 @@ proc releaseLease(runtime: var LightRuntime) =
   ## Only collection/join of the actual owning operation resumes its exact host RPC pause token.
   let rpc = runtime.rpc
   if rpc != nil and runtime.lease != nil:
-    assert rpc[].resumeChain(runtime.lease) # Foreign/default pause authority can never be silently released.
+    if not rpc[].resumeChain(runtime.lease): runtime.faulted = true
   runtime.lease = nil
 
 proc head*(runtime: LightRuntime): LightRuntimeResult[LightApplicationHead] =
@@ -209,9 +209,11 @@ proc finishDisk(runtime: var LightRuntime, completion: DiskPublicationCompletion
       else:
         runtime.faulted = true # Fresh independent reopen resolves native publication uncertainty.
         runtime.finishImportReply("Light storage publication failed")
-    else:
-      assert completion.kind == DiskCompletionKind.NotExecuted # Never fabricate success for genuinely unexecuted queued work.
+    elif completion.kind == DiskCompletionKind.NotExecuted:
       runtime.finishImportReply("Light publication did not execute")
+    else:
+      runtime.faulted = true
+      runtime.finishImportReply("Light publication outcome unavailable")
     runtime.publication = default(PreparedLightPublication)
     runtime.publicationReady = false
   of IoOperation.Retirement:
@@ -225,8 +227,8 @@ proc finishDisk(runtime: var LightRuntime, completion: DiskPublicationCompletion
         runtime.retirementAttempt = getMonoTime()
       else:
         runtime.faulted = true # Cleanup uncertainty never rolls back the already adopted trusted head.
-    else:
-      assert completion.kind == DiskCompletionKind.NotExecuted # No IO entry cannot claim durable absence.
+    elif completion.kind != DiskCompletionKind.NotExecuted:
+      runtime.faulted = true
     runtime.retirement = default(PreparedLightRetirement)
 
 proc close*(runtime: var LightRuntime) =
@@ -337,7 +339,9 @@ proc admitQuery(runtime: var LightRuntime, reason: ProofQueryError): LightRuntim
     return LightRuntimeResult[ProofWorkerTicket](status: LightRuntimeError.WorkerFailure,
         workerCause: ProofWorkerError.Closed)
   let rpc = runtime.rpc
-  assert rpc != nil
+  if rpc == nil:
+    runtime.query = default(ProofQuery)
+    return LightRuntimeResult[ProofWorkerTicket](status: LightRuntimeError.RpcMismatch)
   runtime.lease = rpc[].pauseChain()
   if runtime.lease == nil:
     runtime.query = default(ProofQuery) # No native borrower exists after failed pause admission.
@@ -405,7 +409,10 @@ proc admitImport(runtime: var LightRuntime, reason: LightImportError): bool =
     runtime.finishImportReply("Light proof worker unavailable") # Thread creation failure grants no graph lease.
     return false
   let rpc = runtime.rpc
-  assert rpc != nil
+  if rpc == nil:
+    runtime.importInput = default(LightProofImport)
+    runtime.finishImportReply("Light RPC source unavailable")
+    return false
   runtime.lease = rpc[].pauseChain()
   if runtime.lease == nil:
     runtime.importInput = default(LightProofImport)
@@ -436,13 +443,20 @@ proc stageImportedPublication(runtime: var LightRuntime, batch: VerifiedStatePro
 proc collectImport(runtime: var LightRuntime) =
   ## This entire completion/verification/merge activation retires before tick can admit the prepared native publication.
   let completion = runtime.cpu.collect(runtime.cpuTicket)
-  assert completion.kind != ProofWorkerCompletionKind.Uninitialized
+  if completion.kind == ProofWorkerCompletionKind.Uninitialized:
+    runtime.cpu.close()
+    runtime.cpuBusy = false
+    runtime.releaseLease()
+    runtime.finishImportReply("Light proof import outcome unavailable")
+    return
   runtime.cpuBusy = false
   runtime.releaseLease()
   if completion.kind == ProofWorkerCompletionKind.Cancelled:
     runtime.finishImportReply("Light proof import cancelled") # Cancelled CPU work grants no imported facts.
     return
-  assert completion.kind == ProofWorkerCompletionKind.Imported
+  if completion.kind != ProofWorkerCompletionKind.Imported:
+    runtime.finishImportReply("Light proof import outcome unavailable")
+    return
   let outcome = completion.importedValue
   if outcome.error != LightImportError.None:
     runtime.finishImportReply("Light proof authentication failed") # A failed whole batch never changes retained knowledge.
@@ -471,8 +485,8 @@ proc admitPublication(runtime: var LightRuntime): bool =
   ## Prepared staging activations and completion/batch aliases have retired before any native IO starts.
   if not runtime.publicationReady or runtime.busy: return false # No slot or target authority exists yet.
   let rpc = runtime.rpc
-  assert rpc != nil
-  if runtime.faulted or (runtime.rpcBound and not rpc[].canInstallLightHead(runtime.rpcSource)):
+  if rpc == nil or runtime.faulted or (runtime.rpcBound and not rpc[].canInstallLightHead(
+      runtime.rpcSource)):
     runtime.finishImportReply("Light storage or RPC source unavailable")
     runtime.publication = default(PreparedLightPublication)
     runtime.publicationReady = false
@@ -502,9 +516,9 @@ proc stageRetirement(runtime: var LightRuntime): bool =
 proc admitRetirement(runtime: var LightRuntime): bool =
   ## Borrow stable store/job addresses only after staging activation retirement and exact RPC source preflight.
   let rpc = runtime.rpc
-  assert rpc != nil
-  if runtime.busy or runtime.faulted or (runtime.rpcBound and not rpc[].canInstallLightHead(
-      runtime.rpcSource)): return false # No borrowed graph is touched after a failed scalar/source gate.
+  if rpc == nil or runtime.busy or runtime.faulted: return false
+  if runtime.rpcBound and not rpc[].canInstallLightHead(
+      runtime.rpcSource): return false # No borrowed graph is touched after a failed scalar/source gate.
   runtime.lastDisk = default(DiskPublicationCompletion)
   runtime.lease = rpc[].pauseChain()
   if runtime.lease == nil: return false # Another host owner retains this pause.
@@ -525,16 +539,26 @@ proc retirementDue(runtime: LightRuntime): bool =
 proc collectDisk(runtime: var LightRuntime) =
   ## The complete returned-outcome activation retires before tick can enqueue another borrower of shared snapshot graphs.
   let completion = runtime.io.collect(runtime.ioTicket)
-  assert completion.kind != DiskCompletionKind.Uninitialized
-  runtime.finishDisk(completion)
+  if completion.kind == DiskCompletionKind.Uninitialized:
+    # Join before releasing the graph lease. A completed IO receipt still has to be applied.
+    runtime.faulted = true
+    let joined = runtime.io.close()
+    runtime.finishDisk(joined)
+  else:
+    runtime.finishDisk(completion)
 
 proc collectRpcQuery(runtime: var LightRuntime) =
   ## Exact CPU collection ends exclusion before response serialization and connection-local completion.
   let ticket = runtime.cpuTicket # Retain the small host-only ticket before mutable actor collection.
   let completion = runtime.collectQuery(ticket)
-  assert completion.kind != ProofWorkerCompletionKind.Uninitialized
+  if completion.kind == ProofWorkerCompletionKind.Uninitialized:
+    runtime.cpu.close()
+    runtime.cpuBusy = false
+    runtime.releaseLease()
   let rpc = runtime.rpc
-  assert rpc != nil
+  if rpc == nil:
+    runtime.request = default(RpcProofDispatch)
+    return
   if completion.kind == ProofWorkerCompletionKind.Completed:
     let outcome = completion.value
     if outcome.error == ProofQueryError.None:
@@ -548,15 +572,17 @@ proc collectRpcQuery(runtime: var LightRuntime) =
       discard rpc[].finishStateProof(runtime.request, runtime.current.stateRoot, newSeq[byte](0),
           "Light proof witness unavailable") # Missing evidence is never converted to absence.
   else:
-    assert completion.kind == ProofWorkerCompletionKind.Cancelled
-    discard rpc[].finishStateProof(runtime.request, runtime.current.stateRoot, newSeq[byte](0), "Light proof request cancelled")
+    let reason =
+      if completion.kind == ProofWorkerCompletionKind.Cancelled: "Light proof request cancelled"
+      else: "Light proof outcome unavailable"
+    discard rpc[].finishStateProof(runtime.request, runtime.current.stateRoot, newSeq[byte](0), reason)
   runtime.request = default(RpcProofDispatch)
 
 proc beginRpcRequest(runtime: var LightRuntime) =
   ## RPC tick and all metadata contexts have retired before this bounded actor claims one detached request intent.
   if not runtime.sourceReady or runtime.publicationReady: return # No canonical/request alias is touched while a worker owns exclusion.
   let rpc = runtime.rpc
-  assert rpc != nil
+  if rpc == nil: return
   let dispatch = rpc[].takeStateProofRequest()
   if not dispatch.valid: return # No request owns no capacity or graph lease.
   runtime.request = dispatch
@@ -572,7 +598,6 @@ proc beginRpcRequest(runtime: var LightRuntime) =
     let reason = runtime.stageQuery(selected.blockHash, selected.plan, limits)
     let admitted = runtime.admitQuery(reason)
     if admitted.error != LightRuntimeError.None:
-      assert rpc != nil # Refused admission retained the same stable borrowed listener.
       discard rpc[].finishStateProof(dispatch, runtime.current.stateRoot, newSeq[byte](0),
           "Light block or proof request unavailable") # No worker borrowed any canonical graph.
       runtime.request = default(RpcProofDispatch)
@@ -598,7 +623,7 @@ proc tick*(runtime: var LightRuntime, peers: uint32) =
       runtime.retirementDue():
     if runtime.stageRetirement() and runtime.admitRetirement(): return # Prepared-job activation retired before submission; Busy retries are spaced separately.
   let rpc = runtime.rpc
-  assert rpc != nil
+  if rpc == nil: return
   rpc[].tick(peers) # Detached transport metadata owns no partial application proof graph.
   runtime.beginRpcRequest() # Transport callbacks and contexts have retired before CPU admission.
 

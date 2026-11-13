@@ -11,7 +11,7 @@
 ## std/ioring starts the process-wide worker pool on import. The executable
 ## shuts down that reactor after every service has joined its stream tasks.
 
-import std/[assertions, atomics, ioring, streamio, strutils, threadpool]
+import std/[atomics, ioring, streamio, strutils, threadpool]
 import std/http/httpparse as http_parse
 import ./logging
 
@@ -163,14 +163,17 @@ proc `=wasMoved`*(stream: var HttpStream) {.nodestroy.} =
   ## Transfer the pointer without moving the storage used by the task.
   stream.exchange = nil
 
-proc start*(stream: var HttpStream, fd: cint, maxBodyBytes = 0, timeoutMs = 5000) =
-  ## Take the descriptor and fix the request deadline and endpoint body ceiling.
-  assert stream.exchange == nil and fd >= 0 and maxBodyBytes >= 0 and timeoutMs > 0
+proc start*(stream: var HttpStream, fd: cint, maxBodyBytes = 0,
+    timeoutMs = 5000): bool =
+  ## Take the descriptor on success. The caller retains it on refusal.
+  if stream.exchange != nil or fd < 0 or maxBodyBytes < 0 or timeoutMs <= 0:
+    return false
   let s = cast[ptr Exchange](alloc0(sizeof(Exchange)))
   let deadline = afterMs(timeoutMs)
   s[] = Exchange(phase: ord(ReadHead), deadline: deadline, maxBodyBytes: maxBodyBytes)
   stream.exchange = s
   submit(delay(run(fd, deadline, s)), -1)
+  true
 
 proc finished*(stream: HttpStream): bool =
   ## Done means both halves have released their stream ownership.
@@ -199,7 +202,10 @@ proc receiveHead*(stream: var HttpStream, head: var string): int =
 proc requestBody*(stream: var HttpStream, length: int) =
   ## The caller has validated the headers and bounded the declared body length.
   let s = stream.exchange
-  assert s != nil and s.observedPhase == Ready and length >= 0 and length <= s.maxBodyBytes
+  if s == nil: return
+  if s.observedPhase != Ready or length < 0 or length > s.maxBodyBytes:
+    stream.stop()
+    return
   s.bodyBytes = length
   s.publish(ReadBody)
 
@@ -220,7 +226,10 @@ proc canSend*(stream: HttpStream): bool =
 proc sendChunk*(stream: var HttpStream, output: var string, final: bool) =
   ## Transfer one serialized response chunk. The task closes after the final chunk.
   let s = stream.exchange
-  assert s != nil and s.observedPhase == Ready
+  if s == nil: return
+  if s.observedPhase != Ready:
+    stream.stop()
+    return
   s.data = move(output)
   s.final = final
   s.publish(Write)

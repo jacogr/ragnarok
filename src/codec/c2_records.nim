@@ -7,7 +7,6 @@
 ## Exposes availability specifications, deferred transfers and accumulation operands with source
 ## constructors, allocation-free input sizing, codecs and copied payload access.
 
-import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite]
 import ./work/[digest as work_digest, report as work_report]
 import ./assurances
@@ -500,7 +499,8 @@ proc encodeOperand*(value: AccumulationOperand, limits: OperandLimits,
     put(value.output.payloadValues, output, cursor)
   putNatural(uint64(value.authTrace.len), output, cursor)
   put(value.authTrace, output, cursor)
-  assert cursor == total
+  if cursor != total:
+    return RecordResult[int](status: RecordError.InvalidOwner)
   RecordResult[int](status: RecordError.None, completed: cursor)
 
 proc operandInfo*(owner: OwnedOperand): RecordResult[OperandInfo] =
@@ -513,7 +513,8 @@ proc operandInfo*(owner: OwnedOperand): RecordResult[OperandInfo] =
 proc extract(owner: OwnedOperand, span: BlobSpan, output: var openArray[byte]): RecordResult[int] =
   ## Copy an owner-bound private interval atomically; only validated internal coordinates can select its bytes.
   let data = owner.data
-  assert data != nil # Internal extraction requires a validated retained owner.
+  if data == nil:
+    return RecordResult[int](status: RecordError.InvalidOwner)
   if output.len < span.length: return RecordResult[int](
       status: RecordError.OutputTooSmall) # Complete selected payload must fit.
   # Protect the retained caller-handle descriptor before copying any selected private payload byte.

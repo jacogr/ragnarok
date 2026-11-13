@@ -7,7 +7,6 @@
 ##
 ## Exposes typed chapter capture, composeState, stateCommitment and indexed state-entry access.
 
-import std/assertions
 import ../[bounded, assurances, guarantees]
 import ./[layout as state_layout, trie as state_trie, authorization as state_authorization,
     history as state_history, consensus as state_consensus, disputes as state_disputes,
@@ -415,7 +414,8 @@ proc composeState*(chapters: StateChapters,
   for chapterNumber in ord(StateChapterId.Pools)..ord(StateChapterId.Outputs):
     let chapter = StateChapterId(chapterNumber)
     let part = chapters[chapter].data
-    assert part != nil # Complete immutable chapter preflight proved this retained source exists.
+    if part == nil:
+      return StateCompositionResult[StateSnapshot](status: StateCompositionError.InvalidOwner)
     entries.add(StateEntry(key: chapterKey(StateChapter(ord(chapter))), value: part.bytes))
   ## Existing entry encoders construct independent values and preserve nominal key/hash/history contracts.
   template append(expression, success: untyped) =

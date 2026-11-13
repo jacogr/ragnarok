@@ -4,7 +4,7 @@
 ## Exact managed snapshot bytes bind a complete retained root union and context to chain/schema/generation.
 ## Encoding consumes opaque validated selections; decoding admits every complete graph before success.
 
-import std/[algorithm, assertions]
+import std/[algorithm]
 import ./node/[repository as node_repository, records as node_records]
 import ./[record_codec, database_identity]
 import ../codec/bounded
@@ -159,7 +159,8 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   for octet in context:
     output[offset] = octet
     inc offset # Context retains exact application bytes without interpreting their authority.
-  assert offset == prefixBytes # Metadata ends at the already-serialized collection, without another body copy.
+  if offset != prefixBytes: return SnapshotResult[SnapshotEncoding](
+      status: SnapshotError.InvalidFormat)
   let hashed = blake2b256(output.toOpenArray(0, output.len-33))
   if hashed.error != CryptoError.None: return SnapshotResult[SnapshotEncoding](
       status: SnapshotError.BackendFailure)

@@ -81,7 +81,11 @@ proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
     worker.waitDone()
     assert worker.submit(disk, publication).error == DiskWorkerError.Busy, "Done retains capacity"
     if mode == 1:
-      completion = worker.close # A completed native commit remains visible to the joining host.
+      assert worker.collect(default(DiskPublicationTicket)).kind ==
+          DiskCompletionKind.Uninitialized,
+        "foreign collection cannot consume a Done receipt"
+      assert worker.phase == DiskWorkerPhase.Done, "refused collection retains the graph lease"
+      completion = worker.close # Recover the actual receipt before installing the durable head.
     else:
       completion = worker.collect(ticket)
       assert worker.collect(ticket).kind == DiskCompletionKind.Uninitialized, "canonical owner unchanged by IO worker"

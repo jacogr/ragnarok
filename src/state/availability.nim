@@ -198,7 +198,7 @@ proc advanceAvailabilityState*(state: var StateStore, parentActive: ValidatorSta
   if planned.error != AvailabilityTransitionError.None: fail(planned.error) # No refused plan is published.
   let plan = planned.value
   let data = plan.data
-  assert data != nil # The selected success owns the complete encoded chapter.
+  if data == nil: fail(AvailabilityTransitionError.InvalidState)
   var writes: seq[StateWrite] = @[]
   if rho.value.bytes != data.entry.value:
     writes.add(StateWrite(key: data.entry.key, kind: StateWriteKind.Put,

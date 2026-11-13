@@ -641,7 +641,8 @@ proc prepareAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: Av
       limits, selected.innerTree))
   if root.error != AvailabilityMerkleError.None: return merkleFailure[PreparedAvailabilityTransfer,
       Blake2bHash](root)
-  assert data.proof.len+33 == selected.proofBytes # Verified distribution invariants bind the original exact outer path.
+  if selected.proofBytes < 33 or data.proof.len != selected.proofBytes-33:
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidPayload)
   var proof = newSeq[byte](selected.proofBytes)
   for index in 0..<data.proof.len: proof[index] = data.proof[index]
   proof[data.proof.len] = 0

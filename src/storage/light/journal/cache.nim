@@ -288,7 +288,7 @@ proc preparedSnapshot*(owner: LightJournalCache): LightJournalResult[PreparedLig
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightSnapshot](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightSnapshot](FileError.Uninitialized)
   LightJournalResult[PreparedLightSnapshot](status: FileError.None, completed: data.image)
 
 proc snapshot*(owner: LightJournalCache): LightJournalResult[LightStateCache] =
@@ -302,7 +302,7 @@ proc sequence*(owner: LightJournalCache): LightJournalResult[LightDeltaSequence]
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[LightDeltaSequence](reason)
-  assert data != nil
+  if data == nil: return fail[LightDeltaSequence](FileError.Uninitialized)
   LightJournalResult[LightDeltaSequence](status: FileError.None, completed: data.sequence)
 
 proc epoch*(owner: LightJournalCache): LightJournalResult[ManagedEpoch] =
@@ -310,7 +310,7 @@ proc epoch*(owner: LightJournalCache): LightJournalResult[ManagedEpoch] =
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[ManagedEpoch](reason)
-  assert data != nil
+  if data == nil: return fail[ManagedEpoch](FileError.Uninitialized)
   LightJournalResult[ManagedEpoch](status: FileError.None, completed: data.selected.epoch)
 
 proc journalBytes*(owner: LightJournalCache): LightJournalResult[uint64] =
@@ -318,7 +318,7 @@ proc journalBytes*(owner: LightJournalCache): LightJournalResult[uint64] =
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[uint64](reason)
-  assert data != nil
+  if data == nil: return fail[uint64](FileError.Uninitialized)
   let observed = managedJournalBytes(data.journal)
   if observed.error != FileError.None: return fail[uint64](observed.error)
   LightJournalResult[uint64](status: FileError.None, completed: observed.value)
@@ -329,7 +329,7 @@ proc append*(owner: var LightJournalCache, delta: PreparedLightDelta): LightJour
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[StorageDurability](reason)
-  assert data != nil
+  if data == nil: return fail[StorageDurability](FileError.Uninitialized)
   if not delta.initialized: return fail[StorageDurability](FileError.Uninitialized)
   if data.frames >= uint64(data.config.journal.frames) or uint64(data.sequence) == high(
       uint64): return fail[StorageDurability](FileError.LimitExceeded)
@@ -359,7 +359,7 @@ proc update*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[StorageDurability](reason)
-  assert data != nil
+  if data == nil: return fail[StorageDurability](FileError.Uninitialized)
   if data.frames >= uint64(data.config.journal.frames) or uint64(data.sequence) == high(
       uint64): return fail[StorageDurability](FileError.LimitExceeded)
   let prepared = prepareLightDelta(data.image, LightDeltaSequence(uint64(data.sequence)+1), proofs,
@@ -417,7 +417,7 @@ proc prepareLightJournalBatch*(owner: LightJournalCache,
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightJournalBatch](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightJournalBatch](FileError.Uninitialized)
   if edits.len == 0: return fail[PreparedLightJournalBatch](FileError.InvalidBatch)
   let count = uint64(edits.len)
   let maximumFrames = uint64(data.config.journal.frames)
@@ -458,7 +458,7 @@ proc append*(owner: var LightJournalCache, batch: PreparedLightJournalBatch): Li
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[StorageDurability](reason)
-  assert data != nil
+  if data == nil: return fail[StorageDurability](FileError.Uninitialized)
   let prepared = batch.data
   if prepared == nil: return fail[StorageDurability](FileError.Uninitialized)
   if not sameJournalPolicy(prepared.policy, data.config.journal):
@@ -670,7 +670,7 @@ proc prepareLightCompaction*(owner: LightJournalCache, expectedEpoch: ManagedEpo
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightCompaction](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightCompaction](FileError.Uninitialized)
   if uint64(expectedEpoch) != uint64(data.selected.epoch) or
       uint64(expectedSequence) != uint64(data.sequence): return fail[PreparedLightCompaction](
           FileError.StaleView)
@@ -694,7 +694,7 @@ proc compact*(owner: var LightJournalCache, prepared: PreparedLightCompaction): 
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[LightCompactionReceipt](reason)
-  assert data != nil
+  if data == nil: return fail[LightCompactionReceipt](FileError.Uninitialized)
   let plan = prepared.data
   if plan == nil: return fail[LightCompactionReceipt](FileError.Uninitialized)
   let checked = binding(plan.image, data.config)
@@ -768,7 +768,7 @@ proc cleanupRetiredEpoch*(owner: var LightJournalCache, epoch: ManagedEpoch): Fi
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return reason
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   if uint64(epoch) == 0 or uint64(epoch) >= uint64(
       data.selected.epoch): return FileError.InvalidRetention
   let checked = validateSelectedHead(data)
@@ -786,7 +786,7 @@ proc discardPending*(owner: var LightJournalCache): FileError =
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return reason
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   let checked = validateSelectedHead(data)
   if checked != FileError.None:
     data.poisoned = true
@@ -801,7 +801,7 @@ proc discardUnselectedCompaction*(owner: var LightJournalCache,
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return reason
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   let plan = prepared.data
   if plan == nil: return FileError.Uninitialized
   if uint64(data.selected.epoch) == high(uint64): return FileError.EpochExhausted
@@ -907,7 +907,7 @@ proc prepareLightRootAdvance*(owner: LightJournalCache, expectedEpoch: ManagedEp
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightRootAdvance](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightRootAdvance](FileError.Uninitialized)
   if uint64(expectedEpoch) != uint64(data.selected.epoch) or uint64(expectedSequence) != uint64(data.sequence):
     return fail[PreparedLightRootAdvance](FileError.StaleView)
   if uint64(data.selected.epoch) == high(uint64): return fail[PreparedLightRootAdvance](
@@ -943,7 +943,7 @@ proc advanceRoot*(owner: var LightJournalCache, prepared: PreparedLightRootAdvan
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[LightRootAdvanceReceipt](reason)
-  assert data != nil
+  if data == nil: return fail[LightRootAdvanceReceipt](FileError.Uninitialized)
   let plan = prepared.data
   if plan == nil: return fail[LightRootAdvanceReceipt](FileError.Uninitialized)
   let checked = rootAdvanceSource(data, plan, false)
@@ -996,7 +996,7 @@ proc discardUnselectedRootAdvance*(owner: var LightJournalCache,
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return reason
-  assert data != nil
+  if data == nil: return FileError.Uninitialized
   let plan = prepared.data
   if plan == nil: return FileError.Uninitialized
   if uint64(plan.selected.epoch) <= uint64(data.selected.epoch): return FileError.InvalidRetention
@@ -1032,7 +1032,7 @@ proc prepareLightRetainedUpdate*(owner: LightJournalCache, proofs: openArray[Lig
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightJournalBatch](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightJournalBatch](FileError.Uninitialized)
   if data.frames >= uint64(data.config.journal.frames) or uint64(data.sequence) == high(uint64):
     return fail[PreparedLightJournalBatch](FileError.LimitExceeded)
   let observed = managedJournalBytes(data.journal)
@@ -1119,14 +1119,16 @@ proc prepareLightMaintenance*(owner: LightJournalCache, expectedEpoch: ManagedEp
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[PreparedLightMaintenance](reason)
-  assert data != nil
+  if data == nil: return fail[PreparedLightMaintenance](FileError.Uninitialized)
   if uint64(data.selected.epoch) != uint64(expectedEpoch) or uint64(data.sequence) != uint64(expectedSequence):
     return fail[PreparedLightMaintenance](FileError.StaleView)
   let observed = managedJournalBytes(data.journal)
   if observed.error != FileError.None: return fail[PreparedLightMaintenance](observed.error)
-  assert observed.value >= uint64(LightJournalAnchorBytes)
+  if observed.value < uint64(LightJournalAnchorBytes):
+    return fail[PreparedLightMaintenance](FileError.RecoveryRequired)
   let capacity = uint64(data.config.journal.bytes)
-  assert capacity >= uint64(LightJournalAnchorBytes)
+  if capacity < uint64(LightJournalAnchorBytes):
+    return fail[PreparedLightMaintenance](FileError.LimitExceeded)
   if uint64(limits.frames) > uint64(data.config.journal.frames) or
       uint64(limits.bytes) > capacity-uint64(LightJournalAnchorBytes):
     return fail[PreparedLightMaintenance](FileError.LimitExceeded)
@@ -1184,7 +1186,7 @@ proc maintain*(owner: var LightJournalCache, prepared: PreparedLightMaintenance)
   let data = owner.data
   let reason = lifecycle(data)
   if reason != FileError.None: return fail[LightMaintenanceReceipt](reason)
-  assert data != nil
+  if data == nil: return fail[LightMaintenanceReceipt](FileError.Uninitialized)
   let plan = prepared.data
   if plan == nil: return fail[LightMaintenanceReceipt](FileError.Uninitialized)
   let checked = maintenanceSource(data, plan)
@@ -1208,12 +1210,14 @@ proc maintain*(owner: var LightJournalCache, prepared: PreparedLightMaintenance)
   var cursor = uint64(plan.first)
   while completed < plan.retired:
     # Each existing guarded pair job revalidates the selected head and synchronizes absence before progress advances.
+    if cursor >= uint64(data.selected.epoch):
+      receipt.cleanup = FileError.InvalidRetention
+      return LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
     let removed = owner.cleanupRetiredEpoch(ManagedEpoch(cursor))
     if removed != FileError.None:
       receipt.cleanup = removed
       return LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
     inc completed
-    assert cursor < uint64(data.selected.epoch)
     inc cursor
     receipt.retired = ElementLimit(completed)
     receipt.nextRetiredEpoch = ManagedEpoch(cursor)

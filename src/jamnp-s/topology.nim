@@ -172,11 +172,13 @@ proc captureValidatorTopology*(source: BlockSnapshotResult,
     return TopologyResult[ValidatorTopology](status: TopologyError.InvalidState) # Chapter values must be exact, not valid prefixes.
   var data = TopologyData(source: snapshot.blockHash, atSlot: snapshot.slot, epochLength: uint32(duration))
   let info = safroleInfo(pending.value.snapshot)
-  assert info.error == StateComponentError.None
+  if info.error != StateComponentError.None:
+    return TopologyResult[ValidatorTopology](status: codecError(info.error))
   data.rosters[ValidatorEpoch.Next] = newSeq[Membership](info.value.validators)
   for index in 0..<info.value.validators:
     let record = pendingValidatorAt(pending.value.snapshot, StateValidatorIndex(uint64(index)))
-    assert record.error == StateComponentError.None
+    if record.error != StateComponentError.None:
+      return TopologyResult[ValidatorTopology](status: codecError(record.error))
     data.rosters[ValidatorEpoch.Next][index] = project(record.value) # Preserve pending order and aliases.
   for index, epoch in [ValidatorEpoch.Current, ValidatorEpoch.Previous]:
     let decoded = decodeStateValidators(raw[index+1], policy.validators)
@@ -185,10 +187,12 @@ proc captureValidatorTopology*(source: BlockSnapshotResult,
     if decoded.value.consumed != raw[index+1].len:
       return TopologyResult[ValidatorTopology](status: TopologyError.InvalidState) # Refuse hidden trailing records.
     let count = validatorCount(decoded.value.value)
-    assert count.error == StateComponentError.None
+    if count.error != StateComponentError.None:
+      return TopologyResult[ValidatorTopology](status: codecError(count.error))
     data.rosters[epoch] = newSeq[Membership](count.value)
     for ordinal in 0..<count.value:
       let record = validatorAt(decoded.value.value, StateValidatorIndex(uint64(ordinal)))
-      assert record.error == StateComponentError.None
+      if record.error != StateComponentError.None:
+        return TopologyResult[ValidatorTopology](status: codecError(record.error))
       data.rosters[epoch][ordinal] = project(record.value) # Never sort or deduplicate a roster.
   TopologyResult[ValidatorTopology](status: TopologyError.None, completed: ValidatorTopology(data: data))

@@ -180,15 +180,18 @@ proc prove*(snapshot: PreparedLightSnapshot, key: StateKey,
     if examined >= uint64(limits.entries):
       return LightSnapshotResult[StateProof](status: LightSnapshotError.LimitExceeded)
     inc examined
-    assert cursor <= stop and stop-cursor >= EntryBytes
+    if cursor > stop or stop-cursor < EntryBytes:
+      return LightSnapshotResult[StateProof](status: LightSnapshotError.InvalidFormat)
     let order = compareKey(readKey(owner.encoded, cursor), key)
     if order > 0: break # Sorted order proves the requested key is not retained.
     let count = number(owner.encoded, cursor+31, 2)
     let size = number(owner.encoded, cursor+33)
     cursor += EntryBytes
-    assert count <= 249 and count <= uint64((stop-cursor) div 64)
+    if count > 249 or count > uint64((stop-cursor) div 64):
+      return LightSnapshotResult[StateProof](status: LightSnapshotError.InvalidFormat)
     let nodeBytes = int(count)*64
-    assert size <= uint64(stop-cursor-nodeBytes)
+    if size > uint64(stop-cursor-nodeBytes):
+      return LightSnapshotResult[StateProof](status: LightSnapshotError.InvalidFormat)
     if order == 0:
       # Check both output quotas before allocating either path or value; output owns all copied bytes.
       if count > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes):
@@ -248,7 +251,8 @@ proc planProofs(owner: nil SnapshotData, keys: openArray[StateKey],
     if examined >= uint64(limits.entries):
       return LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.LimitExceeded)
     inc examined
-    assert cursor <= stop and stop-cursor >= EntryBytes
+    if cursor > stop or stop-cursor < EntryBytes:
+      return LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.InvalidFormat)
     let order = compareKey(readKey(owner.encoded, cursor), ordered[slot].key)
     if order > 0:
       return LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.ProofFailure,
@@ -256,9 +260,11 @@ proc planProofs(owner: nil SnapshotData, keys: openArray[StateKey],
     let count = number(owner.encoded, cursor+31, 2)
     let size = number(owner.encoded, cursor+33)
     cursor += EntryBytes
-    assert count <= 249 and count <= uint64((stop-cursor) div 64)
+    if count > 249 or count > uint64((stop-cursor) div 64):
+      return LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.InvalidFormat)
     let nodeBytes = int(count)*64
-    assert size <= uint64(stop-cursor-nodeBytes)
+    if size > uint64(stop-cursor-nodeBytes):
+      return LightSnapshotResult[seq[ProofReadIndex]](status: LightSnapshotError.InvalidFormat)
     if order == 0:
       # Bound the complete selected output before any proof buffer or result sequence is allocated.
       if count > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes):
@@ -344,19 +350,23 @@ proc readPage*(cursor: LightProofCursor,
   if owner == nil: return LightSnapshotResult[LightProofPage](
       status: LightSnapshotError.Uninitialized)
   let stop = owner.encoded.len-32
-  assert cursor.offset >= HeaderBytes and cursor.offset <= stop
+  if cursor.offset < HeaderBytes or cursor.offset > stop:
+    return LightSnapshotResult[LightProofPage](status: LightSnapshotError.InvalidFormat)
   var scan = cursor.offset
   var count = 0
   var nodes = 0'u64
   var values = 0'u64
   while scan < stop and uint64(count) < uint64(limits.items):
     # Private canonical entry boundaries prove all addressing before multiplication or narrowing.
-    assert stop-scan >= EntryBytes
+    if stop-scan < EntryBytes:
+      return LightSnapshotResult[LightProofPage](status: LightSnapshotError.InvalidFormat)
     let path = number(owner.encoded, scan+31, 2)
     let size = number(owner.encoded, scan+33)
-    assert path <= 249 and path <= uint64((stop-scan-EntryBytes) div 64)
+    if path > 249 or path > uint64((stop-scan-EntryBytes) div 64):
+      return LightSnapshotResult[LightProofPage](status: LightSnapshotError.InvalidFormat)
     let nodeBytes = int(path)*64
-    assert size <= uint64(stop-scan-EntryBytes-nodeBytes)
+    if size > uint64(stop-scan-EntryBytes-nodeBytes):
+      return LightSnapshotResult[LightProofPage](status: LightSnapshotError.InvalidFormat)
     let shapeFits = path <= uint64(limits.proof.nodes) and size <= uint64(limits.proof.valueBytes)
     let totalsFit = path <= uint64(limits.nodes)-nodes and size <= uint64(limits.valueBytes)-values
     if not shapeFits or not totalsFit: break # A later oversized entry belongs to the unchanged next cursor.
@@ -386,7 +396,8 @@ proc readPage*(cursor: LightProofCursor,
     for slot in 0..<size: value[slot] = owner.encoded[offset+slot]
     offset += size
     evidence[index] = LightStateProof(key: key, proof: StateProof(nodes: pathNodes, value: value))
-  assert offset == scan
+  if offset != scan:
+    return LightSnapshotResult[LightProofPage](status: LightSnapshotError.InvalidFormat)
   LightSnapshotResult[LightProofPage](status: LightSnapshotError.None,
     completed: LightProofPage(ready: true, evidence: evidence,
       continuation: LightProofCursor(owner: owner, offset: scan)))
@@ -445,7 +456,8 @@ proc prepareLightSnapshot*(chain: StorageChainId, root: StateRoot,
     for octet in proof.proof.value:
       output[cursor] = octet
       inc cursor
-  assert cursor == output.len-32 # Exact preflight fills the canonical body and leaves only its checksum.
+  if cursor != output.len-32:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
   let hashed = blake2b256(output.toOpenArray(0, cursor-1))
   if hashed.error != CryptoError.None:
     return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.BackendFailure)
@@ -519,9 +531,8 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
         status: LightSnapshotError.ChecksumMismatch)
   cursor = HeaderBytes
 
-  proc readProof(index: int): LightStateProof {.closure.} =
+  proc readProof(_: int): LightStateProof {.closure.} =
     ## The synchronous constructor calls each index once; complete shape preflight proves every cursor and allocation extent.
-    assert index >= 0 and index < int(count)
     let key = readKey(input, cursor)
     let count = int(number(input, cursor+31, 2))
     let size = int(number(input, cursor+33))
@@ -543,13 +554,13 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
   if admitted.error != LightCacheError.None:
     return LightSnapshotResult[LightStateCache](status: LightSnapshotError.ProofFailure,
         proofReason: admitted.error)
-  assert cursor == stop # Only complete successful stream consumption authorizes the cache result.
+  if cursor != stop:
+    return LightSnapshotResult[LightStateCache](status: LightSnapshotError.InvalidFormat)
   LightSnapshotResult[LightStateCache](status: LightSnapshotError.None, completed: admitted.value)
 
 proc ownedSnapshot(encoded: sink seq[byte], chain: StorageChainId, root: StateRoot,
     limits: LightSnapshotLimits, cache: LightStateCache): PreparedLightSnapshot =
   ## Only fully validated bytes may enter this private immutable owner; the last 32 bytes carry their checked checksum.
-  assert encoded.len >= Overhead
   var checksum = default(array[32, byte])
   for index in 0..<32: checksum[index] = encoded[encoded.len-32+index]
   PreparedLightSnapshot(owner: SnapshotData(chain: chain, root: root, limits: limits,
@@ -565,6 +576,8 @@ proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId
         proofReason: decoded.proofError)
   if decoded.error != LightSnapshotError.None:
     return LightSnapshotResult[PreparedLightSnapshot](status: decoded.error)
+  if input.len < Overhead:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
   var encoded = newSeq[byte](input.len)
   for index, octet in input: encoded[index] = octet
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
@@ -580,6 +593,8 @@ proc takeLightSnapshot*(input: var seq[byte], expectedChain: StorageChainId,
       proofReason: decoded.proofError)
   if decoded.error != LightSnapshotError.None:
     return LightSnapshotResult[PreparedLightSnapshot](status: decoded.error)
+  if input.len < Overhead:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
     completed: ownedSnapshot(move(input), expectedChain, expectedRoot, limits, decoded.value))
 
@@ -623,7 +638,8 @@ proc select*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey],
     let extent = EntryBytes+entry.nodes*64+entry.size
     for index in 0..<extent: output[cursor+index] = owner.encoded[start+index]
     cursor += extent
-  assert cursor == output.len-32
+  if cursor != output.len-32:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
   let hashed = blake2b256(output.toOpenArray(0, cursor-1))
   if hashed.error != CryptoError.None:
     return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.BackendFailure)
@@ -638,6 +654,7 @@ type
     key: StateKey
     index: int
     kind: EditKind
+  EntryStep {.pure.} = enum Invalid, Item, End
   EntrySource = object ## A merge cursor borrows either a trusted encoded entry or an incoming transport index.
     offset, index: int
     extent, valueBytes: uint64
@@ -647,10 +664,12 @@ proc compareEdit(left, right: EditIndex): int =
   compareKey(left.key, right.key)
 
 proc nextSource(encoded: openArray[byte], ordered: openArray[EditIndex],
-    old: var int, fresh: var int, source: var EntrySource): bool =
+    old: var int, fresh: var int, source: var EntrySource): EntryStep =
   ## Scan canonical evidence and unique sorted edits, skipping only explicitly forgotten query identities.
   let stop = encoded.len-32
+  if old < HeaderBytes or old > stop: return EntryStep.Invalid
   while old < stop or fresh < ordered.len:
+    if old < stop and stop-old < EntryBytes: return EntryStep.Invalid
     # Existing private image validity proves each old entry, while incoming descriptors were bounded before sorting.
     let comparison = if old == stop: 1 elif fresh == ordered.len: -1
       else: compareKey(readKey(encoded, old), ordered[fresh].key)
@@ -658,23 +677,22 @@ proc nextSource(encoded: openArray[byte], ordered: openArray[EditIndex],
       let change = ordered[fresh]
       source = EntrySource(offset: -1, index: change.index)
       inc fresh
-      if change.kind == EditKind.Admit: return true # Forgetting an unknown query consumes only its operation.
+      if change.kind == EditKind.Admit: return EntryStep.Item # Forgetting an unknown query consumes only its operation.
     else:
-      assert stop-old >= EntryBytes
       let nodes = number(encoded, old+31, 2)
       let size = number(encoded, old+33)
-      assert nodes <= 249 and nodes*64 <= uint64(stop-old-EntryBytes)
+      if nodes > 249 or nodes*64 > uint64(stop-old-EntryBytes): return EntryStep.Invalid
       let fixed = uint64(EntryBytes)+nodes*64
-      assert size <= uint64(stop-old)-fixed
+      if size > uint64(stop-old)-fixed: return EntryStep.Invalid
       let extent = fixed+size
       source = EntrySource(offset: old, index: -1, extent: extent, valueBytes: size)
       old += int(extent) # Complete owned-image invariants prove this native cursor advance.
-      if comparison < 0: return true
+      if comparison < 0: return EntryStep.Item
       let change = ordered[fresh]
       source = EntrySource(offset: -1, index: change.index)
       inc fresh
-      if change.kind == EditKind.Admit: return true # Equal-key admission replaces evidence; forgetting emits nothing.
-  false
+      if change.kind == EditKind.Admit: return EntryStep.Item # Equal-key admission replaces evidence; forgetting emits nothing.
+  EntryStep.End
 
 proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
     keys: openArray[StateKey]): LightSnapshotResult[PreparedLightSnapshot] =
@@ -719,7 +737,12 @@ proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
   var source = default(EntrySource)
   let maximum = min(uint64(policy.bytes), uint64(high(int)))
   # A complete merged-set first pass releases replacements before counting the selected final quotas.
-  while nextSource(owner.encoded, ordered, old, fresh, source):
+  while true:
+    case nextSource(owner.encoded, ordered, old, fresh, source)
+    of EntryStep.End: break
+    of EntryStep.Invalid:
+      return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
+    of EntryStep.Item: discard
     var extent = source.extent
     var raw = source.valueBytes
     if source.offset < 0:
@@ -751,12 +774,18 @@ proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
   old = HeaderBytes
   fresh = 0
   # The same stable inputs fill exactly the preflighted image; retained canonical evidence is copied as a byte span.
-  while nextSource(owner.encoded, ordered, old, fresh, source):
+  while true:
+    case nextSource(owner.encoded, ordered, old, fresh, source)
+    of EntryStep.End: break
+    of EntryStep.Invalid:
+      return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
+    of EntryStep.Item: discard
     if source.offset >= 0:
       let extent = int(source.extent) # The canonical source cursor already proved native representability.
-      assert source.offset <= owner.encoded.len-32
-      assert extent > 0 and extent <= owner.encoded.len-32-source.offset
-      assert cursor <= output.len-32 and extent <= output.len-32-cursor
+      if source.offset > owner.encoded.len-32 or extent <= 0 or
+          extent > owner.encoded.len-32-source.offset or cursor > output.len-32 or
+          extent > output.len-32-cursor:
+        return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
       # Distinct newly allocated output and immutable held source cannot overlap; copy only the proved entry span.
       copyMem(addr output[cursor], unsafeAddr owner.encoded[source.offset], extent)
       cursor += extent
@@ -774,7 +803,8 @@ proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
       for octet in update.proof.value:
         output[cursor] = octet
         inc cursor
-  assert cursor == output.len-32
+  if cursor != output.len-32:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.InvalidFormat)
   let hashed = blake2b256(output.toOpenArray(0, cursor-1))
   if hashed.error != CryptoError.None:
     return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.BackendFailure)
@@ -874,11 +904,16 @@ proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[Ligh
   var fresh = 0
   while offset < owner.encoded.len-32:
     # The immutable canonical source already proves all fixed headers and payload extents; no detached old proofs are allocated.
+    let remaining = owner.encoded.len-32-offset
+    if remaining < EntryBytes: return retentionFailure(LightSnapshotError.InvalidFormat)
     let key = readKey(owner.encoded, offset)
     let nodes = number(owner.encoded, offset+31, 2)
     let raw = number(owner.encoded, offset+33)
-    let extent = uint64(EntryBytes)+nodes*64+raw
-    assert extent <= uint64(owner.encoded.len-32-offset)
+    if nodes > 249 or nodes*64 > uint64(remaining-EntryBytes):
+      return retentionFailure(LightSnapshotError.InvalidFormat)
+    let fixed = uint64(EntryBytes)+nodes*64
+    if raw > uint64(remaining)-fixed: return retentionFailure(LightSnapshotError.InvalidFormat)
+    let extent = fixed+raw
     while fresh < ordered.len and compareKey(ordered[fresh].key, key) < 0: inc fresh
     let replaced = fresh < ordered.len and compareKey(ordered[fresh].key, key) == 0
     if not replaced:
@@ -895,7 +930,8 @@ proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[Ligh
     # A protected incoming set that cannot fit, or an exhausted removal/mutation allowance, refuses without any visible eviction.
     if removed >= count: return retentionFailure(LightSnapshotError.LimitExceeded)
     let entry = candidates[removed]
-    assert items > 0 and values >= entry.values and bytes >= entry.bytes
+    if items == 0 or values < entry.values or bytes < entry.bytes:
+      return retentionFailure(LightSnapshotError.InvalidFormat)
     dec items
     values -= entry.values
     bytes -= entry.bytes

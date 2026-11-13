@@ -7,9 +7,9 @@ Read the owning `../docs/design/<module>.md` before changing architectural bound
   addresses stable until join. Written destructors require explicit `=wasMoved` hooks; delegate
   to child move hooks, retain closed/joined preconditions, and update both hooks when owner fields change.
 
-- Preserve assertions, bounds checks and explicit protocol range/overflow validation in optimized
-  builds. Nimony arithmetic intentionally wraps; do not emulate Nim 2 overflow exceptions or treat
-  wrapping as a compiler failure. Prove/check sizes before additions, multiplication and narrowing.
+- Preserve bounds checks and explicit protocol range/overflow validation in optimized builds.
+  Return typed failures for invalid runtime state before using or publishing it. Nimony arithmetic
+  intentionally wraps. Check sizes before addition, multiplication and narrowing.
   Guard result access with supported contracts. Use ARC/Clang LTO and profile before optimization.
   Initialize every local scalar/pointer explicitly on Nimony; do not assume Nim 2 zero initialization.
   The pinned nightly accepted uninitialized boolean flags and a callback lookup pointer in the peer;

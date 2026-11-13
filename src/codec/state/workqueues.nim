@@ -8,7 +8,6 @@
 ## Exposes ready/accumulated ring profiles and snapshots, state-entry codecs and bounded
 ## slot/item/dependency/hash access.
 
-import std/assertions
 import ../[natural, bounded, assurances, composite]
 import ../work/report as work_report
 import ../[report_owned, owned]
@@ -217,7 +216,8 @@ proc decodeReadyState*(input: openArray[byte], config: WorkQueueConfig): WorkQue
     data.rows[slot] = newSeq[ReadyItem](int(count))
     for i in 0..<int(count):
       let report = decodeOwnedReport(input.toOpenArray(cursor, input.len-1), uint64(config.cores))
-      assert report.error == OwnershipError.None # Complete parent preflight already proved this child.
+      if report.error != OwnershipError.None:
+        return WorkQueueResult[WorkQueueRead[ReadySnapshot]](status: WorkQueueError.InvalidReport)
       data.rows[slot][i].report = report.value
       cursor += ownedReportInfo(report.value).value.consumed
       let dependencies = readCount(input, cursor, config).value
@@ -322,7 +322,8 @@ proc readyStateEntry*(rows: openArray[ReadyRow], config: WorkQueueConfig): WorkQ
     for item in row:
       let length = ownedReportInfo(item.report).value.consumed
       let copied = encodeOwnedReport(item.report, entry.value.toOpenArray(cursor, cursor+length-1))
-      assert copied.error == OwnershipError.None # Fresh output plus preflight proves capacity/disjointness.
+      if copied.error != OwnershipError.None:
+        return WorkQueueResult[StateEntry](status: WorkQueueError.InvalidReport)
       cursor += length
       putCount(entry.value, cursor, item.dependencies.len)
       putHashes(entry.value, cursor, item.dependencies)

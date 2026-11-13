@@ -4,7 +4,6 @@
 ## Pinned JAM fuzzer-v1 messages own bounded immutable wire and structurally validated children.
 ## Wire capture proves neither protocol negotiation nor genesis trust, STF success or logical completeness.
 
-import std/assertions
 import ../store
 import ../trace/state as trace_state
 import ../../codec/[bounded, natural, header, block_codec]
@@ -119,16 +118,20 @@ proc readState(input: openArray[byte], cursor: var int,
   cursor = start
   var entries = newSeq[StateEntry](int(count))
   for record in 0..<entries.len:
+    if stop-cursor < 31: return fail[StateStoreSnapshot](FuzzError.Truncated)
     var key = default(array[31, byte])
     for index in 0..<31: key[index] = input[cursor+index]
     cursor += 31
     var size = 0'u64
-    discard readNatural(input, cursor, size) # Immutable input and the first pass prove every repeated field.
+    let length = readNatural(input, cursor, size)
+    if length != FuzzError.None: return fail[StateStoreSnapshot](length)
+    if cursor > stop or size > uint64(stop-cursor):
+      return fail[StateStoreSnapshot](FuzzError.Truncated)
     var bytes = newSeq[byte](int(size))
     for index in 0..<bytes.len: bytes[index] = input[cursor+index]
     cursor += bytes.len
     entries[record] = StateEntry(key: StateKey(key), value: bytes)
-  assert cursor == stop
+  if cursor != stop: return fail[StateStoreSnapshot](FuzzError.StateFailure)
   let store = newStateStore(entries, limits)
   if store.error != StateStoreError.None:
     let mapped = case store.error

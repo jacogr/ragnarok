@@ -7,7 +7,7 @@
 ## Exposes owned fixture banks and verified digest/wire results, fixture lookup/capture and an
 ## integration selftest.
 
-import std/[os, assertions, syncio]
+import std/[os, syncio]
 import ../codec/[owned, bounded]
 when defined(integration):
   # Only explicitly integrated binaries link the existing pinned crypto ABI.
@@ -163,11 +163,11 @@ proc captureDigest*(input: var openArray[byte], expected: PreimageKey): Integrat
   IntegrationResult[VerifiedDigest](status: IntegrationError.None,
     completed: VerifiedDigest(data: VerifiedData(owner: parsed.value, wire: wire)))
 
-proc integrationSelfTest*() =
+proc integrationSelfTest*(): bool =
   ## Fuzz the composition boundary with bounded arbitrary wire and its actual independently retained request key.
-  assert IntegrationEnabled # Ordinary QUIC binaries cannot claim this linked crypto test.
+  if not IntegrationEnabled: return false
   var defaultResult = default(IntegrationResult[VerifiedDigest])
-  assert defaultResult.error == IntegrationError.Uninitialized
+  if defaultResult.error != IntegrationError.Uninitialized: return false
   var random = 0x494e544547524154'u64
   # A successful parse must survive source reuse; every failing branch carries only its reason.
   for iteration in 0..<10000:
@@ -180,15 +180,17 @@ proc integrationSelfTest*() =
     let original = input
     let length = iteration mod 129
     let key = preimageKey(input.toOpenArray(0, length - 1))
-    assert key.error == IntegrationError.None
+    if key.error != IntegrationError.None: return false
     let checked = captureDigest(input.toOpenArray(0, length - 1), key.value)
     if checked.error == IntegrationError.None:
-      assert wireLength(checked.value).value == length
+      let measured = wireLength(checked.value)
+      if measured.error != IntegrationError.None or measured.value != length: return false
       var copied = newSeq[byte](length)
-      assert copyVerifiedWire(checked.value, copied).value == length
-      for i, value in copied: assert value == original[
-          i] # Serialization retains the pre-mutation immutable owner.
+      let encoded = copyVerifiedWire(checked.value, copied)
+      if encoded.error != IntegrationError.None or encoded.value != length: return false
+      for i, value in copied:
+        if value != original[i]: return false
     else:
-      assert checked.error in [IntegrationError.Codec,
-          IntegrationError.Trailing] # Actual key binding rules out a fabricated hash error.
+      if checked.error notin [IntegrationError.Codec, IntegrationError.Trailing]: return false
   echo "Nim integration selftest: 10000 arbitrary digest captures passed"
+  true

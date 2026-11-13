@@ -36,9 +36,9 @@ func opened*(directory: ManagedDirectory): bool =
   state != nil and state.active
 
 proc nativeDescriptor(directory: ManagedDirectory): cint {.requires: directory.opened.} =
-  ## Borrow a scalar descriptor only for the immediate synchronous native operation.
+  ## Borrow the live descriptor only for an immediate synchronous native operation.
   let state = directory.data
-  assert state != nil
+  if state == nil or not state.active: return -1
   state.descriptor
 
 proc `=copy`*(destination: var ManagedDirectory, source: ManagedDirectory) {.error.}
@@ -394,13 +394,14 @@ proc close*(journal: var ManagedJournal): FileError =
   ## Disarm one descriptor and release exactly one stable directory lease without retrying close.
   if not journal.active: return FileError.Uninitialized
   let state = journal.state
-  assert state != nil and state.active and state.journals > 0
   let descriptor = journal.descriptor
   journal.active = false
   journal.descriptor = -1
   journal.state = nil
+  let retired = closeNative(descriptor)
+  if state == nil or not state.active or state.journals == 0: return FileError.IoFailure
   dec state.journals
-  if closeNative(descriptor) != 0: return FileError.IoFailure
+  if retired != 0: return FileError.IoFailure
   FileError.None
 
 proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,

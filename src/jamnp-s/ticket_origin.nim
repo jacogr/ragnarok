@@ -4,7 +4,7 @@
 ## Two locally generated checked tickets use bounded timed CE131 delivery; self-proxies belong to the separate CE132 scheduler.
 ## This owner retains no secret, canonical graph or CPU cancellation authority.
 
-import std/[assertions, monotimes, times]
+import std/[monotimes, times]
 import ./[node, connections, read_stream, read_client, ticket_packet, ticket_validation]
 import ../codec/[bounded, header, tickets]
 import ../codec/state/[safrole, trie]
@@ -180,7 +180,7 @@ proc dispatch*(owner: var TicketOrigins, streams: var NodeService, now: StateTim
     if peer.error != NodeError.None: continue
     let request = decodeReadRequest(ReadKind.TicketProxy, owner.rows[
         index].proof.packet.packetBytes)
-    assert request.error == ReadError.None
+    if request.error != ReadError.None: continue
     let admitted = streams.request(peer.value, request.value, ByteLimit(0))
     if admitted.error != NodeError.None: continue # Quota pressure consumes no transmission attempt.
     owner.rows[index].active = true

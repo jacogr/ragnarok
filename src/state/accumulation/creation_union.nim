@@ -4,7 +4,7 @@
 ## Current accpar n: immutable final prior-absent accounts from genuine nonannulled producers.
 ## This certificate selects logical accounts; physical publication and complete block coverage remain separate.
 
-import std/[algorithm, assertions]
+import std/[algorithm]
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]
 import ./[annulment as accumulation_annulment, outcome as accumulation_outcome,
@@ -195,7 +195,9 @@ proc createdAccountOutcomeAt*(plan: PreparedAccumulationCreationUnion,
   if row.error != AccumulationCreationError.None: return AccumulationCreationResult[
       AccumulationOutcome](status: row.error) # No fabricated execution result.
   let data = plan.data
-  assert data != nil # Same immutable owner was established by checkedRow.
+  if data == nil:
+    return AccumulationCreationResult[AccumulationOutcome](
+        status: AccumulationCreationError.Uninitialized)
   let original = data.source.annulmentOriginalOutcomeAt(AccumulationAnnulmentIndex(uint64(
       row.value.original))).value
   AccumulationCreationResult[AccumulationOutcome](status: AccumulationCreationError.None,

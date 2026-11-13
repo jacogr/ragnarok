@@ -858,8 +858,8 @@ proc finishDiskRetirement(services: var Services, completion: DiskPublicationCom
       services.diskFaulted = true # Confirmed removal remains visible independently from final close uncertainty.
     else:
       services.retirementDelayed = false # The next ordinary publication may now author one new artifact.
-  else:
-    assert completion.kind == DiskCompletionKind.NotExecuted # Joined queued work entered no IO and leaves the target pending.
+  elif completion.kind != DiskCompletionKind.NotExecuted:
+    services.diskFaulted = true
   services.diskRetirement = default(PreparedPagedRetirement)
   services.diskOperation = ServiceDiskOperation.Publication
   services.finishDiskGraph()
@@ -873,8 +873,8 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
       services.diskFaulted = true
     elif outcome.value.cleanup != FileError.None:
       services.diskFaulted = true # Preserve durable selection and expose cleanup refusal without attempting another mutation.
-  else:
-    assert completion.kind == DiskCompletionKind.NotExecuted
+  elif completion.kind != DiskCompletionKind.NotExecuted:
+    services.diskFaulted = true
   services.diskOperation = ServiceDiskOperation.Publication
   services.diskMaintenance = default(PreparedDiskMaintenance)
   services.finishDiskGraph()
@@ -908,7 +908,7 @@ proc finishCurrentDiskPublication(services: var Services, completion: DiskPublic
           services.canonical.installPrepared(prepared) # Disabled RPC still installs only after the same confirmed IO receipt.
         services.currentAdoption.completePublication(services.canonical.installedPrepared(prepared))
   else:
-    assert completion.kind == DiskCompletionKind.NotExecuted
+    if completion.kind != DiskCompletionKind.NotExecuted: services.diskFaulted = true
     services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused) # Joined queued work creates no IO success.
   services.currentDiskPublication = default(PreparedCurrentDiskPublication)
   services.diskOperation = ServiceDiskOperation.Publication
@@ -943,7 +943,7 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
       services.diskFaulted = true # Never attempt another mutation after a potentially uncertain publication.
       services.adoption.completePublication(durabilityFailure())
   else:
-    assert completion.kind == DiskCompletionKind.NotExecuted
+    if completion.kind != DiskCompletionKind.NotExecuted: services.diskFaulted = true
     services.adoption.completePublication(durabilityFailure()) # Joined queued shutdown made no IO attempt.
   services.diskPublication = default(PreparedDiskPublication)
   services.finishDiskGraph()
@@ -4737,7 +4737,13 @@ proc tick*(services: var Services, peers: uint32) =
     if services.diskWorker.phase != DiskWorkerPhase.Done:
       services.ui.tick()
       return # Poll only scalar worker state while RPC/canonical graphs remain borrowed.
-    services.finishDiskPublication(services.diskWorker.collect(services.diskTicket))
+    let completion = services.diskWorker.collect(services.diskTicket)
+    if completion.kind == DiskCompletionKind.Uninitialized:
+      # A refused ticket retains all worker borrows. Join and recover the real receipt before
+      # finishing publication, releasing staging storage or resuming RPC.
+      services.stopDiskPublication()
+    else:
+      services.finishDiskPublication(completion)
   if services.diskEnabled:
     if services.diskPaged and not services.diskResume and not services.diskFaulted and
         services.disk.pagedRetirementPending:
@@ -4763,12 +4769,17 @@ proc tick*(services: var Services, peers: uint32) =
     if services.adoption.stage == AccumulationHandoffStage.Pending and
         services.stageDiskPublication():
       let admitted = services.diskWorker.submit(services.disk, services.diskPublication)
-      assert admitted.error == DiskWorkerError.None, "private idle disk worker admission"
-      services.diskTicket = admitted.value
-      services.diskOperation = ServiceDiskOperation.Publication
-      services.publishing = true
-      services.ui.tick()
-      return # No managed canonical/source alias may be touched or retired after successful admission.
+      if admitted.error == DiskWorkerError.None:
+        services.diskTicket = admitted.value
+        services.diskOperation = ServiceDiskOperation.Publication
+        services.publishing = true
+        services.ui.tick()
+        return # No managed canonical/source alias may be touched or retired after successful admission.
+      services.diskPublication = default(PreparedDiskPublication)
+      services.adoption.completePublication(durabilityFailure())
+      services.diskFaulted = true
+      discard services.rpc.resumeChain(services.rpcLease)
+      services.rpcLease = nil
     if (services.adoption.stage == AccumulationHandoffStage.Finished or
         services.currentAdoption.phase == CurrentHandoffPhase.Finished) and
         services.maintenanceDue() and services.beginDiskMaintenance():

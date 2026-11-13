@@ -211,13 +211,15 @@ proc viewFor(root: StateRoot, view: ProofView, limits: LightHeadLimits): LightHe
       viewCause: checked.error) # Uninitialized, foreign or over-budget evidence grants no view.
   LightHeadResult[ProofView](status: LightHeadError.None, completed: view)
 
-proc emptyView(root: StateRoot, limits: LightHeadLimits): ProofView =
+proc emptyView(root: StateRoot, limits: LightHeadLimits): LightHeadResult[ProofView] =
   ## An explicit successful empty verified batch retains the trusted root while claiming no present or absent facts.
   let checked = verifyStateProofs([], root, default(StateProofLimits), default(StateProofBatchLimits))
-  assert checked.error == StateProofError.None
+  if checked.error != StateProofError.None:
+    return LightHeadResult[ProofView](status: LightHeadError.BackendFailure)
   let captured = captureProofView(checked.value, root, limits.view)
-  assert captured.error == ProofViewError.None
-  captured.value
+  if captured.error != ProofViewError.None:
+    return LightHeadResult[ProofView](status: LightHeadError.ViewFailure, viewCause: captured.error)
+  LightHeadResult[ProofView](status: LightHeadError.None, completed: captured.value)
 
 proc refused[T, U](outcome: LightHeadResult[U]): LightHeadResult[T] {.requires: outcome.status !=
     LightHeadError.None.} =
@@ -247,7 +249,9 @@ proc captureLightHead*(trust: TrustedApplicationCheckpoint,
   ## Metadata-only initialization knows a root but no state facts, including no inferred absence.
   if not trust.ready: return LightHeadResult[LightApplicationHead](
       status: LightHeadError.MissingTrust) # An independently captured current identity/header is required.
-  captureLightHead(trust, emptyView(trust.identity.stateRoot, limits), limits)
+  let evidence = emptyView(trust.identity.stateRoot, limits)
+  if evidence.error != LightHeadError.None: return refused[LightApplicationHead, ProofView](evidence)
+  captureLightHead(trust, evidence.value, limits)
 
 proc linked(parent, child: LightHeaderSnapshot): LightHeadError =
   ## Direct ancestry permits skipped slots but never equates a child's prior root with its independently trusted posterior root.
@@ -323,7 +327,9 @@ proc advanceLightHead*(head: LightApplicationHead, trust: TrustedApplicationChec
   ## Omitted successor evidence explicitly starts unknown; facts from an old root are never implicitly carried forward.
   if not trust.ready: return LightHeadResult[LightApplicationHead](
       status: LightHeadError.MissingTrust) # An independently captured current identity/header is required.
-  advanceLightHead(head, trust, emptyView(trust.identity.stateRoot, limits), limits)
+  let evidence = emptyView(trust.identity.stateRoot, limits)
+  if evidence.error != LightHeadError.None: return refused[LightApplicationHead, ProofView](evidence)
+  advanceLightHead(head, trust, evidence.value, limits)
 
 const
   LightHeadMagic = "RAGNAROK-LIGHT-HEAD-V1\n"

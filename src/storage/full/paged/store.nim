@@ -5,7 +5,6 @@
 ## Explicit close exposes retirement uncertainty; no reader owns a writer lease, callback or resident graph.
 ## One caller serializes operations per owner; independent readers have independent native seek cursors.
 
-import std/assertions
 import ./[codec as full_paged_codec, stream as full_paged_stream]
 import ../../paged/[io as paged_io, codec as paged_codec]
 import ../../database_identity
@@ -1071,7 +1070,7 @@ proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
       true, context)
   if replayed.error != FullPagedNativeError.None: return rejected[FullPagedPublication, bool](replayed)
   let cleanup = candidate.data
-  assert cleanup != nil
+  if cleanup == nil: return refused[FullPagedPublication](FullPagedNativeError.InvalidCandidate)
   let expected = cleanup.checked.manifest
   let removed = discardFullPagedCandidate(writer, candidate, default(FullPagedManifest))
   if removed.error != FullPagedNativeError.None:
@@ -1083,7 +1082,7 @@ proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
   if prepared.error != FullPagedNativeError.None:
     return rejected[FullPagedPublication, StorageDurability](prepared)
   let authored = candidate.data
-  assert authored != nil
+  if authored == nil: return refused[FullPagedPublication](FullPagedNativeError.InvalidCandidate)
   if not sameManifest(authored.checked.manifest, expected):
     return refused[FullPagedPublication](FullPagedNativeError.InvalidCandidate)
   writer.publish(candidate)

@@ -478,7 +478,7 @@ proc pollPair*(incoming, outgoing: var Transport): bool =
   process(outgoing.engine)
   not incoming.failed and not outgoing.failed
 
-proc ioSelfTest*() =
+proc ioSelfTest*(): bool =
   ## Replay readiness retirement without TLS/native callbacks; the isolated suite adds IPv6/shared cases.
   io.retirementSelfTest(false)
 

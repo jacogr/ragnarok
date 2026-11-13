@@ -226,10 +226,12 @@ proc tick*(server: var ManagementServer) =
       discard posix.close(accepted)
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC connection setup failed: " &
           $int32(error))
-    else:
+    elif server.connections[free].stream.start(accepted, maxBodyBytes = MaxManagementBody):
       server.connections[free].opened = true
-      server.connections[free].stream.start(accepted, maxBodyBytes = MaxManagementBody)
       log(server.logger, LogTarget.Rpc, LogLevel.Info, "Management RPC connection accepted")
+    else:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC stream could not start")
   else:
     let error = osLastError()
     if not retryableSocketError(error):

@@ -4,7 +4,7 @@
 ## Single-writer per-shard durable storage keeps constant resident metadata; exact records and synchronized publication precede any stored-data receipt.
 ## Call only on a serialized managed I/O lease, preserve the private directory namespace and explicitly close before moving or destroying this native owner.
 
-import std/[assertions, strutils]
+import std/[strutils]
 import std/posix/posix
 import ./[assurance_record, availability_proof]
 import ../lib/atomic/file as atomic_file
@@ -228,10 +228,9 @@ proc syncDirectory(path: string): AtomicFileError =
   let closed = posix.close(descriptor) == 0
   if synced and closed: AtomicFileError.None else: AtomicFileError.PublishedUnsynced
 
-func bucket(index: int): string =
+func bucket(index: int): string {.requires: index >= 0 and index < 256.} =
   ## Exactly 256 lower-case hexadecimal buckets bound the root namespace independently of retained record count.
   const digits = "0123456789abcdef"
-  assert index >= 0 and index < 256
   result = ""
   result.add(digits[index div 16])
   result.add(digits[index mod 16])
@@ -245,7 +244,6 @@ func recordName(info: AssuranceRecordInfo): string =
     result[index*2+1] = digits[int(octet and 15)]
   result[64] = '-'
   let shard = uint64(info.shard)
-  assert shard < 1023
   for index in 0..<4: result[65+index] = digits[int((shard shr ((3-index)*4)) and 15)]
   for index, character in ".shard": result[69+index] = character
 

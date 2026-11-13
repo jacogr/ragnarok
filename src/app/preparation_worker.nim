@@ -8,7 +8,7 @@
 ## borrowed. Every context alias and cache-info query stays untouched until the same lease ends.
 
 import ../state/accumulation/residency
-import std/[assertions, locks, rawthreads]
+import std/[locks, rawthreads]
 import "./block/input" as block_input
 import "./current/block/input" as current_block_input
 import ./chain
@@ -116,23 +116,25 @@ func currentValue*(completion: PreparationCompletion): CurrentBlockInputResult {
   ## Only actual current execution can expose a current result; legacy completion grants no such authority.
   completion.currentPrepared
 
-proc execute(worker: ptr PreparationWorker) =
+proc execute(worker: ptr PreparationWorker): bool =
   ## All preparation temporaries and their ARC aliases retire before the caller publishes Done.
   let borrowedChain = worker.chain
-  assert borrowedChain != nil, "active preparation chain borrow"
+  if borrowedChain == nil: return false
   let chain: ptr ApplicationChain = borrowedChain
   case worker.operation
   of PreparationOperation.Current:
     let borrowedInput = worker.currentInput
-    assert borrowedInput != nil, "active current preparation borrow"
+    if borrowedInput == nil: return false
     let input: ptr CurrentBlockInput = borrowedInput
     worker.currentOutcome = input[].prepare(worker.currentId, chain[],
         residency = worker.executionContext)
   of PreparationOperation.Legacy:
     let borrowedInput = worker.input
-    assert borrowedInput != nil, "active legacy preparation borrow"
+    if borrowedInput == nil: return false
     let input: ptr BlockInput = borrowedInput
     worker.outcome = input[].prepare(worker.id, chain[], residency = worker.executionContext)
+
+  true
 
 proc run(raw: pointer) =
   ## A single condition-driven thread performs no service, transport or canonical-publication work.
@@ -147,9 +149,9 @@ proc run(raw: pointer) =
     worker.phase = PreparationPhase.Running
     let skip = worker.cancelled
     release(worker.lock)
-    if not skip:
-      execute(worker) # The host cannot touch any alias of the exclusively borrowed ARC graph.
+    let executed = not skip and execute(worker)
     acquire(worker.lock)
+    if not executed: worker.cancelled = true
     worker.phase = PreparationPhase.Done # execute's entire activation has already retired.
 
 proc start*(worker: var PreparationWorker): bool {.raises.} =

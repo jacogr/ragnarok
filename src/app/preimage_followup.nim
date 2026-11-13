@@ -4,7 +4,7 @@
 ## Bounded CE142-triggered CE143 acquisition owns exact peer/worker generations independently of public requests.
 ## Detached hash-checked content never mutates canonical state or certifies GP admission.
 
-import std/[monotimes, times, assertions]
+import std/[monotimes, times]
 import ./services
 import ./proof/worker
 import ../jamnp-s/[node, connections, read_stream, read_client, read_validation,
@@ -116,7 +116,7 @@ proc takeAcquired*(owner: var PreimageFollowups): AnnouncementResult =
 
 proc drop(owner: var PreimageFollowups, index: int) {.requires: index >= 0 and index < 8.} =
   ## Caller has retired any native/CPU ticket before dropping detached storage.
-  assert owner.entries[index].phase != FetchPhase.Empty
+  if owner.entries[index].phase == FetchPhase.Empty: return
   owner.entries[index] = default(FetchEntry)
   dec owner.count
   if owner.active == index: owner.active = -1

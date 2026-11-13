@@ -257,7 +257,7 @@ block disconnectedWriter:
       0, addr pair[0]) == 0
   assert nonblocking(pair[0]) and nonblocking(pair[1])
   var stream = default(HttpStream)
-  stream.start(pair[0])
+  assert stream.start(pair[0])
   var request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
   assert sendBytes(pair[1], request.toCString(), csize_t(request.len), 0) == request.len
   var input = ""
@@ -282,6 +282,30 @@ block disconnectedWriter:
   assert "Management RPC stream write ended:" in messages
   assert "connection retired" notin messages # Trace output follows the configured filter.
 
+block refusedBody:
+  var pair = default(array[2, cint])
+  assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var stream = default(HttpStream)
+  assert not stream.start(pair[0], maxBodyBytes = -1)
+  assert stream.start(pair[0], maxBodyBytes = 1)
+  var wire = "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\n\r\n"
+  assert sendBytes(pair[1], wire.toCString(), csize_t(wire.len), 0) == wire.len
+  var head = ""
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.receiveHead(head) == wire.len: break
+    discard pauseMicros(1000)
+  assert head == wire
+  stream.requestBody(2)
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.finished: break
+    discard pauseMicros(1000)
+  assert stream.finished, "over-limit body retires only this connection"
+  assert posix.close(pair[1]) == 0
+
 block expiredRequest:
   # Park a complete request in a real management slot until its deadline passes.
   var pair = default(array[2, cint])
@@ -297,7 +321,7 @@ block expiredRequest:
   listener.opened = true
   listener.info = admin
   listener.connections[0].opened = true
-  listener.connections[0].stream.start(pair[0], timeoutMs = 200)
+  assert listener.connections[0].stream.start(pair[0], timeoutMs = 200)
   for attempt in 0..<150:
     pollHttpStreams()
     if listener.connections[0].stream.canSend: break

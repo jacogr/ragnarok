@@ -165,8 +165,8 @@ movedEndpoint(false)
 movedEndpoint(true)
 
 # Both loopback families must work without depending on the still-unported authenticated peer.
-retirementSelfTest(false)
-retirementSelfTest(true)
+assert retirementSelfTest(false)
+assert retirementSelfTest(true)
 shared(false)
 shared(true)
 scoped(false)

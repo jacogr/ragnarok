@@ -8,7 +8,6 @@
 ## Exposes guarantee credentials, immutable guarantee collections, single/collection codecs and
 ## checked report access.
 
-import std/assertions
 import ./[natural, fixed_unsigned, bounded, composite]
 import ./work/report as work_report
 import ./[report_owned, owned, assurances]
@@ -293,10 +292,10 @@ proc measure(values: openArray[Guarantee], config: GuaranteeConfig): GuaranteeRe
   GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
 proc writeRecord(value: Guarantee, output: var openArray[byte], cursor: var int,
-                 required: int) {.raises: [].} =
+                 required: int): GuaranteeError {.raises: [].} =
   ## Commit one fully preflighted stable record; output/report disjointness is proved by the enclosing encoder.
   let report = encodeOwnedReport(value.report, output.toOpenArray(cursor, required-1))
-  assert report.error == OwnershipError.None
+  if report.error != OwnershipError.None: return GuaranteeError.InvalidReport
   cursor += report.value
   let slot = encodeFixed(FixedUnsigned(uint32(value.slot)), ByteWidth(4))
   # Timeslots are E4 even when their compact natural representation would be shorter.
@@ -312,6 +311,7 @@ proc writeRecord(value: Guarantee, output: var openArray[byte], cursor: var int,
     let signature = array[64, byte](credential.signature)
     for k in 0..<64: output[cursor+2+k] = signature[k] # Preserve all opaque signature bytes.
     cursor += 66
+  GuaranteeError.None
 
 proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
                        output: var openArray[byte]): GuaranteeResult[int] {.raises: [].} =
@@ -339,7 +339,8 @@ proc encodeGuarantees*(values: openArray[Guarantee], config: GuaranteeConfig,
   var cursor = int(prefix.len)
   # Preflight proves every nested owner/extent and each fixed-width conversion before commit begins.
   for value in values:
-    writeRecord(value, output, cursor, required)
+    let written = writeRecord(value, output, cursor, required)
+    if written != GuaranteeError.None: return GuaranteeResult[int](status: written)
   GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
 proc guaranteeAt*(owner: OwnedGuarantees, index: int): GuaranteeResult[Guarantee] {.raises: [].} =
@@ -418,5 +419,6 @@ proc encodeGuaranteeValue*(value: Guarantee, config: GuaranteeConfig): Guarantee
     return GuaranteeResult[seq[byte]](status: measured.error) # Full source preflight precedes allocation.
   var output = newSeq[byte](measured.value)
   var cursor = 0
-  writeRecord(value, output, cursor, output.len)
+  let written = writeRecord(value, output, cursor, output.len)
+  if written != GuaranteeError.None: return GuaranteeResult[seq[byte]](status: written)
   GuaranteeResult[seq[byte]](status: GuaranteeError.None, completed: output)
