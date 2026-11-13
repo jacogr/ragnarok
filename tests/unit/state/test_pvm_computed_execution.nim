@@ -78,8 +78,13 @@ expect(refused, ComputedExecutionError.RunnerFailure)
 assert refused.runnerFailure.error == AccumulationRunnerError.ContextFailure
 let invalidEntry = computedExecutionFixture(invalidEntry = true)
 let badEntry = executeComputedAccumulation(invalidEntry, limits)
-expect(badEntry, ComputedExecutionError.RunnerFailure)
-assert badEntry.runnerFailure.error == AccumulationRunnerError.MachineFailure
+expect(badEntry, ComputedExecutionError.None)
+let panicked = badEntry.value.computedExecutionCompleted.value
+assert panicked.executionInfo.value.batch.executions == 1
+assert panicked.executionInfo.value.batch.skipped == 0
+let panic = panicked.executionBatch.value.batchOutcomeAt(AccumulationProvisionSourceIndex(
+    0)).value.outcomeInfo.value
+assert panic.termination == AccumulationTermination.Panic and uint64(panic.gasUsed) == 0
 expect(executeComputedAccumulation(default(ComputedAccumulationRound), limits),
     ComputedExecutionError.InvalidSource)
 var short = limits
