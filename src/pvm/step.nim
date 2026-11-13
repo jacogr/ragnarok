@@ -574,11 +574,11 @@ proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
   if single:
     if frame.reason == StepError.StepLimitExceeded: kind = StepExit.Continued
     if kind in [StepExit.Panic, StepExit.Halt]:
-      let decoded = instruction(source, original)
+      let decoded = instructionHeader(source, original)
       cpu.pc = if decoded.error == ProgramError.None and decoded.value.opcode == 0:
         CodeAddress(uint64(original)+1+uint64(decoded.value.skip)) else: original
     elif kind == StepExit.Host:
-      let decoded = instruction(source, original)
+      let decoded = instructionHeader(source, original)
       if decoded.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
       cpu.pc = CodeAddress(uint64(original)+1+uint64(decoded.value.skip))
   var memory = default(Memory)
@@ -669,8 +669,7 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   if valid != StepError.None: return StepResult(status: valid)
   if owner != data.source: return StepResult(status: StepError.InvalidPreparedProgram)
   if uint64(limit) == 0: return StepResult(status: StepError.StepLimitExceeded)
-  let decoded = instruction(owner, cpu.pc)
-  if decoded.error != ProgramError.None:
+  if instructionOpcode(owner, cpu.pc).error != ProgramError.None:
     if single: return StepResult(status: StepError.InvalidMachine)
     cpu.pc = CodeAddress(0)
     let terminal = captureTerminalMachine(owner, memory, cpu)
@@ -777,9 +776,9 @@ proc scopedStep(source: Machine, cycles: GasCycleLimit, scope: range[0..3],
   if owner.error != MachineError.None or cpu.error != MachineError.None:
     return StepResult(status: StepError.InvalidMachine)
   if uint64(cpu.value.gasDeficit) != 0: return StepResult(status: StepError.InvalidMachine)
-  let decoded = instruction(owner.value, cpu.value.pc)
-  if decoded.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
-  let category = executionClasses[int(decoded.value.opcode)]
+  let opcode = instructionOpcode(owner.value, cpu.value.pc)
+  if opcode.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
+  let category = executionClasses[int(opcode.value)]
   if category == '-' or (category in {'c', 'u'} and scope < 1) or (category == 'm' and scope < 2) or
       (category == 'h' and scope < 3):
     return StepResult(status: StepError.UnsupportedInstruction)
@@ -1044,7 +1043,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
       status: StepError.InvalidPreparedProgram))
   if uint64(steps) == 0: return executionResult[Reason](StepResult(
       status: StepError.StepLimitExceeded))
-  if instruction(owner, cpu.pc).error != ProgramError.None:
+  if instructionOpcode(owner, cpu.pc).error != ProgramError.None:
     # Invalid imported terminal PCs retain recursive deblob panic semantics without calling the host.
     return executionResult[Reason](runPreparedFrame(source, prepared, steps, plan, memo))
   let admitted {.cursor.} = data.plan
