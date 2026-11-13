@@ -355,7 +355,7 @@ type
   PreparedData = ref PreparedStorage ## Copies share one exclusive source/cache identity.
   PreparedStorage = object ## Source-bound code and bounded idle byte storage; active CPU and callbacks remain invocation-local.
     source: Program
-    plan: FlatPlan
+    plan: nil FlatPlan
     stream: FlatStream
     memoryScratch: nil FlatMemoryScratch
     memoryReuses: uint64 # Diagnostic only; restored memory never relies on a hit count.
@@ -431,8 +431,9 @@ proc prepareIndependent(source: Program, limits: PreparedLimits,
         FlatError.InvalidProgram:
       PreparationError.InvalidProgram else: PreparationError.LimitExceeded))
   let plan = takeValue(admitted)
-  let data: nil PreparedData = PreparedData(plan: plan)
+  let data: nil PreparedData = PreparedData()
   if data == nil: return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
+  data.plan = plan
   data.source = source
   data.limits = limits
   data.selected = selected
@@ -456,6 +457,8 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   ## Return copied code/idle-payload occupancy and activity; no mutable byte view or callback escapes.
   let data = prepared.data
   if data == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
+  let plan {.cursor.} = data.plan
+  if plan == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
   if data.busy: return PreparationResult[PreparedInfo](status: PreparationError.Busy)
   var native = default(array[7, uint64])
   var built, supported = false
@@ -470,7 +473,7 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
       when defined(amd64) and defined(linux): supported = true
     elif defined(arm64) and (defined(linux) or defined(macosx)): supported = true
   PreparationResult[PreparedInfo](status: PreparationError.None, completed: PreparedInfo(
-    codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(data.plan),
+    codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(plan),
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
         limits: data.limits, backend: data.selected, nativeFragments: native[0],
             nativeCalls: native[1],
@@ -657,8 +660,10 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     if terminal.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
     return StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
         kind: StepExit.Panic, machine: terminal.value))
+  let admitted {.cursor.} = data.plan
+  if admitted == nil: return StepResult(status: StepError.InvalidPreparedProgram)
   var reusedMemory = false
-  var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
+  var created = prepareReusedFlatMemoryFrame(admitted, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None: return StepResult(status: frameCreationError(created.error))
   if reusedMemory: inc data.memoryReuses
   runAdmittedFrame(borrowFrame(created), data, source, owner, cpu.pc, limit, plan, memo, single)
@@ -986,8 +991,11 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   if instruction(owner, cpu.pc).error != ProgramError.None:
     # Invalid imported terminal PCs retain recursive deblob panic semantics without calling the host.
     return executionResult[Reason](runPreparedFrame(source, prepared, steps, plan, memo))
+  let admitted {.cursor.} = data.plan
+  if admitted == nil:
+    return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
   var reusedMemory = false
-  var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
+  var created = prepareReusedFlatMemoryFrame(admitted, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None:
     return executionResult[Reason](StepResult(status: frameCreationError(created.error)))
   var frame = takeValue(created)

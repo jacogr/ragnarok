@@ -147,14 +147,14 @@ type
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
-    limits: FlatLimits     # Cold admission policy follows the existing hot plan fields.
-    allowNative: bool      # Immutable cold policy; forced interpretation never creates native handlers.
-    singleStep: bool       # A bounded adapter plan owns one instruction and never enters whole-program emission.
-    admission: nil FlatPlan # Private cache catalogue points back to its immutable admission identity.
-    admittedFacts: uint32  # Full validated source count is refused before any execution.
-    codeBytes: uint32      # Logical PC extent remains known before a lazy map is allocated.
-    ranks: FlatSourceRanks # Shared immutable source-global index, built once during admission.
-    materialized: uint32   # Filled fact slots only; reserved array capacity is a separate cost.
+    limits: FlatLimits         # Cold admission policy follows the existing hot plan fields.
+    allowNative: bool          # Immutable cold policy; forced interpretation never creates native handlers.
+    singleStep: bool # A bounded adapter plan owns one instruction and never enters whole-program emission.
+    admission: nil FlatPlan    # Private cache catalogue points back to its immutable admission identity.
+    admittedFacts: uint32      # Full validated source count is refused before any execution.
+    codeBytes: uint32          # Logical PC extent remains known before a lazy map is allocated.
+    ranks: nil FlatSourceRanks # Shared immutable source-global index, built once during admission.
+    materialized: uint32       # Filled fact slots only; reserved array capacity is a separate cost.
   FlatRegion = object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
@@ -1692,8 +1692,9 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
   if ranked != FlatError.None: return FlatResult[FlatPlan](status: ranked)
   let admittedRanks = ranks
   if admittedRanks == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
-  let owner: nil FlatPlan = FlatPlan(ranks: admittedRanks)
+  let owner: nil FlatPlan = FlatPlan()
   if owner == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
+  owner.ranks = admittedRanks
   owner.source = source
   owner.limits = limits
   owner.cycles = cycles
@@ -1846,7 +1847,11 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
   assert containing.error == ProgramError.None
   var at = uint64(containing.value)
-  let first = int(sourceOrdinal(owner.ranks, uint32(at)))
+  let ranks {.cursor.} = owner.ranks
+  if ranks == nil:
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
+  let first = int(sourceOrdinal(ranks, uint32(at)))
   var past = first
   let priceIndex = uint32(owner.pricePcs.len)
   owner.pricePcs.add(containing.value)
