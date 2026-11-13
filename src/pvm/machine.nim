@@ -374,6 +374,8 @@ proc captureInitializationMemory*(regions: openArray[InitializationRegion],
     first, second: openArray[byte], limit: PageLimit): MachineResult[Memory] =
   ## Capture sorted mapped prefixes from two explicit inputs, zero-filling every absent suffix.
   ## All descriptors and source extents are checked before allocation. No borrowed bytes escape.
+  ## If a page or directory allocation fails, release the private partial directory
+  ## and return `MachineError.LimitExceeded`.
   var total = 0'u64
   var previousPast = 0'u32
   for index in 0..<regions.len:

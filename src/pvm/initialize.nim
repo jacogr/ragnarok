@@ -70,6 +70,8 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
         retained: var InitializationCode): InitializationResult =
   ## Initialize the fixed program image after its metadata prefix has been decoded.
   ## Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
+  ## Resource refusals from program decoding, page capture or CPU snapshot allocation
+  ## return `InitializationError.LimitExceeded`.
   # Argument admissibility is a protocol bound, separate from caller allocation policy.
   if uint64(arguments.len) > 0x1000000'u64:
     return InitializationResult(status: InitializationError.ArgumentsTooLarge)
@@ -155,7 +157,8 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits): InitializationResult =
-  ## Ordinary one-shot initialization owns no reusable worker cache after returning its immutable machine.
+  ## Initialize one immutable machine with a call-scoped decode cache.
+  ## Resource refusals return `InitializationError.LimitExceeded`.
   var retained = default(InitializationCode)
   initializeMachine(input, arguments, entry, gas, limits, retained)
 
