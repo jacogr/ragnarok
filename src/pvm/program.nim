@@ -15,6 +15,8 @@
 ##
 ## Paper and JAM profiles share the framing. JAM's scoped validation and table
 ## normalization are documented on decodeJamProgram and qualified in spec/pvm-program.md.
+## A refused backing-buffer allocation returns AllocationRefused after validation.
+## The result grants no partial program or alternate interpretation of the input.
 
 import std/assertions
 import ../codec/natural
@@ -32,7 +34,8 @@ type
   Immediate* = distinct uint64 ## Sign-extended values preserve their unsigned 64-bit register representation.
   ProgramError* {.pure.} = enum ## All failures carry only a reason; the default is never successful.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, InvalidJumpValue,
-    InvalidProgram, InvalidInstruction, InvalidOwner, InvalidIndex, TrailingBytes
+    InvalidProgram, InvalidInstruction, InvalidOwner, InvalidIndex, TrailingBytes,
+      AllocationRefused
   ProgramResult*[T] = object ## Private variants prevent callers from forging success or extracting failed payloads.
     case status: ProgramError
     of None:
@@ -315,16 +318,21 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # An in-range operand byte is not a valid entry instruction.
   if not marked(input, maskOffset, int(uint64(entry))):
     return ProgramResult[Program](status: ProgramError.InvalidInstruction)
-  var owned = newSeq[byte](input.len)
+  var owned = newSeqUninit[byte](input.len)
+  if owned.len != input.len:
+    return ProgramResult[Program](status: ProgramError.AllocationRefused)
   # Complete validation proves nonempty input; the fresh equally sized owner is disjoint.
   # One bounded copy preserves all framing bytes without a checked sequence store per byte.
   # Callers may mutate or release their input immediately after this capture returns.
   copyMem(addr owned[0], unsafeAddr input[0], input.len)
-  ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
-    bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
+  let data: nil ProgramData = ProgramData(codeOffset: codeOffset, codeLength: codeLength,
+    maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width,
     jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps), profile: profile,
-    instructionCountValue: validatedInstructions)))
+    instructionCountValue: validatedInstructions)
+  if data == nil: return ProgramResult[Program](status: ProgramError.AllocationRefused)
+  data.bytes = move(owned)
+  ProgramResult[Program](status: ProgramError.None, completed: Program(data: data))
 
 proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
@@ -358,10 +366,13 @@ proc programBytes*(program: Program): ProgramResult[seq[byte]] =
   ## Copy the complete captured wire encoding for an optional public runtime adapter.
   let data = program.data
   if data == nil: return ProgramResult[seq[byte]](status: ProgramError.Uninitialized)
-  var bytes = newSeq[byte](data.bytes.len)
-  for index in 0..<data.bytes.len:
-    bytes[index] = data.bytes[index] # A caller can never mutate the captured program owner.
-  ProgramResult[seq[byte]](status: ProgramError.None, completed: bytes)
+  let length = data.bytes.len
+  var bytes = newSeqUninit[byte](length)
+  if bytes.len != length:
+    return ProgramResult[seq[byte]](status: ProgramError.AllocationRefused)
+  # Successful admission always captures a nonempty wire; the returned copy is independent.
+  copyMem(addr bytes[0], unsafeAddr data.bytes[0], length)
+  ProgramResult[seq[byte]](status: ProgramError.None, completed: move(bytes))
 
 proc codeLength*(program: Program): ProgramResult[uint64] =
   ## Return logical code size without publishing backing storage; default handles are typed failures.

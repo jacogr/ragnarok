@@ -235,6 +235,7 @@ proc decodeArtifact*(input: openArray[byte], limits: ArtifactLimits =
   # Absent/empty wire yields an empty view and the same decoder refusal; successful bytes are owned.
   let decoded = decodeJamProgram(input.toOpenArray(wire.first, wire.past-1), CodeAddress(0),
       ProgramByteLimit(limits.codeBytes), JumpCountLimit(limits.codeBytes))
+  if decoded.error == ProgramError.AllocationRefused: refuse(ArtifactError.LimitExceeded)
   if decoded.error != ProgramError.None: refuse(ArtifactError.InvalidProgram)
   for exported in exports:
     if instructionOpcode(decoded.value, exported.address).error != ProgramError.None:

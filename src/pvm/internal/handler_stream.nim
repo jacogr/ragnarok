@@ -147,14 +147,14 @@ type
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
-    limits: FlatLimits     # Cold admission policy follows the existing hot plan fields.
-    allowNative: bool      # Immutable cold policy; forced interpretation never creates native handlers.
-    singleStep: bool       # A bounded adapter plan owns one instruction and never enters whole-program emission.
-    admission: nil FlatPlan # Private cache catalogue points back to its immutable admission identity.
-    admittedFacts: uint32  # Full validated source count is refused before any execution.
-    codeBytes: uint32      # Logical PC extent remains known before a lazy map is allocated.
-    ranks: FlatSourceRanks # Shared immutable source-global index, built once during admission.
-    materialized: uint32   # Filled fact slots only; reserved array capacity is a separate cost.
+    limits: FlatLimits         # Cold admission policy follows the existing hot plan fields.
+    allowNative: bool          # Immutable cold policy; forced interpretation never creates native handlers.
+    singleStep: bool # A bounded adapter plan owns one instruction and never enters whole-program emission.
+    admission: nil FlatPlan    # Private cache catalogue points back to its immutable admission identity.
+    admittedFacts: uint32      # Full validated source count is refused before any execution.
+    codeBytes: uint32          # Logical PC extent remains known before a lazy map is allocated.
+    ranks: nil FlatSourceRanks # Shared immutable source-global index, built once during admission.
+    materialized: uint32       # Filled fact slots only; reserved array capacity is a separate cost.
   FlatRegion = object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
@@ -1647,21 +1647,32 @@ proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
     if fact.opcode == 50: result.handler = flatDynamic[50, true]
     elif fact.opcode == 180: result.handler = flatDynamic[180, true]
 
-proc sourceRanks(source: Program, extent: uint64, count: uint32): FlatSourceRanks =
+proc sourceRanks(source: Program, extent: uint64, count: uint32,
+    ranks: var nil FlatSourceRanks): FlatError =
   ## Build one rank per 64 code bytes; only the validated marker bitmap is traversed.
   let words = int(extent div 64 + uint64(int(extent mod 64 != 0)))
-  result = FlatSourceRanks(words: newSeq[uint64](words), prefixes: newSeq[uint32](words))
+  var masks = newSeqUninit[uint64](words)
+  var prefixes = newSeqUninit[uint32](words)
+  if masks.len != words or prefixes.len != words:
+    return FlatError.PreparationLimitExceeded
   var slot = 0
   var seen = 0'u32
   for word in admissionMaskWords(source):
     # All set bits are genuine instruction starts, including in the zero-padded final group.
-    result.words[slot] = word
-    result.prefixes[slot] = seen
     let added = uint32(countSetBits(word))
-    assert seen <= count and added <= count-seen
+    if slot >= words or seen > count or added > count-seen:
+      return FlatError.InvalidProgram
+    masks[slot] = word
+    prefixes[slot] = seen
     seen += added
     inc slot
-  assert slot == words and seen == count
+  if slot != words or seen != count: return FlatError.InvalidProgram
+  let owner: nil FlatSourceRanks = FlatSourceRanks()
+  if owner == nil: return FlatError.PreparationLimitExceeded
+  owner.words = move(masks)
+  owner.prefixes = move(prefixes)
+  ranks = owner
+  FlatError.None
 
 func sourceOrdinal(ranks: FlatSourceRanks, pc: uint32): uint32 =
   ## Select a genuine zero-based ordinal; only block materialization uses rank arithmetic.
@@ -1676,9 +1687,20 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
   ## Admit all source/resource obligations now; derived facts belong to a later exclusive stream.
   if uint64(count) > uint64(limits.facts):
     return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
-  var owner = FlatPlan(source: source, limits: limits, cycles: cycles,
-    allowNative: allowNative, singleStep: false, admittedFacts: count, codeBytes: uint32(extent),
-    ranks: sourceRanks(source, extent, count))
+  var ranks: nil FlatSourceRanks = nil
+  let ranked = sourceRanks(source, extent, count, ranks)
+  if ranked != FlatError.None: return FlatResult[FlatPlan](status: ranked)
+  let admittedRanks = ranks
+  if admittedRanks == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
+  let owner: nil FlatPlan = FlatPlan()
+  if owner == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
+  owner.ranks = admittedRanks
+  owner.source = source
+  owner.limits = limits
+  owner.cycles = cycles
+  owner.allowNative = allowNative
+  owner.admittedFacts = count
+  owner.codeBytes = uint32(extent)
   var ordinal = 0'u64
   while true:
     # Jump-table membership remains eager and preserves fact-before-jump refusal precedence.
@@ -1690,8 +1712,10 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     let valid = basicBlockStart(source, target)
     owner.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
       valid: valid.error == ProgramError.None and valid.value))
+    if uint64(owner.jumps.len) != ordinal+1:
+      return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
     inc ordinal
-  FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+  FlatResult[FlatPlan](status: FlatError.None, completed: owner)
 
 func flatPlanIdentity(plan: FlatPlan): FlatPlan =
   ## Private derived catalogues never replace the immutable identity used for cache leasing.
@@ -1823,7 +1847,11 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
   assert containing.error == ProgramError.None
   var at = uint64(containing.value)
-  let first = int(sourceOrdinal(owner.ranks, uint32(at)))
+  let ranks {.cursor.} = owner.ranks
+  if ranks == nil:
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
+  let first = int(sourceOrdinal(ranks, uint32(at)))
   var past = first
   let priceIndex = uint32(owner.pricePcs.len)
   owner.pricePcs.add(containing.value)

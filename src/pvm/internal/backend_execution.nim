@@ -301,6 +301,8 @@ when declared(ExecutionCursor):
       if prices.error != GasMemoError.None:
         return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
       let wire = programBytes(source)
+      if wire.error == ProgramError.AllocationRefused:
+        return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
       if wire.error != ProgramError.None or wire.value.len == 0:
         return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
       let data = prepared.value.data

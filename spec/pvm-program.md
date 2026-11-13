@@ -17,6 +17,9 @@ and declared jumps to 16 Mi entries. Caller ceilings are independent. The scoped
 rules for final successors and zero-width tables are tracked as GP-PVM-004/006 in
 [the discrepancy register](graypaper-discrepancies.md).
 
+The `pvm_code_allocation_refusal` suite uses a recoverable one-MiB heap cap to
+exercise refused program capture, wire copies, and prepared source-rank allocation.
+
 ## Verification and remaining scope
 
 The native `pvm_program` suite is registered in the dependency-free codec group

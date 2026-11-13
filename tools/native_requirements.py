@@ -55,9 +55,10 @@ def validate_requirements(records):
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
         defines = set(record['defines'])
-        if name == 'pvm_frame_allocation_refusal' or 'nimHardenOutOfMem' in defines:
-            # Keep the recoverable cap tied to the real frame refusal regression.
-            if name != 'pvm_frame_allocation_refusal' or defines != {'nimMaxHeap=1', 'nimHardenOutOfMem'}:
+        capped_pvm = {'pvm_code_allocation_refusal', 'pvm_frame_allocation_refusal'}
+        if name in capped_pvm or 'nimHardenOutOfMem' in defines:
+            # Keep the recoverable cap tied to the PVM allocation refusal regressions.
+            if name not in capped_pvm or defines != {'nimMaxHeap=1', 'nimHardenOutOfMem'}:
                 raise ValueError('Invalid native defines for recoverable heap cap: '+name)
         if 'pvmPaidMixedLoopWitness' in defines and (
                 name not in ('pvm_shared_async_arm', 'pvm_shared_async_x86')

@@ -110,7 +110,7 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   else:
     let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
         limits.program, limits.jumps)
-    if decoded.error == ProgramError.LimitExceeded:
+    if decoded.error in {ProgramError.LimitExceeded, ProgramError.AllocationRefused}:
       return InitializationResult(status: InitializationError.LimitExceeded)
     if decoded.error != ProgramError.None:
       return InitializationResult(status: InitializationError.InvalidProgram)
