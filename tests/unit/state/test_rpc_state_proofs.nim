@@ -194,7 +194,7 @@ proc main() {.raises.} =
   let before = getOccupiedMem()
   for iteration in 0..<1000: owner.cycle(peer, pending, call)
   let after = getOccupiedMem()
-  assert after == before, "proof RPC ownership is stable across repeated native jobs"
+  assert after == before, "proof RPC occupied bytes before=" & $before & " after=" & $after
   recordArcRelease("rpc_state_proofs", 1000, before, after)
   sendText(peer, call)
   discard readPacket(owner.rpc, peer, pending) # Ensure the queued selector reached the host before testing joined close.
