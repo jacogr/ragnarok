@@ -77,7 +77,7 @@ proc main() {.raises.} =
       assert result.kind == ProofWorkerCompletionKind.ReadVerified
       assert result.verifiedReadValue.error == ReadVerificationError.None
   let after = getOccupiedMem()
-  assert before == after, "verification input/proof/page owners retire on collect/cancel"
+  assertArcRelease(before, after, "read verification collection and cancellation")
   recordArcRelease("jamnp_read_verification_worker", 1000, before, after)
   job = captureReadVerification(view, request, wire, policy).value
   let closing = worker.submit(job)

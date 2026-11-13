@@ -368,7 +368,7 @@ proc main() {.raises.} =
   let before = getOccupiedMem()
   for iteration in 0..<1000: cycle(seed)
   let after = getOccupiedMem()
-  assert before == after
+  assertArcRelease(before, after, "ticket production")
   recordArcRelease("jamnp_ticket_production", 1000, before, after)
   echo "jamnp ticket production: registered signing contracts passed"
 try: main()

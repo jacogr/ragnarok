@@ -17,7 +17,11 @@ Declare the suite's source directory, library order, observer flags and fixture 
 existing requirements; no central unit/link registration is needed. Keep independent profile fields
 alphabetical and retain ordered link options. If the suite must produce ARC evidence, declare its
 report key in the source header with `# @@Verification={"arc": "example_arc_release"}`. The existing
-ARC helper and fresh-evidence checks remain required. Use a distinct report key such as
+ARC helper and fresh-evidence checks remain required. For exact occupied-memory comparisons, use
+`assertArcRelease(before, after, context)` from `tests/support/arc_evidence.nim` before writing the
+receipt. It reports both byte counts if the comparison fails. The count describes the calling
+thread's allocator, which can defer accounting for cross-thread frees. Use lifecycle checks to
+verify worker collection and joined shutdown. Use a distinct report key such as
 `<suite>_arc_release`; preflight rejects keys that overlap runtime failure families.
 
 Static fixture dependencies belong in the same per-suite requirements file, for example
