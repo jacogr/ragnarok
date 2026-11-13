@@ -52,11 +52,8 @@ External gas-plan/memo compatibility overloads remain independent-engine APIs; f
 own their fixed-cycle private memo. Single-step adapters retain their existing scope.
 No alternate interpreter is selected after an explicit foreign request.
 
-A shared native entry with an invalid return reports `BackendFailure`. The invocation
-publishes no guest snapshot or gas result, drops its private frame after returning borrowed
-images, and retires the installed native image. Subsequent execution can use checked code.
-A certified guard refusal follows its original checked continuation, including any paid prefix
-the receipt explicitly confirms.
+The [step adapter](../src/pvm/step.nim) owns the distinction between a certified native guard
+refusal and `BackendFailure`, including image retirement and guest state publication.
 
 ## Capabilities and qualification
 

@@ -14,6 +14,10 @@
 ##
 ## The checked handler stream implements opcode execution. Native engines and
 ## host adapters cross the same prepared-owner and immutable outcome contracts.
+## A certified native guard refusal may resume through its checked continuation.
+## An invalid native return instead reports BackendFailure without publishing
+## CPU, memory or gas. The segment returns its image borrows before the prepared
+## owner retires the image and discards the invocation's frame and stream.
 
 import std/assertions
 import ./[program, machine, registers]
