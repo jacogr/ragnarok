@@ -32,7 +32,7 @@ bound runtime. Unported capabilities remain checked until their real shared path
 | Indirect scalar reads | All seven width/sign forms, prefixes and transactional bodies | A narrower retained read path | Both ISAs admit all seven scalar width/sign forms within the [shared read-body geometry](../src/pvm/internal/native_read_body.nim). General memory/control composition remains open. |
 | Direct-address reads | Direct loads with pure suffix/control lowering | No equivalent retained frame adapter | Both ISAs admit direct-address scalar loads within the same [source-certified read bodies](../src/pvm/internal/handler_read_body.nim). General direct-memory regions remain open. |
 | Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Both ISAs share bounded [read/store cycles](../src/pvm/internal/handler_read_cycle.nim) and [mixed self-loops](../src/pvm/internal/handler_mixed_loop.nim). Arbitrary mixed blocks and connected graphs remain open. |
-| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | The [shared loop certificate](../src/pvm/internal/handler_mixed_loop.nim) admits a transactional byte store or an ordered paid read/byte-store/read/word-store body. Other store geometries remain checked. |
+| Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | The [shared loop certificate](../src/pvm/internal/handler_mixed_loop.nim) admits a transactional byte store or two ordered paid read/store groups with scalar stores of 1, 2, 4 or 8 bytes. Other store sequences remain checked. |
 | Read/store/tail cycles | Linked and resident cycle drivers | Restricted source-sealed cycle prototypes | Both ISAs share the [seven-role connected cycle and exact receipt](../src/pvm/internal/native_read_cycle.nim). General connected graphs and additional native entry headers remain open. |
 | Larger connected control | Linked/resident macro routes | Restricted wide-source prototypes | Checked only. Evaluate demonstrated dynamic regions and use bounded shared graph certificates; fixture-specific nomination is not a production policy. |
 | Arena and ABI mechanics | ARM word publication, coherency and saved-register rules | x86 byte publication, mapping and SysV rules | Shared exclusive images and lifetime certificates exist. Keep the required mechanical lowerers and independent ABI proofs when deleting old frame adapters. |
@@ -90,7 +90,7 @@ not implied. Per-owner idle memory ceilings do not establish an aggregate prepar
 Future wiring requires explicit ownership/shutdown, aggregate retention budgets and a competition
 policy across the existing consumers before increasing availability or image capacity.
 
-## Bounded mixed byte-store loops
+## Bounded mixed store loops
 
 Both shared native backends can run source-certified transactional and paid mixed self-loops
 beside a connected Read image. The [source certificate](../src/pvm/internal/handler_mixed_loop.nim)

@@ -3338,10 +3338,8 @@ when NativeReadCycleEnabled:
     ## Prove the full selected extent and every dirty page before one store.
     ## X4..X16 hold the live guest bank and X17 holds the checked byte pointer.
     let width = nativeMixedLoopStoreWidth(operation.opcode)
-    assert width == 1 or width == 4
-    let byteStore = width == 1
     let displacement = uint32(operation.immediate and 0xffffffff'u64)
-    if byteStore:
+    if operation.opcode >= 120:
       let base = uint32(operation.slots.bIndex)+4
       if not armSmallIndirectAddress(words, base, displacement, false):
         armCompactImmediate(words, 2, uint64(displacement))
@@ -3371,11 +3369,15 @@ when NativeReadCycleEnabled:
     cycleEdge(words, fixes, refusal, 0)
     cycleAddRegister(words, 17, 2, 1)
     armCycleDirtyPage(words, fixes, refusal)
-    if not byteStore:
-      # Check the last byte's page before mutation, including a split word.
+    if width > 1:
+      # A split access needs the last byte's page as well as the first page.
       cycleAddImmediate(words, 3, 3, width-1)
       armCycleDirtyPage(words, fixes, refusal)
-    let encoding = if byteStore: 0x39000000'u32 else: 0xb9000000'u32
+    let encoding = case width
+      of 1: 0x39000000'u32 # STRB Wvalue.
+      of 2: 0x79000000'u32 # STRH Wvalue.
+      of 4: 0xb9000000'u32 # STR Wvalue.
+      else: 0xf9000000'u32 # STR Xvalue.
     words.add(encoding or (17'u32 shl 5) or (uint32(operation.slots.aIndex)+4))
 
   proc armPaidMixedLoopInstructions*(operations: openArray[NativeOperation], guards: uint32): seq[uint32] =

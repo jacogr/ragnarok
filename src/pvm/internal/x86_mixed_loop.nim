@@ -60,8 +60,8 @@ when declared(X86Block):
     const stackOffset = byte(NativeCycleWritableOffset)
     const rwOffset = stackOffset+24
     let access = X86CanonicalAccess()
-    if width == 4:
-      put(code, [0xba'u8]) # MOV EDX,absolute32 for opcode 61.
+    if op.opcode < 120:
+      put(code, [0xba'u8]) # MOV EDX,absolute32.
     else:
       readBodyBase(code, access, op.slots.bIndex)
       put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps the current base modulo 2^32.
@@ -87,13 +87,16 @@ when declared(X86Block):
     readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset)
     put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI checks the dirty bitmap pointer.
     cycleEdge(code, fixes, 0x84, refusal)
-    readCycleDirtyPage(code, fixes, refusal, false)
-    if width == 4:
-      # A word crossing a page needs both bits before the single write.
-      readCycleDirtyPage(code, fixes, refusal, true)
+    readCycleDirtyPage(code, fixes, refusal)
+    if width > 1:
+      # A split access needs the last byte's page as well as the first page.
+      readCycleDirtyPage(code, fixes, refusal, width-1)
     readAccess(code, access, op.slots.aIndex, false)
-    if width == 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX commits the word.
-    else: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL commits the byte.
+    case width
+    of 1: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL.
+    of 2: put(code, [0x66'u8, 0x41, 0x89, 0x00]) # MOV [R8],AX.
+    of 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX.
+    else: put(code, [0x49'u8, 0x89, 0x00]) # MOV [R8],RAX.
 
   template mixedLoopByteStore(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, refusal: byte, nextLabel: var byte) =

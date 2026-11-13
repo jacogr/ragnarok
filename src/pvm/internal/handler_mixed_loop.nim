@@ -3,7 +3,8 @@
 
 ## Bind a complete original self-loop to its cached edges, decoded operands and block price.
 ## A transactional visit has a guarded read prefix, byte Store and infallible suffix;
-## a paid visit preserves earlier writes before a later guard resumes checked execution.
+## a paid visit can preserve either of two ordered read/store groups before a later guard
+## resumes checked execution. Both address forms and all four store widths use that receipt.
 ## Folded no-ops still count toward gas and the original attempt span. Cold branch
 ## resolution retains at most eight accepted candidates from sixteen bounded source
 ## reconstructions per stream epoch. The frame ranks their checked visits beside a ready Read owner.
@@ -67,7 +68,7 @@ when declared(FlatFrame):
     if price.error == GasError.None and uint64(price.value) == source.price: result = proof
 
   proc observeFlatMixedLoop(f: var FlatFrame, pc, header, terminal: uint32) =
-    ## Bound exact source reconstruction to cold resolved BNEs with a plausible byte store.
+    ## Bound exact source reconstruction to cold resolved BNEs with a plausible scalar store.
     ## Refused early loops consume reconstruction work without occupying the accepted
     ## inventory. A separate ceiling permits later useful loops after those refusals:
     ## at most sixteen cold attempts, each spanning at most NativeReadFactLimit facts,
@@ -87,7 +88,7 @@ when declared(FlatFrame):
     if span > NativeReadFactLimit or first+int(span) > f.plan.facts.len: return
     var store = false
     for index in first..<first+int(span):
-      if f.plan.facts[index].opcode == 120:
+      if nativeMixedLoopStoreWidth(f.plan.facts[index].opcode) != 0:
         store = true
         break
     if not store: return
