@@ -72,12 +72,15 @@ proc authorEmptyBlock*(parent: BlockSnapshot, target: HeaderSlot, key: BsKey,
       uint64(judgments.value.byteLength) > ceiling:
     return BlockAuthorResult(status: BlockAuthorError.LimitExceeded) # Bound all copies before decoding state-derived counts.
   let entropy = decodeStateEntropy(oldEntropy.value.bytes)
+  if entropy.error != StateComponentError.None:
+    return BlockAuthorResult(status: BlockAuthorError.InvalidState) # Malformed entropy cannot authorize block production.
   let previous = decodeStateTime(oldTime.value.bytes)
+  if previous.error != StateComponentError.None:
+    return BlockAuthorResult(status: BlockAuthorError.InvalidState) # The clock must decode before the offender chapter is copied.
   let disputes = decodeDisputeState(judgments.value.bytes, DisputeStateConfig(
     perSet: policy.offenders, totalItems: policy.offenders, maxBytes: ByteLimit(ceiling)))
-  if entropy.error != StateComponentError.None or previous.error != StateComponentError.None or
-      disputes.error != DisputeStateError.None:
-    return BlockAuthorResult(status: BlockAuthorError.InvalidState) # Decode every success before guarded extraction.
+  if disputes.error != DisputeStateError.None:
+    return BlockAuthorResult(status: BlockAuthorError.InvalidState)
   if uint32(previous.value.value) != parent.slot or disputes.value.consumed !=
       judgments.value.byteLength:
     return BlockAuthorResult(status: BlockAuthorError.InvalidState) # Header clock and exact complete chapters must agree.

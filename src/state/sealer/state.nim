@@ -103,11 +103,11 @@ proc selectSafroleScheduleState*(state: var StateStore, parent: StateStoreSnapsh
       StateComponentError.None
   if invalidTime or decodedEntropy.error != StateComponentError.None:
     return SealerStateResult(status: SealerScheduleError.InvalidState) # Select codec success before extracting any fixed payload.
-  let previous = decodedPrevious.value.value
   let stagedTime = decodedTime.value.value
-  let stagedEntropy = decodedEntropy.value.value
   if uint32(stagedTime) != uint32(target):
     return SealerStateResult(status: SealerScheduleError.InvalidState) # Refuse absent/out-of-order entropy-time staging.
+  let previous = decodedPrevious.value.value
+  let stagedEntropy = decodedEntropy.value.value
   let original = chapter.value.bytes
   let selected = selectSafroleSchedule(oldChapter.value.bytes, original, active.value.bytes,
     previous, target, stagedEntropy[2], config)

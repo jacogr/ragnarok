@@ -211,11 +211,11 @@ proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
   if auditorValue.error != StateStoreError.None:
     return JudgmentSupportResult[VerifiedJudgmentSupport](status: JudgmentSupportError.StateFailure,
         stateReason: auditorValue.error)
-  let state = source.value.stateSnapshot
   var readBytes = uint64(auditorValue.value.byteLength)
   if readBytes > uint64(limits.rosters.maxBytes) or readBytes > uint64(limits.readBytes):
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.LimitExceeded)
+  let state = source.value.stateSnapshot
   for chapter in [5, 6, 8, 9, 11]:
     # Every actual clock/entropy/roster/offender chapter and the original audit roster is admitted before any copy, hash or plan allocation.
     let value = state.lookup(chapterKey(StateChapter(chapter)))
@@ -277,12 +277,12 @@ proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.InvalidSource)
   let activeBytes = state.lookup(chapterKey(StateChapter(8))).value.bytes
-  let previousBytes = state.lookup(chapterKey(StateChapter(9))).value.bytes
   let active = decodeStateValidators(activeBytes, limits.rosters)
-  let previous = decodeStateValidators(previousBytes, limits.rosters)
   if active.error != StateComponentError.None:
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.ComponentFailure, componentReason: active.error)
+  let previousBytes = state.lookup(chapterKey(StateChapter(9))).value.bytes
+  let previous = decodeStateValidators(previousBytes, limits.rosters)
   if previous.error != StateComponentError.None:
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.ComponentFailure, componentReason: previous.error)

@@ -112,7 +112,6 @@ proc recoverImport*(source: ReportedImport, index: ImportIndex, segmentChunks,
   if page.error != ErasureWordError.None:
     return ImportRecoveryResult(status: ImportRecoveryError.RecoveryFailure,
         recoveryReason: page.error)
-  let raw = segment.value.recoveredBytes.value
   let proofPage = page.value.recoveredBytes.value
   var cursor = 0
   let prefix = decode(proofPage)
@@ -134,6 +133,7 @@ proc recoverImport*(source: ReportedImport, index: ImportIndex, segmentChunks,
   for position in cursor..<proofPage.len:
     # GP zero-padding has a unique representation; nonzero unused proof-page suffixes cannot disappear during reconstruction.
     if proofPage[position] != 0: return failure(ImportRecoveryError.ReconstructionMismatch)
+  let raw = segment.value.recoveredBytes.value
   var leaf = default(array[4104, byte])
   var leafPreimage = default(array[4108, byte])
   leafPreimage[0] = byte('l')

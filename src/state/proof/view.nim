@@ -263,12 +263,12 @@ proc encodeProofView*(view: ProofView, limits: ProofViewLimits, perProof: StateP
   var offset = 8
   for query in queries:
     # Canonical sorted unique keys come from the immutable view, not mutable exported records.
-    let key = array[31, byte](query.key)
     let encoded = encodeStateProof(query.proof, perProof, wireBytes)
     if encoded.error != StateProofError.None:
       return ProofViewResult[seq[byte]](status: ProofViewError.ProofFailure,
         proofReason: encoded.error)
     let wire = encoded.value
+    let key = array[31, byte](query.key)
     for i in 0..<31: output[offset+i] = key[i]
     for i in 0..<4: output[offset+31+i] = byte((uint64(wire.len) shr (8*i)) and 255)
     offset += 35

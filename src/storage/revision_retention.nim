@@ -90,8 +90,8 @@ proc release*(catalog: var RevisionRetention, token: RetentionToken): RetentionE
   if index < 0: return RetentionError.MissingToken
   var slots: seq[RetainedSlot] = @[]
   for i in 0..<head.slots.len:
-    let slot = head.slots[i]
     if i != index:
+      let slot = head.slots[i]
       slots.add(slot)
   catalog.head = RetentionData(slots: slots, limit: head.limit)
   RetentionError.None

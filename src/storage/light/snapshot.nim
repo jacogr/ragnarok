@@ -906,7 +906,6 @@ proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[Ligh
     # The immutable canonical source already proves all fixed headers and payload extents; no detached old proofs are allocated.
     let remaining = owner.encoded.len-32-offset
     if remaining < EntryBytes: return retentionFailure(LightSnapshotError.InvalidFormat)
-    let key = readKey(owner.encoded, offset)
     let nodes = number(owner.encoded, offset+31, 2)
     let raw = number(owner.encoded, offset+33)
     if nodes > 249 or nodes*64 > uint64(remaining-EntryBytes):
@@ -914,6 +913,7 @@ proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[Ligh
     let fixed = uint64(EntryBytes)+nodes*64
     if raw > uint64(remaining)-fixed: return retentionFailure(LightSnapshotError.InvalidFormat)
     let extent = fixed+raw
+    let key = readKey(owner.encoded, offset)
     while fresh < ordered.len and compareKey(ordered[fresh].key, key) < 0: inc fresh
     let replaced = fresh < ordered.len and compareKey(ordered[fresh].key, key) == 0
     if not replaced:

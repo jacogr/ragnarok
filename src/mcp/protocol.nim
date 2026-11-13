@@ -239,8 +239,8 @@ proc respond*(text: string, context: QueryContext): string =
       methodIndex < 0 or values[methodIndex].kind != stringValue or
       (params >= 0 and values[params].kind != objectValue):
     return failure(id, -32600, "Invalid request envelope")
-  let methodName = values[methodIndex].text
   if identity < 0: return "" # Valid notifications, including initialized/cancelled, need no session state.
+  let methodName = values[methodIndex].text
   case methodName
   of "initialize":
     let protocol = member(values, params, "protocolVersion")

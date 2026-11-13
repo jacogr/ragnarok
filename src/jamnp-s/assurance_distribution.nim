@@ -130,7 +130,6 @@ proc qualifyAssuranceDistribution*(request: ReadRequest, source: BlockSnapshotRe
     return AssuranceDistributionResult[CheckedAssurance](
         status: AssuranceDistributionError.DutyFailure, dutyReason: captured)
   let duty = captured.value
-  let facts = duty.dutyInfo.value
   for core in 0..<int(cores):
     # Current C10 can exclude impossible possession; eventual inclusion must separately apply post-judgment assignments.
     if (bits.bytes[core div 8] and byte(1 shl (core mod 8))) != 0:
@@ -148,6 +147,7 @@ proc qualifyAssuranceDistribution*(request: ReadRequest, source: BlockSnapshotRe
     return refused[CheckedAssurance](AssuranceDistributionError.InvalidSignature)
   if not verify(key.value, credential.value, array[45, byte](message.value)):
     return refused[CheckedAssurance](AssuranceDistributionError.InvalidSignature)
+  let facts = duty.dutyInfo.value
   var indices = newSeq[ValidatorIndex](facts.localIndices)
   for ordinal in 0..<indices.len:
     # Preserve null gaps and all repeated original validator positions without duplicating cryptographic work.

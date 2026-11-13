@@ -173,7 +173,6 @@ proc prepareBlockReports*(staged: BlockTransitionResult,
     fail(ReportAdmissionError.InvalidConfig) # One authenticated block cannot be reinterpreted under another chain profile.
   let step = staged.value
   let binding = step.admitted
-  let parent = binding.admittedState
   let slot = StateTime(uint32(headerInfo(binding.admittedHeader).value.unsigned.slot))
   var raw = default(array[4, seq[byte]])
   # All posterior context is read from the same completed immutable map, before any report publication.
@@ -213,6 +212,7 @@ proc prepareBlockReports*(staged: BlockTransitionResult,
     return ReportAdmissionResult[PreparedReportAdmission](
       status: ReportAdmissionError.CredentialFailure,
       credentialReason: credentials) # Keep exact nested signature/assignment/structure refusal.
+  let parent = binding.admittedState
   let policy = checkReportPolicy(credentials.value, parent, config.policy)
   if policy.error != ReportPolicyError.None:
     return ReportAdmissionResult[PreparedReportAdmission](

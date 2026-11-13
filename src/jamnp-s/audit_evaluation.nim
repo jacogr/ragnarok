@@ -193,7 +193,6 @@ proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
   if uint64(described.consumed) > uint64(limits.comparisonBytes):
     return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.LimitExceeded)
   let parameters = origin.originParameters.value
-  let state = origin.originState.value
   var lookup = newSeq[SegmentLookup](described.lookupCount)
   for ordinal in 0..<lookup.len:
     lookup[ordinal] = original.ownedReportLookup(ordinal).value # Exact signed report dictionary, never an independently supplied root table.
@@ -206,6 +205,7 @@ proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
         bundleReason: decoded)
   if control.stopped: return AuditEvaluationResult[AuditEvaluation](
       status: AuditEvaluationError.Cancelled)
+  let state = origin.originState.value
   let executed = runInputRefinement(state, decoded.value.decodedInputs.value, described.core,
     parameters, limits.execution)
   if executed.error != InputRefinementError.None:

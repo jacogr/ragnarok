@@ -537,7 +537,6 @@ proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot
     if not contextFits(uint64(context.len), store.pagedConfig, true):
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
           fileReason: FileError.LimitExceeded)
-    let ownedContext = copyContext(context)
     let selected = store.paged.selected
     if selected.error != FullPagedNativeError.None:
       store.failPaged()
@@ -549,6 +548,7 @@ proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
     if uint64(selected.value.generation) >= high(uint64)-1:
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.GenerationOverflow)
+    let ownedContext = copyContext(context)
     let envelope = encodePagedContext(ownedContext, selected.value, store.pagedConfig)
     if envelope.error != DiskStoreError.None:
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
@@ -871,7 +871,6 @@ proc initializePagedDisk(store: var DiskStateStore, path: string,
   if not contextFits(uint64(context.len), config):
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: FileError.LimitExceeded)
-  let ownedContext = copyContext(context)
   let prepared = preparePagedState(source, history, transport)
   if prepared.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
       PreparedPagedState](prepared)
@@ -885,6 +884,7 @@ proc initializePagedDisk(store: var DiskStateStore, path: string,
       let retired = store.paged.close # No failed bootstrap returns a hidden lease or descriptor obligation.
       if retired != FileError.None: result = DiskStoreResult[StateStoreSnapshot](
           status: DiskStoreError.FileFailure, fileReason: retired)
+  let ownedContext = copyContext(context)
   let envelope = encodePagedContext(ownedContext, default(FullPagedManifest), config)
   if envelope.error != DiskStoreError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,

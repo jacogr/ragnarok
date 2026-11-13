@@ -448,13 +448,13 @@ proc closeAndCaptureLogical*(dispatcher: var CurrentDownloadLoop): CurrentDownlo
   if borrowed != nil and dispatcher.hasCompletion and dispatcher.completion.error ==
       CurrentHandoffError.None and captured.error == CurrentDownloadSessionError.None:
     # A successful qualification never substitutes actual installation: bind the retained producer to the consumed child and exact canonical state/full view after joined IO.
-    let owner: ptr Services = borrowed
     let update = captured.value.currentLogicalUpdate
     if update.error == CurrentLogicalError.None:
       let actualChild = array[32, byte](update.value.currentUpdateChild.blockHash)
       let receiptChild = array[32, byte](dispatcher.completion.value.blockHash)
       if actualChild == receiptChild:
         # Same child alone does not substitute physical ownership or the full selected history/Parameters tuple.
+        let owner: ptr Services = borrowed
         let sameState = sameStateSnapshot(update.value.currentUpdateState, owner[].stateSnapshot.value)
         let sameView = sameChainView(update.value.currentUpdateView, owner[].chainView)
         if sameState and sameView:

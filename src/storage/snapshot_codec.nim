@@ -185,17 +185,17 @@ proc decodeRepositorySnapshot*(input: openArray[byte], chain: StorageChainId,
   if input[base+32] != byte(ord(schema)) or readHash(input, base) != array[32, byte](chain):
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.WrongIdentity)
   let generation = number(input, base+33)
-  let entries = number(input, base+73)
-  let nodes = number(input, base+81)
   let count = number(input, base+89)
-  let context = number(input, base+97)
   let body = number(input, base+105)
   if generation == 0 or count == 0: return SnapshotResult[RepositorySnapshot](
       status: SnapshotError.InvalidFormat)
+  let entries = number(input, base+73)
+  let nodes = number(input, base+81)
   if count > uint64(limits.roots) or count > uint64(high(int) div sizeof(StateRoot)) or entries >
       uint64(high(int)) or entries > uint64(limits.repository.codec.trie.items) or
       nodes > uint64(limits.repository.codec.trie.nodes):
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.LimitExceeded)
+  let context = number(input, base+97)
   if context > uint64(limits.context): return SnapshotResult[RepositorySnapshot](
       status: SnapshotError.LimitExceeded)
   var remaining = input.len-Overhead

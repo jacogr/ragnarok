@@ -46,11 +46,6 @@ proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags())
     if head.countHeaderByName(field) > 1: return # Handshake selectors cannot have conflicting values.
   if head.methodOf != http_msg.tag(http_msg.mGet) or head.target != "/": return
   if head.contains(http_msg.hContentLength) or head.contains(http_msg.hTransferEncoding): return
-  let key = head.findHeader("sec-websocket-key")
-  let connection = head.getStr(http_msg.hConnection)
-  let protocol = head.getStr(http_msg.hUpgrade)
-  let version = head.findHeader("sec-websocket-version")
-  let host = head.getStr(http_msg.hHost)
   var origin = ""
   if head.contains(http_msg.hOrigin):
     # Browser origins remain an application allowlist checked before any upgrade response.
@@ -58,8 +53,11 @@ proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags())
     origin = head.getStr(http_msg.hOrigin)
     if uiPort == 0 or origin notin ["http://127.0.0.1" & suffix, "http://localhost" &
         suffix]: return
-  if host.len == 0 or version != "13" or not hasToken(connection, "upgrade") or
-      protocol.toLowerAscii() != "websocket" or key.len != 24: return
+  if head.getStr(http_msg.hHost).len == 0 or head.findHeader("sec-websocket-version") != "13" or
+      not hasToken(head.getStr(http_msg.hConnection), "upgrade") or
+      head.getStr(http_msg.hUpgrade).toLowerAscii() != "websocket": return
+  let key = head.findHeader("sec-websocket-key")
+  if key.len != 24: return
   try: # The standard base64 decoder reports malformed input through its public error contract.
     let decoded = base64.decode(key)
     if decoded.len != 16 or base64.encode(decoded) != key: return

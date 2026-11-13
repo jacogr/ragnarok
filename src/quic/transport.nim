@@ -444,9 +444,9 @@ proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
   ## Progress one timer/readiness cycle for a standalone endpoint.
   # Retired or failed endpoints cannot restart native work.
   if owner.stopping or owner.failed or owner.engine == nil: return false
-  let delay = min(clamp(maximumMs, 0, 10), int(clamp((nextTick(owner.engine) + 999) div 1000, 1'i64, 10'i64)))
   let dispatcher = owner.selector
   if dispatcher == nil: return false # Retired/uninitialized dispatchers own no wait.
+  let delay = min(clamp(maximumMs, 0, 10), int(clamp((nextTick(owner.engine) + 999) div 1000, 1'i64, 10'i64)))
   var ready = default(array[2, Ready])
   let count = dispatcher.wait(delay, ready)
   if count < 0: owner.failed = true; return false # OS/dispatcher failure is explicit.
@@ -462,10 +462,10 @@ proc pollPair*(incoming, outgoing: var Transport): bool =
   if incoming.stopping or outgoing.stopping or incoming.failed or outgoing.failed or
       incoming.engine == nil or outgoing.engine == nil or
       incoming.selector != outgoing.selector: return false
-  let delay = int(clamp((min(nextTick(incoming.engine), nextTick(outgoing.engine)) + 999) div 1000,
-      1'i64, 10'i64))
   let dispatcher = incoming.selector
   if dispatcher == nil: return false # A shared wait requires live metadata.
+  let delay = int(clamp((min(nextTick(incoming.engine), nextTick(outgoing.engine)) + 999) div 1000,
+      1'i64, 10'i64))
   var ready = default(array[2, Ready])
   let count = dispatcher.wait(delay, ready)
   if count < 0: incoming.failed = true; outgoing.failed = true; return false # Both owners stop on wait failure.

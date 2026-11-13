@@ -952,9 +952,9 @@ proc nextInitialOrdinal(data: WorkJobData, source: AuditContext,
     control: AssuranceScanControl): int =
   ## Scan original positions without compressing duplicates or assuming the current topology index.
   let local = array[32, byte](data.auditParticipationIdentity)
-  let key = data.auditBandersnatch.signingPublic
   if local == default(array[32, byte]) or local == array[32, byte](nullValidator().ed25519):
     return -1
+  let key = data.auditBandersnatch.signingPublic
   for ordinal in int(uint16(data.auditInitialOrdinal))..<source.contextInfo.value.auditors:
     # TLS and JIP-5 signing ownership must match at the same original position.
     if control.stopped: return -1

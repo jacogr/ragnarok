@@ -164,7 +164,6 @@ proc prepareCurrentAccumulationActivity*(source: PreparedCurrentAccumulationVali
   let sequence = statistics.currentStatisticsSource.value.completedSequenceSource.value
   let admission = sequence.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value
   let stage = admission.reportBlockStage.value
-  let profile = stage.blockTransitionProfile
   let body = stage.value.admitted.admittedBlock.blockExtrinsic.value
   let preimageComponent = body.extrinsicPreimages.value
   let assuranceComponent = body.extrinsicAssurances.value
@@ -221,6 +220,7 @@ proc prepareCurrentAccumulationActivity*(source: PreparedCurrentAccumulationVali
   var accumulation = newSeq[ServiceStatisticsEntry](accumulationCount)
   for index in 0..<accumulationCount: accumulation[index] = statistics.currentStatisticsAt(
       StatisticsServiceIndex(uint64(index))).value
+  let profile = stage.blockTransitionProfile
   let projected = projectCoreServiceActivity(incoming, available,
     assuranceComponent.readAssurances.value,
     provisions, accumulation, CoreServiceActivityConfig(cores: profile.cores,

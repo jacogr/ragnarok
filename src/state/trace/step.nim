@@ -124,7 +124,6 @@ proc copyTraceStep*(step: TraceStep, bytes: ByteLimit): TraceStepResult[seq[byte
   if uint64(data.consumed) > uint64(bytes): return fail[seq[byte]](TraceStepError.LimitExceeded)
   var output = newSeq[byte](data.consumed)
   let first = data.before.copyTraceState(bytes).value
-  let last = data.after.copyTraceState(bytes).value
   var offset = 0
   for octet in first:
     output[offset] = octet
@@ -134,6 +133,7 @@ proc copyTraceStep*(step: TraceStep, bytes: ByteLimit): TraceStepResult[seq[byte
   if encoded.error != FrameError.None or encoded.value != middle:
     return fail[seq[byte]](TraceStepError.InvalidOwner)
   offset += middle
+  let last = data.after.copyTraceState(bytes).value
   for octet in last:
     output[offset] = octet
     inc offset # The final field exactly fills the already admitted total output.

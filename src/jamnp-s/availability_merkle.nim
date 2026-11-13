@@ -414,12 +414,12 @@ proc indexedAvailabilityTrace*(tree: AvailabilityMerkleTree, index: int, leafTag
     let step = path.steps[index]
     # Preorder positions reserve exactly 2*leftCount-1 slots for the left subtree.
     let leftCount = (count+1) div 2
-    let sibling = if step.left: position+2*leftCount else: position+1
-    let siblingFirst = if step.left: first+leftCount else: first
     wire[step.offset] = step.tag
     if step.tag == 0:
+      let sibling = if step.left: position+2*leftCount else: position+1
       for octet in 0..<32: wire[step.offset+1+octet] = array[32, byte](data.hashes[sibling])[octet]
     else:
+      let siblingFirst = if step.left: first+leftCount else: first
       for octet in 0..<data.width: wire[step.offset+1+octet] = data.flat[
           siblingFirst*data.width+octet]
     if step.left:

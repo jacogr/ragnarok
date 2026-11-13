@@ -233,19 +233,19 @@ proc capturePackageState(parent: StateStoreSnapshot,
   if not exactAssignments or not exactReady or not exactAccumulated:
     return ReportPackageResult[PackageState](
         status: ReportPackageError.InvalidState) # Exact values, no prefix acceptance.
-  let assignmentMeta = availabilityInfo(assignmentRead.value.snapshot).value
-  let readyMeta = readyInfo(readyRead.value.snapshot).value
-  let accumulatedMeta = accumulatedInfo(accumulatedRead.value.snapshot).value
   let maximum = uint64(config.indexItems)
   if maximum > uint64(high(int) div sizeof(ReportedPackage)):
     return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Bound every index descriptor before allocation.
+  let assignmentMeta = availabilityInfo(assignmentRead.value.snapshot).value
   if uint64(assignmentMeta.present) > maximum:
     return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # The first source must fit before subtraction.
+  let readyMeta = readyInfo(readyRead.value.snapshot).value
   if uint64(readyMeta.items) > maximum-uint64(assignmentMeta.present):
     return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Prove the first sum before adding it.
+  let accumulatedMeta = accumulatedInfo(accumulatedRead.value.snapshot).value
   let first = uint64(assignmentMeta.present)+uint64(readyMeta.items)
   if uint64(accumulatedMeta.items) > maximum-first:
     return ReportPackageResult[PackageState](

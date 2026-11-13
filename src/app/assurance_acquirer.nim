@@ -275,7 +275,6 @@ proc collect(owner: var AssuranceAcquirer, services: var Services,
   if expired and not owner.cancelled: owner.cancelled = services.cancelStateProof(owner.proof)
   let result = services.collectStateProof(owner.proof)
   if result.kind == ProofWorkerCompletionKind.Uninitialized: return
-  let phase = owner.phase
   owner.active = false
   owner.proof = default(ProofWorkerTicket)
   if owner.cancelled or expired or result.kind == ProofWorkerCompletionKind.Cancelled:
@@ -283,6 +282,7 @@ proc collect(owner: var AssuranceAcquirer, services: var Services,
     if owner.plan.valid: owner.pause(streams, clock, AssuranceAcquirerPhase.ProbeReady)
     else: owner.pause(streams, clock, AssuranceAcquirerPhase.Idle)
     return
+  let phase = owner.phase
   if phase == AssuranceAcquirerPhase.Planning:
     if result.kind != ProofWorkerCompletionKind.WorkSubmitted:
       bump(owner.failed)
@@ -426,10 +426,10 @@ proc poll*(owner: var AssuranceAcquirer, services: var Services,
     return
   let peer = streams.peerForIdentity(target.ed25519)
   if peer.error == NodeError.None:
-    let bytes = uint64(owner.replyLimit)
     if owner.usedBytes > owner.policy.bytes:
       owner.pause(streams, clock, AssuranceAcquirerPhase.Choosing)
       return
+    let bytes = uint64(owner.replyLimit)
     if owner.usedRequests >= owner.policy.requests or bytes > owner.policy.bytes-owner.usedBytes:
       owner.pause(streams, clock, AssuranceAcquirerPhase.Choosing)
       return

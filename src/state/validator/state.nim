@@ -169,9 +169,9 @@ proc rotateValidatorState*(state: var StateStore, target: StateTime,
     return ValidatorStateResult(status: codecError(
         c4.error)) # Resizing must fit the complete posterior chapter budget.
   let c8 = validatorEntry(ValidatorChapter.Active, records(next.active), policy.validators)
-  let c9 = validatorEntry(ValidatorChapter.Previous, records(next.previous), policy.validators)
   if c8.error != StateComponentError.None:
     return ValidatorStateResult(status: codecError(c8.error)) # No writes until all posterior entries exist.
+  let c9 = validatorEntry(ValidatorChapter.Previous, records(next.previous), policy.validators)
   if c9.error != StateComponentError.None:
     return ValidatorStateResult(status: codecError(c9.error)) # Previous roster cannot be published separately.
   let committed = state.apply(@[

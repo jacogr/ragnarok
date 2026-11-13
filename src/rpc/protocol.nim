@@ -343,6 +343,7 @@ proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root
   ## Queue one terminal notification atomically; stale/cancelled completions are harmless no-ops.
   if not session.proofRequests.matches(request): return true
   if request.isImport: return false # A verified-import acknowledgement cannot masquerade as produced proof wire.
+  if session.pendingCount == MaxSubscriptionUpdates: return false # A full queue cannot accept even a terminal error.
   var problem = failure
   if wire.len > MaxRpcProofBytes:
     problem = "State proof exceeds RPC output budget" # Never encode or expose an oversized prefix.
@@ -357,8 +358,7 @@ proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root
       ("format", json("RPV1")), ("proof", json(base64.encode(wire)))]))
   let message = $jsonObject([("jsonrpc", json("2.0")), ("method", json("ragnarok_stateProof")),
     ("params", json(fields))])
-  if session.pendingCount == MaxSubscriptionUpdates or
-      message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
+  if message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
     return false # Listener disconnects only the slow originating consumer.
   session.enqueueUpdate(SubscriptionId(0), message) # Zero is reserved outside the chain-subscription ID space.
   discard session.proofRequests.finish(request)
@@ -369,6 +369,7 @@ proc completeStateProofImport*(session: var RpcSession, request: RpcProofRequest
   ## Queue one exact terminal import acknowledgement only after actual adoption; stale/cancelled routing has no effect.
   if not session.proofRequests.matches(request): return true # Connection reset and logical cancellation cannot consume a replacement slot.
   if not request.isImport: return false # Completion kinds never cross read/import payloads.
+  if session.pendingCount == MaxSubscriptionUpdates: return false # A full queue cannot accept a terminal acknowledgement.
   var fields = JsonObject()
   fields.add("request", json(request.id))
   if failure.len > 0:
@@ -380,8 +381,8 @@ proc completeStateProofImport*(session: var RpcSession, request: RpcProofRequest
   let message = $jsonObject([("jsonrpc", json("2.0")), ("method", json(
       "ragnarok_stateProofImported")),
     ("params", json(fields))])
-  if session.pendingCount == MaxSubscriptionUpdates or message.len >
-      MaxSubscriptionQueueBytes-session.pendingBytes: return false # Slow consumers never roll back known durable publication.
+  if message.len > MaxSubscriptionQueueBytes-session.pendingBytes:
+    return false # Slow consumers never roll back known durable publication.
   session.enqueueUpdate(SubscriptionId(0), message)
   discard session.proofRequests.finish(request)
   true
@@ -982,8 +983,8 @@ proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowanc
         return error(id, 0, "Invalid or unreadable work reports") # Malformed state is not ordinary absence.
     return unavailable(id, 2, "Work-report unavailable", hash)
   if methodName in ["serviceData", "serviceValue", "servicePreimage", "serviceRequest"]:
-    let count = if methodName == "serviceData": 2 elif methodName == "serviceRequest": 4 else: 3
     if parameters < 0: return error(id, -32602, "Expected service query arguments") # Hash and service are mandatory.
+    let count = if methodName == "serviceData": 2 elif methodName == "serviceRequest": 4 else: 3
     let first = parameters + 1
     if values[parameters].next != first + count: return error(id, -32602,
         "Expected scalar service query arguments") # No extra or nested arguments.

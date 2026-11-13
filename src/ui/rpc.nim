@@ -279,10 +279,10 @@ when defined(ragnarokBrowser):
     if id != 0:
       for i in 0..<MaxPendingRequests:
         if requests[i].id == id:
-          let item = requests[i]
           if not validReply(message):
             retire(RpcStatus.InvalidResponse) # Malformed ACKs cannot strand remote subscription state.
             return
+          let item = requests[i]
           if not succeeded(message):
             clearRequest(i) # Remote errors settle only this request.
             deliver(item.reply, item.id, RpcStatus.RemoteError, message)

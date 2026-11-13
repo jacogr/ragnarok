@@ -216,11 +216,11 @@ proc advanceAuthorizationState*(state: var StateStore, uses: openArray[CoreAutho
     return AuthorizationTransitionResult[StateStoreSnapshot](
         status: AuthorizationTransitionError.LimitExceeded)
   let rawPools = poolBytes.value.bytes
-  let rawQueues = queueBytes.value.bytes
   let pools = decodeAuthorization(AuthorizationKind.Pools, rawPools, config)
   if pools.error != AuthorizationError.None:
     return AuthorizationTransitionResult[StateStoreSnapshot](status: codecError(
         pools.error)) # No malformed state repair.
+  let rawQueues = queueBytes.value.bytes
   let queues = decodeAuthorization(AuthorizationKind.Queues, rawQueues, config)
   if queues.error != AuthorizationError.None:
     return AuthorizationTransitionResult[StateStoreSnapshot](status: codecError(

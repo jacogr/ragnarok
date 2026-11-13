@@ -172,7 +172,6 @@ proc advanceSafroleState*(state: var StateStore, candidate: OwnedHeader,
       rotationReason: rotated.error) # A private failed ring/root plan never modifies the original handle.
   let staged = rotated.value
   let chapter = staged.lookup(chapterKey(StateChapter(4))).value
-  let active = staged.lookup(chapterKey(StateChapter(8))).value
   # Only historical eta[2] is needed before authentication; no placeholder eta[0] or fake VRF is hashed.
   let crossed = uint64(uint32(target)) div epoch > uint64(uint32(previous.value.value)) div epoch
   let history2 = if crossed: entropy.value.value[1] else: entropy.value.value[2]
@@ -185,6 +184,7 @@ proc advanceSafroleState*(state: var StateStore, candidate: OwnedHeader,
   let admittedEntry = chapterEntry(admitted.value, config.state)
   if admittedEntry.error != StateComponentError.None:
     return SafroleTransitionResult(status: SafroleTransitionError.InvalidState) # Core capture was already bounded under this exact policy.
+  let active = staged.lookup(chapterKey(StateChapter(8))).value
   let selected = selectSafroleSchedule(oldChapter.value.bytes, admittedEntry.value.value,
     active.bytes, previous.value.value, target, history2,
     SealerScheduleConfig(state: config.state, tailStart: config.tailStart))
@@ -194,7 +194,6 @@ proc advanceSafroleState*(state: var StateStore, candidate: OwnedHeader,
   let selectedEntry = chapterEntry(selected.value, config.state)
   if selectedEntry.error != StateComponentError.None:
     return SafroleTransitionResult(status: SafroleTransitionError.InvalidState) # No invalid C(4) can reach authentication or publication.
-  let unsigned = unsignedPart(candidate)
   let expected = deriveSafroleMarkers(oldChapter.value.bytes, selectedEntry.value.value,
     previous.value.value, target, entropy.value.value,
     SafroleMarkerConfig(state: config.state, tailStart: config.tailStart,
@@ -202,6 +201,7 @@ proc advanceSafroleState*(state: var StateStore, candidate: OwnedHeader,
   if expected.error != SafroleMarkerError.None:
     return SafroleTransitionResult(status: SafroleTransitionError.MarkerFailure,
       markerReason: expected.error) # The original contest and original entropy define both marker predicates.
+  let unsigned = unsignedPart(candidate)
   let markers = validateSafroleMarkers(expected.value, headerEpoch(unsigned.value).value,
     headerWinners(unsigned.value).value)
   if markers != SafroleMarkerError.None:

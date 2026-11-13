@@ -71,12 +71,12 @@ proc prepareComputedPublication*(source: AdmittedComputedReports,
   if uint64(length) > uint64(bytes):
     return ComputedPublicationResult[ComputedReportSuccessor](
         status: ComputedPublicationError.LimitExceeded)
-  let entry = assignments.reportAssignmentEntry.value
   let staged = selected.value.reportBlockStage.value.value
   let forked = forkStateStore(staged.snapshot)
   if forked.error != StateStoreError.None:
     return ComputedPublicationResult[ComputedReportSuccessor](
         status: ComputedPublicationError.StoreFailure, storeReason: forked.error)
+  let entry = assignments.reportAssignmentEntry.value
   var working = forked.value
   let updated = working.apply([StateWrite(kind: StateWriteKind.Put, key: entry.key,
       value: entry.value)])

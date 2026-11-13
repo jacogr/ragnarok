@@ -289,7 +289,6 @@ proc captureAuditContext*(source: ChainView, blockHash: genesis.BlockHash,
   if advanced.error != BlockTransitionError.None:
     return AuditContextResult[AuditContext](status: AuditContextError.TransitionFailure,
         transitionReason: advanced)
-  let assignments = advanced.value.disputes.disputeAssignments
   let available = advanced.value.availability
   let count = available.availableReportCount
   if uint64(count) > uint64(limits.reports): return refused[AuditContext](
@@ -305,6 +304,7 @@ proc captureAuditContext*(source: ChainView, blockHash: genesis.BlockHash,
     if bytes > uint64(limits.hashBytes)-digestBytes:
       return refused[AuditContext](AuditContextError.LimitExceeded)
     digestBytes += bytes
+  let assignments = advanced.value.disputes.disputeAssignments
   var rows = newSeq[uint16](count)
   var identities = newSeq[WorkReportHash](count)
   for ordinal in 0..<count:
@@ -318,8 +318,8 @@ proc captureAuditContext*(source: ChainView, blockHash: genesis.BlockHash,
     if pending.error != AvailabilityError.None or not pending.value.present:
       return refused[AuditContext](AuditContextError.InvalidSource)
     let actual = reportDigest(report)
-    let original = reportDigest(pending.value.guarantee.report)
     if actual.error != AuditContextError.None: return refused[AuditContext](actual.error)
+    let original = reportDigest(pending.value.guarantee.report)
     if original.error != AuditContextError.None: return refused[AuditContext](original.error)
     if array[32, byte](actual.value) != array[32, byte](original.value):
       return refused[AuditContext](AuditContextError.InvalidSource)

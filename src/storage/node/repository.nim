@@ -461,10 +461,10 @@ proc preparePublicationRecords(stage: var PublicationStage, info: RecordCollecti
 
 proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord): bool =
   ## Continue codec hashing after repository refusal; base/generation and quota precedence resolve afterward.
-  let limits = stage.head.limits
   let old = position(stage.head.table.records, record.digest)
   if old < 0:
     if not stage.quotaExceeded:
+      let limits = stage.head.limits
       let maximum = high(int) div sizeof(TrieRecord)
       let full = uint64(stage.count) >= uint64(limits.records) or stage.count >= maximum
       let payload = uint64(record.payload.len)

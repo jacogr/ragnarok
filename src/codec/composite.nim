@@ -319,7 +319,6 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
     # Bound per-record traversal before a parent can scan arbitrarily far beyond its frame budget.
     if uint64(cursor+4) > uint64(wireLimit): return PreimageResult(
         status: CompositeError.LimitExceeded)
-    let service = decodeFixed(input.toOpenArray(cursor, cursor + 3), ByteWidth(4))
     cursor += 4
     let blob = decodeBytesBorrowed(input.toOpenArray(cursor, input.len - 1), ByteLimit(min(uint64(
         limits.perBlob), budget)))
@@ -330,6 +329,7 @@ proc walk(input: openArray[byte], offset, count: int, limits: PreimageLimits,
       return PreimageResult(status: CompositeError.LimitExceeded)
     if commit:
       # Only the second pass initializes record views; failed last records cannot expose an earlier partial prefix.
+      let service = decodeFixed(input.toOpenArray(cursor-4, cursor-1), ByteWidth(4))
       output[index] = Preimage(service: ServiceIndex(uint32(uint64(service.value))),
                      blob: BlobSpan(offset: cursor + blob.offset, length: blob.length))
     budget -= uint64(blob.length)

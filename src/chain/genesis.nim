@@ -326,17 +326,14 @@ proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
     if size > remaining:
       return invalidGenesis() # Subtraction bounds both each value and the aggregate before any copy.
     remaining -= size
-  var roster: seq[byte] = @[]
-  var time: seq[byte] = @[]
   # Required context is obtained from actual serialized state, never inferred from core count.
   let active = state.lookup(chapterKey(StateChapter(8)))
   if active.error != StateStoreError.None or active.value.byteLength > 1024 * 1024:
     return invalidGenesis() # Missing or oversized required rosters never reach a copy.
-  roster = active.value.bytes
   let clockBytes = state.lookup(chapterKey(StateChapter(11)))
   if clockBytes.error != StateStoreError.None or clockBytes.value.byteLength != 4:
     return invalidGenesis() # Required time is exactly one E4 slot.
-  time = clockBytes.value.bytes
+  let roster = active.value.bytes
   let validators = decodeStateValidators(roster, ValidatorStateConfig(cores: CoreCount(cores),
     validators: ElementLimit(1023), maxBytes: ByteLimit(1024 * 1024)))
   if validators.error != StateComponentError.None: return invalidGenesis() # Missing or malformed C(8).
@@ -345,6 +342,7 @@ proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
   if count.error != StateComponentError.None: return invalidGenesis() # Only owned rosters supply context.
   let population = uint64(count.value)
   if population < 6 or population > 1023 or population mod 3 != 0: return invalidGenesis()
+  let time = clockBytes.value.bytes
   let clock = decodeStateTime(time)
   if clock.error != StateComponentError.None: return invalidGenesis() # C(11) must encode an exact slot.
   if clock.value.consumed != time.len: return invalidGenesis() # Reject extended time encodings.
