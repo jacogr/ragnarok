@@ -86,10 +86,10 @@ shared GitHub run ID, without historical timing weights or maintained assignment
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for
 [local reproduction](testing/infrastructure.md). The dependency-ordered codec and specialized-control
-bundles retain randomized shard ownership. Independent corpora run once across four randomized
-`Unit / Corpus (i/4)` jobs alongside the unit shards. Producer/consumer bundles stay together and
-retain declaration order, without timing weights. The Unit gate requires every native and corpus
-shard to pass.
+bundles retain randomized shard ownership. Independent corpora run once across randomized
+[`Unit / Corpus` shards](testing/infrastructure.md) alongside the unit shards. Producer/consumer
+bundles stay together and retain declaration order, without timing weights. The Unit gate requires
+every native and corpus shard to pass.
 Local `make check-unit` still runs both; `make check-corpus` selects only independent corpora.
 Fuzzer-interface corpora and socket/minifuzz exchanges belong exclusively to `Fuzz / JAM`.
 They run through `make check-jam-fuzzer-interface`, also included once in complete `make check`;
