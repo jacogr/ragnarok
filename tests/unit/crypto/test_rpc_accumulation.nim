@@ -347,7 +347,7 @@ proc main() {.raises.} =
   let before = getOccupiedMem()
   for iteration in 0..<1000: cycle(context) # Every accepted head and closed/refused connection graph leaves scope.
   let after = getOccupiedMem()
-  assert before == after
+  assertArcRelease(before, after, "RPC finalized accumulation publication")
   recordArcRelease("rpc_accumulation", 1000, before, after)
   echo "RPC finalized accumulation publication passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
