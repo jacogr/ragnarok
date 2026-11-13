@@ -43,7 +43,7 @@ proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32
     importc: "pvm_x86_arena_next", header: "x86_memory.h".}
   ## Execute an entry and return its next control-flow offset without retaining registers.
 
-when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
+when defined(pvmX86Jit):
   type
     X86MemoryCycleHandlerKind* {.pure.} = enum
       ## Only copied identity classes are retained; a callable handler pointer never escapes.
@@ -79,7 +79,7 @@ when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
       entries: array[8, X86MemoryCycleSlot]
       calls, groups, tails: uint64
 
-  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+  when defined(pvmX86Jit):
     type X86WideCycleCache = object
       ## One private source-bound wider image owns no frame or invocation pointer.
       status: uint8
@@ -90,8 +90,7 @@ when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
       when defined(pvmX86WideParentRefusalWitness):
         refuseParentOnce: bool
 
-when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
-    defined(pvmX86MemoryCycleSeal)):
+when defined(pvmX86Jit):
   type
     X86CycleMemory* = object
       ## Current invocation's clipped private byte descriptors match pvm_x86_cycle_memory exactly.
@@ -112,7 +111,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       prefixLoad*, prefixBound*, prefixStep*, dirtyBranch*: RegisterSlots
       tailStep*, tailBranch*: RegisterSlots
 
-  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+  when defined(pvmX86Jit):
     type
       X86WideOperation* = object
         ## Copied immutable source operands drive cold wide-body emission.
@@ -159,9 +158,9 @@ type
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
     arena: X86Arena
     region: X86RegionCache
-    when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
+    when defined(pvmX86Jit):
       memoryCycle: X86MemoryCycleCandidateCache
-      when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+      when defined(pvmX86Jit):
         wideCycle: X86WideCycleCache
     entries: seq[X86Entry]
     unavailable: bool
@@ -809,8 +808,7 @@ func x86RegionStatistics*(jit: X86Jit): array[2, uint64] =
   ## Distinguish connected entries from completed logical blocks without claiming hardware instruction counts.
   [jit.region.calls, jit.region.blocks]
 
-when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
-    defined(pvmX86MemoryCycleSeal)):
+when defined(pvmX86Jit):
   type X86CycleFixup = object
     ## A local signed rel32 patch names one label in the complete unpublished image.
     at: int
@@ -2114,7 +2112,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
     if jit == nil: 0'u64
     else: jit.memoryCycle.tails
 
-  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+  when defined(pvmX86Jit):
     const
       wideBranch = 0'u8
       wideRead = 1'u8

@@ -12,6 +12,8 @@ import ./[native_read_body, native_register_ring]
 when NativeReadCycleEnabled:
   import ./native_read_cycle
   import ./native_mixed_loop
+  when defined(pvmMixedLoopArenaWitness):
+    import std/syncio
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -366,6 +368,8 @@ when NativeReadCycleEnabled:
     if entries == 0: return
     let handle = createNativeArena()
     if handle == nil: return
+    when defined(pvmMixedLoopArenaWitness):
+      var publishedSlots = 0'u8
     for index in 0..<int(candidates.count):
       if (entries and (1'u8 shl index)) != 0:
         var count = uint32(encodings[index].len)
@@ -380,8 +384,12 @@ when NativeReadCycleEnabled:
           arenaRelease(handle)
           when defined(pvmMixedLoopArenaWitness):
             assert mixedLoopArenaUnmapped(address) == 1
+            # Record the failed append and earlier successful slots only after proving cleanup.
+            echo "MIXED_ARENA_PUBLISH_REFUSAL,", index, ",", publishedSlots
           return
         assert uint32(offset) == offsets[index]
+        when defined(pvmMixedLoopArenaWitness):
+          publishedSlots = publishedSlots or (1'u8 shl index)
     result = NativeImage(handle: handle, bytesValue: uint64(used),
       kindValue: NativeKind.MixedSelfLoop, mixedOffsets: offsets,
       mixedLengths: lengths, mixedEntries: entries)

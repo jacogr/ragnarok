@@ -101,6 +101,11 @@ byte cap; target encoding sizes can leave different slots checked on each ISA. T
 provide arbitrary graph composition or auxiliary scheduling beside a register-ring primary.
 The shared-async native suites cover source admission, primary priority, publication accounting,
 quota-bound handler restoration and borrowed retirement.
+The [mixed arena qualification](../tools/pvm_native_ci.py) also checks the exact executable bytes,
+aligned entry offsets, code cap and image move on the native host. Its two refusal builds verify
+that the publisher releases the arena when the first or second append fails. The publisher
+reports the failing slot after checking the unmap, and the second-slot run also requires a
+successful first append.
 
 ## Qualification and retirement
 

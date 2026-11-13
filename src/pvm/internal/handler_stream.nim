@@ -2546,7 +2546,7 @@ when defined(pvmX86Jit):
     ## The checked stream has no private x86 region owner. Raw regions report through their own JIT.
     default(array[2, uint64])
 
-  when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
+  when defined(pvmX86Jit):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
         found: var X86MemoryCycleHeader): bool =
       ## Recheck one published basic-block header, its original priced span and every emitted site.
@@ -2681,7 +2681,7 @@ when defined(pvmX86Jit):
         readResult: byte(readResult))
       true
 
-    when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+    when defined(pvmX86Jit):
       func flatX86WideReadBlock(f: FlatFrame, header: uint32,
           cycle: X86MemoryCycleCandidate, found: var X86MemoryCycleHeader,
           operations, loads: var uint32): bool =
@@ -2848,8 +2848,7 @@ when defined(pvmX86Jit):
         result = not flatX86SealMemoryCycle(f, prefixPc, candidate)
         f.barrier = original
 
-  when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
-      defined(pvmX86MemoryCycleSeal)):
+  when defined(pvmX86Jit):
     proc flatX86CycleAbort() {.cdecl, importc: "abort", header: "stdlib.h".}
       ## An impossible post-native receipt cannot be rolled back or replayed through checked code.
 
@@ -3078,17 +3077,6 @@ when defined(pvmX86Jit):
       var candidate = default(X86MemoryCycleCandidate)
       if not flatX86SealMemoryCycle(f, prefixPc, candidate): return false
       buildX86MemoryCycleImage(candidate, flatX86CycleEmission(f, candidate), image)
-
-    when defined(pvmX86WideCycleProof):
-      proc flatX86WideImageProof*(f: FlatFrame, prefixPc: uint32,
-          image: var seq[byte]): bool =
-        ## Prospective source-image renderer uses a synthetic aligned child address.
-        image = @[]
-        var candidate = default(X86WideCycleCandidate)
-        var emission = default(X86WideEmission)
-        if not flatX86SealWideCycle(f, prefixPc, candidate) or
-            not flatX86WideEmission(f, candidate, emission): return false
-        buildX86WideCycleImage(candidate, emission, 16'u32, 0'u32, image)
 
     when defined(pvmX86WideParentRefusalWitness):
       proc flatX86WideSourceProof*(f: FlatFrame, prefixPc: uint32,
