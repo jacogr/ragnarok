@@ -138,13 +138,11 @@ proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     return hostSuccess[AccumulationDispatchError](response)
   response.gas = MachineGas(available-cost)
   # Yield reads a natural 32-byte guest interval; full-width pointers never wrap into accessible RAM.
-  let copied = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+  var bytes = default(array[32, byte])
+  let copied = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[7])), bytes,
     context.copyLimit)
   case copied.error
   of MachineError.None:
-    var bytes = default(array[32, byte])
-    for i in 0..<32:
-      bytes[i] = copied.value[i] # A complete successful read supplies every commitment byte.
     let changed = recordAccumulationYield(context.effects, OutputCommitment(bytes))
     if changed.error != AccumulationEffectError.None:
       return hostFailure(AccumulationDispatchError.InvalidContext) # No partial effect publication.

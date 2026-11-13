@@ -1219,7 +1219,7 @@ proc writableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength
   ## Host dispatchers can establish permission precedence before ID lookup and independent local copying policy.
   inspectRange(memory, address, length, MemoryByteLimit(0x100000000'u64), true)
 
-proc copyPageOut(page: PageData, offset: int, output: var seq[byte], first, count: int)
+proc copyPageOut(page: PageData, offset: int, output: var openArray[byte], first, count: int)
     {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
       first >= 0 and first < output.len and count <= output.len-first.} =
   ## Copy immutable owned chunks into a fresh independent result; no source byte pointer escapes.
@@ -1248,6 +1248,21 @@ proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, coun
     copyMem(addr target.bytes[within], unsafeAddr input[first+copied], batch)
     copied += batch
 
+proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var openArray[byte]) =
+  ## Copy a preflighted interval of exactly output.len bytes from the immutable owner.
+  let size = output.len
+  if size == 0: return # Empty intervals never inspect or narrow their ignored pointer.
+  var copied = 0
+  var at = lowerBound(data, uint32(uint64(address) div 4096))
+  while copied < size:
+    # The preflight proved all addresses and native index conversions before allocation.
+    let physical = uint64(address) + uint64(copied)
+    let offset = int(physical mod 4096)
+    let count = min(size - copied, 4096 - offset)
+    copyPageOut(data.pages[at], offset, output, copied, count)
+    copied += count
+    inc at # Complete preflight proved each consecutive physical page occupies the next sorted slot.
+
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit): MachineResult[seq[byte]] =
   ## Copy a complete readable host range into independent bytes; failure never exposes a readable prefix.
@@ -1255,25 +1270,24 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
   if checked.error != MachineError.None:
     # Preserve the exact local reason or first inaccessible page without publishing partial bytes.
     return failure[seq[byte], bool](checked)
-  if memory.data == nil:
-    # Reestablish the validated non-nil owner for the compiler's local flow analysis.
-    return MachineResult[seq[byte]](status: MachineError.InvalidOwner)
   let data = memory.data
+  if data == nil: return MachineResult[seq[byte]](status: MachineError.InvalidOwner)
   let size = int(uint64(length))
   var bytes = newSeq[byte](size)
-  var copied = 0
-  var at = 0
-  if size > 0:
-    at = lowerBound(data, uint32(uint64(address) div 4096)) # Empty intervals never inspect or narrow their ignored pointer.
-  while copied < size:
-    # The preflight proved all addresses and native index conversions before allocation.
-    let physical = uint64(address) + uint64(copied)
-    let offset = int(physical mod 4096)
-    let count = min(size - copied, 4096 - offset)
-    copyPageOut(data.pages[at], offset, bytes, copied, count)
-    copied += count
-    inc at # Complete preflight proved each consecutive physical page occupies the next sorted slot.
-  MachineResult[seq[byte]](status: MachineError.None, completed: bytes)
+  if bytes.len != size: return MachineResult[seq[byte]](status: MachineError.LimitExceeded)
+  copyReadableRange(data, address, bytes)
+  MachineResult[seq[byte]](status: MachineError.None, completed: move(bytes))
+
+proc readBytesInto*(memory: Memory, address: MemoryAddress, output: var openArray[byte],
+    limit: MemoryByteLimit): MachineResult[bool] =
+  ## Copy a complete readable host range of output.len bytes into caller storage without allocating.
+  ## Apply the same preflight as readBytes; every refusal leaves the entire output untouched.
+  let checked = inspectRange(memory, address, MemoryLength(uint64(output.len)), limit, false)
+  if checked.error != MachineError.None: return checked
+  let data = memory.data
+  if data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  copyReadableRange(data, address, output)
+  checked
 
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     limit: MemoryByteLimit): MachineResult[Memory] =
