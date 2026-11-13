@@ -5,6 +5,8 @@
 ## The host serializes handle operations. The worker receives copied IR and a scalar job key
 ## under the runtime lock. Parked completions belong to individual registrations and free
 ## the worker before the host collects them. Credits bound image owners through unmapping.
+## An invalid lowering request with a genuine queued row completes with an empty
+## image. Collection returns that credit and the affected source stays checked.
 ## Only a ConnectedReadCycle owner can queue the runtime's one immutable mixed-entry arena,
 ## leaving a primary credit usable. Queued primary work claims first. Pressure may cancel the
 ## auxiliary while borrowed. The last return completes retirement after the frame restores
@@ -140,6 +142,7 @@ type
       mixedBorrowed: bool
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
+      rejectQueuedRequest: bool
       gate, followingGate: NativeCompilerPoint
       observation: NativeCompilerObservation
   NativeRuntimeData = ref object ## The named field has a supported stable address, unlike a ref payload cast.
@@ -527,44 +530,57 @@ proc compilerRun(raw: pointer) =
         compileMixedLoop(runtime)
         continue
     let key = runtime.key
-    assert requestMatches(runtime.request, key)
     assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
     assert runtime.slots[key.slot].location == CompletionLocation.Queued, "compiler claim is not Queued"
     runtime.work = WorkPhase.Running
     runtime.slots[key.slot].location = CompletionLocation.Running
     var image = default(NativeImage)
-    case key.kind
-    of NativeKind.PurePrefix, NativeKind.ClosedRegisterLoop:
-      # Copy the selected certificate before the lock or any witness gate can release.
-      let span = runtime.request.span
-      if releaseCompilerClaim(runtime, key):
-        image = lowerNative(span)
-    of NativeKind.RegisterRing:
-      when NativeCheckedReadEnabled:
-        # The exact copied ring is private to this worker before the lock can be released.
-        let ring = runtime.request.ring
-        if releaseCompilerClaim(runtime, key):
-          image = lowerNativeRegisterRing(ring)
-      else:
-        abortNativeReceipt()
-    of NativeKind.CheckedReadBody:
-      when NativeCheckedReadEnabled:
-        # Only read-capable builds own this payload, with no invocation memory borrow.
-        let body = readCertificate(runtime.request.readProof)
-        if releaseCompilerClaim(runtime, key):
-          image = lowerNativeReadBody(body)
-      else:
-        abortNativeReceipt()
+    var validRequest = requestMatches(runtime.request, key)
+    when defined(pvmSharedAsyncWitness):
+      if runtime.rejectQueuedRequest:
+        runtime.rejectQueuedRequest = false
+        validRequest = false
+    if not validRequest:
+      # Return the worker lock exactly as a normal lowering would. The shared
+      # completion path settles the actual row, including concurrent cancellation.
+      discard releaseCompilerClaim(runtime, key)
     else:
-      when NativeReadCycleEnabled:
-        # Fail closed before copying the region or releasing its exact mailbox claim.
-        if key.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
-        let cycle = runtime.request.readProof
+      case key.kind
+      of NativeKind.PurePrefix, NativeKind.ClosedRegisterLoop:
+        # Copy the selected certificate before the lock or any witness gate can release.
+        let span = runtime.request.span
         if releaseCompilerClaim(runtime, key):
-          image = lowerNativeReadCycle(cycle)
+          image = lowerNative(span)
+      of NativeKind.RegisterRing:
+        when NativeCheckedReadEnabled:
+          # The exact copied ring is private to this worker before the lock can be released.
+          let ring = runtime.request.ring
+          if releaseCompilerClaim(runtime, key):
+            image = lowerNativeRegisterRing(ring)
+        else:
+          discard releaseCompilerClaim(runtime, key)
+      of NativeKind.CheckedReadBody:
+        when NativeCheckedReadEnabled:
+          # Only read-capable builds own this payload, with no invocation memory borrow.
+          let body = readCertificate(runtime.request.readProof)
+          if releaseCompilerClaim(runtime, key):
+            image = lowerNativeReadBody(body)
+        else:
+          discard releaseCompilerClaim(runtime, key)
       else:
-        abortNativeReceipt()
-    assert not image.ready or image.kind == key.kind
+        when NativeReadCycleEnabled:
+          # Fail closed before copying the region or releasing its exact mailbox claim.
+          if key.kind == NativeKind.ConnectedReadCycle:
+            let cycle = runtime.request.readProof
+            if releaseCompilerClaim(runtime, key):
+              image = lowerNativeReadCycle(cycle)
+          else:
+            discard releaseCompilerClaim(runtime, key)
+        else:
+          discard releaseCompilerClaim(runtime, key)
+    if image.ready and image.kind != key.kind:
+      # Dispose an incompatible result while still outside the runtime lock.
+      image = default(NativeImage)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
       compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
@@ -609,6 +625,7 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
   when defined(pvmSharedAsyncWitness):
     # A restarted empty namespace cannot inherit a prior test gate or paused worker.
     data.paused = false
+    data.rejectQueuedRequest = false
     data.gate = NativeCompilerPoint.None
     data.followingGate = NativeCompilerPoint.None
     data.gateReached = false
@@ -1782,6 +1799,15 @@ proc nativeOwnerStatistics*(session: NativeSession): array[5, uint64] =
     result[0] = addNativeCount(result[0], data.mixedPublications)
 
 when defined(pvmSharedAsyncWitness):
+  proc rejectNextNativeCompilerRequest*(runtime: NativeRuntime) =
+    ## Reject one real queued claim before lowering without changing its row or job key.
+    let anchor {.cursor.} = runtime.data
+    assert anchor != nil
+    let data = addr anchor.storage
+    acquire(data.lock)
+    data.rejectQueuedRequest = true
+    release(data.lock)
+
   proc pauseNativeCompiler*(runtime: NativeRuntime, paused: bool) =
     ## Deterministic qualification barrier, never a timing warmup or production readiness wait.
     let anchor {.cursor.} = runtime.data
