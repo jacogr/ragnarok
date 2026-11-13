@@ -231,10 +231,12 @@ when declared(X86Block):
       visit = 0'u8
       capped = 1'u8
       outside = 2'u8
-      operationBytes = 160 # Three descriptor proofs and a load are the largest body operation.
-      operationFixes = 13  # Three per read descriptor plus miss and null guards.
-      exitBytes = 64       # Fixed comparison, loop edge and common scalar returns.
-      guardBytes = 10      # MOV, OR imm32, RET.
+      # Reserve the largest store: the relative address, two extent paths, two dirty
+      # page checks and a wide commit. Reads use three shorter extent paths.
+      operationBytes = 224
+      operationFixes = 15 # Eight extent edges, four dirty-page edges and three initial/selection edges.
+      exitBytes = 64 # Fixed comparison, loop edge and common scalar returns.
+      guardBytes = 10 # MOV, OR imm32, RET.
     result = @[]
     if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
       return
