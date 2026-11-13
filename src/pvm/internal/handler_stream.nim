@@ -26,7 +26,7 @@
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
 
-import std/[algorithm, assertions, bitops]
+import std/[assertions, bitops]
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
@@ -3628,6 +3628,28 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
         region.bytes.toOpenArray(offset, offset+4095)))
   oracle.StepError.InvalidMachine # Every dirty page needs a complete writable payload.
 
+proc siftDirtyIndices(indices: var openArray[uint32], start, count: int) =
+  ## Restore a max heap over the active prefix without allocating.
+  var root = start
+  while root < count div 2:
+    var child = root*2+1
+    if child+1 < count and indices[child] < indices[child+1]: inc child
+    if indices[root] >= indices[child]: return
+    swap(indices[root], indices[child])
+    root = child
+
+proc sortDirtyIndices(indices: var openArray[uint32]) =
+  ## Dirty ordinals are unique. In-place heapsort retains bounded worst-case work.
+  var start = indices.len div 2
+  while start > 0:
+    dec start
+    siftDirtyIndices(indices, start, indices.len)
+  var count = indices.len
+  while count > 1:
+    dec count
+    swap(indices[0], indices[count])
+    siftDirtyIndices(indices, 0, count)
+
 proc tryFlatMemorySnapshot*(f: FlatFrame, snapshot: var Memory): oracle.StepError =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
   if f.dirtyIndices.len == 0:
@@ -3640,7 +3662,7 @@ proc tryFlatMemorySnapshot*(f: FlatFrame, snapshot: var Memory): oracle.StepErro
     var indices = newSeq[uint32](f.dirtyIndices.len)
     if indices.len != f.dirtyIndices.len: return oracle.StepError.ResidentAllocationRefused
     for index in 0..<indices.len: indices[index] = f.dirtyIndices[index]
-    indices.sort()
+    sortDirtyIndices(indices)
     var start = 0
     for index in indices:
       # A successful store proves membership; binary search skips the untouched portion of a large map.

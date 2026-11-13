@@ -293,6 +293,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   let captured = (if exit == StepExit.Continued:
     captureMachine(cursor.program, cursor.memory, cursor.info)
     else: captureTerminalMachine(cursor.program, cursor.memory, cursor.info))
+  if captured.error == MachineError.LimitExceeded:
+    return StepResult(status: StepError.ResidentAllocationRefused)
   if captured.error != MachineError.None:
     return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
   StepResult(status: StepError.None, completed: StepOutcome(engine: suspension.engine, kind: exit,
@@ -577,6 +579,8 @@ proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
   if observed != StepError.None: return StepResult(status: observed)
   let captured = if kind in [StepExit.Panic, StepExit.Halt]: captureTerminalMachine(source, memory, cpu)
     else: captureMachine(source, memory, cpu)
+  if captured.error == MachineError.LimitExceeded:
+    return StepResult(status: StepError.ResidentAllocationRefused)
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   case kind
   of StepExit.Fault:
@@ -659,6 +663,8 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     if single: return StepResult(status: StepError.InvalidMachine)
     cpu.pc = CodeAddress(0)
     let terminal = captureTerminalMachine(owner, memory, cpu)
+    if terminal.error == MachineError.LimitExceeded:
+      return StepResult(status: StepError.ResidentAllocationRefused)
     if terminal.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
     return StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
         kind: StepExit.Panic, machine: terminal.value))
@@ -860,6 +866,8 @@ proc publishScalarHostTerminal(frame: FlatFrame, owner: Program, response: Scala
   let observed = tryFlatMemorySnapshot(frame, memory)
   if observed != StepError.None: return StepResult(status: observed)
   let captured = captureTerminalMachine(owner, memory, cpu)
+  if captured.error == MachineError.LimitExceeded:
+    return StepResult(status: StepError.ResidentAllocationRefused)
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidHostResponse)
   StepResult(status: StepError.None, completed: StepOutcome(
     engine: actualIndependentBackend(nativeOperations(frame) != nativeBaseline),
@@ -937,6 +945,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
     if observed != StepError.None:
       return executionResult[Reason](StepResult(status: observed))
     let captured = captureMachine(owner, memory, frame.info)
+    if captured.error == MachineError.LimitExceeded:
+      return executionResult[Reason](StepResult(status: StepError.ResidentAllocationRefused))
     if captured.error != MachineError.None:
       return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
     let suspension = StepOutcome(engine: actualIndependentBackend(nativeOperations(frame) !=

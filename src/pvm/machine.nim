@@ -206,7 +206,9 @@ proc replacedDirectory(pages: PageDirectory, slots: openArray[int],
       for offset in 0..<pages.blocks[group].entries.len:
         # Copy only this block's initialized references; no mutable sequence is shared.
         entries.add(pages.blocks[group].entries[offset])
-      let copied = PageBlock(entries: move(entries))
+      let copied: nil PageBlock = PageBlock()
+      if copied == nil: return MachineError.LimitExceeded
+      copied.entries = move(entries)
       built.blocks[group] = copied
       previousGroup = group
     built.blocks[group].entries[slot and 63] = replacements[index]
@@ -852,23 +854,37 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
     if cmpMem(borrowPageChunk(previous, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
       differences = differences or (1'u8 shl chunk)
   if differences != 0:
-    let changed = if differences == high(uint8):
+    let changed: nil PageData = PageData(index: previous.index, access: previous.access)
+    if changed == nil:
+      batch.status = MachineError.LimitExceeded
+      return batch.status
+    if differences == high(uint8):
       # Every old span has been superseded. Capture the complete borrowed page
       # with one backing and one tail, without retaining the old payload.
-      fullPage(previous.index, previous.access, bytes)
+      let backing: nil PageBacking = PageBacking()
+      let tail: nil PageChunk = PageChunk()
+      if backing == nil or tail == nil:
+        batch.status = MachineError.LimitExceeded
+        return batch.status
+      copyMem(addr backing.bytes[0], unsafeAddr bytes[0], 3584)
+      copyMem(addr tail.bytes[0], unsafeAddr bytes[3584], 512)
+      changed.backing = backing
+      changed.chunks[7] = tail
     else:
-      var chunks = default(array[8, nil PageChunk])
+      changed.backing = previous.backing
       for chunk in 0..<8:
         # Copy changed chunks and retain each unchanged effective span.
         if (differences and (1'u8 shl chunk)) != 0:
-          chunks[chunk] = copiedChunk(bytes, chunk*512)
+          let copied: nil PageChunk = PageChunk()
+          if copied == nil:
+            batch.status = MachineError.LimitExceeded
+            return batch.status
+          copyMem(addr copied.bytes[0], unsafeAddr bytes[chunk*512], 512)
+          changed.chunks[chunk] = copied
         else:
           # An unchanged nil override still resolves through the retained backing.
-          chunks[chunk] = previous.chunks[chunk]
-      let sparse = PageData(index: previous.index, zeroChunks: 0, access: previous.access,
-        backing: previous.backing, chunks: move(chunks))
-      dropCoveredBacking(sparse)
-      sparse
+          changed.chunks[chunk] = previous.chunks[chunk]
+      dropCoveredBacking(changed)
     let past = batch.slots.len+1
     batch.slots.add(at)
     batch.changed.add(changed)
@@ -888,8 +904,10 @@ proc finishResidentReplacements*(batch: ResidentReplacementBatch): MachineResult
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, batch.slots, batch.changed, directory)
   if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+  let owner: nil MemoryData = MemoryData(limit: data.limit)
+  if owner == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  owner.pages = move(directory)
+  MachineResult[Memory](status: MachineError.None, completed: Memory(data: owner))
 
 proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
   ## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
@@ -1484,6 +1502,14 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   writer.active = false # No mutable chunk/vector alias survives the transfer; future stores clone a new epoch.
   MachineResult[Memory](status: MachineError.None, completed: frozen)
 
+proc captureSnapshot(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
+  ## Install immutable children only after the result owner exists.
+  let data: nil MachineData = MachineData(info: info)
+  if data == nil: return MachineResult[Machine](status: MachineError.LimitExceeded)
+  data.program = program
+  data.memory = memory
+  MachineResult[Machine](status: MachineError.None, completed: Machine(data: data))
+
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
   ## Capture trusted CPU values at a validated instruction boundary.
   ## The supplied paid-block flag is retained as an environment input. Standard JAM
@@ -1497,8 +1523,7 @@ proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): Machi
   # Validate owner, address and opcode marker without reconstructing unused operands.
   if instructionOpcode(program, info.pc).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
-  MachineResult[Machine](status: MachineError.None,
-    completed: Machine(data: MachineData(program: program, memory: memory, info: info)))
+  captureSnapshot(program, memory, info)
 
 proc captureTerminalMachine*(program: Program, memory: Memory,
     info: MachineInfo): MachineResult[Machine] =
@@ -1512,8 +1537,7 @@ proc captureTerminalMachine*(program: Program, memory: Memory,
     return MachineResult[Machine](status: MachineError.InvalidGasState)
   if codeLength(program).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
-  MachineResult[Machine](status: MachineError.None,
-    completed: Machine(data: MachineData(program: program, memory: memory, info: info)))
+  captureSnapshot(program, memory, info)
 
 proc machineInfo*(machine: Machine): MachineResult[MachineInfo] =
   ## Copy all CPU values; changes to this returned value cannot affect its source machine.

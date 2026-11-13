@@ -44,4 +44,34 @@ assert tryObserveFlatHostMemory(frame, observation) == StepError.None
 let written = load(observation, Address, AccessWidth(1))
 assert written.error == MachineError.None and uint64(written.value) == 42
 assert uint64(load(input.value, Address, AccessWidth(1)).value) == 0
+
+proc checkStagingRefusal(source: Memory, dense: bool) =
+  ## Make the dirty-index collection irrelevant and refuse the replacement payload directly.
+  var batch = beginResidentReplacements(source)
+  var bytes = default(array[4096, byte])
+  bytes[0] = 42
+  if dense:
+    # Change every chunk to exercise the independent backing/tail path.
+    for chunk in 1..<8: bytes[chunk*512] = 42
+  let page = PageDescription(index: PageIndex(16), access: PageAccess.ReadWrite)
+  let pressure = alloc(1024*1024-getOccupiedMem()-131072)
+  assert pressure != nil
+  var padding = default(array[1024, nil pointer])
+  var used = 0
+  while 1024*1024-getOccupiedMem() > 288:
+    assert used < padding.len
+    padding[used] = alloc(if 1024*1024-getOccupiedMem() > 768: 256 else: 16)
+    assert padding[used] != nil
+    inc used
+  let occupied = getOccupiedMem()
+  assert 1024*1024-occupied >= 128 and 1024*1024-occupied < 512
+  let staged = stageResidentPage(batch, MemoryPageSlot(0), page, bytes)
+  assert getOccupiedMem() == occupied
+  for i in 0..<used: dealloc(padding[i])
+  dealloc(pressure)
+  assert staged == MachineError.LimitExceeded
+  assert finishResidentReplacements(batch).error == MachineError.LimitExceeded
+
+checkStagingRefusal(input.value, false)
+checkStagingRefusal(input.value, true)
 echo "PVM publication allocation refusal passed"
