@@ -18,7 +18,7 @@ type
     items*: ElementLimit
     bytes*: ByteLimit
   SegmentData = ref object ## Immutable fixed segment storage may be shared by acyclic successor owners.
-    bytes: FetchSegment
+    bytes: array[4104, byte]
   ExportData = ref object ## Ordered immutable references avoid recopying prior segment payloads on append.
     offset: ExportOffset
     segments: seq[SegmentData]
@@ -32,7 +32,7 @@ type
     of None:
       completed: ExportTransition
     else:
-      discard # No partial owner or charged reply escapes local refusal.
+      discard                      # No partial owner or charged reply escapes local refusal.
 
 func error*(outcome: RefinementExportResult): RefinementExportError =
   ## Inspect the reason without exposing a writable discriminator.
@@ -58,7 +58,7 @@ proc segment*(exports: RefinementExports, index: ExportCount): FetchSegment
   ## Return an independent fixed-size value; no mutable storage view escapes the owner.
   let data = exports.data
   assert data != nil # The public precondition rejects a default owner.
-  data.segments[int(uint64(index))].bytes
+  FetchSegment(data.segments[int(uint64(index))].bytes)
 
 proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: RegisterFile,
     memory: Memory, limits: ExportLimits): RefinementExportResult =
@@ -78,10 +78,8 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
     return RefinementExportResult(status: RefinementExportError.None, completed: transition)
   transition.response.gas = MachineGas(credit-3521)
   let size = min(uint64(registers[8]), 4104'u64)
-  var bytes = default(array[4104, byte])
   let address = MemoryAddress(uint64(registers[7]))
-  let input = if size == 0: readableRange(memory, address, MemoryLength(0))
-    else: readBytesInto(memory, address, bytes.toOpenArray(0, int(size)-1), MemoryByteLimit(4104))
+  let input = readableRange(memory, address, MemoryLength(size))
   case input.error
   of MachineError.None:
     discard # Even protocol-full contexts must first validate the complete selected input.
@@ -98,11 +96,24 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
   let next = count+1 # The preceding capacity bound proves next<=3072 and next*4104 fits every supported host int.
   if next > uint64(limits.items) or next*4104 > uint64(limits.bytes):
     return RefinementExportResult(status: RefinementExportError.LimitExceeded) # Local refusal is distinct from protocol FULL.
+  let payload: nil SegmentData = SegmentData()
+  if payload == nil:
+    return RefinementExportResult(status: RefinementExportError.LimitExceeded)
+  if size != 0:
+    # Write the validated prefix into its final owner. The unused suffix stays zero.
+    if readBytesInto(memory, address, payload.bytes.toOpenArray(0, int(size)-1),
+        MemoryByteLimit(4104)).error != MachineError.None:
+      return RefinementExportResult(status: RefinementExportError.InvalidMemory)
   var segments = newSeqOfCap[SegmentData](int(next))
+  if segments.rawData == nil:
+    return RefinementExportResult(status: RefinementExportError.LimitExceeded)
   for index in 0..<data.segments.len:
     segments.add(data.segments[index]) # Share immutable payloads, never the mutable sequence metadata.
-  segments.add(SegmentData(bytes: FetchSegment(bytes)))
-  transition.exports = RefinementExports(data: ExportData(offset: data.offset, segments: segments))
+  segments.add(payload)
+  let updated: nil ExportData = ExportData(offset: data.offset, segments: move(segments))
+  if updated == nil:
+    return RefinementExportResult(status: RefinementExportError.LimitExceeded)
+  transition.exports = RefinementExports(data: updated)
   transition.response.registers[7] = RegisterValue(
       offset+count) # Capacity proved the index below 3072 before addition.
   RefinementExportResult(status: RefinementExportError.None, completed: transition)
