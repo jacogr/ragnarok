@@ -328,6 +328,32 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     if cycles == uint64(limit):
       # Check before increment so even the maximum uint64 work limit cannot wrap.
       return GasResult(status: GasError.CycleLimitExceeded)
+    if starts > 0 and (ended or count == 32) and
+        ((waiting or transitioning) and 1'u32) != 0 and transitioning != 0:
+      # Decode is closed, issue found no eligible entry, and the head cannot retire.
+      # An executing entry can first change readiness or resources on its last positive cycle.
+      var advance = 100'i8
+      var active = transitioning
+      while active != 0:
+        let i = int(lowestEntryIndex(active))
+        active = active and (active-1)
+        if rob[i].stage != Stage.Executing or rob[i].left == 0:
+          # Decode and completed execution both have an event in the next cycle.
+          advance = 1
+          break
+        if rob[i].left < advance: advance = rob[i].left
+      if advance > 1:
+        # All skipped cycles have identical issue, decode and retirement decisions.
+        # A ceiling before the event is still the same local refusal.
+        if uint64(advance) > uint64(limit)-cycles:
+          return GasResult(status: GasError.CycleLimitExceeded)
+        let skipped = advance-1
+        cycles += uint64(skipped)
+        active = transitioning
+        while active != 0:
+          let i = int(lowestEntryIndex(active))
+          active = active and (active-1)
+          rob[i].left -= skipped
     inc cycles
     slots = 4
     starts = 5
