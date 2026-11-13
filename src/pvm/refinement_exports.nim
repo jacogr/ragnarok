@@ -69,7 +69,7 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
   let data = exports.data
   if data == nil:
     return RefinementExportResult(status: RefinementExportError.InvalidContext) # Never promote a missing owner to empty.
-  if memory.pageImage(PageIndex(0)).error != MachineError.None:
+  if memoryPageCount(memory).error != MachineError.None:
     return RefinementExportResult(status: RefinementExportError.InvalidMemory) # A local owner defect is not guest panic.
   var transition = ExportTransition(exports: exports,
     response: HostResponse(action: HostAction.Continue, gas: MachineGas(0), gasDeficit: GasDeficit(0),

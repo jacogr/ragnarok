@@ -408,7 +408,7 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
   if uint64(registers[10]) != selector:
     # A known but unimplemented selector must never become an unknown/absent-value response.
     return FetchResult(status: FetchError.UnsupportedSelector)
-  if pageImage(memory, PageIndex(0)).error != MachineError.None:
+  if memoryPageCount(memory).error != MachineError.None:
     # Reject default owners even when gas is insufficient or the clipped copy would be empty.
     return FetchResult(status: FetchError.InvalidMemory)
   let requested = uint64(registers[9])
