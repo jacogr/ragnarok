@@ -1669,6 +1669,7 @@ proc runNativeLoop*(session: NativeSession, registers: var RegisterFile,
   if loop.kind != NativeKind.ClosedRegisterLoop or
       remaining > high(uint64)-uint64(loop.sourceSpan): return NativeEntryFailure
   result = enterNativeLoop(data.image, registers, context)
+  if result == NativeEntryFailure: return
   when defined(pvmSharedAsyncWitness):
     if refuseLoopReceipt:
       refuseLoopReceipt = false

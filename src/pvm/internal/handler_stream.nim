@@ -1675,22 +1675,27 @@ func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
   ## Pack the original operands and target-dependent handler; mutable stream arguments never grant source facts.
   assert decoded.error == ProgramError.None
   let item = decoded.value
-  let pc = uint64(item.address)
-  assert pc <= uint64(high(uint32))-25
-  let next = pc+1+uint64(item.skip)
-  var target = 0'u64
-  if item.opcode == 1: target = next
-  elif item.displacement < 0:
-    if uint64(-item.displacement) <= pc: target = pc-uint64(-item.displacement)
-  else: target = pc+uint64(item.displacement)
   let valid = instructionTargetStartsBlock(decoded)
   let fallthrough = instructionHasFallthrough(decoded)
   var args = FlatArgs(x: uint64(item.x), y: uint32(uint64(item.y) and 0xffffffff'u64),
       slots: instructionRegisters(decoded))
-  if item.opcode in {1'u8, 40'u8, 80'u8}: args.y = uint32(target and 0xffffffff'u64)
-  elif item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
-    args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
-    args.y = uint32(next)
+  case item.opcode
+  of 1:
+    # The fallthrough opcode uses the original marked successor as its destination.
+    args.y = uint32(uint64(item.address)+1+uint64(item.skip))
+  of 40, 80..90, 170..175:
+    # Pack the original coordinates. The decoded validity selects the refusal handler for negative targets.
+    let pc = uint64(item.address)
+    let target = if item.displacement < 0:
+        if uint64(-item.displacement) <= pc: pc-uint64(-item.displacement) else: 0'u64
+      else: pc+uint64(item.displacement)
+    if item.opcode in {40'u8, 80'u8}:
+      args.y = uint32(target and 0xffffffff'u64)
+    else:
+      args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
+      args.y = uint32(pc+1+uint64(item.skip))
+  else:
+    discard # This handler consumes only the original decoded operands.
   FlatSourcePayload(args: args, handler: flatHandler(item.opcode, valid, fallthrough))
 
 proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
@@ -2116,13 +2121,12 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   let original = f.nativeOriginal
   if original == nil or off != f.nativeEntry:
     return flatLocal(f, off, oracle.StepError.BackendFailure)
-  let span = nativeSpanInfo(f.nativeSession)
-  if not nativeSpanReady(f.nativeSession) or
-      not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.PurePrefix) or
-      f.pricingKind != 0 or
-      f.barrier != flatStop or not f.info.blockCharged or
-      span.epoch != f.nativeInstalledEpoch:
+  if f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
+      not nativeSpanReady(f.nativeSession) or
+      not matchesNativeImage(f.nativeSession, f.nativeInstallation.key, NativeKind.PurePrefix):
     return original(f, off)
+  let span = nativeSpanInfo(f.nativeSession)
+  if span.epoch != f.nativeInstalledEpoch: return original(f, off)
   var reservedEnd = f.reservation
   if (reservedEnd and flatReservationHeaderFlag) != 0:
     let header = reservedEnd and not flatReservationHeaderFlag
@@ -2221,13 +2225,14 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
   let original = f.nativeOriginal
   if original == nil:
     return flatLocal(f, off, oracle.StepError.BackendFailure)
+  if f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
+      off != f.nativeEntry or not nativeSpanReady(f.nativeSession):
+    return original(f, off)
   let loop = nativeLoopInfo(f.nativeSession)
-  if not nativeSpanReady(f.nativeSession) or loop.kind != NativeKind.ClosedRegisterLoop or
+  if loop.kind != NativeKind.ClosedRegisterLoop or
       not matchesNativeImage(f.nativeSession, f.nativeInstallation.key,
           NativeKind.ClosedRegisterLoop) or
-      nativeEpoch(f.nativeSession) != f.nativeInstalledEpoch or f.pricingKind != 0 or
-      f.barrier != flatStop or
-      not f.info.blockCharged or off != f.nativeEntry or off != loop.header+1 or
+      nativeEpoch(f.nativeSession) != f.nativeInstalledEpoch or off != loop.header+1 or
       f.reservation != (loop.header or flatReservationHeaderFlag) or
       f.handlers[int(loop.header)] != flatCharge or f.arguments[int(loop.header)].x != loop.price or
       f.arguments[int(loop.header)].y != loop.sourceSpan: return original(f, off)
