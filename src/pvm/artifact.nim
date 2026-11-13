@@ -277,7 +277,12 @@ proc loadArtifact*(path: string, limits: ArtifactLimits = defaultArtifactLimits(
     if count < 0: return ArtifactResult[Artifact](status: ArtifactError.IoError)
     if uint64(bytes.len) > limits.bytes or uint64(count) > limits.bytes-uint64(bytes.len):
       return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
-    for i in 0..<count:
-      bytes.add(chunk[i]) # At most one policy-bounded container is retained.
+    let first = bytes.len
+    if count > high(int)-first: return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
+    let past = first+count
+    # The chunk already holds every byte. Check growth before taking a pointer into the new span.
+    bytes.growUnsafe(past)
+    if bytes.len != past: return ArtifactResult[Artifact](status: ArtifactError.LimitExceeded)
+    copyMem(addr bytes[first], addr chunk[0], count)
   decodeArtifact(bytes, limits)
 

@@ -7,6 +7,15 @@
 
 import ../program
 
+const
+  aluUnit = 1'u32
+  loadUnit = 1'u32 shl 4
+  storeUnit = 1'u32 shl 8
+  multiplyUnit = 1'u32 shl 12
+  divideUnit = 1'u32 shl 16
+  resourceGuardBits = 0x88888'u32
+  allUnits = 4*aluUnit+4*loadUnit+4*storeUnit+multiplyUnit+divideUnit
+
 type
   BlockGas* = distinct uint64 ## A computed block charge is distinct from both a program address and a local work limit.
   GasCycleLimit* = distinct uint64 ## Local simulation ceiling counts pipeline cycles, including the three-cycle adjustment.
@@ -20,8 +29,8 @@ type
     else:
       # Failures contain no cost or partial pipeline progress.
       discard
-  # ALU/load/store occupancy never exceeds4, multiply/divide never exceeds1; signed bytes retain exact nonnegative counters.
-  Units = array[5, int8]
+  # One four-bit lane per resource. The top bit in each lane is available for comparison.
+  Units = uint32
   # Register sets are thirteen-bit masks; all indices come from the validated decoder.
   Profile = object
     sources, destinations: uint16
@@ -53,7 +62,7 @@ func bit(index: RegisterIndex): uint16 =
 func profile(item: Instruction): Profile =
   ## Derive all syntactically read/written registers, including conditional-move fallbacks.
   result = Profile(sources: 0, destinations: 0, cycles: 1, slots: 1,
-    units: [1'i8, 0'i8, 0'i8, 0'i8, 0'i8])
+    units: aluUnit)
   let a = bit(item.a)
   let b = bit(item.b)
   let d = bit(item.d)
@@ -94,11 +103,11 @@ func profile(item: Instruction): Profile =
   of 0, 1:
     # Finishing instructions consume no execution units.
     result.cycles = 2
-    result.units[0] = 0
+    result.units = 0
   of 2:
     # An unlikely marker is a long pipeline operation, not a block terminator.
     result.cycles = 40
-    result.units[0] = 0
+    result.units = 0
   of 10:
     # A host call has fixed cost and continues the same gas block.
     result.cycles = 100
@@ -106,37 +115,37 @@ func profile(item: Instruction): Profile =
   of 20, 51:
     # Immediate loads consume frontend slots but no execution unit.
     result.slots = (if item.opcode == 20: 2 else: 1)
-    result.units[0] = 0
+    result.units = 0
   of 30..33, 59..62, 70..73, 120..123:
     # Every store uses one ALU and one store unit for 25 cycles.
     result.cycles = 25
-    result.units[2] = 1
+    result.units = result.units or storeUnit
   of 52..58, 124..130:
     # Every load uses one ALU and one load unit for 25 cycles.
     result.cycles = 25
-    result.units[1] = 1
+    result.units = result.units or loadUnit
   of 40, 80:
     # Static jumps have fixed latency and no execution resource demand.
     result.cycles = 15
-    result.units[0] = 0
+    result.units = 0
   of 50, 180:
     # Indirect jumps still wait for their register dependencies.
     result.cycles = 22
-    result.units[0] = 0
+    result.units = 0
   of 81..90, 170..175:
     # The caller fills the branch latency using actual raw target bytes.
     result.cycles = 20
   of 100:
     # Move elimination is handled in the frontend without entering the reorder buffer.
     result.cycles = 0
-    result.units[0] = 0
+    result.units = 0
   of 101..104, 107..109:
     # Counts/extensions use one ALU cycle independently of aliasing.
     discard
   of 105, 106:
     # Trailing-zero counts occupy two ALUs for two cycles.
     result.cycles = 2
-    result.units[0] = 2
+    result.units = 2*aluUnit
   of 110, 132..134, 149, 151..153, 158, 200, 201, 210..212:
     # Simple full-width operations save one decode slot when a source is overwritten.
     result.slots = (if overlap: 1 else: 2)
@@ -148,12 +157,12 @@ func profile(item: Instruction): Profile =
     # Word multiplication occupies the unique multiply unit for four cycles.
     result.cycles = 4
     result.slots = (if overlap: 2 else: 3)
-    result.units[3] = 1
+    result.units = result.units or multiplyUnit
   of 150, 202:
     # Full-width multiplication has three-cycle latency.
     result.cycles = 3
     result.slots = (if overlap: 1 else: 2)
-    result.units[3] = 1
+    result.units = result.units or multiplyUnit
   of 136, 137, 142, 143, 216, 217:
     # Comparisons have fixed three-cycle and three-slot costs.
     result.cycles = 3
@@ -181,7 +190,7 @@ func profile(item: Instruction): Profile =
     # Division and remainder occupy the unique divide unit for sixty cycles.
     result.cycles = 60
     result.slots = 4
-    result.units[4] = 1
+    result.units = result.units or divideUnit
   of 197..199, 221, 223:
     # Only the value source A, not the shift-count source B, affects this discount.
     result.cycles = 2
@@ -193,7 +202,7 @@ func profile(item: Instruction): Profile =
     # Mixed-sign high multiplication has two additional cycles.
     result.cycles = (if item.opcode == 215: 6 else: 4)
     result.slots = 4
-    result.units[3] = 1
+    result.units = result.units or multiplyUnit
   of 218, 219:
     # Register conditional moves have two slots and two cycles.
     result.cycles = 2
@@ -206,12 +215,10 @@ func profile(item: Instruction): Profile =
     # Validated instructions exhaust the pinned opcode table.
     discard
 
-func fits(needed, available: Units): bool =
-  ## Check memberwise resource availability without signed subtraction underflow.
-  result = true
-  # Every resource kind must be simultaneously available.
-  for i in 0..<5:
-    if needed[i] > available[i]: return false
+func fits(needed, available: Units): bool {.inline.} =
+  ## Set a guard bit before subtracting so each lane can be compared independently.
+  ## Every demand is less than eight; a guard bit clears exactly when its lane falls short.
+  (((available or resourceGuardBits) - needed) and resourceGuardBits) == resourceGuardBits
 
 func lowestEntryIndex(mask: uint32): cint {.importc: "__builtin_ctz", nodecl.}
   ## Count trailing zeros of a nonzero mask on the supported C toolchain.
@@ -242,7 +249,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
   var cycles = 0'u64
   var slots = 4
   var starts = 5
-  var available: Units = [4'i8, 4'i8, 4'i8, 1'i8, 1'i8]
+  var available: Units = allUnits
   # Each transition decodes a bounded instruction, starts one entry, or advances a bounded cycle.
   while true:
     if not ended and count < 32:
@@ -307,7 +314,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
         candidates = candidates and (candidates - 1'u32)
       if selected >= 0:
         # Resource occupancy persists until the last executing cycle, not merely this issue slot.
-        for i in 0..<5: available[i] -= rob[selected].units[i]
+        available -= rob[selected].units # fits proved every lane can subtract without a borrow.
         rob[selected].stage = Stage.Executing
         let bit = 1'u32 shl selected
         waiting = waiting and not bit
@@ -321,6 +328,32 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     if cycles == uint64(limit):
       # Check before increment so even the maximum uint64 work limit cannot wrap.
       return GasResult(status: GasError.CycleLimitExceeded)
+    if starts > 0 and (ended or count == 32) and
+        ((waiting or transitioning) and 1'u32) != 0 and transitioning != 0:
+      # Decode is closed, issue found no eligible entry, and the head cannot retire.
+      # An executing entry can first change readiness or resources on its last positive cycle.
+      var advance = 100'i8
+      var active = transitioning
+      while active != 0:
+        let i = int(lowestEntryIndex(active))
+        active = active and (active-1)
+        if rob[i].stage != Stage.Executing or rob[i].left == 0:
+          # Decode and completed execution both have an event in the next cycle.
+          advance = 1
+          break
+        if rob[i].left < advance: advance = rob[i].left
+      if advance > 1:
+        # All skipped cycles have identical issue, decode and retirement decisions.
+        # A ceiling before the event is still the same local refusal.
+        if uint64(advance) > uint64(limit)-cycles:
+          return GasResult(status: GasError.CycleLimitExceeded)
+        let skipped = advance-1
+        cycles += uint64(skipped)
+        active = transitioning
+        while active != 0:
+          let i = int(lowestEntryIndex(active))
+          active = active and (active-1)
+          rob[i].left -= skipped
     inc cycles
     slots = 4
     starts = 5
@@ -341,7 +374,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
         # Executing entries stay in the mask through their zero-latency cycle.
         if rob[i].left == 1:
           # Release resources on the transition to zero remaining latency.
-          for j in 0..<5: available[j] += rob[i].units[j]
+          available += rob[i].units # Returning held units cannot exceed that lane's capacity.
           busy = busy and not bit # Readiness changes at the same one-to-zero latency transition, before the next issue cycle.
         if rob[i].left > 0:
           dec rob[i].left
