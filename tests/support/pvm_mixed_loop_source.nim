@@ -104,7 +104,7 @@ proc paidAbsolute(opcode, register: byte, address: uint64): array[6, byte] =
   [opcode, register, byte(address and 255), byte((address shr 8) and 255),
     byte((address shr 16) and 255), byte((address shr 24) and 255)]
 
-proc paidPattern(): Program =
+proc paidPattern(width: byte = 4, relative = false): Program =
   ## Bind folded facts, earlier aliasing writes and a word Store crossing a bitmap boundary.
   var code: seq[byte] = @[]
   var starts: seq[int] = @[]
@@ -118,7 +118,15 @@ proc paidPattern(): Program =
   emit([130'u8, 0x92, 0]) # Load U64 R2,[R9].
   emit(paidAbsolute(57, 3, PaidMixedBase)) # Load S32 R3,[PaidMixedBase], observing the earlier byte write.
   emit([149'u8, 0x99, 4]) # R9 advances into a crossing on the next visit.
-  emit(paidAbsolute(61, 3, PaidMixedWordAddress))
+  let codeByWidth = case width
+    of 2: 60'u8
+    of 4: 61'u8
+    else: 62'u8
+  if relative:
+    # The negative displacement moves from R4 to the first byte of the crossing.
+    emit([codeByWidth+61, 0x43'u8, 0xff])
+  else:
+    emit(paidAbsolute(codeByWidth, 3, PaidMixedWordAddress+2-uint64(width div 2)))
   emit([149'u8, 0x55, 1]) # R5 advances to the BNE bound.
   let displacement = cast[uint32](-int32(code.len))
   emit([171'u8, 0xc5, byte(displacement and 255), byte((displacement shr 8) and 255),
@@ -140,6 +148,14 @@ proc runPaidMixedLoopSource*(report: bool = false) =
   when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
     witnessFlatPaidMixedLoop(paidPattern(), 0, PaidMixedBase, PaidMixedWordAddress,
       PaidMixedReadBase, report)
+    for width in [2'u8, 4, 8]:
+      # Exercise both decoded address forms at the same cross-bitmap boundary.
+      let crossing = PaidMixedWordAddress+2-uint64(width div 2)
+      if width != 4:
+        witnessFlatPaidMixedLoop(paidPattern(width), 0, PaidMixedBase, crossing,
+          PaidMixedReadBase, false, width, true)
+      witnessFlatPaidMixedLoop(paidPattern(width, true), 0, PaidMixedBase, crossing,
+        PaidMixedReadBase, false, width, true)
 
 proc runMixedLoopSource*() =
   ## Validate the two-borrow layout and compare original source authority with the linked stream.

@@ -60,8 +60,8 @@ when declared(X86Block):
     const stackOffset = byte(NativeCycleWritableOffset)
     const rwOffset = stackOffset+24
     let access = X86CanonicalAccess()
-    if width == 4:
-      put(code, [0xba'u8]) # MOV EDX,absolute32 for opcode 61.
+    if op.opcode < 120:
+      put(code, [0xba'u8]) # MOV EDX,absolute32.
     else:
       readBodyBase(code, access, op.slots.bIndex)
       put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps the current base modulo 2^32.
@@ -87,13 +87,16 @@ when declared(X86Block):
     readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset)
     put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI checks the dirty bitmap pointer.
     cycleEdge(code, fixes, 0x84, refusal)
-    readCycleDirtyPage(code, fixes, refusal, false)
-    if width == 4:
-      # A word crossing a page needs both bits before the single write.
-      readCycleDirtyPage(code, fixes, refusal, true)
+    readCycleDirtyPage(code, fixes, refusal)
+    if width > 1:
+      # A split access needs the last byte's page as well as the first page.
+      readCycleDirtyPage(code, fixes, refusal, width-1)
     readAccess(code, access, op.slots.aIndex, false)
-    if width == 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX commits the word.
-    else: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL commits the byte.
+    case width
+    of 1: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL.
+    of 2: put(code, [0x66'u8, 0x41, 0x89, 0x00]) # MOV [R8],AX.
+    of 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX.
+    else: put(code, [0x49'u8, 0x89, 0x00]) # MOV [R8],RAX.
 
   template mixedLoopByteStore(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, refusal: byte, nextLabel: var byte) =
@@ -228,6 +231,12 @@ when declared(X86Block):
       visit = 0'u8
       capped = 1'u8
       outside = 2'u8
+      # Reserve the largest store: the relative address, two extent paths, two dirty
+      # page checks and a wide commit. Reads use three shorter extent paths.
+      operationBytes = 224
+      operationFixes = 15 # Eight extent edges, four dirty-page edges and three initial/selection edges.
+      exitBytes = 64 # Fixed comparison, loop edge and common scalar returns.
+      guardBytes = 10 # MOV, OR imm32, RET.
     result = @[]
     if operations.len < int(NativeMixedLoopMinimum) or operations.len > int(NativeReadFactLimit):
       return
@@ -235,8 +244,12 @@ when declared(X86Block):
     let branch = operations[terminal]
     if branch.opcode != 171 or guards == 0: return
 
+    # Reserve and validate both buffers before any branch or operation is emitted.
+    let byteCapacity = min(NativeImageByteLimit, terminal*(operationBytes+guardBytes)+96)
     var code = default(X86Block)
-    var fixes: seq[X86CycleFixup] = @[]
+    code.bytes = newSeqOfCap[byte](byteCapacity)
+    var fixes = newSeqOfCap[X86CycleFixup](terminal*operationFixes+6)
+    if code.bytes.rawData == nil or fixes.rawData == nil: return
     var labels = default(X86MixedLoopLabels)
     var guardLabels = default(array[int(NativeReadFactLimit)-1, byte])
     var nextLabel = 3'u8
@@ -253,6 +266,8 @@ when declared(X86Block):
 
     labels[int(visit)] = code.bytes.len
     for index in 0..<terminal:
+      # Do not let a large final operation grow the checked allocation.
+      if code.bytes.len > byteCapacity-operationBytes: return
       let op = operations[index]
       let encoding = nativeReadEncodingOpcode(op.opcode)
       let width = nativeMixedLoopStoreWidth(op.opcode)
@@ -270,6 +285,7 @@ when declared(X86Block):
       else:
         return # The source certificate omits folded no-ops and binds the unique terminal.
     if emittedGuards != guards: return
+    if code.bytes.len > byteCapacity-exitBytes-guardBytes*countSetBits(guards): return
 
     put(code, [0x41'u8, 0xff, 0xc1]) # INC R9D after the complete original body.
     readAccess(code, access, branch.slots.aIndex, false)
@@ -297,7 +313,8 @@ when declared(X86Block):
     for fix in fixes:
       # The self-edge may patch backward. All targets and fixups remain image-local.
       let target = labels[int(fix.target)]
-      assert target > 0 and target < code.bytes.len
+      if target <= 0 or target >= code.bytes.len or fix.at < 0 or fix.at > code.bytes.len-4:
+        return
       let delta = cast[uint32](int32(target-(fix.at+4)))
       for shift in 0..<4:
         code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)

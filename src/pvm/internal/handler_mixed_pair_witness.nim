@@ -24,7 +24,7 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       assert a.value.access == b.value.access and a.value.bytes == b.value.bytes
 
   proc witnessFlatPaidMixedLoop*(program: Program, pc: uint32, base, wordAddress,
-      readBase: uint64, report: bool = true) =
+      readBase: uint64, report: bool = true, width: byte = 4, storesOnly = false) =
     ## Compare true native entries to original checked workers before and after repairing a fault.
     let cycles = GasCycleLimit(100000)
     var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
@@ -40,7 +40,9 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       assert false, "paid witness native worker failed to start"
     let span = 10'u64
     let firstWordPage = wordAddress div 4096
-    let lastWordPage = (wordAddress+3) div 4096
+    let lastByte = wordAddress+uint64(width)-1
+    let lastWordPage = lastByte div 4096
+    let storeMask = if width == 8: high(uint64) else: (1'u64 shl (int(width)*8))-1
     assert lastWordPage == firstWordPage+1 and firstWordPage shr 6 != lastWordPage shr 6
     var first = PageImage(index: PageIndex(base div 4096), access: PageAccess.ReadWrite)
     first.bytes[3] = 0x80
@@ -52,13 +54,15 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
     wordEnd.bytes[1] = 0x77
     let read = PageImage(index: PageIndex(readBase div 4096), access: PageAccess.ReadOnly)
 
-    for scenario in 0..9:
+    # The extra width controls exercise both dirty pages and both paid refusal sites.
+    for scenario in 0..(if storesOnly: 3 else: 9):
       let pages = if scenario == 7: @[first, wordStart, read] else: @[first, wordStart, wordEnd, read]
       let visits = if scenario in [0, 5]: 2'u64 else: 1'u64
       let gas = if scenario == 9: blockPrice-1 else: visits*blockPrice+10
       let quota = if scenario == 8: 3'u64 else: visits*span+1
       var info = MachineInfo(pc: CodeAddress(uint64(pc)), gas: MachineGas(gas))
       info.registers[0] = RegisterValue(0xa5)
+      info.registers[4] = RegisterValue(0x100000000'u64+wordAddress+1) # Check low-32-bit wrap.
       info.registers[5] = RegisterValue(base)
       info.registers[6] = RegisterValue(readBase)
       let readOffset = case scenario
@@ -79,7 +83,7 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         assert flatUnresolvedBranch[171](frame[], walk.terminal) == walk.terminal
         if scenario != 6: flatMarkStore[1](frame[], base)
         if scenario notin [2, 3]: flatMarkStore[1](frame[], wordAddress)
-        if scenario notin [1, 3, 7]: flatMarkStore[1](frame[], wordAddress+3)
+        if scenario notin [1, 3, 7]: flatMarkStore[1](frame[], lastByte)
 
       let proof = buildFlatMixedLoop(native, pc, 1, allowPaid = true)
       assert proof.complete and uint64(proof.span) == span and proof.count == 8 and proof.price == blockPrice
@@ -145,8 +149,9 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       if scenario in [0, 1, 2, 3, 6]:
         let expected = if scenario == 0: 0xffffffff8000a5a5'u64 else: 0xffffffff800000a5'u64
         assert uint64(native.info.registers[3]) == expected
-        let finalWord = load(flatMemorySnapshot(native), MemoryAddress(wordAddress), AccessWidth(4))
-        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (expected and 0xffffffff'u64)
+        let finalWord = load(flatMemorySnapshot(native), MemoryAddress(wordAddress),
+          AccessWidth(width))
+        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (expected and storeMask)
       if scenario in [4, 5, 7]:
         assert native.exit == oracle.StepExit.Fault and native.info.blockCharged
         assert uint64(native.info.pc) == uint64(observed.lastGuardPc)

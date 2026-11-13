@@ -18,6 +18,7 @@ import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
+  from std/bitops import countSetBits
   import ./native_read_cycle
   import ./native_mixed_loop
   import ./native_bitmap_loop
@@ -1402,9 +1403,10 @@ when defined(pvmX86Jit):
         put(code, [0xf3'u8, 0x48, 0xa5]) # REP MOVSQ, with SysV's clear direction flag.
 
       proc readCycleDirtyPage(code: var X86Block, fixes: var seq[X86CycleFixup], unpaid: byte,
-          last: bool) =
+          lastByte: byte = 0) =
         ## BT uses the full page index after bounding its containing bitmap word.
-        if last: put(code, [0x8d'u8, 0x42, 0x03]) # LEA EAX,[RDX+3]; the end was range-checked.
+        ## The caller already proved the complete access ends within guest memory.
+        if lastByte != 0: put(code, [0x8d'u8, 0x42, lastByte]) # LEA EAX,[RDX+lastByte].
         else: put(code, [0x89'u8, 0xd0]) # MOV EAX,EDX.
         put(code, [0xc1'u8, 0xe8, 0x0c, 0x89, 0xc1, 0xc1, 0xe9, 0x06]) # page, then word index.
         readCycleContextOp(code, [0x49'u8, 0x3b, 0x8a], NativeCycleDirtyWordsOffset) # CMP RCX,[R10+words].
@@ -1529,13 +1531,13 @@ when defined(pvmX86Jit):
         readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset) # MOV RSI,[R10+dirty].
         put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI.
         cycleEdge(code, fixes, 0x84, unpaid)
-        readCycleDirtyPage(code, fixes, unpaid, false)
+        readCycleDirtyPage(code, fixes, unpaid)
         # A four-byte aligned write stays in one page. Keep both checks for unaligned words.
         let pagesReady = nextLabel
         inc nextLabel
         put(code, [0xf6'u8, 0xc2, 0x03]) # TEST DL,3.
         cycleEdge(code, fixes, 0x84, pagesReady)
-        readCycleDirtyPage(code, fixes, unpaid, true)
+        readCycleDirtyPage(code, fixes, unpaid, 3)
         labels[int(pagesReady)] = code.bytes.len
         if storePage:
           # Failed fills still reach the unchanged commit with the original R8.

@@ -22,10 +22,12 @@ const
   NativeMixedLoopGuardMask = 0x3f'u32
 
 func nativeMixedLoopStoreWidth*(opcode: byte): uint32 =
-  ## The paid path admits relative U8 and absolute U32 Stores.
+  ## Absolute and wrapped relative stores truncate to the same four widths.
   case opcode
-  of 120: 1'u32
-  of 61: 4'u32
+  of 59, 120: 1'u32
+  of 60, 121: 2'u32
+  of 61, 122: 4'u32
+  of 62, 123: 8'u32
   else: 0'u32
 
 type
@@ -49,7 +51,7 @@ type
     paid*: bool
 
 func nativeMixedLoopPaidGuards*(proof: NativeMixedLoop): uint32 =
-  ## Admit the source order Read, byte Store, Read, word Store and an infallible suffix.
+  ## Admit two independently guarded read/store groups and an infallible suffix.
   if proof.count < 5 or proof.count > uint8(NativeReadFactLimit): return 0
   var guards = 0'u32
   var stores = 0
@@ -58,8 +60,7 @@ func nativeMixedLoopPaidGuards*(proof: NativeMixedLoop): uint32 =
     let opcode = proof.operations[index].opcode
     let width = nativeMixedLoopStoreWidth(opcode)
     if width != 0:
-      if not read or (stores == 0 and width != 1) or (stores == 1 and width != 4) or stores == 2:
-        return 0
+      if not read or stores == 2: return 0
       inc stores
       read = false
       guards = guards or (1'u32 shl index)
