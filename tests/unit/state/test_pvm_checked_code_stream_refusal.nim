@@ -7,6 +7,7 @@ import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas
+import ../../../src/pvm/internal/handler_stream
 
 const CodeLength = 512*1024
 var wire = default(array[5+CodeLength+CodeLength div 8, byte])
@@ -22,7 +23,9 @@ let owner = decoded.value
 let admitted = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(10000)))
 assert admitted.error == PreparationError.None
 let prepared = admitted.value
-let memory = captureMemory([], PageLimit(0)).value
+let regions = [InitializationRegion(first: PageIndex(16), past: PageIndex(17),
+  access: PageAccess.ReadWrite, source: InitializationSource.First, offset: 0, length: 0)]
+let memory = captureInitializationMemory(regions, [], [], PageLimit(1)).value
 let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(100))
 let source = captureMachine(owner, memory, info).value
 block:
@@ -38,4 +41,15 @@ let retried = execute(source, ExecutionStepLimit(1), prepared)
 assert retried.error == StepError.None and retried.value.exit == StepExit.Panic
 assert uint64(machineInfo(retried.value.machine).value.gas) == 100-uint64(
   blockGas(owner, CodeAddress(0), GasCycleLimit(10000)).value)
+
+let plan = newFlatPlan(owner, GasCycleLimit(10000))
+var built = prepareFlatMemoryFrame(plan, memory, info)
+assert built.error == FlatError.None
+let filler = alloc(1024*1024-getOccupiedMem())
+assert filler != nil and getOccupiedMem()+64 > 1024*1024
+let refused = takeFlatMemoryScratch(borrowFrame(built), 65536)
+dealloc(filler)
+assert refused == nil
+let scratch = takeFlatMemoryScratch(borrowFrame(built), 65536)
+assert scratch != nil and flatMemoryScratchPayload(scratch) == 8192
 echo "PVM stream allocation refusal passed"

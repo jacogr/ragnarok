@@ -4199,11 +4199,20 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil
-  var scratch = FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
-    roBase: f.roBase, rwBase: f.rwBase, stackBase: f.stackBase,
-    ro: move(f.ro), rw: default(RWView), stack: move(f.stack), extra: move(f.extra),
-    dirty: move(f.dirtyIndices), dirtyPages: move(f.dirtyPages), payloadBytes: total,
-    rwStorage: move(f.rwStorage))
+  let scratch: nil FlatMemoryScratch = FlatMemoryScratch()
+  if scratch == nil: return nil # Optional retention leaves the frame in charge of cleanup.
+  scratch.baseline = f.sourceMemory
+  scratch.pages = move(f.sourcePages)
+  scratch.roBase = f.roBase
+  scratch.rwBase = f.rwBase
+  scratch.stackBase = f.stackBase
+  scratch.ro = move(f.ro)
+  scratch.stack = move(f.stack)
+  scratch.extra = move(f.extra)
+  scratch.dirty = move(f.dirtyIndices)
+  scratch.dirtyPages = move(f.dirtyPages)
+  scratch.payloadBytes = total
+  scratch.rwStorage = move(f.rwStorage)
   scratch.rw = borrowRW(scratch.rwStorage)
   clearFlatBorrowedMemory(f) # Child moves do not invoke the whole-frame move hook.
   scratch
