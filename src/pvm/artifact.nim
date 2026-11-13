@@ -140,6 +140,8 @@ proc initialMemory(ro, rw, stack: uint32, input: openArray[byte], roData, rwData
       past: PageIndex(uint32(0xfffe0000'u64 div 4096)), access: PageAccess.ReadWrite,
       source: InitializationSource.First, offset: 0, length: 0)]
   let memory = captureInitializationMemory(regions, input, input, PageLimit(limit))
+  if memory.error in {MachineError.LimitExceeded, MachineError.AllocationRefused}:
+    return ArtifactResult[Memory](status: ArtifactError.LimitExceeded)
   if memory.error != MachineError.None:
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   ArtifactResult[Memory](status: ArtifactError.None, completed: memory.value)

@@ -80,6 +80,9 @@ descriptor, including empty source-end spans, is validated before the aggregate
 page budget and any allocation. Capture builds fresh page headers and final owned
 payload chunks directly, sharing one operation-local immutable zero chunk for
 absent prefixes and suffixes. The page ceiling bounds logical mapped pages.
+If any page or directory allocation fails, capture releases the private partial
+directory and returns `LimitExceeded`. JAM invocation preserves this local
+resource error.
 Initialization is linear in input/program validation, copied prefix bytes and
 mapped page headers. It performs no guest instruction or host side effect.
 

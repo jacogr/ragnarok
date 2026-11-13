@@ -5,7 +5,6 @@
 ## Exposes InitializationLimits, InitializationError/Result and initializeMachine. Inputs are borrowed
 ## only during the call; successful machines own immutable acyclic copies. See spec/pvm-initialization.md.
 
-import std/assertions
 import ./[program, machine]
 import ../codec/bounded
 
@@ -62,8 +61,6 @@ func rounded(value, quantum: uint64): uint64 =
 func region(start, size: uint64, access: PageAccess, source: InitializationSource,
     offset, length: int): InitializationRegion =
   ## Convert the admitted page-aligned layout to exclusive page endpoints.
-  assert start mod 4096 == 0 and size mod 4096 == 0
-  assert start <= 0x100000000'u64 and size <= 0x100000000'u64-start
   InitializationRegion(first: PageIndex(uint32(start div 4096)),
     past: PageIndex(uint32((start+size) div 4096)), access: access, source: source,
     offset: offset, length: length)
@@ -136,8 +133,10 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     region(0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, InitializationSource.Second,
       0, arguments.len)]
   let memory = captureInitializationMemory(regions, input, arguments, limits.pages)
-  # These invariants were established above; a failure indicates an internal layout bug.
-  assert memory.error == MachineError.None
+  if memory.error in {MachineError.LimitExceeded, MachineError.AllocationRefused}:
+    return InitializationResult(status: InitializationError.LimitExceeded)
+  if memory.error != MachineError.None:
+    return InitializationResult(status: InitializationError.InvalidEnvelope)
   var registers = default(RegisterFile)
   registers[0] = RegisterValue(0xffff0000'u64)
   registers[1] = RegisterValue(0xfefe0000'u64)

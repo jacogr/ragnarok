@@ -319,47 +319,56 @@ proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): Pa
   PageData(index: index, zeroChunks: 255, access: access, backing: nil,
     chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
 
-proc initializationChunk(input: openArray[byte], offset, length, start: int,
-    zero: var nil PageChunk): PageChunk {.requires: offset >= 0 and offset <= input.len and
-      length >= 0 and length <= input.len-offset and start >= 0 and start <= 3584.} =
-  ## Copy the covered prefix into its final immutable chunk, preserving zero suffix bytes.
-  if start >= length:
-    return sharedZeroChunk(zero) # This chunk lies entirely beyond the admitted payload.
-  let first = offset+start
-  let count = min(512, length-start)
-  result = PageChunk(bytes: default(array[512, byte]))
-  copyMem(addr result.bytes[0], unsafeAddr input[first], count)
+proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[byte],
+    offset, count: int, zero: var nil PageChunk): nil PageData =
+  ## The admitted source span fits in one page. Publish it only after every payload owner exists.
+  let page: nil PageData = PageData(index: index, access: access)
+  if page == nil: return nil
+  if count == 4096:
+    let backing: nil PageBacking = PageBacking()
+    if backing == nil: return nil
+    let tail: nil PageChunk = PageChunk()
+    if tail == nil: return nil
+    copyMem(addr backing.bytes[0], unsafeAddr input[offset], 3584)
+    copyMem(addr tail.bytes[0], unsafeAddr input[offset+3584], 512)
+    page.backing = backing
+    page.chunks[7] = tail
+  else:
+    for slot in 0..<8:
+      let start = slot*512
+      if start >= count:
+        if zero == nil: zero = PageChunk()
+        if zero == nil: return nil
+        page.zeroChunks = page.zeroChunks or (1'u8 shl slot)
+        page.chunks[slot] = zero
+      else:
+        let chunk: nil PageChunk = PageChunk()
+        if chunk == nil: return nil
+        copyMem(addr chunk.bytes[0], unsafeAddr input[offset+start], min(512, count-start))
+        page.chunks[slot] = chunk
+  page
 
-proc appendInitializationRegion(owned: var seq[PageData], region: InitializationRegion,
-    input: openArray[byte], zero: var nil PageChunk) =
-  ## Consume an already checked source span in page order, with fresh headers even for zero pages.
+proc appendInitializationRegion(directory: var PageDirectory, total: int,
+    region: InitializationRegion, input: openArray[byte], zero: var nil PageChunk): bool =
+  ## The capture owns the entire partial directory until all regions have succeeded.
   var offset = region.offset
   var remaining = region.length
   for ordinal in uint32(region.first)..<uint32(region.past):
-    let index = PageIndex(ordinal)
-    if remaining == 0:
-      owned.add(zeroPage(index, region.access, zero)) # Whole stack, extra heap and other absent prefixes.
-    else:
-      let count = min(remaining, 4096)
-      if count == 4096:
-        # Genuine full prefixes use the same private constructor as unknown full-page capture.
-        owned.add(fullPage(index, region.access, input.toOpenArray(offset, offset+4095)))
-      else:
-        var zeroChunks = 0'u8
-        for chunk in 0..<8:
-          # Only complete chunks beyond the admitted input prefix have genuine zero provenance.
-          if chunk*512 >= count: zeroChunks = zeroChunks or (1'u8 shl chunk)
-        owned.add(PageData(index: index, zeroChunks: zeroChunks, access: region.access,
-          backing: nil, chunks: [initializationChunk(input, offset, count, 0, zero),
-          initializationChunk(input, offset, count, 512, zero),
-          initializationChunk(input, offset, count, 1024, zero),
-          initializationChunk(input, offset, count, 1536, zero),
-          initializationChunk(input, offset, count, 2048, zero),
-          initializationChunk(input, offset, count, 2560, zero),
-          initializationChunk(input, offset, count, 3072, zero),
-          initializationChunk(input, offset, count, 3584, zero)]))
-      offset += count
-      remaining -= count
+    if directory.len mod 64 == 0:
+      var entries = newSeqOfCap[PageData](min(64, total-directory.len))
+      if entries.rawData == nil: return false
+      let blockOwner: nil PageBlock = PageBlock()
+      if blockOwner == nil: return false
+      blockOwner.entries = move(entries)
+      directory.blocks.add(blockOwner)
+    let count = min(remaining, 4096)
+    let page = initializationPage(PageIndex(ordinal), region.access, input, offset, count, zero)
+    if page == nil: return false
+    directory.blocks[directory.len div 64].entries.add(page)
+    inc directory.len
+    offset += count
+    remaining -= count
+  true
 
 proc captureInitializationMemory*(regions: openArray[InitializationRegion],
     first, second: openArray[byte], limit: PageLimit): MachineResult[Memory] =
@@ -386,16 +395,22 @@ proc captureInitializationMemory*(regions: openArray[InitializationRegion],
       total += count
   if total > uint64(uint32(limit)) or total > uint64(high(int) div sizeof(PageData)):
     return MachineResult[Memory](status: MachineError.LimitExceeded) # Count all mapped pages, including padding.
-  var owned = newSeqOfCap[PageData](int(total))
+  let blockCount = int(total) div 64 + int(total mod 64 != 0)
+  var directory = PageDirectory(blocks: newSeqOfCap[PageBlock](blockCount))
+  if blockCount > 0 and directory.blocks.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   var zero: nil PageChunk = nil
   for region in regions:
-    case region.source
-    of InitializationSource.First:
-      appendInitializationRegion(owned, region, first, zero) # Capture only this admitted first-input span.
-    of InitializationSource.Second:
-      appendInitializationRegion(owned, region, second, zero) # Capture only this admitted second-input span.
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
+    let captured = case region.source
+      of InitializationSource.First: appendInitializationRegion(directory, int(total), region,
+          first, zero)
+      of InitializationSource.Second: appendInitializationRegion(directory, int(total), region,
+          second, zero)
+    if not captured: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  let owner: nil MemoryData = MemoryData(limit: limit)
+  if owner == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  owner.pages = move(directory)
+  MachineResult[Memory](status: MachineError.None, completed: Memory(data: owner))
 
 proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: PageAccess,
     total: int): PageDirectory =
