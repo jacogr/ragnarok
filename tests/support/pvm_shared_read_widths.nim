@@ -167,7 +167,8 @@ when NativeCheckedReadEnabled:
       expected[2] = RegisterValue(Repeated[form])
       expected[7] = RegisterValue(11)
       when defined(pvmSharedAsyncWitness):
-        assert nativeReadInvalidEntryWitness(compiled, actual, context) == NativeReadOutcome.Failed and
+        assert nativeReadInvalidEntryWitness(compiled, actual, context) ==
+            NativeReadOutcome.Failed and
           actual == before, "arena entry rejection grants no checked replay"
       assert enterNativeReadBody(compiled, actual, context) and actual == expected, "alias or recovery transaction"
 
