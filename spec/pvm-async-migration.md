@@ -34,7 +34,7 @@ bound runtime. Unported capabilities remain checked until their real shared path
 | Mixed memory and register blocks | Mixed load/store bodies, guarded groups and precise partial exits | Narrower child/cycle prototypes | Both ISAs share bounded [read/store cycles](../src/pvm/internal/handler_read_cycle.nim) and [mixed self-loops](../src/pvm/internal/handler_mixed_loop.nim). A bounded [static graph](../src/pvm/internal/native_fusion.nim) can also use the paid-memory continuation ABI. |
 | Dirty store loops | Byte/word loops and grouped stores | Checked loop fusion and separate sealed native-child proofs | The [shared loop certificate](../src/pvm/internal/handler_mixed_loop.nim) admits a transactional byte store or two ordered paid read/store groups with scalar stores of 1, 2, 4 or 8 bytes. Other store sequences remain checked. |
 | Read/store/tail cycles | Linked and resident cycle drivers | Restricted source-sealed cycle prototypes | Both ISAs share the [seven-role connected cycle and exact receipt](../src/pvm/internal/native_read_cycle.nim). General connected graphs and additional native entry headers remain open. |
-| Larger connected control | Linked/resident macro routes | Restricted wide-source prototypes | Checked only. Evaluate demonstrated dynamic regions and use bounded shared graph certificates; fixture-specific nomination is not a production policy. |
+| Larger connected control | Linked/resident macro routes | Restricted wide-source prototypes | [Bounded static graphs](../src/pvm/internal/native_fusion.nim) can link resolved original headers. Wider routes and dynamic transfers still use checked continuations. |
 | Arena and ABI mechanics | ARM word publication, coherency and saved-register rules | x86 byte publication, mapping and SysV rules | Shared exclusive images and lifetime certificates exist. Keep the required mechanical lowerers and independent ABI proofs when deleting old frame adapters. |
 
 Historical shapes are evidence for candidate ports, not an obligation to preserve their exact
@@ -110,18 +110,15 @@ and a successful retry with the same certificate.
 
 ## Bounded static fusion
 
-A ready low-coverage pure prefix can train one long checked segment per stream epoch.
-A sparse sample table ranks up to 128 independently source-certified blocks. An optional
-worker image links only already resolved original jumps and branch arms, with at most
-128 KiB of published code and eight original reservations per native entry. A compatible
-linked image borrows the runtime's existing optional credit while retaining the incumbent
-prefix. Connected Read, register rings and their mixed-loop images use their existing routes.
-The [stream bridge](../src/pvm/internal/handler_fusion.nim) accounts for the exact block
-path and preserves paid continuation at the first refused memory operation.
+[Native admission and credit ownership](../src/pvm/internal/native_pipeline.nim),
+[platform publication](../src/pvm/internal/native_platform.nim), and the
+[path receipt](../src/pvm/internal/native_fusion.nim) define the bounds and ownership.
+The [stream bridge](../src/pvm/internal/handler_fusion.nim) binds original source and
+resumes the checked continuation, including the first refused paid memory operation.
 
-The shared native suites exercise a live two-header graph, cold admission, reserved-source
-quota, out-of-gas ordering, a paid read fault after a store, and repair through the same
-prepared owner. Unsupported terminals and memory extents retain the checked handlers.
+The [shared native witness](../tests/support/pvm_static_fusion.nim) exercises a live
+two-header graph, cold admission, source quota, out-of-gas ordering, a paid read fault after
+a store, and repair through the same prepared owner.
 
 ## Qualification and retirement
 

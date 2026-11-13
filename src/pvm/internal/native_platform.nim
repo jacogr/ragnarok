@@ -3,7 +3,8 @@
 
 ## Platform lowering and OS mechanics; native_pipeline owns scheduling and admission.
 ## Auxiliary images hold bounded self-loops or static graphs in immutable arenas.
-## Its 4096-byte cap yields target-dependent subsets; failed publication releases it whole.
+## Mixed self-loops share a 4 KiB image budget. Static fusion has a separate
+## 4 KiB per-entry limit and 128 KiB graph budget. Failed publication releases the entire arena.
 
 import std/assertions
 import ../machine
@@ -508,8 +509,12 @@ when NativeReadCycleEnabled:
     enterNativeMixedLoopAt(image, 0, registers, context)
 
   proc lowerNativeFusion*(blocks: openArray[NativeFusionBlock]): NativeImage =
-    ## Stage each bounded entry, then resolve only edges to other staged certified
-    ## headers. Refused entries keep their original checked continuations.
+    ## Stage up to 128 source-certified blocks, each with at most 4 KiB of code.
+    ## The 128 KiB published extent includes entry alignment padding. ARM64 and
+    ## x86-64 can retain different subsets under these limits. Link only staged
+    ## headers, leaving all other continuations checked. Return an empty image
+    ## if no edge links or publication fails. An append failure releases the
+    ## entire arena before any entry becomes callable.
     result = default(NativeImage)
     if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
     when defined(pvmX86Jit):
