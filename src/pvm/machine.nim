@@ -607,6 +607,7 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
 proc changedMemoryPageSlots*(before, after: Memory): MachineResult[seq[MemoryPageSlot]] =
   ## Validate the complete retained map, then return sorted positions whose immutable page owners differ.
   ## Shared directory blocks need no scan; callers copy bytes through the validated after owner by slot.
+  ## A refused allocation returns no positions. A truncated delta would leave stale private bytes.
   let left = before.data
   let right = after.data
   if left == nil or right == nil: return MachineResult[seq[MemoryPageSlot]](
@@ -615,6 +616,7 @@ proc changedMemoryPageSlots*(before, after: Memory): MachineResult[seq[MemoryPag
       status: MachineError.None, completed: @[])
   if left.pages.len != right.pages.len:
     return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
+  var count = 0
   for group in 0..<left.pages.blocks.len:
     # Equal block owners certify every identity and permission in that group.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
@@ -626,14 +628,20 @@ proc changedMemoryPageSlots*(before, after: Memory): MachineResult[seq[MemoryPag
       if left.pages[slot].index != right.pages[slot].index or
           left.pages[slot].access != right.pages[slot].access:
         return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
-  var changed: seq[MemoryPageSlot] = @[]
+      inc count
+  var changed = newSeqUninit[MemoryPageSlot](count)
+  if changed.len != count:
+    return MachineResult[seq[MemoryPageSlot]](status: MachineError.AllocationRefused)
+  var index = 0
   for group in 0..<left.pages.blocks.len:
     # Ascending groups and positions produce sorted slots without sorting or copying page payloads.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
     let first = group*64
     let past = min(first+64, left.pages.len)
     for slot in first..<past:
-      if left.pages[slot] != right.pages[slot]: changed.add(MemoryPageSlot(uint32(slot)))
+      if left.pages[slot] != right.pages[slot]:
+        changed[index] = MemoryPageSlot(uint32(slot))
+        inc index
   MachineResult[seq[MemoryPageSlot]](status: MachineError.None, completed: changed)
 
 func memoryPageCount*(memory: Memory): MachineResult[PageCount] =

@@ -11,6 +11,9 @@
 ## guest memory, budgets and callbacks. Restore and take move code-only state
 ## across calls. The executable cache retains no invocation pointers. Idle byte
 ## scratch has a separate lease and is restored before another invocation uses it.
+## A refused frame buffer or restore delta produces a local allocation error.
+## Extra writable runs allocate before their first store, with the whole guest
+## access preflighted before allocating or modifying private bytes.
 ##
 ## Node and preparation-work refusals stay with the active frame. A prepared
 ## owner retains admitted entries and cumulative occupancy under the same ceilings.
@@ -3828,6 +3831,8 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
   var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
+  if delta.error == MachineError.AllocationRefused:
+    return oracle.StepError.ResidentAllocationRefused
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var replace = delta.error != MachineError.None
   if not replace:
@@ -4069,6 +4074,9 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   var held = move(scratch)
   if held == nil: return prepareFlatMemoryFrame(plan, memory, info)
   var delta = changedMemoryPageSlots(held.baseline, memory)
+  if delta.error == MachineError.AllocationRefused:
+    scratch = move(held)
+    return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
   if delta.error != MachineError.None:
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)

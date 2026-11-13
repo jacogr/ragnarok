@@ -14,7 +14,8 @@ below remain unchanged, with explicit local preparation admission as documented 
 A checked frame allocation refusal is the local `ResidentAllocationRefused` reason. Ordinary,
 single-step and host execution propagate it without publishing guest gas or a partial successor.
 This covers the selected fresh resident mapping, frame layout and buffers, and the first
-allocation for a lazy writable run. Stopped-host replacement remains transactional. The
+allocation for a lazy writable run. A refused changed-page delta preserves the idle lease
+or the stopped host frame for retry. The
 [resident-memory contract](pvm-retained-memory.md#fresh-first-rw-capture) owns profile selection,
 lifetime and complete restoration rules.
 
