@@ -112,49 +112,59 @@ proc checkpointResponse(context: var DispatchContext,
   response.registers[7] = RegisterValue(available-cost)
   scalarHostSuccess[AccumulationDispatchError](response)
 
-proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory,
-    checkpoint: bool): HostResult[AccumulationDispatchError] {.raises: [].} =
-  ## The owned fallback shares checkpoint semantics; yield retains its bounded guest-memory read.
-  if checkpoint:
-    # Foreign and legacy snapshot paths still invoke exactly one protocol operation.
-    let selected = checkpointResponse(context, cpu)
-    case selected.kind
-    of HostResultKind.Response:
-      let response = selected.value
-      return hostSuccess[AccumulationDispatchError](HostResponse(action: response.action,
-        gas: response.gas, gasDeficit: response.gasDeficit,
-        registers: response.registers, memory: memory))
-    of HostResultKind.Failure:
-      return hostFailure(selected.failure)
-    else:
-      return hostFailure(AccumulationDispatchError.InvalidContext)
-  let cost = 98'u64 # GP M_Taurus retains its own memory-reading operation.
+const YieldCost = 98'u64 ## GP M_Taurus charge precedes any guest-memory read.
+
+func yieldReadRequest(context: DispatchContext, cpu: MachineInfo): HostRead32Request =
+  ## Skip the bounded read when the guest cannot afford Yield.
+  HostRead32Request(read: uint64(cpu.gas) >= YieldCost,
+    address: MemoryAddress(uint64(cpu.registers[7])), limit: context.copyLimit)
+
+proc yieldReply(context: var DispatchContext, cpu: MachineInfo, status: MachineError,
+    bytes: array[32, byte]): ScalarHostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge before interpreting memory status. Only a complete copy can publish the commitment.
   let available = uint64(cpu.gas)
-  var response = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
-    gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)
-  if available < cost:
-    # GP M_Taurus affordability precedes the natural-range read and effect publication.
+  var response = ScalarHostResponse(action: HostAction.Continue, gas: MachineGas(0),
+    gasDeficit: GasDeficit(0), registers: cpu.registers)
+  if available < YieldCost:
     response.action = HostAction.OutOfGas
-    return hostSuccess[AccumulationDispatchError](response)
-  response.gas = MachineGas(available-cost)
-  # Yield reads a natural 32-byte guest interval; full-width pointers never wrap into accessible RAM.
-  var bytes = default(array[32, byte])
-  let copied = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[7])), bytes,
-    context.copyLimit)
-  case copied.error
+    return scalarHostSuccess[AccumulationDispatchError](response)
+  response.gas = MachineGas(available-YieldCost)
+  case status
   of MachineError.None:
     let changed = recordAccumulationYield(context.effects, OutputCommitment(bytes))
+    if changed.error == AccumulationEffectError.LimitExceeded:
+      return scalarHostFailure(AccumulationDispatchError.LimitExceeded)
     if changed.error != AccumulationEffectError.None:
-      return hostFailure(AccumulationDispatchError.InvalidContext) # No partial effect publication.
+      return scalarHostFailure(AccumulationDispatchError.InvalidContext)
     context.effects = changed.value
     response.registers[7] = RegisterValue(0) # OK, including an all-zero present commitment.
   of MachineError.Fault, MachineError.InvalidRange:
-    response.action = HostAction.Panic # Charged panic preserves r7 and both implication versions.
+    response.action = HostAction.Panic # Preserve r7 and both implication versions.
   of MachineError.LimitExceeded:
-    return hostFailure(AccumulationDispatchError.LimitExceeded) # Local copy policy is not guest panic.
+    return scalarHostFailure(AccumulationDispatchError.LimitExceeded)
   else:
-    return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory is a local invariant refusal.
-  hostSuccess[AccumulationDispatchError](response)
+    return scalarHostFailure(AccumulationDispatchError.InvalidContext)
+  scalarHostSuccess[AccumulationDispatchError](response)
+
+proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory,
+    checkpoint: bool): HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Owned and foreign execution share Yield's pricing, copy policy and effect publication.
+  var bytes = default(array[32, byte])
+  let reply = if checkpoint:
+    checkpointResponse(context, cpu)
+  else:
+    let request = yieldReadRequest(context, cpu)
+    let status = if request.read: readBytesInto(memory, request.address, bytes, request.limit).error
+      else: MachineError.Uninitialized
+    yieldReply(context, cpu, status, bytes)
+  case reply.kind
+  of HostResultKind.Response:
+    let response = reply.value
+    hostSuccess[AccumulationDispatchError](HostResponse(action: response.action,
+      gas: response.gas, gasDeficit: response.gasDeficit, registers: response.registers,
+      memory: memory))
+  of HostResultKind.Failure: hostFailure(reply.failure)
+  else: hostFailure(AccumulationDispatchError.InvalidContext)
 
 proc chargedResponse(cpu: MachineInfo, memory: Memory, low, upper: uint64):
     HostResult[AccumulationDispatchError] {.raises: [].} =
@@ -1384,14 +1394,16 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
       copyLimit: copyLimit, effects: initialized.value, provisionLimits: provisionLimits,
       serviceProbes: serviceProbes,
       transferLimit: transferLimit)
+  let yieldRead = HostRead32[DispatchContext, AccumulationDispatchError](call: HostCallId(27),
+    request: yieldReadRequest, respond: yieldReply)
   let evaluated = if execution != nil and execution[].initialized:
     # Opaque admission stays held during every synchronous host callback and immutable result publication.
     executeWithHost(prepared.accumulationMachine.value, context, dispatchHostCall,
-      steps, calls, cycles, backend, execution[], scalarAccumulationHost, dispatchScalarHostCall)
+      steps, calls, cycles, backend, execution[], scalarAccumulationHost, dispatchScalarHostCall, yieldRead)
   else:
     # Existing standalone execution still owns its original worker selection.
     executeWithHost(prepared.accumulationMachine.value, context, dispatchHostCall,
-      steps, calls, cycles, backend, worker, scalarAccumulationHost, dispatchScalarHostCall)
+      steps, calls, cycles, backend, worker, scalarAccumulationHost, dispatchScalarHostCall, yieldRead)
   case evaluated.error
   of HostExecutionError.None:
     # Preserve halt, panic, fault and gas outcomes without inventing a Psi_A transition.

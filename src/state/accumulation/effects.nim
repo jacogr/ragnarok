@@ -229,6 +229,24 @@ func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
   ## Extract selected success under compiler/runtime contracts, including optimized execution.
   outcome.completed
 
+template effectSuccessor(previous: EffectData, accountSnapshot: StateStoreSnapshot,
+    scope: AccumulationAccountScope, owner: untyped): untyped =
+  ## Retain frozen children and copied scalar facts in a new implication owner.
+  owner = EffectData(requestFacts: previous.requestFacts,
+    requestFactLimit: previous.requestFactLimit,
+    storageFacts: previous.storageFacts, storageLimits: previous.storageLimits,
+    writeFacts: previous.writeFacts, writeFactLimit: previous.writeFactLimit,
+    modified: previous.modified, modifiedLimit: previous.modifiedLimit,
+    deleted: previous.deleted, deletedLimit: previous.deletedLimit,
+    created: previous.created, createdLimit: previous.createdLimit,
+    accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
+    accountScope: scope, designated: previous.designated, blessed: previous.blessed,
+    assigned: previous.assigned,
+    initial: previous.initial, accounts: accountSnapshot,
+    nextService: previous.nextService,
+    staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
+    output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
+
 proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     selfMetadata = false, globalOnly = false): EffectData =
   ## Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
@@ -241,19 +259,7 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
         scope = AccumulationAccountScope.SelfMetadata # Self metadata preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(requestFacts: previous.requestFacts, requestFactLimit: previous.requestFactLimit,
-    storageFacts: previous.storageFacts, storageLimits: previous.storageLimits,
-    writeFacts: previous.writeFacts, writeFactLimit: previous.writeFactLimit,
-    modified: previous.modified, modifiedLimit: previous.modifiedLimit,
-    deleted: previous.deleted, deletedLimit: previous.deletedLimit,
-    created: previous.created, createdLimit: previous.createdLimit,
-    accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
-    accountScope: scope, designated: previous.designated, blessed: previous.blessed,
-    assigned: previous.assigned,
-    initial: previous.initial, accounts: accounts,
-    nextService: previous.nextService,
-    staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
-    output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
+  effectSuccessor(previous, accounts, scope, result)
 
 proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
     hash: ServicePreimageHash, length: RequestLength, key: StateKey,
@@ -1024,6 +1030,7 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
     AccumulationEffectResult[AccumulationEffects] =
   ## Apply only the state part of a validated yield call: replace regular yield, preserving the checkpoint.
   ## The host dispatcher must first charge gas/read guest memory; failures there must not call this operation.
+  ## Refused allocations return LimitExceeded and preserve both original implications.
   let data = effects.data
   if data == nil:
     # Refuse before constructing a partially initialized regular context.
@@ -1033,12 +1040,21 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
   if previous == nil:
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.InvalidState)
-  let candidate = successorData(previous, previous.accounts)
+  let published: nil PairData = PairData()
+  if published == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.LimitExceeded)
+  var candidate: nil EffectData = nil
+  effectSuccessor(previous, previous.accounts, previous.accountScope, candidate)
+  if candidate == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.LimitExceeded)
   candidate.output = YieldValue(present: true, commitment: commitment)
-  let current = AccumulationEffectContext(data: candidate)
+  published.source = data.source
+  published.regular = AccumulationEffectContext(data: candidate)
+  published.exceptional = data.exceptional
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
-    completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
-      exceptional: data.exceptional)))
+    completed: AccumulationEffects(data: published))
 
 proc checkpointAccumulationEffects*(effects: AccumulationEffects): AccumulationEffectResult[
     AccumulationEffects] =

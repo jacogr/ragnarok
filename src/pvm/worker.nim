@@ -63,11 +63,13 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
       {.nimcall, raises: [].},
     steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
     selected: PvmBackend, worker: ExecutionWorker, scalarCalls: ScalarHostSelector,
-    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+    scalarHandler: FallibleScalarHostCallback[Context, Reason],
+    read32: HostRead32[Context, Reason] = default(HostRead32[Context,
+        Reason])): HostExecutionResult[Reason] =
   ## Scalar capability selection changes no retained key, callback lifetime or busy-owner contract.
   let data = worker.data
   if data == nil:
     return executeWithHost(source, context, handler, steps, calls, cycles, selected,
-      scalarCalls, scalarHandler)
+      scalarCalls, scalarHandler, read32)
   executeWithHost(source, context, handler, steps, calls, cycles, selected, data.prepared,
-    scalarCalls, scalarHandler)
+    scalarCalls, scalarHandler, read32)
