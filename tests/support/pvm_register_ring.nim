@@ -316,13 +316,15 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
       let prepared = newPreparedProgram(program, limits, PvmBackend.Jit, runtime).value
       let checked = newPreparedProgram(program, limits, PvmBackend.Interpreted).value
       var cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10_000_000))
+      cpu.registers[0] = RegisterValue(0xffff0000) # Original dynamic return sentinel.
       cpu.registers[4] = RegisterValue(2048)
       let source = captureMachine(program, memory, cpu).value
       var called = false
       pauseNativeCompiler(runtime, true)
       let cold = executeWithHost(source, called, noHost, ExecutionStepLimit(10240),
         HostCallLimit(0), prepared)
-      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt and not called, "adjacent cold outcome"
+      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt and not called,
+          "adjacent cold outcome " & $cold.error
       assert cold.value.backend == PvmBackend.Interpreted, "adjacent cold policy"
       assert runtimeInfo(runtime).phase == NativePhase.Queued and runtimeInfo(runtime).submitted ==
           1, "adjacent queued"
