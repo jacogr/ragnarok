@@ -1116,6 +1116,33 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
       flatChargedStep(f, fixedLast, 131, -1, 88, destination)
     if destination != off: return destination
 
+proc flatChargedAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32 =
+  ## Follow the matching peer only through original cached branches and checked bodies.
+  let bodySpan = when First: 2'u32 else: 1'u32
+  # A published native prefix owns its original body entry, even in the shared checked layout.
+  if f.nativeEntry > off and f.nativeEntry-off <= bodySpan: return flatCharge(f, off)
+  let peerHandler: FlatHandler = when First: flatChargedAdjacent[false] else: flatChargedAdjacent[true]
+  var destination = flatStop
+  when First:
+    flatChargedStep(f, off, 149, 200, 170, destination)
+  else:
+    flatChargedStep(f, off, 132, -1, 81, destination)
+  if f.handlers[int(destination)] != peerHandler: return destination
+  # Let the peer execute its own native bridge through the same original entry.
+  if f.nativeEntry > destination and f.nativeEntry-destination <= 3-bodySpan: return destination
+  let peer = destination
+  while true:
+    # Every original block retains its reservation and exact paid/attempt checks.
+    when First:
+      flatChargedStep(f, peer, 132, -1, 81, destination)
+      if destination != off: return destination
+      flatChargedStep(f, off, 149, 200, 170, destination)
+    else:
+      flatChargedStep(f, peer, 149, 200, 170, destination)
+      if destination != off: return destination
+      flatChargedStep(f, off, 132, -1, 81, destination)
+    if destination != peer: return destination
+
 proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
     off: uint32): uint32 =
   ## Preserve original first-use dispatch until the real terminal branch has validated and cached both arms.
@@ -1126,15 +1153,22 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
   let cached: FlatHandler = flatBranch[Branch]
   if f.handlers[int(branchOff)] == cached:
     # Only positive cached capability enables a whole-block worker; no invalid or temporary handler qualifies.
-    let checked: FlatHandler = flatChargedShape[First, Second, Branch, false]
-    when NativeCheckedReadEnabled:
-      if nativeEpoch(f.nativeSession) != 0:
-        let observed: FlatHandler = flatChargedShape[First, Second, Branch, true]
-        f.handlers[int(off)] = observed
+    when First == 149:
+      let checked: FlatHandler = flatChargedAdjacent[true]
+      f.handlers[int(off)] = checked
+    elif First == 132:
+      let checked: FlatHandler = flatChargedAdjacent[false]
+      f.handlers[int(off)] = checked
+    else:
+      let checked: FlatHandler = flatChargedShape[First, Second, Branch, false]
+      when NativeCheckedReadEnabled:
+        if nativeEpoch(f.nativeSession) != 0:
+          let observed: FlatHandler = flatChargedShape[First, Second, Branch, true]
+          f.handlers[int(off)] = observed
+        else:
+          f.handlers[int(off)] = checked
       else:
         f.handlers[int(off)] = checked
-    else:
-      f.handlers[int(off)] = checked
   outcome
 
 proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
@@ -1996,6 +2030,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           if fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 131 and
               f.plan.facts[index+1].opcode == 88:
             charge = flatChargedShapeCold[131, -1, 88]
+          elif fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 132 and
+              f.plan.facts[index+1].opcode == 81 and not f.plan.allowNative:
+            charge = flatChargedShapeCold[132, -1, 81]
           elif fact.sourceCount == 3 and index+2 < f.plan.facts.len:
             let second = f.plan.facts[index+1].opcode
             let last = f.plan.facts[index+2].opcode
@@ -2003,6 +2040,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
               charge = flatChargedShapeCold[200, 139, 82]
             elif fact.opcode == 151 and second == 152 and last == 173:
               charge = flatChargedShapeCold[151, 152, 173]
+            elif fact.opcode == 149 and second == 200 and last == 170 and not f.plan.allowNative:
+              charge = flatChargedShapeCold[149, 200, 170]
           elif fact.sourceCount == 5 and index+4 < f.plan.facts.len and f.pricingKind == 0:
             # Only this sealed adjacent shape is selected; native x86 has no store publisher for it.
             if fact.opcode == 198 and f.plan.facts[index+1].opcode == 120 and
