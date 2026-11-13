@@ -119,8 +119,8 @@ let stored = load(memoryOf(retried.value.machine).value, Address, AccessWidth(8)
 assert stored.error == MachineError.None and uint64(stored.value) == 0x12345678
 assert uint64(load(small, Address, AccessWidth(8)).value) == 0
 let address = uint64(Address)
- # The reuse witness loads before trapping. The host witness stores, suspends,
- # then reads the posterior bytes before trapping.
+  # The reuse witness loads before trapping. The host witness stores, suspends,
+  # then reads the posterior bytes before trapping.
 let readerWire = [0'u8, 0, 7, 58, 0, byte(address and 255), byte((address shr 8) and 255),
   byte((address shr 16) and 255), 0, 0, 0x41]
 let reader = decodeProgram(readerWire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
