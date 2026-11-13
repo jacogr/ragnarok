@@ -4737,7 +4737,13 @@ proc tick*(services: var Services, peers: uint32) =
     if services.diskWorker.phase != DiskWorkerPhase.Done:
       services.ui.tick()
       return # Poll only scalar worker state while RPC/canonical graphs remain borrowed.
-    services.finishDiskPublication(services.diskWorker.collect(services.diskTicket))
+    let completion = services.diskWorker.collect(services.diskTicket)
+    if completion.kind == DiskCompletionKind.Uninitialized:
+      # A refused ticket retains all worker borrows. Join and recover the real receipt before
+      # finishing publication, releasing staging storage or resuming RPC.
+      services.stopDiskPublication()
+    else:
+      services.finishDiskPublication(completion)
   if services.diskEnabled:
     if services.diskPaged and not services.diskResume and not services.diskFaulted and
         services.disk.pagedRetirementPending:
