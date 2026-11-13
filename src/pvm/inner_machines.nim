@@ -430,10 +430,39 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
   transition.response.registers[7] = RegisterValue(0)
   done()
 
+proc replaceInnerState(data: MapData, id: uint64, info: InnerMachineInfo): nil MapData =
+  ## Stage one immutable slot successor. Refused allocations leave the original map intact.
+  var slots = newSeqOfCap[InnerData](data.slots.len)
+  if slots.rawData == nil: return nil
+  for slotIndex in 0..<data.slots.len:
+    let slot = data.slots[slotIndex]
+    if slot.id == id:
+      let updated: nil InnerData = InnerData(code: slot.code)
+      if updated == nil: return nil
+      updated.info = info
+      updated.size = slot.size
+      updated.id = slot.id
+      slots.add(updated)
+    else:
+      slots.add(slot) # Unselected machines share their untouched immutable owners.
+  let updated: nil MapData = MapData()
+  if updated == nil: return nil
+  var modules = newSeqOfCap[ModuleData](data.modules.len)
+  if data.modules.len != 0 and modules.rawData == nil: return nil
+  for moduleIndex in 0..<data.modules.len:
+    modules.add(data.modules[moduleIndex]) # Keep catalogue descriptors private and module owners shared.
+  updated.slots = move(slots)
+  updated.modules = move(modules)
+  updated.bytes = data.bytes
+  updated.limits = data.limits
+  updated
+
 proc transferInner(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
     memory: Memory, limit: MemoryByteLimit, peek: bool): InnerMachineResult[
         InnerMachineTransition] =
   ## Share Omega_P/O ordering while selecting opposite read/write endpoints in one private synchronous transition.
+  ## Valid empty transfers retain both owners. Memory and map allocations are checked before
+  ## publishing any nonempty successor. Resource refusal returns LimitExceeded without a reply.
   template fail(reason: InnerMachineError) =
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
@@ -487,26 +516,24 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
   else:
     fail(InnerMachineError.InvalidContext)
   if size > uint64(limit): fail(InnerMachineError.LimitExceeded) # A local refusal never impersonates panic/WHO/OOB.
-  let bytes = if peek: source.readBytes(inner, length, limit) else: memory.readBytes(caller, length, limit)
-  if bytes.error != MachineError.None: fail(InnerMachineError.InvalidContext) # Immutable preflights proved all ranges/caps.
-  let written = if peek: memory.writeBytes(caller, bytes.value, limit)
-    else: source.writeBytes(inner, bytes.value, limit)
-  if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # No partial successor is published on invariant failure.
+  if size == 0:
+    transition.response.registers[7] = RegisterValue(0)
+    done() # Both complete range checks and the inner lookup already succeeded.
+  let written = if peek: copyMemoryBytes(source, inner, memory, caller, length, limit)
+    else: copyMemoryBytes(memory, caller, source, inner, length, limit)
+  case written.error
+  of MachineError.None: discard # Continue with the complete immutable RAM successor.
+  of MachineError.AllocationRefused, MachineError.LimitExceeded: fail(
+      InnerMachineError.LimitExceeded)
+  else: fail(InnerMachineError.InvalidContext)
   if peek:
     transition.response.memory = written.value # Peek changes only outer RAM; the invocation map remains the original owner.
   else:
-    var slots = newSeqOfCap[InnerData](data.slots.len)
-    for slotIndex in 0..<data.slots.len:
-      let slot = data.slots[slotIndex]
-      if slot.id == id:
-        var info = slot.info
-        info.memory = written.value
-        slots.add(InnerData(info: info, code: slot.code, size: slot.size,
-            id: slot.id)) # Poke replaces only the selected RAM snapshot.
-      else:
-        slots.add(slot) # Unselected machines share their untouched immutable owners.
-    transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-        bytes: data.bytes, limits: data.limits))
+    var info = found.value
+    info.memory = written.value
+    let updated = replaceInnerState(data, id, info)
+    if updated == nil: fail(InnerMachineError.LimitExceeded)
+    transition.machines = InnerMachines(data: updated)
   transition.response.registers[7] = RegisterValue(0)
   done()
 
@@ -523,6 +550,8 @@ proc innerPokeResponse*(machines: InnerMachines, gas: MachineGas, registers: Reg
 proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
     memory: Memory): InnerMachineResult[InnerMachineTransition] =
   ## Execute Omega_K on the retained program/RAM/PC/charged flag, stopping before any inner host dispatch.
+  ## Publish the caller frame and map together. Allocation refusal while staging either returns
+  ## LimitExceeded without a reply or a successor.
   template fail(reason: InnerMachineError) =
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
@@ -643,15 +672,11 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
     for octet in 0..<8: frame[word*8+octet] = byte((value shr (octet*8)) and
         255) # Encode all fourteen posterior E8 words.
   let written = memory.writeBytes(address, frame, MemoryByteLimit(112))
+  if written.error == MachineError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
   if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # The immutable frame preflight proved the complete write.
-  var slots = newSeqOfCap[InnerData](data.slots.len)
-  for slotIndex in 0..<data.slots.len:
-    let slot = data.slots[slotIndex]
-    if slot.id == id: slots.add(InnerData(info: info, code: slot.code, size: slot.size,
-        id: slot.id)) # RAM/PC/flag share one completed segment certificate.
-    else: slots.add(slot) # Retain all other machines unchanged.
-  transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-      bytes: data.bytes, limits: data.limits))
+  let updated = replaceInnerState(data, id, info)
+  if updated == nil: fail(InnerMachineError.LimitExceeded)
+  transition.machines = InnerMachines(data: updated)
   transition.response.memory = written.value
   transition.response.gas = MachineGas(reserved+uint64(
       cpu.gas)) # cpu.gas<=requested proves refund cannot overflow or mint caller gas.

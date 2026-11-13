@@ -1289,9 +1289,75 @@ proc readBytesInto*(memory: Memory, address: MemoryAddress, output: var openArra
   copyReadableRange(data, address, output)
   checked
 
+proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
+    destination: MemoryAddress, size: int, bytes: openArray[byte],
+    source: MemoryData, sourceAddress: MemoryAddress): MachineResult[Memory] =
+  ## Stage each affected page and publish one immutable directory after filling every chunk.
+  var sourceSlot = when FromMemory: lowerBound(source, uint32(uint64(sourceAddress) div 4096))
+    else: 0
+  var sourceOffset = when FromMemory: int(uint64(sourceAddress) mod 4096) else: 0
+  var slots = newSeqOfCap[int](size div 4096+2)
+  var changed = newSeqOfCap[PageData](size div 4096+2)
+  if slots.rawData == nil or changed.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
+  var copied = 0
+  var at = lowerBound(data, uint32(uint64(destination) div 4096))
+  while copied < size:
+    # Preflight proved a nonwrapping readable/writable sequence; each page gets one private header.
+    let physical = uint64(destination)+uint64(copied)
+    let offset = int(physical mod 4096)
+    let count = min(size-copied, 4096-offset)
+    let previous {.cursor.} = data.pages[at]
+    let page: nil PageData = PageData(index: previous.index, access: previous.access,
+        backing: previous.backing, chunks: previous.chunks)
+    if page == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
+    let firstChunk = offset div 512
+    let lastChunk = (offset+count-1) div 512
+    for chunk in firstChunk..lastChunk:
+      # Preserve untouched bytes in partially covered chunks before either copy path writes.
+      let privateChunk: nil PageChunk = PageChunk()
+      if privateChunk == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
+      if offset > chunk*512 or offset+count < (chunk+1)*512:
+        copyMem(addr privateChunk.bytes[0], borrowPageChunk(previous, chunk), 512)
+      page.chunks[chunk] = privateChunk
+    dropCoveredBacking(page)
+    when FromMemory:
+      # Zip disjoint immutable source spans with the already private destination chunks.
+      var moved = 0
+      while moved < count:
+        # Each batch ends at the earlier chunk boundary, which also bounds page access.
+        let destinationOffset = offset+moved
+        let sourceWithin = sourceOffset mod 512
+        let destinationWithin = destinationOffset mod 512
+        let batch = min(count-moved, min(512-sourceWithin, 512-destinationWithin))
+        let target {.cursor.} = page.chunks[destinationOffset div 512]
+        if target == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
+        let origin = borrowPageChunk(source.pages[sourceSlot], sourceOffset div 512, sourceWithin)
+        copyMem(addr target.bytes[destinationWithin], origin, batch)
+        moved += batch
+        sourceOffset += batch
+        if sourceOffset == 4096:
+          # The next nonempty batch, if any, starts at the next proven source page.
+          sourceOffset = 0
+          inc sourceSlot
+    else:
+      copyPageIn(page, offset, bytes, copied, count)
+    slots.add(at)
+    changed.add(page)
+    copied += count
+    inc at
+  var directory = default(PageDirectory)
+  let replaced = replacedDirectory(data.pages, slots, changed, directory)
+  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
+  let captured: nil MemoryData = MemoryData(limit: data.limit)
+  if captured == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
+  captured.pages = move(directory)
+  MachineResult[Memory](status: MachineError.None, completed: Memory(data: captured))
+
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     limit: MemoryByteLimit): MachineResult[Memory] =
   ## Validate the complete host span before cloning only its touched page-reference blocks and chunks.
+  ## Report staging allocation refusal through the same LimitExceeded result as the copy limit.
   let checked = inspectRange(memory, address, MemoryLength(uint64(input.len)), limit, true)
   if checked.error != MachineError.None: return failure[Memory, bool](checked)
   if input.len == 0:
@@ -1299,28 +1365,29 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     return MachineResult[Memory](status: MachineError.None, completed: memory)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
-  var slots = newSeqOfCap[int](input.len div 4096+2)
-  var changed = newSeqOfCap[PageData](input.len div 4096+2)
-  if slots.rawData == nil or changed.rawData == nil:
+  let written = writeCheckedRange[false](data, address, input.len, input, data, address)
+  if written.error == MachineError.AllocationRefused:
     return MachineResult[Memory](status: MachineError.LimitExceeded)
-  var copied = 0
-  var at = lowerBound(data, uint32(uint64(address) div 4096))
-  while copied < input.len:
-    # Preflight proved a nonwrapping readable/writable sequence; each page gets one private header.
-    let physical = uint64(address)+uint64(copied)
-    let offset = int(physical mod 4096)
-    let count = min(input.len-copied, 4096-offset)
-    var page = writablePageClone(data.pages[at], offset, count)
-    copyPageIn(page, offset, input, copied, count)
-    slots.add(at)
-    changed.add(move(page))
-    copied += count
-    inc at
-  var directory = default(PageDirectory)
-  let replaced = replacedDirectory(data.pages, slots, changed, directory)
-  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+  written
+
+proc copyMemoryBytes*(source: Memory, sourceAddress: MemoryAddress, destination: Memory,
+    destinationAddress: MemoryAddress, length: MemoryLength,
+    limit: MemoryByteLimit): MachineResult[Memory] =
+  ## Copy a natural range between immutable memories and return a new destination.
+  ## Preflight both complete ranges before staging writes. Overlap reads the original source bytes.
+  let readable = inspectRange(source, sourceAddress, length, limit, false)
+  if readable.error != MachineError.None: return failure[Memory, bool](readable)
+  let writable = inspectRange(destination, destinationAddress, length, limit, true)
+  if writable.error != MachineError.None: return failure[Memory, bool](writable)
+  if uint64(length) == 0:
+    # Empty ranges preserve the destination owner and ignore both addresses.
+    return MachineResult[Memory](status: MachineError.None, completed: destination)
+  let input = source.data
+  let output = destination.data
+  if input == nil or output == nil:
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  writeCheckedRange[true](output, destinationAddress, int(uint64(length)), [], input,
+      sourceAddress)
 
 proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
