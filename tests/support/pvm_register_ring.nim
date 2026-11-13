@@ -304,7 +304,7 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
         132, 0x55, 0, 81, 5, 0xf4, 50, 0, 0x49, 0x92, 0]
       let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
       let capturedMemory = captureMemory([], PageLimit(0))
-      assert decoded.error == ProgramError.None and capturedMemory.error == MachineError.None
+      assert decoded.error == ProgramError.None and capturedMemory.error == MachineError.None, "adjacent fixture"
       let program = decoded.value
       let memory = capturedMemory.value
       let runtime = newNativeRuntime()
@@ -322,11 +322,13 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
       pauseNativeCompiler(runtime, true)
       let cold = executeWithHost(source, called, noHost, ExecutionStepLimit(10240),
         HostCallLimit(0), prepared)
-      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt and not called
-      assert cold.value.backend == PvmBackend.Interpreted
-      assert runtimeInfo(runtime).phase == NativePhase.Queued and runtimeInfo(runtime).submitted == 1
+      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt and not called, "adjacent cold outcome"
+      assert cold.value.backend == PvmBackend.Interpreted, "adjacent cold policy"
+      assert runtimeInfo(runtime).phase == NativePhase.Queued and runtimeInfo(runtime).submitted ==
+          1, "adjacent queued"
       pauseNativeCompiler(runtime, false)
       waitNativeCompiler(runtime)
+      assert runtimeInfo(runtime).completed == 1, "adjacent publication completed"
       for pc in [0'u64, 9]:
         # Two warm entry rotations must visit the real pair exactly once per guest invocation.
         cpu.pc = CodeAddress(pc)
@@ -336,14 +338,19 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
           HostCallLimit(0), prepared)
         let baseline = executeWithHost(fresh, called, noHost, ExecutionStepLimit(11000),
           HostCallLimit(0), checked)
-        assert ready.error == StepError.None and baseline.error == StepError.None
-        assert ready.value.backend == PvmBackend.Jit and ready.value.exit == baseline.value.exit
-        assert machineInfo(ready.value.machine).value == machineInfo(baseline.value.machine).value
-        assert memoryOf(ready.value.machine).value == memoryOf(baseline.value.machine).value
+        assert ready.error == StepError.None and baseline.error == StepError.None,
+            "adjacent ready errors " & $pc & " " & $ready.error & " " & $baseline.error
+        assert ready.value.backend == PvmBackend.Jit and ready.value.exit == baseline.value.exit,
+            "adjacent ready policy and exit " & $pc
+        assert machineInfo(ready.value.machine).value == machineInfo(baseline.value.machine).value,
+            "adjacent ready CPU " & $pc
+        assert memoryOf(ready.value.machine).value == memoryOf(baseline.value.machine).value, "adjacent ready memory"
         let after = preparedInfo(prepared).value
-        assert after.nativeFragments == 1 and after.nativeCalls == before.nativeCalls+1
+        assert after.nativeFragments == 1 and after.nativeCalls == before.nativeCalls+1,
+            "adjacent ready calls " & $pc & " " & $after.nativeCalls
         assert after.nativeOperations-before.nativeOperations == (if pc ==
-            0: 10238'u64 else: 10240'u64)
+            0: 10238'u64 else: 10240'u64),
+          "adjacent ready attempts " & $pc & " " & $(after.nativeOperations-before.nativeOperations)
       let firstPrice = uint64(blockGas(program, CodeAddress(0), Cycles).value)
       let secondPrice = uint64(blockGas(program, CodeAddress(9), Cycles).value)
       for pc in [0'u64, 9]:
@@ -358,9 +365,10 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
               let limit = ExecutionStepLimit(quota)
               let baseline = executeWithHost(fresh, called, noHost, limit, HostCallLimit(0), checked)
               let ready = executeWithHost(fresh, called, noHost, limit, HostCallLimit(0), prepared)
-              assert not called and baseline.error == ready.error
+              assert not called and baseline.error == ready.error, "adjacent boundary result " &
+                  $pc & " " & $quota & " " & $gas & " " & $paid
               if ready.error == StepError.None:
-                assert baseline.value.exit == ready.value.exit
+                assert baseline.value.exit == ready.value.exit, "adjacent boundary exit"
                 assert machineInfo(baseline.value.machine).value == machineInfo(
                     ready.value.machine).value
       assert close(runtime)
@@ -476,6 +484,6 @@ proc runRegisterRing*() =
       checkResidentRing()
       checkResidentAddWordImmediate()
     when defined(pvmSharedAsyncWitness):
-      checkRuntimeRing()
       when defined(pvmX86Jit): checkAdjacentRing()
+      checkRuntimeRing()
   echo "PVM native register ring passed"
