@@ -6,6 +6,13 @@ temporary handlers. The idle lease can also retain a dirty bitmap, but every exe
 starts with its bits cleared after input restoration. Native code retains no invocation memory
 pointer; ARM descriptors are rebuilt from the newly leased byte owners before execution.
 
+## Checked snapshot publication
+
+The [handler stream](../src/pvm/internal/handler_stream.nim) publishes dirty pages
+as one immutable observation. A refused dirty-index buffer, invalid staged page or
+failed replacement directory returns a local error. A host stop becomes observable
+only after its complete snapshot succeeds.
+
 ## Physical dirty-bitmap extent
 
 A fresh frame allocates absolute physical-page bits through the highest sorted admitted description,

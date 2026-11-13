@@ -136,7 +136,10 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   registers[8] = RegisterValue(uint64(arguments.len))
   let captured = captureMachine(source, memory.value, MachineInfo(pc: entry, gas: gas,
     blockCharged: false, registers: registers))
-  assert captured.error == MachineError.None
+  if captured.error == MachineError.LimitExceeded:
+    return InitializationResult(status: InitializationError.LimitExceeded)
+  if captured.error != MachineError.None:
+    return InitializationResult(status: InitializationError.InvalidProgram)
   InitializationResult(status: InitializationError.None, completed: captured.value)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
