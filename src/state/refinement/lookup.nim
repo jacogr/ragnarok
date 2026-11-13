@@ -128,7 +128,7 @@ proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas
     return HistoricalLookupResult[HostResponse](status: reason)
   let data = context.data
   if data == nil: fail(HistoricalLookupError.InvalidContext)
-  if memory.pageImage(PageIndex(0)).error != MachineError.None:
+  if memoryPageCount(memory).error != MachineError.None:
     fail(HistoricalLookupError.InvalidMemory) # Invalid local owners cannot masquerade as guest panic or OOG.
   let requested = uint64(registers[11])
   # Splitting at 1024 proves all multiplication/addition fits uint64; even the maximal cost is below 2^63.
@@ -142,7 +142,8 @@ proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas
     return HistoricalLookupResult[HostResponse](status: HistoricalLookupError.None,
         completed: response)
   response.gas = MachineGas(credit-cost)
-  let input = readBytes(memory, MemoryAddress(uint64(registers[8])), MemoryLength(32),
+  var rawHash = default(array[32, byte])
+  let input = readBytesInto(memory, MemoryAddress(uint64(registers[8])), rawHash,
       MemoryByteLimit(32))
   case input.error
   of MachineError.None:
@@ -162,9 +163,6 @@ proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas
   if target != high(uint64):
     if target > uint64(high(uint32)): absent() # Refuse truncation into an unrelated existing service.
     service = ServiceIndex(uint32(target))
-  var rawHash = default(array[32, byte])
-  for index in 0..<32:
-    rawHash[index] = input.value[index] # The successful fixed read proves every index.
   let resolved = historicalPreimage(context, service, ServicePreimageHash(rawHash))
   if resolved.error != HistoricalLookupError.None: fail(resolved.error)
   if not resolved.value.present: absent()

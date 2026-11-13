@@ -157,7 +157,8 @@ proc historicalCompilation(context: var DispatchContext, cpu: MachineInfo, memor
   ## Resolve database mode only after the inner preflight has proved affordability and a free module handle.
   let requested = uint64(cpu.registers[9])
   let cost = 1862'u64+(requested div 1024)*366+((requested mod 1024)*366+1023) div 1024
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+  var hash = default(array[32, byte])
+  let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[8])), hash,
       MemoryByteLimit(32))
   if captured.error in {MachineError.Fault, MachineError.InvalidRange}:
     return hostSuccess[RefinementDispatchError](HostResponse(action: HostAction.Panic,
@@ -170,9 +171,6 @@ proc historicalCompilation(context: var DispatchContext, cpu: MachineInfo, memor
     return innerResponse(context, compileHistoricalInnerModule(context.machines, cpu.gas,
       cpu.registers, memory, false, [])) # Full-width out-of-domain accounts are absent, without low-bit aliasing.
   let service = if selected == high(uint64): context.source.service else: ServiceIndex(uint32(selected))
-  var hash = default(array[32, byte])
-  for index in 0..<32:
-    hash[index] = captured.value[index] # Exact fixed capture establishes every source coordinate.
   let looked = historicalPreimage(context.source.lookup, service, ServicePreimageHash(hash))
   case looked.error
   of HistoricalLookupError.None:
