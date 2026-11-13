@@ -324,6 +324,12 @@ proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[b
   ## The admitted source span fits in one page. Publish it only after every payload owner exists.
   let page: nil PageData = PageData(index: index, access: access)
   if page == nil: return nil
+  if count == 0 and zero != nil:
+    # Retain the seed only after the new page owner has been allocated.
+    let shared = zero
+    page.chunks = [shared, shared, shared, shared, shared, shared, shared, shared]
+    page.zeroChunks = 255
+    return page
   if count == 4096:
     let backing: nil PageBacking = PageBacking()
     if backing == nil: return nil

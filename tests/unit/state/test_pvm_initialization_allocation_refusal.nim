@@ -39,4 +39,38 @@ dealloc(filler)
 assert refused.error == MachineError.LimitExceeded
 assert captureInitializationMemory(regions, [], [], PageLimit(1)).error == MachineError.None
 
+block sharedZeroPageRefusal:
+  let zeroPages = [InitializationRegion(first: PageIndex(16), past: PageIndex(20),
+    access: PageAccess.ReadWrite, source: InitializationSource.First)]
+  let onePage = [InitializationRegion(first: PageIndex(16), past: PageIndex(17),
+    access: PageAccess.ReadWrite, source: InitializationSource.First)]
+  proc captureZero(regions: openArray[InitializationRegion], limit: PageLimit): MachineError =
+    ## Release the complete capture result before the caller measures occupied memory.
+    captureInitializationMemory(regions, [], [], limit).error
+  var lateRefusals = 0
+  let pressure = alloc(PayloadBytes-getOccupiedMem()-131072)
+  assert pressure != nil
+  var padding = default(array[1024, nil pointer])
+  var usedSlots = 0
+  # Measure actual allocator occupancy while stepping through the later-page refusal window.
+  while PayloadBytes-getOccupiedMem() > 512:
+    let headroom = PayloadBytes-getOccupiedMem()
+    let used = getOccupiedMem()
+    let seeded = captureZero(onePage, PageLimit(1))
+    assert getOccupiedMem() == used, "first zero page release"
+    let full = captureZero(zeroPages, PageLimit(4))
+    if getOccupiedMem() != used:
+      echo "zero capture headroom=", headroom, " delta=", getOccupiedMem()-used, " status=", full
+      assert false, "shared zero page release"
+    if seeded == MachineError.None and full == MachineError.LimitExceeded:
+      inc lateRefusals
+    assert usedSlots < padding.len
+    padding[usedSlots] = alloc(if headroom > 8192: 4096 else: 16)
+    assert padding[usedSlots] != nil
+    inc usedSlots
+  for index in 0..<usedSlots: dealloc(padding[index])
+  dealloc(pressure)
+  assert lateRefusals > 0, "later zero page allocation never refused"
+  assert captureZero(zeroPages, PageLimit(4)) == MachineError.None
+
 echo "PVM initialization allocation refusal passed"
