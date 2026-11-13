@@ -32,9 +32,9 @@ interval is readable regardless of its pointer, even UINT64_MAX, and does not
 perform a page lookup.
 
 Preflight checks the entire bounded physical interval before allocating output.
-There are at most 2^20 physical pages. The immutable memory API returns copied page
-images; preflight retains only one image at a time. The copy pass also works one
-page at a time and clips its first and last chunks to the requested range.
+There are at most 2^20 physical pages. Preflight uses the immutable memory
+directory's page permissions. The copy pass writes only the selected bytes into
+the output sequence.
 
 `OutputByteLimit` is a nominal local copy/allocation ceiling, not a consensus
 return-size restriction. It applies only after readability is established. Thus an
