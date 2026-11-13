@@ -294,15 +294,27 @@ when NativeCheckedReadEnabled:
       assert status == NativeReadSuccess or status == NativeReadRefusal
       status == NativeReadSuccess
 
-  proc nativeReadStatus*(image: NativeImage, registers: var RegisterFile,
-      context: var NativeReadContext): NativeReadOutcome =
-    ## Only a genuine transactional refusal permits replay through the checked body.
+  proc nativeReadStatusAt(image: NativeImage, offset: uint32, registers: var RegisterFile,
+      context: var NativeReadContext): NativeReadOutcome {.inline.} =
+    ## The arena may reject entry before generated code runs. Its failure is
+    ## distinct from the read guard's precommit refusal, which permits replay.
     if not isReadBody(image): return NativeReadOutcome.Failed
     assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
-    case arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+    case arenaRegion(image.handle, offset, addr registers[0], addr context)
     of NativeReadSuccess: NativeReadOutcome.Completed
     of NativeReadRefusal: NativeReadOutcome.Refused
     else: NativeReadOutcome.Failed
+
+  proc nativeReadStatus*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeReadContext): NativeReadOutcome =
+    ## Enter at the sealed image's own offset.
+    nativeReadStatusAt(image, image.offset, registers, context)
+
+  when defined(pvmSharedAsyncWitness):
+    proc nativeReadInvalidEntryWitness*(image: NativeImage, registers: var RegisterFile,
+        context: var NativeReadContext): NativeReadOutcome =
+      ## Pass a valid arena and a rejected offset to the real C wrapper.
+      nativeReadStatusAt(image, high(uint32), registers, context)
 
   proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
       context: var NativeReadContext): bool =

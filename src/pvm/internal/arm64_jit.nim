@@ -935,8 +935,9 @@ proc armReadPatchGuards(words: var seq[uint32], span: ArmReadSpan,
     words[at] = words[at] or (if guard.conditional: distance shl 5 else: distance)
 
 proc armReadImage(span: ArmReadSpan, ending: uint32,
-    conditional, residentMode: bool): ArmReadImage =
+    conditional, residentMode: bool, refusalWord = 0x12800000'u32): ArmReadImage =
   ## Share guarded read emission while letting the cycle own guest publication.
+  ## The default MOVN W0,#0 returns flatStop for stream-coordinate callers.
   result = default(ArmReadImage)
   assert (span.body.terminal.len > 0) == conditional
   if residentMode: assert conditional
@@ -958,7 +959,7 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
       words.add(0x72a00000'u32 or ((ending shr 16) shl 5))
     words.add(0xd65f03c0'u32) # Success returns after complete register publication.
   let failure = words.len
-  words.add(0x12800000'u32) # Refusal returns flatStop.
+  words.add(refusalWord)
   if residentMode:
     result.refusalAt = words.len
     words.add(0) # Branch to the cycle's gas/source refund.
@@ -1014,7 +1015,7 @@ when NativeCheckedReadEnabled:
     emitArmCheckedReadAt(span, destination, opcode)
 
   proc armCheckedReadInstructions*(body: NativeReadBody): seq[uint32] =
-    ## Return 1 after committing every staged slot, or UINT32_MAX with no guest writes.
+    ## Return 1 after committing every staged slot, or 0 with no guest writes.
     assert body.complete
     var span = default(ArmReadSpan)
     for index in 0..<body.len:
@@ -1027,7 +1028,8 @@ when NativeCheckedReadEnabled:
           range[124..130](opcode), encoding != op.opcode)
       else:
         emitArmReadArithmetic(span, op.opcode, op.slots, op.immediate)
-    result = armReadImage(span, NativeReadSuccess, false, false).words
+    const refusalWord = 0x52800000'u32 or (NativeReadRefusal shl 5) # MOV W0,#refusal.
+    result = armReadImage(span, NativeReadSuccess, false, false, refusalWord).words
     result.add(0xd65f03c0'u32) # RET X30 completes the refusal path for direct publication.
 
 proc armMacroReadImage(span: ArmReadSpan): ArmReadImage =

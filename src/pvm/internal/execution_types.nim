@@ -10,6 +10,8 @@ type
   StepExit* {.pure.} = enum ## Guest outcomes shared by single-step and bounded recursive execution.
     Continued, OutOfGas, Panic, Halt, Fault, Host
   StepError* {.pure.} = enum ## Local scope/resource/specification failures are distinct from guest execution outcomes.
+    ## BackendFailure from a native entry or receipt publishes no guest outcome.
+    ## The prepared invocation drops its private frame and retires the image.
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
       InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo,
