@@ -51,6 +51,24 @@ block callerStorage:
   assert readBytesInto(default(Memory), address, empty, MemoryByteLimit(0)).error ==
       MachineError.InvalidOwner
 
+block overlappingSnapshotCopy:
+  # Cross both a chunk and a page with different source and destination alignments.
+  let start = 69628'u64
+  let destination = start+3
+  let length = 521
+  let copied = copyMemoryBytes(original, MemoryAddress(start), original,
+      MemoryAddress(destination), MemoryLength(uint64(length)), MemoryByteLimit(uint64(length)))
+  assert copied.error == MachineError.None
+  let actual = readBytes(copied.value, MemoryAddress(destination-1),
+      MemoryLength(uint64(length+2)), MemoryByteLimit(uint64(length+2))).value
+  assert actual[0] == byte((destination-1) mod 251)
+  for offset in 0..<length:
+    # Every overlapped byte comes from the original owner, even after crossing a page.
+    assert actual[offset+1] == byte((start+uint64(offset)) mod 251)
+  assert actual[^1] == byte((destination+uint64(length)) mod 251)
+  let originalBytes = readBytes(original, MemoryAddress(destination), MemoryLength(1),
+      MemoryByteLimit(1)).value
+  assert originalBytes[0] == byte(destination mod 251)
 for offset in [0, 1, 503, 504, 505, 511, 512, 513, 4095, 4096]:
   for size in [0, 1, 2, 511, 512, 513, 1023, 1024, 1025, 4095, 4096, 4097, 8192]:
     # Compare aligned, unaligned and multiple-page reads with an independently calculated byte stream.

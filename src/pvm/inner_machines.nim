@@ -487,10 +487,8 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
   else:
     fail(InnerMachineError.InvalidContext)
   if size > uint64(limit): fail(InnerMachineError.LimitExceeded) # A local refusal never impersonates panic/WHO/OOB.
-  let bytes = if peek: source.readBytes(inner, length, limit) else: memory.readBytes(caller, length, limit)
-  if bytes.error != MachineError.None: fail(InnerMachineError.InvalidContext) # Immutable preflights proved all ranges/caps.
-  let written = if peek: memory.writeBytes(caller, bytes.value, limit)
-    else: source.writeBytes(inner, bytes.value, limit)
+  let written = if peek: copyMemoryBytes(source, inner, memory, caller, length, limit)
+    else: copyMemoryBytes(memory, caller, source, inner, length, limit)
   if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # No partial successor is published on invariant failure.
   if peek:
     transition.response.memory = written.value # Peek changes only outer RAM; the invocation map remains the original owner.
