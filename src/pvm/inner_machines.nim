@@ -136,7 +136,7 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
   if data == nil: fail(InnerMachineError.InvalidContext)
-  if pageImage(memory, PageIndex(0)).error != MachineError.None: fail(
+  if memoryPageCount(memory).error != MachineError.None: fail(
       InnerMachineError.InvalidMemory)
   let mode = uint64(registers[7])
   let size = uint64(registers[9])
@@ -228,7 +228,7 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
   let data = machines.data
   if data == nil: return InnerMachineResult[InnerMachineTransition](
       status: InnerMachineError.InvalidContext)
-  if pageImage(memory, PageIndex(0)).error != MachineError.None:
+  if memoryPageCount(memory).error != MachineError.None:
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.InvalidMemory)
   var transition = InnerMachineTransition(machines: machines,
     response: HostResponse(action: HostAction.Continue, gas: gas, gasDeficit: GasDeficit(0),
@@ -285,7 +285,7 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
   let data = machines.data
   if data == nil: return InnerMachineResult[InnerMachineTransition](
       status: InnerMachineError.InvalidContext)
-  if pageImage(memory, PageIndex(0)).error != MachineError.None:
+  if memoryPageCount(memory).error != MachineError.None:
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.InvalidMemory)
   var transition = InnerMachineTransition(machines: machines,
     response: HostResponse(action: HostAction.Continue, gas: gas, gasDeficit: GasDeficit(0),
@@ -355,7 +355,7 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
   if data == nil: fail(InnerMachineError.InvalidContext)
-  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+  if memoryPageCount(memory).error != MachineError.None: fail(
       InnerMachineError.InvalidMemory)
   let count = uint64(registers[9])
   let mode = uint64(registers[10])
@@ -399,11 +399,17 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
   let past = first+count # Prior subtraction check proved this natural sum strictly below 2^20.
   let source = found.value
   if mode > 2:
-    for ordinal in first..<past:
-      if source.memory.pageImage(PageIndex(uint32(ordinal))).value.access ==
-          PageAccess.Inaccessible:
-        transition.response.registers[7] = RegisterValue(high(uint64)-8)
-        done() # Inspect the whole interval before any successor; no prefix remapping on HUH.
+    # Both endpoints have been checked in page coordinates, so the natural byte span fits.
+    let readable = source.memory.readableRange(MemoryAddress(first*4096),
+        MemoryLength(count*4096))
+    case readable.error
+    of MachineError.None:
+      discard # Remap only after checking the complete readable interval.
+    of MachineError.Fault:
+      transition.response.registers[7] = RegisterValue(high(uint64)-8)
+      done() # Inaccessible and missing pages both refuse the complete remap.
+    else:
+      fail(InnerMachineError.InvalidContext) # The retained inner owner and span must be valid.
   let access = if mode == 0: PageAccess.Inaccessible
     elif mode in [1'u64, 3]: PageAccess.ReadOnly else: PageAccess.ReadWrite
   let changed = source.memory.withPageRange(PageIndex(uint32(first)), PageIndex(uint32(past)),
@@ -432,7 +438,7 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
   if data == nil: fail(InnerMachineError.InvalidContext)
-  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+  if memoryPageCount(memory).error != MachineError.None: fail(
       InnerMachineError.InvalidMemory)
   let size = uint64(registers[10])
   let linear = if peek: 336'u64 else: 224'u64
@@ -521,7 +527,7 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
   if data == nil: fail(InnerMachineError.InvalidContext)
-  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+  if memoryPageCount(memory).error != MachineError.None: fail(
       InnerMachineError.InvalidMemory)
   let address = MemoryAddress(uint64(registers[8]))
   let writable = memory.writableRange(address, MemoryLength(112))
