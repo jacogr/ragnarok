@@ -61,8 +61,8 @@ proc newGasPlan*(source: Program, limits: GasPlanLimits): GasPlanResult[GasPlan]
   var blocks = 0'u64
   var atStart = true
   while pc < length:
-    # A genuine decoded successor enumerates the same immutable marked chain used by source admission.
-    let decoded = instruction(source, CodeAddress(pc))
+    # The header follows the immutable marked chain. Only block pricing needs operands.
+    let decoded = instructionHeader(source, CodeAddress(pc))
     if decoded.error != ProgramError.None:
       return GasPlanResult[GasPlan](status: GasPlanError.InvalidProgram)
     if atStart:
