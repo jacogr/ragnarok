@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/syncio
+import std/[assertions, syncio]
 include ../../../src/codec/block_codec
 
 # Expected-good snapshots alone authorize private test backing-allocation setup.

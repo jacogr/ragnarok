@@ -90,7 +90,7 @@ proc replyAfterEof() =
   defer: discard posix.close(pair[1])
   assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
   var stream = default(RpcWireStream)
-  stream.start(pair[0])
+  assert stream.start(pair[0])
   # Arm readiness on a silent peer, then publish output without driving
   # another dispatcher turn. send must wake the stream's parked task.
   for attempt in 0..<30:
@@ -98,7 +98,7 @@ proc replyAfterEof() =
     stream.pump()
     discard pauseMicros(1000)
   var idleOutput = "\x8a\x00"
-  stream.send(idleOutput)
+  assert stream.send(idleOutput)
   for attempt in 0..<1000:
     pollRpcStreams()
     if not stream.writing: break
@@ -132,7 +132,7 @@ proc replyAfterEof() =
   assert stream.inputEnded and not stream.finished, "FIN preserves the writer after the final inbox transfer"
   const reply = "\x88\x02\x03\xe8"
   var output = reply
-  stream.send(output)
+  assert stream.send(output)
   for attempt in 0..<1000:
     pollRpcStreams()
     stream.pump()
@@ -160,10 +160,10 @@ proc blockedWriter(owner: var Server, client: var tcp.Socket) =
     posix.SockLen(sizeof(capacity))) == 0
   assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
   var stream = default(RpcWireStream)
-  stream.start(pair[0])
+  assert stream.start(pair[0])
   var output = repeat('x', 65535)
   let started = getMonoTime().ticks
-  stream.send(output)
+  assert stream.send(output)
   var octet = '\0'
   var count = 0
   for attempt in 0..<1000:
