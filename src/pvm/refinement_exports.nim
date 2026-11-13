@@ -113,9 +113,10 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
   for index in 0..<data.segments.len:
     segments.add(data.segments[index]) # Share immutable payloads, never the mutable sequence metadata.
   segments.add(payload)
-  let updated: nil ExportData = ExportData(offset: data.offset, segments: move(segments))
+  let updated: nil ExportData = ExportData(offset: data.offset)
   if updated == nil:
     return RefinementExportResult(status: RefinementExportError.LimitExceeded)
+  updated.segments = move(segments)
   transition.exports = RefinementExports(data: updated)
   transition.response.registers[7] = RegisterValue(
       offset+count) # Capacity proved the index below 3072 before addition.
