@@ -219,9 +219,9 @@ func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == Ste
 
 func validPreparedHostResponse(response: HostResponse, pages: PageLimit): bool =
   ## Every accepted action obeys the prepared memory ceiling and unsigned posterior gas contract.
+  if uint64(response.gasDeficit) != 0: return false
   let count = memoryPageCount(response.memory)
-  uint64(response.gasDeficit) == 0 and count.error == MachineError.None and
-      uint32(count.value) <= uint32(pages)
+  count.error == MachineError.None and uint32(count.value) <= uint32(pages)
 
 func hostResponseExit(action: HostAction, selected: var StepExit): bool =
   ## Owned and scalar replies share the supported action domain; host Halt remains invalid.
@@ -271,8 +271,7 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   if suspension.exit != StepExit.Host:
     return StepResult(status: StepError.InvalidHostSuspension)
   let original = machineInfo(suspension.machine)
-  let program = programOf(suspension.machine)
-  if original.error != MachineError.None or program.error != MachineError.None:
+  if original.error != MachineError.None:
     # Public outcome handles may be replaced by callers; never dereference invalid machine roots.
     return StepResult(status: StepError.InvalidMachine)
   if uint64(original.value.pc) != uint64(suspension.callAddress):
@@ -284,6 +283,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   if uint64(response.gasDeficit) != 0:
     # Host gas is unsigned for every action; reserved nonzero deficit values are invalid.
     return StepResult(status: StepError.InvalidHostResponse)
+  let program = programOf(suspension.machine)
+  if program.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   let item = instruction(program.value, original.value.pc)
   if item.error != ProgramError.None:
     # A terminal/import PC outside executable code cannot authorize a host response.
@@ -546,12 +547,12 @@ proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
     memory: var Memory): StepError =
   ## Validate immutable owners and reserved-zero debt before even a zero-attempt request.
   let info = machineInfo(source)
-  let code = programOf(source)
-  let pages = memoryOf(source)
-  if info.error != MachineError.None or code.error != MachineError.None or pages.error !=
-      MachineError.None:
+  if info.error != MachineError.None or uint64(info.value.gasDeficit) != 0:
     return StepError.InvalidMachine
-  if uint64(info.value.gasDeficit) != 0: return StepError.InvalidMachine
+  let code = programOf(source)
+  if code.error != MachineError.None: return StepError.InvalidMachine
+  let pages = memoryOf(source)
+  if pages.error != MachineError.None: return StepError.InvalidMachine
   cpu = info.value
   owner = code.value
   memory = pages.value
@@ -653,15 +654,14 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
   ## Check source and zero steps before page admission. The tagged result owns frame cleanup.
-  let selectedData = prepared.data
-  if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
+  let data = prepared.data
+  if data == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+  if data.selected in [PvmBackend.PolkaInterpreted,
       PvmBackend.PolkaCompiled]:
     if single or gasPlanInfo(plan).error == GasPlanError.None or gasMemoInfo(memo).error ==
         GasMemoError.None:
       return StepResult(status: StepError.BackendProgramUnsupported)
     return runForeignFrame(source, prepared, limit)
-  let data = prepared.data
-  assert data != nil
   var cpu = default(MachineInfo)
   var owner = default(Program)
   var memory = default(Memory)
@@ -1021,8 +1021,10 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
     steps: ExecutionStepLimit, calls: HostCallLimit, plan: GasPlan,
         memo: GasMemo): HostExecutionResult[Reason] {.untyped.} =
   ## Validate and restore private input memory before moving the exclusively leased executable cache.
-  let selectedData = prepared.data
-  if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
+  let data = prepared.data
+  if data == nil:
+    return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
+  if data.selected in [PvmBackend.PolkaInterpreted,
       PvmBackend.PolkaCompiled]:
     when Fallible:
       let selected = callbacks.fallible
@@ -1032,8 +1034,6 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
       let selected = callbacks.response
       assert selected != nil
       return executionResult[Reason](runForeignHost(source, prepared, context, selected, steps, calls))
-  let data = prepared.data
-  assert data != nil
   var cpu = default(MachineInfo)
   var owner = default(Program)
   var memory = default(Memory)
@@ -1332,14 +1332,16 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
   ## Reuse exact source/policy; replace one idle successful owner atomically, leaving failed admissions retryable.
   let slot = cache.data
   if slot == nil: return newPreparedProgram(source, limits, selected)
-  let current = slot.owner.data
-  if current != nil:
-    if current.busy: return PreparationResult[PreparedProgram](status: PreparationError.Busy)
-    if current.source == source and current.selected == selected and samePreparedLimits(
-        current.limits, limits):
-      inc slot.hits # Modular diagnostic counters are independent of every execution/resource decision.
-      return PreparationResult[PreparedProgram](status: PreparationError.None,
-          completed: slot.owner)
+  block:
+    # Keep the old owner's lookup lifetime within the hit check. Replacement can release it immediately.
+    let current = slot.owner.data
+    if current != nil:
+      if current.busy: return PreparationResult[PreparedProgram](status: PreparationError.Busy)
+      if current.source == source and current.selected == selected and samePreparedLimits(
+          current.limits, limits):
+        inc slot.hits # Modular diagnostic counters are independent of every execution/resource decision.
+        return PreparationResult[PreparedProgram](status: PreparationError.None,
+            completed: slot.owner)
   inc slot.preparations
   let admitted = newPreparedProgram(source, limits, selected, slot.nativeRuntime)
   if admitted.error == PreparationError.None:

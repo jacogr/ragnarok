@@ -429,15 +429,13 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.None, completed: response)
   let offset = min(uint64(registers[8]), uint64(bytes.len))
   let count = min(requested, uint64(bytes.len) - offset)
-  # Clipping to the existing borrowed span proves both conversions and the inclusive end safe.
-  var written = default(MachineResult[Memory])
   if count == 0:
-    # Empty natural intervals permit every pointer; avoid constructing an inverted borrowed slice.
-    written = writeBytes(memory, MemoryAddress(uint64(registers[7])), [], limit)
-  else:
-    # writeBytes preflights the whole destination and never exposes a writable partial prefix.
-    written = writeBytes(memory, MemoryAddress(uint64(registers[7])),
-      bytes.toOpenArray(int(offset), int(offset + count - 1)), limit)
+    # The owner was validated above. An empty interval accepts every pointer and preserves memory.
+    response.registers[7] = RegisterValue(uint64(bytes.len))
+    return FetchResult(status: FetchError.None, completed: response)
+  # Clipping proves the slice bounds. The write preflights the whole destination before copying.
+  let written = writeBytes(memory, MemoryAddress(uint64(registers[7])),
+    bytes.toOpenArray(int(offset), int(offset + count - 1)), limit)
   case written.error
   of MachineError.None:
     # Return the complete selected value length, not the requested or copied length.

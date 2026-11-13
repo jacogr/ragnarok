@@ -1279,7 +1279,8 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
   let data = memory.data
   if data == nil: return MachineResult[seq[byte]](status: MachineError.InvalidOwner)
   let size = int(uint64(length))
-  var bytes = newSeq[byte](size)
+  # The preflighted copy initializes every byte before the result can be published.
+  var bytes = newSeqUninit[byte](size)
   if bytes.len != size: return MachineResult[seq[byte]](status: MachineError.LimitExceeded)
   copyReadableRange(data, address, bytes)
   MachineResult[seq[byte]](status: MachineError.None, completed: move(bytes))

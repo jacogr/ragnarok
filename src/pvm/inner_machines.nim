@@ -172,13 +172,13 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
   if retainedSize > uint64(data.limits.program) or data.bytes > uint64(data.limits.total) or
       retainedSize > uint64(data.limits.total)-data.bytes:
     fail(InnerMachineError.LimitExceeded) # Bound actual retained bytes, independently of requested-length pricing.
-  var copied: seq[byte] = @[]
-  if mode == 0:
-    let captured = readBytes(memory, MemoryAddress(uint64(registers[8])), MemoryLength(size),
+  let parsed = if mode == 0:
+    var captured = readBytes(memory, MemoryAddress(uint64(registers[8])), MemoryLength(size),
       MemoryByteLimit(uint64(data.limits.program)))
     case captured.error
     of MachineError.None:
-      copied = captured.value # Stable owned memory bytes live through deblob capture.
+      let copied = takeValue(captured)
+      decodeJamProgram(copied, CodeAddress(0), data.limits.program, data.limits.jumps)
     of MachineError.Fault, MachineError.InvalidRange:
       transition.response.action = HostAction.Panic
       done() # Memory faults publish no module or parsing state.
@@ -186,11 +186,9 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
       fail(InnerMachineError.LimitExceeded)
     else:
       fail(InnerMachineError.InvalidMemory)
-  # The trusted adapter's historical slice is borrowed only until decode captures its own immutable program.
-  let parsed = if mode == 1:
-    decodeJamProgram(historical, CodeAddress(0), data.limits.program, data.limits.jumps)
   else:
-    decodeJamProgram(copied, CodeAddress(0), data.limits.program, data.limits.jumps)
+    # The trusted adapter's slice is borrowed only until decode captures its own immutable program.
+    decodeJamProgram(historical, CodeAddress(0), data.limits.program, data.limits.jumps)
   if parsed.error in {ProgramError.LimitExceeded, ProgramError.AllocationRefused}:
     fail(InnerMachineError.LimitExceeded)
   if parsed.error != ProgramError.None:
@@ -487,7 +485,6 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
     done() # Underfunding changes no arguments, page bytes or map owners.
   transition.response.gas = MachineGas(credit-cost)
   let caller = MemoryAddress(uint64(registers[8]))
-  let inner = MemoryAddress(uint64(registers[9]))
   let length = MemoryLength(size)
   let checked = if peek: memory.writableRange(caller, length)
     else: memory.readableRange(caller, length)
@@ -504,6 +501,7 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
   if found.error == InnerMachineError.Missing:
     transition.response.registers[7] = RegisterValue(high(uint64)-3)
     done() # Only a fully accessible caller interval may reach WHO.
+  let inner = MemoryAddress(uint64(registers[9]))
   let source = found.value.memory
   let permitted = if peek: source.readableRange(inner, length)
     else: source.writableRange(inner, length)
@@ -658,9 +656,10 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   of StepExit.Host:
     transition.response.registers[7] = RegisterValue(3)
     transition.response.registers[8] = RegisterValue(uint64(stopped.hostCall))
-    let item = instruction(source.program, cpu.pc).value
+    let decoded = instructionHeader(source.program, cpu.pc)
+    if decoded.error != ProgramError.None: fail(InnerMachineError.InvalidContext)
     info.pc = CodeAddress(uint64(cpu.pc)+1+uint64(
-        item.skip)) # Valid owned code extent bounds this successor addition.
+        decoded.value.skip)) # Valid owned code extent bounds this successor addition.
   of StepExit.OutOfGas:
     transition.response.registers[7] = RegisterValue(
         4) # Preserve causing PC/charged flag and any unspent block credit.
