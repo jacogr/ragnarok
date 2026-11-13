@@ -1349,8 +1349,9 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
   if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
-  let captured: nil MemoryData = MemoryData(pages: move(directory), limit: data.limit)
+  let captured: nil MemoryData = MemoryData(limit: data.limit)
   if captured == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
+  captured.pages = move(directory)
   MachineResult[Memory](status: MachineError.None, completed: Memory(data: captured))
 
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],

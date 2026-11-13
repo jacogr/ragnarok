@@ -434,6 +434,8 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
     memory: Memory, limit: MemoryByteLimit, peek: bool): InnerMachineResult[
         InnerMachineTransition] =
   ## Share Omega_P/O ordering while selecting opposite read/write endpoints in one private synchronous transition.
+  ## Valid empty transfers retain both owners. Memory and map allocations are checked before
+  ## publishing any nonempty successor. Resource refusal returns LimitExceeded without a reply.
   template fail(reason: InnerMachineError) =
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
@@ -487,24 +489,44 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
   else:
     fail(InnerMachineError.InvalidContext)
   if size > uint64(limit): fail(InnerMachineError.LimitExceeded) # A local refusal never impersonates panic/WHO/OOB.
+  if size == 0:
+    transition.response.registers[7] = RegisterValue(0)
+    done() # Both complete range checks and the inner lookup already succeeded.
   let written = if peek: copyMemoryBytes(source, inner, memory, caller, length, limit)
     else: copyMemoryBytes(memory, caller, source, inner, length, limit)
-  if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # No partial successor is published on invariant failure.
+  case written.error
+  of MachineError.None: discard # Continue with the complete immutable RAM successor.
+  of MachineError.AllocationRefused, MachineError.LimitExceeded: fail(
+      InnerMachineError.LimitExceeded)
+  else: fail(InnerMachineError.InvalidContext)
   if peek:
     transition.response.memory = written.value # Peek changes only outer RAM; the invocation map remains the original owner.
   else:
     var slots = newSeqOfCap[InnerData](data.slots.len)
+    if slots.rawData == nil: fail(InnerMachineError.LimitExceeded)
     for slotIndex in 0..<data.slots.len:
       let slot = data.slots[slotIndex]
       if slot.id == id:
-        var info = slot.info
-        info.memory = written.value
-        slots.add(InnerData(info: info, code: slot.code, size: slot.size,
-            id: slot.id)) # Poke replaces only the selected RAM snapshot.
+        let updated: nil InnerData = InnerData(code: slot.code)
+        if updated == nil: fail(InnerMachineError.LimitExceeded)
+        updated.info = slot.info
+        updated.info.memory = written.value
+        updated.size = slot.size
+        updated.id = slot.id
+        slots.add(updated) # Poke replaces only the selected RAM snapshot.
       else:
         slots.add(slot) # Unselected machines share their untouched immutable owners.
-    transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-        bytes: data.bytes, limits: data.limits))
+    let updated: nil MapData = MapData()
+    if updated == nil: fail(InnerMachineError.LimitExceeded)
+    var modules = newSeqOfCap[ModuleData](data.modules.len)
+    if data.modules.len != 0 and modules.rawData == nil: fail(InnerMachineError.LimitExceeded)
+    for moduleIndex in 0..<data.modules.len:
+      modules.add(data.modules[moduleIndex]) # Keep catalogue descriptors private and module owners shared.
+    updated.slots = move(slots)
+    updated.modules = move(modules)
+    updated.bytes = data.bytes
+    updated.limits = data.limits
+    transition.machines = InnerMachines(data: updated)
   transition.response.registers[7] = RegisterValue(0)
   done()
 

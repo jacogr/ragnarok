@@ -57,7 +57,7 @@ def validate_requirements(records):
         defines = set(record['defines'])
         capped_pvm = {'pvm_checked_code_stream_refusal', 'pvm_code_allocation_refusal',
                       'pvm_frame_allocation_refusal', 'pvm_initialization_allocation_refusal',
-                      'pvm_publication_allocation_refusal'}
+                      'pvm_inner_transfer_allocation_refusal', 'pvm_publication_allocation_refusal'}
         if name in capped_pvm or 'nimHardenOutOfMem' in defines:
             # Keep the recoverable cap tied to the PVM allocation refusal regressions.
             if name not in capped_pvm or defines != {'nimMaxHeap=1', 'nimHardenOutOfMem'}:
