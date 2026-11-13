@@ -115,17 +115,21 @@ proc initialMemory(ro, rw, stack: uint32, input: openArray[byte], roData, rwData
     limit: uint32): ArtifactResult[Memory] =
   ## Derive the pinned ABI with widened arithmetic; prove overlap and counts before materialization.
   let roLength = roData.past-roData.first
+  if uint64(roLength) > uint64(ro):
+    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   let rwLength = rwData.past-rwData.first
+  if uint64(rwLength) > uint64(rw):
+    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
+  let stackSpace = ((uint64(stack)+65535) div 65536)*65536
+  if stackSpace > 0xfffe0000'u64:
+    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
+  let rwStart = 131072'u64 + ((uint64(ro)+65535) div 65536)*65536
+  let lowerEnd = rwStart + ((uint64(rw)+65535) div 65536)*65536 + 65536
+  if lowerEnd > 0xfffe0000'u64-stackSpace:
+    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   let roPages = (uint64(ro)+4095) div 4096
   let rwPages = (uint64(rw)+4095) div 4096
   let stackPages = (uint64(stack)+4095) div 4096
-  let rwStart = 131072'u64 + ((uint64(ro)+65535) div 65536)*65536
-  let lowerEnd = rwStart + ((uint64(rw)+65535) div 65536)*65536 + 65536
-  let stackSpace = ((uint64(stack)+65535) div 65536)*65536
-  if stackSpace > 0xfffe0000'u64 or lowerEnd > 0xfffe0000'u64-stackSpace:
-    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
-  if uint64(roLength) > uint64(ro) or uint64(rwLength) > uint64(rw):
-    return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   let count = roPages+rwPages+stackPages
   if count > uint64(limit): return ArtifactResult[Memory](status: ArtifactError.LimitExceeded)
   # Checked section offsets select independent prefixes in the same call-scoped borrowed container.
