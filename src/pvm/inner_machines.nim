@@ -191,7 +191,8 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
     decodeJamProgram(historical, CodeAddress(0), data.limits.program, data.limits.jumps)
   else:
     decodeJamProgram(copied, CodeAddress(0), data.limits.program, data.limits.jumps)
-  if parsed.error == ProgramError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
+  if parsed.error in {ProgramError.LimitExceeded, ProgramError.AllocationRefused}:
+    fail(InnerMachineError.LimitExceeded)
   if parsed.error != ProgramError.None:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)
     done() # HUH retains the complete original map for malformed program bytes.

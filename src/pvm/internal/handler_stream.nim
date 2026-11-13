@@ -1647,21 +1647,28 @@ proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
     if fact.opcode == 50: result.handler = flatDynamic[50, true]
     elif fact.opcode == 180: result.handler = flatDynamic[180, true]
 
-proc sourceRanks(source: Program, extent: uint64, count: uint32): FlatSourceRanks =
+proc sourceRanks(source: Program, extent: uint64, count: uint32,
+    ranks: var nil FlatSourceRanks): FlatError =
   ## Build one rank per 64 code bytes; only the validated marker bitmap is traversed.
   let words = int(extent div 64 + uint64(int(extent mod 64 != 0)))
-  result = FlatSourceRanks(words: newSeq[uint64](words), prefixes: newSeq[uint32](words))
+  var masks = newSeqUninit[uint64](words)
+  var prefixes = newSeqUninit[uint32](words)
+  if masks.len != words or prefixes.len != words:
+    return FlatError.PreparationLimitExceeded
   var slot = 0
   var seen = 0'u32
   for word in admissionMaskWords(source):
     # All set bits are genuine instruction starts, including in the zero-padded final group.
-    result.words[slot] = word
-    result.prefixes[slot] = seen
     let added = uint32(countSetBits(word))
-    assert seen <= count and added <= count-seen
+    if slot >= words or seen > count or added > count-seen:
+      return FlatError.InvalidProgram
+    masks[slot] = word
+    prefixes[slot] = seen
     seen += added
     inc slot
-  assert slot == words and seen == count
+  if slot != words or seen != count: return FlatError.InvalidProgram
+  ranks = FlatSourceRanks(words: move(masks), prefixes: move(prefixes))
+  FlatError.None
 
 func sourceOrdinal(ranks: FlatSourceRanks, pc: uint32): uint32 =
   ## Select a genuine zero-based ordinal; only block materialization uses rank arithmetic.
@@ -1676,9 +1683,14 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
   ## Admit all source/resource obligations now; derived facts belong to a later exclusive stream.
   if uint64(count) > uint64(limits.facts):
     return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
+  var ranks: nil FlatSourceRanks = nil
+  let ranked = sourceRanks(source, extent, count, ranks)
+  if ranked != FlatError.None: return FlatResult[FlatPlan](status: ranked)
+  let admittedRanks = ranks
+  if admittedRanks == nil: return FlatResult[FlatPlan](status: FlatError.InvalidProgram)
   var owner = FlatPlan(source: source, limits: limits, cycles: cycles,
     allowNative: allowNative, singleStep: false, admittedFacts: count, codeBytes: uint32(extent),
-    ranks: sourceRanks(source, extent, count))
+    ranks: admittedRanks)
   var ordinal = 0'u64
   while true:
     # Jump-table membership remains eager and preserves fact-before-jump refusal precedence.
@@ -1690,6 +1702,8 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     let valid = basicBlockStart(source, target)
     owner.jumps.add(FlatTarget(pc: uint32(uint64(target) and 0xffffffff'u64),
       valid: valid.error == ProgramError.None and valid.value))
+    if uint64(owner.jumps.len) != ordinal+1:
+      return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
     inc ordinal
   FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
 
