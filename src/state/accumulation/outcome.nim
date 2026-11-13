@@ -8,7 +8,7 @@
 import ../../codec/work/digest as work_digest
 import ../../codec/composite
 import ../../codec/state/outputs as state_outputs
-import ../../pvm/[machine, step, output]
+import ../../pvm/[machine, step]
 import ./[dispatch as accumulation_dispatch, context as accumulation_context,
     effects as accumulation_effects, invocation as accumulation_invocation,
     service as accumulation_service]
@@ -18,7 +18,8 @@ type
     Halt, Panic, OutOfGas
   AccumulationOutcomeError* {.pure.} = enum ## Local refusals contain no selected state, gas usage or output commitment.
     Uninitialized, None, InvalidExecution, InvalidContext,
-    AmbiguousProvisions ## Reserved historical refusal; the adopted #533 projection no longer emits it.
+    AmbiguousProvisions, ## Reserved historical refusal; the adopted #533 projection no longer emits it.
+    LimitExceeded ## A new immutable commitment or outcome could not be allocated.
   AccumulationOutcomeInfo* = object ## Copied final metadata is inseparable from its selected immutable implication context.
     service*: ServiceIndex
     termination*: AccumulationTermination
@@ -113,21 +114,31 @@ proc normalizeAccumulationOutcome*(execution: AccumulationDispatchResult):
   var selected = effects.effectContext(dimension).value
   if termination == AccumulationTermination.Halt and uint64(cpu.registers[8]) == 32:
     # Every other length normalizes identically whether readable or not; do not allocate that return blob.
-    let returned = captureOutput(stopped, OutputByteLimit(32))
-    if returned.error != OutputError.None:
-      fail(AccumulationOutcomeError.InvalidExecution) # A private completed execution must have a valid CPU.
-    if returned.value.len == 32:
+    let memory = memoryOf(stopped.machine)
+    if memory.error != MachineError.None or uint64(cpu.gasDeficit) != 0:
+      fail(AccumulationOutcomeError.InvalidExecution)
+    var bytes = default(array[32, byte])
+    let returned = readBytesInto(memory.value, MemoryAddress(uint64(cpu.registers[7])), bytes,
+      MemoryByteLimit(32))
+    case returned.error
+    of MachineError.None:
       # Adopted #533 C selects all regular X effects, including provisions; only its yield is overridden.
-      var bytes = default(array[32, byte])
-      for i in 0..<32:
-        bytes[i] = returned.value[i] # Copy a present hash, including the all-zero hash.
       let overridden = recordAccumulationYield(effects, OutputCommitment(bytes))
+      if overridden.error == AccumulationEffectError.LimitExceeded:
+        fail(AccumulationOutcomeError.LimitExceeded)
       if overridden.error != AccumulationEffectError.None:
         fail(AccumulationOutcomeError.InvalidContext) # No partially overridden context escapes.
       selected = overridden.value.effectContext(AccumulationDimension.Regular).value
+    of MachineError.Fault, MachineError.InvalidRange:
+      discard # An unreadable return leaves the regular yield intact.
+    else:
+      fail(AccumulationOutcomeError.InvalidExecution)
   let info = selected.effectInfo.value
-  let data = OutcomeData(context: selected, info: AccumulationOutcomeInfo(service: info.service,
+  let data: nil OutcomeData = OutcomeData()
+  if data == nil: fail(AccumulationOutcomeError.LimitExceeded)
+  data.context = selected
+  data.info = AccumulationOutcomeInfo(service: info.service,
     termination: termination, dimension: dimension, gasUsed: Gas(credit-uint64(cpu.gas)),
-    hasYield: info.hasYield, transfers: info.transfers, provisions: info.provisions))
+    hasYield: info.hasYield, transfers: info.transfers, provisions: info.provisions)
   AccumulationOutcomeResult[AccumulationOutcome](status: AccumulationOutcomeError.None,
     completed: AccumulationOutcome(data: data))

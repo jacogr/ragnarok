@@ -1030,6 +1030,7 @@ proc recordAccumulationYield*(effects: AccumulationEffects, commitment: OutputCo
     AccumulationEffectResult[AccumulationEffects] =
   ## Apply only the state part of a validated yield call: replace regular yield, preserving the checkpoint.
   ## The host dispatcher must first charge gas/read guest memory; failures there must not call this operation.
+  ## Refused allocations return LimitExceeded and preserve both original implications.
   let data = effects.data
   if data == nil:
     # Refuse before constructing a partially initialized regular context.
