@@ -124,8 +124,9 @@ def run_incoming(binary, collector, report, folder, rejected):
                     second = session.backend('collector-after')
                     messages = report['after_messages'] = []
                     stream = session.subscribe(messages)
-                    until(lambda rows: any(row['event_type'] == 0 for row in rows) and
-                          any(row['event_type'] == 10 for row in rows))
+                    # The dropped prefix proves the exporter reconnected. Release the held
+                    # TLS flight before waiting for the next periodic status.
+                    until(lambda rows: any(row['event_type'] == 0 for row in rows))
                 released.set()
                 failed = rejected and generation == 0
                 if failed:
@@ -144,6 +145,8 @@ def run_incoming(binary, collector, report, folder, rejected):
                     while f'SERVICE_IDLE {closes} {closes} ' not in (folder/'server.log').read_text():
                         assert server.poll() is None and time.monotonic() < idle_deadline
                         time.sleep(0.02)
+        # Keep the status requirement even if both handshakes finish before the next sample.
+        until(lambda rows: any(row['event_type'] == 10 for row in rows))
         shutdown.touch()
         # Sequential clients intentionally do not satisfy the service profile's separate three-peer peak test.
         assert server.wait(timeout=8) == 2
