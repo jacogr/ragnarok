@@ -1357,6 +1357,7 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     limit: MemoryByteLimit): MachineResult[Memory] =
   ## Validate the complete host span before cloning only its touched page-reference blocks and chunks.
+  ## Report staging allocation refusal through the same LimitExceeded result as the copy limit.
   let checked = inspectRange(memory, address, MemoryLength(uint64(input.len)), limit, true)
   if checked.error != MachineError.None: return failure[Memory, bool](checked)
   if input.len == 0:
@@ -1364,7 +1365,10 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     return MachineResult[Memory](status: MachineError.None, completed: memory)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
-  writeCheckedRange[false](data, address, input.len, input, data, address)
+  let written = writeCheckedRange[false](data, address, input.len, input, data, address)
+  if written.error == MachineError.AllocationRefused:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
+  written
 
 proc copyMemoryBytes*(source: Memory, sourceAddress: MemoryAddress, destination: Memory,
     destinationAddress: MemoryAddress, length: MemoryLength,

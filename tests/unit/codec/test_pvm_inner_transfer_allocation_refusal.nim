@@ -1,11 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Check both direct transfers and the Poke map publication under a recoverable heap cap.
+## Check direct transfers, Fetch and Invoke under a recoverable heap cap.
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[inner_machines, machine, step]
-import ../../support/pvm_inner_transfer
+import ../../../src/pvm/host/fetch
+import ../../support/[pvm_inner_invoke, pvm_inner_transfer]
 
 const HeapCap = 1024*1024
 let caller = transferMemory()
@@ -79,4 +80,58 @@ let updated = innerMachine(retried.value.machines, InnerMachineId(0)).value.memo
 assert uint64(load(updated, MemoryAddress(69631), AccessWidth(1)).value) == 61
 assert uint64(load(initial, MemoryAddress(69631), AccessWidth(1)).value) == 0
 assert uint64(load(caller, MemoryAddress(69630), AccessWidth(1)).value) == 61
+
+block hostWrites:
+  # A crossing Invoke frame stages two pages. Warm the child engine before applying pressure.
+  const InvokeAddress = 200650'u64
+  let child = invokeMachines()
+  let frame = invokeMemory(address = InvokeAddress)
+  let invokeRegisters = invokeArgs(address = InvokeAddress)
+  assert innerInvokeResponse(child, MachineGas(10000), invokeRegisters, frame).error ==
+      InnerMachineError.None
+  var fetchRegisters = default(RegisterFile)
+  fetchRegisters[7] = RegisterValue(196608)
+  fetchRegisters[9] = RegisterValue(4)
+  fetchRegisters[10] = RegisterValue(1)
+  let entropy = default(FetchEntropy)
+  assert fetchEntropyResponse(MachineGas(103), fetchRegisters, caller, entropy,
+      MemoryByteLimit(4)).error == FetchError.None
+
+  let pressure = alloc(HeapCap-getOccupiedMem()-131072)
+  assert pressure != nil
+  var padding = default(array[1024, nil pointer])
+  var used = 0
+  var invokeOutputRefused = false
+  var invokeEngineRefused = false
+  while HeapCap-getOccupiedMem() > 256:
+    let occupied = getOccupiedMem()
+    let fetched = fetchEntropyResponse(MachineGas(103), fetchRegisters, caller, entropy,
+      MemoryByteLimit(4))
+    assert fetched.error in {FetchError.None, FetchError.LimitExceeded}
+    if HeapCap-occupied <= 512: assert fetched.error == FetchError.LimitExceeded
+    if not invokeEngineRefused:
+      let invoked = innerInvokeResponse(child, MachineGas(10000), invokeRegisters, frame)
+      case invoked.error
+      of InnerMachineError.None: discard
+      of InnerMachineError.LimitExceeded: invokeOutputRefused = true
+      of InnerMachineError.ExecutionFailure:
+        # Stop invoking once pressure reaches the child engine, before the frame read can refuse.
+        assert invoked.executionError == StepError.ResidentAllocationRefused
+        invokeEngineRefused = true
+      else: assert false
+    assert used < padding.len
+    padding[used] = alloc(if HeapCap-occupied > 8192: 4096 else: 16)
+    assert padding[used] != nil
+    inc used
+  for index in 0..<used: dealloc(padding[index])
+  dealloc(pressure)
+  assert invokeOutputRefused and invokeEngineRefused
+  assert not innerMachine(child, InnerMachineId(0)).value.executed
+  assert uint64(load(frame, MemoryAddress(InvokeAddress), AccessWidth(8)).value) == 100
+  assert uint64(load(caller, MemoryAddress(196608), AccessWidth(1)).value) == 165
+  assert innerInvokeResponse(child, MachineGas(10000), invokeRegisters, frame).error ==
+      InnerMachineError.None
+  assert fetchEntropyResponse(MachineGas(103), fetchRegisters, caller, entropy,
+      MemoryByteLimit(4)).error == FetchError.None
+
 echo "PVM inner transfer allocation refusal passed"
