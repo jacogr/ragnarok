@@ -83,8 +83,6 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     return InitializationResult(status: InitializationError.InvalidEnvelope)
   let readOnlyLength = fixed(input, 0, 3)
   let writableLength = fixed(input, 3, 3)
-  let extraPages = fixed(input, 6, 2)
-  let stackLength = fixed(input, 8, 3)
   # Small fixed-width lengths make this sum safe; subtract before narrowing to an index.
   let dataLength = readOnlyLength + writableLength
   if dataLength > uint64(input.len - 15):
@@ -94,26 +92,27 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   # Exact equality rejects both truncated code and trailing bytes; no alternate framing is accepted.
   if codeLength != uint64(input.len - codeOffset):
     return InitializationResult(status: InitializationError.InvalidEnvelope)
+  let extraSize = fixed(input, 6, 2) * 4096
+  let stackLength = fixed(input, 8, 3)
+  let roZone = rounded(readOnlyLength, 65536)
+  let stackZone = rounded(stackLength, 65536)
+  # Retain the normative zone-separation check even though today's fixed-width fields bound it tightly.
+  if 5 * 65536'u64 + roZone + rounded(writableLength + extraSize, 65536) +
+      stackZone + 0x1000000'u64 > 0x100000000'u64:
+    return InitializationResult(status: InitializationError.InvalidEnvelope)
   let roSize = rounded(readOnlyLength, 4096)
-  let rwSize = rounded(writableLength, 4096) + extraPages * 4096
+  let rwSize = rounded(writableLength, 4096) + extraSize
   let stackSize = rounded(stackLength, 4096)
   let argumentSize = rounded(uint64(arguments.len), 4096)
-  # Retain the normative zone-separation check even though today's fixed-width fields bound it tightly.
-  if 5 * 65536'u64 + rounded(readOnlyLength, 65536) +
-      rounded(writableLength + extraPages * 4096, 65536) +
-      rounded(stackLength, 65536) + 0x1000000'u64 > 0x100000000'u64:
-    return InitializationResult(status: InitializationError.InvalidEnvelope)
   let pageCount = (roSize + rwSize + stackSize + argumentSize) div 4096
   # Check the complete allocation, including zero pages, before program admission.
   if pageCount > uint64(uint32(limits.pages)):
     return InitializationResult(status: InitializationError.LimitExceeded)
-  let reuse = uint64(retained.bytes) == uint64(limits.program) and
+  if uint64(retained.bytes) == uint64(limits.program) and
       uint64(retained.jumps) == uint64(limits.jumps) and isJamProgram(retained.source) and
-      matchesProgramEncoding(retained.source, input.toOpenArray(codeOffset, input.len - 1))
-  var source = retained.source
-  if reuse:
+      matchesProgramEncoding(retained.source, input.toOpenArray(codeOffset, input.len - 1)):
     # Prior admission proves the exact encoding under identical parse limits; entry remains invocation-specific.
-    if instructionOpcode(source, entry).error != ProgramError.None:
+    if instructionOpcode(retained.source, entry).error != ProgramError.None:
       return InitializationResult(status: InitializationError.InvalidProgram)
   else:
     let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
@@ -122,13 +121,14 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
       return InitializationResult(status: InitializationError.LimitExceeded)
     if decoded.error != ProgramError.None:
       return InitializationResult(status: InitializationError.InvalidProgram)
-    source = decoded.value # Replace the one retained source only after complete successful admission.
-    retained = InitializationCode(source: source, bytes: limits.program, jumps: limits.jumps)
+    # Replace the one retained source only after complete successful program admission.
+    retained = InitializationCode(source: decoded.value, bytes: limits.program, jumps: limits.jumps)
   # Capture each region directly, including read-only tails and the untouched stack and heap.
+  let rwStart = 131072 + roZone
   let regions = [
     region(65536, roSize, PageAccess.ReadOnly, InitializationSource.First, 11,
       int(readOnlyLength)),
-    region(131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,
+    region(rwStart, rwSize, PageAccess.ReadWrite,
       InitializationSource.First, 11 + int(readOnlyLength), int(writableLength)),
     region(0xfefe0000'u64 - stackSize, stackSize, PageAccess.ReadWrite,
       InitializationSource.First, 0, 0),
@@ -144,15 +144,15 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   registers[1] = RegisterValue(0xfefe0000'u64)
   registers[7] = RegisterValue(0xfeff0000'u64)
   registers[8] = RegisterValue(uint64(arguments.len))
-  let captured = captureMachine(source, memory.value, MachineInfo(pc: entry, gas: gas,
+  let captured = captureMachine(retained.source, memory.value, MachineInfo(pc: entry, gas: gas,
     blockCharged: false, registers: registers))
   if captured.error == MachineError.LimitExceeded:
     return InitializationResult(status: InitializationError.LimitExceeded)
   if captured.error != MachineError.None:
     return InitializationResult(status: InitializationError.InvalidProgram)
   let heap = InitializationHeap(
-    first: PageIndex(uint32((131072+rounded(readOnlyLength, 65536)) div 4096)),
-    past: PageIndex(uint32((0xfefd0000'u64-rounded(stackLength, 65536)) div 4096)))
+    first: PageIndex(uint32(rwStart div 4096)),
+    past: PageIndex(uint32((0xfefd0000'u64-stackZone) div 4096)))
   InitializationResult(status: InitializationError.None, completed: captured.value, heap: heap)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
