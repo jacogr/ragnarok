@@ -187,7 +187,7 @@ proc main() {.raises.} =
     # Native dispatch, private path ARC and both failure/completed-cancellation outcomes release every job input.
     cycle(worker, owner, missing, index)
   let after = getOccupiedMem()
-  assert before == after, "assurance storage worker ARC release"
+  assertArcRelease(before, after, "assurance storage worker")
   recordArcRelease("jamnp_assurance_worker", 1000, before, after)
   echo "JAMNP-S assurance worker passed"
 try:

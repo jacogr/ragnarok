@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Test-only numeric observations: ownership assertions remain in the calling Nim suite.
-##
-## Exposes recordArcRelease to write per-suite allocation observations for the verification
-## harness.
+## Check and record test-owned snapshots of the calling thread's occupied memory.
 
 import std/[envvars, syncio, assertions]
+
+proc assertArcRelease*(before, after: int, context: string) =
+  ## Compare the caller's snapshots exactly and report both counts on failure.
+  ## The allocator can defer accounting for cross-thread frees, so these counts
+  ## alone cannot establish a worker leak.
+  assert before == after, context & ": occupied bytes before=" & $before & " after=" & $after
 
 proc recordArcRelease*(name: string, cycles, before, after: int, schemas = 0) =
   ## Write copied live-allocation measurements after the caller's isolated release workload.
