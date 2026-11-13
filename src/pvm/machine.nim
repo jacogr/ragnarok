@@ -322,6 +322,11 @@ proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): Pa
 proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[byte],
     offset, count: int, zero: var nil PageChunk): nil PageData =
   ## The admitted source span fits in one page. Publish it only after every payload owner exists.
+  let shared = zero
+  if count == 0 and shared != nil:
+    # Initialize every slot from the existing region seed in one page construction.
+    return PageData(index: index, access: access, zeroChunks: 255,
+      chunks: [shared, shared, shared, shared, shared, shared, shared, shared])
   let page: nil PageData = PageData(index: index, access: access)
   if page == nil: return nil
   if count == 4096:
