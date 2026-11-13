@@ -1,15 +1,16 @@
 # Standard PVM initialization
 
 Source of truth: Gray Paper **0.8.0**, revision
-`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/pvm.tex`, “Standard Program
-Initialization”, equations `conditions`, `memlayout` and `registers`. The source
-hash is pinned in `spec/pins.json`; no dependency or specification pins change.
+[`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/pvm.tex), `text/pvm.tex`, “Standard Program
+Initialization”, equations `jamblobformat`, `ramlayoutfits`, `memlayout` and `registers`.
+The source hash is pinned in `spec/pins.json`.
 
 ## Contract
 
-`initializeMachine(input, arguments, entry, gas, limits)` decodes the standard JAM
-program envelope and constructs an immutable executable machine. Envelope order is
-E3 read-only length, E3 writable length, E2 extra heap-page count, E3 stack length,
+`initializeJamProgram(input, arguments, entry, gas, limits)` accepts the complete
+standard JAM program blob. It bounds the complete blob, decodes its canonical
+compact metadata length, and skips the opaque metadata before passing the borrowed
+image to `initializeMachine`. The image starts with the E3 read-only length, E3 writable length, E2 extra heap-page count, E3 stack length,
 read-only bytes, writable bytes, E4 raw-program length and raw-program bytes. All
 integers are fixed-width little-endian. The code extent must consume the remaining
 input exactly. Arguments are separately borrowed and cannot exceed 2^24 bytes.
@@ -22,9 +23,9 @@ also rejects a final successor-dependent terminator as `InvalidProgram` at this
 shared JAM preparation boundary through `decodeJamProgram`. Among final members of T, only trap, static jump,
 indirect jump, load-immediate/static jump and load-immediate/indirect jump require
 no fallthrough. The check scans the entire program during decoding, including unreachable
-suffixes, before page materialization. It does not prevalidate branch destinations,
-execute prefixes or synthesize a guest panic. Existing callers retain their typed
-initialization/preparation failures. Raw `decodeProgram`, machine capture and stepping retain the paper's structural
+suffixes, before page materialization. The initializer exposes typed failures.
+Authorization, refinement and accumulation normalize invalid framing or programs
+as zero-gas panic, while retaining typed local budget refusals. Raw `decodeProgram`, machine capture and stepping retain the paper's structural
 and runtime behavior. The JAM profile also rejects jump-entry widths above4
 (GP-PVM-005) and treats width0 tables as empty (GP-PVM-006), even when the blob
 declares entries. The same profile is used by inner-machine creation. GP-PVM-007 also caps instruction
@@ -71,7 +72,7 @@ payload reads. Rejection never returns a partially initialized machine.
 
 Input arrays must remain stable during the call. The embedded program and mapped
 bytes are copied into private acyclic owners; input mutation afterwards cannot alter
-them. `captureInitializationMemory` admits sorted mapped prefixes with explicit
+them. [`captureInitializationMemory`](../src/pvm/machine.nim) admits sorted mapped prefixes with explicit
 `InitializationSource.First` or `Second` selection from two independently borrowed
 inputs. JAM selects its envelope for RO/RW/stack and its arguments for the argument
 region. Artifact admission reuses the same constructor with three regions. Every
@@ -79,6 +80,7 @@ descriptor, including empty source-end spans, is validated before the aggregate
 page budget and any allocation. Capture builds fresh page headers and final owned
 payload chunks directly, sharing one operation-local immutable zero chunk for
 absent prefixes and suffixes. The page ceiling bounds logical mapped pages.
+The [initializer](../src/pvm/initialize.nim) propagates resource refusals.
 Initialization is linear in input/program validation, copied prefix bytes and
 mapped page headers. It performs no guest instruction or host side effect.
 

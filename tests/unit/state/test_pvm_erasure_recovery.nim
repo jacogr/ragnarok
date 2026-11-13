@@ -22,7 +22,7 @@ proc originalCount(validators: int): int =
     if 2052 mod candidate == 0: result = candidate
 
 proc frozen(validators: uint16, code: openArray[uint16], width, mode: int, padded = false) =
-  ## XOR with a column constant is a known constant-polynomial addition to each independent frozen codeword.
+  ## Reuse independent words across columns and use a separate literal for a final partial word.
   let policy = generous()
   let original = originalCount(int(validators))
   var indices = newSeq[ErasureShardIndex](original)
@@ -34,13 +34,13 @@ proc frozen(validators: uint16, code: openArray[uint16], width, mode: int, padde
   var input = newSeq[byte](original*width)
   var expected = newSeq[byte](original*width)
   for column in 0..<(width div 2):
-    let mask = if padded and column == width div 2-1: code[original-1] and 65280'u16
-      else: uint16((column*4660) and 65535)
+    let paddedColumn = padded and column == width div 2-1
     for row in 0..<original:
-      let known = code[int(uint64(indices[row]))] xor mask
+      let position = int(uint64(indices[row]))
+      let known = if paddedColumn: PaddedWords6[position] else: code[position]
       input[row*width+column*2] = byte(known and 255)
       input[row*width+column*2+1] = byte(known shr 8)
-      let wanted = code[row] xor mask
+      let wanted = if paddedColumn and row == original-1: code[row] and 255'u16 else: code[row]
       expected[row*width+column*2] = byte(wanted and 255)
       expected[row*width+column*2+1] = byte(wanted shr 8)
   let length = original*width-(if padded: 1 else: 0)

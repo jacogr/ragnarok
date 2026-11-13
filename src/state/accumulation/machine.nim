@@ -20,6 +20,7 @@ type
   AccumulationMachineData = ref object
     bootstrap: PreparedAccumulationInvocation
     machine: Machine
+    initializationPanic: bool
     heap: AccumulationHeapBounds
   PreparedAccumulationMachine* = object ## A prepared CPU is not an executed Psi_A result or an authenticated block certificate.
     data: nil AccumulationMachineData
@@ -53,7 +54,7 @@ proc machineBootstrap*(prepared: PreparedAccumulationMachine): AccumulationMachi
 proc accumulationMachine*(prepared: PreparedAccumulationMachine): AccumulationMachineResult[Machine] =
   ## Retain the immutable initial CPU; execution produces independent successor snapshots.
   let data = prepared.data
-  if data == nil:
+  if data == nil or data.initializationPanic:
     # No successful empty machine is substituted for an uninitialized owner.
     return AccumulationMachineResult[Machine](status: AccumulationMachineError.Uninitialized)
   AccumulationMachineResult[Machine](status: AccumulationMachineError.None, completed: data.machine)
@@ -62,28 +63,16 @@ proc machineHeapBounds*(prepared: PreparedAccumulationMachine): AccumulationMach
     AccumulationHeapBounds] =
   ## Copy envelope-derived heap bounds from the exact immutable initialized machine owner.
   let data = prepared.data
-  if data == nil:
+  if data == nil or data.initializationPanic:
     return AccumulationMachineResult[AccumulationHeapBounds](
       status: AccumulationMachineError.Uninitialized) # Default owners cannot fabricate geometry.
   AccumulationMachineResult[AccumulationHeapBounds](status: AccumulationMachineError.None,
     completed: data.heap)
 
-func envelopeField(code: openArray[byte], offset: int): uint64 =
-  ## Decode an E3 field only after the standard initializer proves exact envelope framing and extents.
-  result = 0
-  for index in 0..<3:
-    # The successful initializer guarantees these fixed header positions exist; shifts fit uint64.
-    result = result or (uint64(code[offset+index]) shl (index*8))
-
-func envelopeHeapBounds(code: openArray[byte]): AccumulationHeapBounds =
-  ## E3 lengths are at most 2^24-1, so adding 65535 and zone rounding cannot overflow uint64.
-  let readOnly = envelopeField(code, 0)
-  let stack = envelopeField(code, 8)
-  let roZones = (readOnly+65535) div 65536
-  let stackZones = (stack+65535) div 65536
-  # Fixed envelope widths prove both endpoints fit the 2^20 page domain and first <= past.
-  AccumulationHeapBounds(first: PageIndex(uint32(32+roZones*16)),
-    past: PageIndex(uint32((0xfefd0000'u64-stackZones*65536) div 4096)))
+func initializationPanicked*(prepared: PreparedAccumulationMachine): bool =
+  ## An admitted blob with invalid framing or program terminates before creating a CPU.
+  let data = prepared.data
+  data != nil and data.initializationPanic
 
 proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
     limits: InitializationLimits, worker: ExecutionWorker = default(
@@ -92,8 +81,7 @@ proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
         PreparedAccumulationMachine] =
   ## Use the bootstrap's own code, compact arguments and declared gas at the fixed accumulation PC 5.
   ## Bound the complete code copy before extraction; the standard initializer bounds program and pages.
-  ## The bootstrap has already enforced code eligibility. Malformed envelopes/programs remain typed local
-  ## preparation failures, not fabricated Psi_M/Psi_A panic, gas usage or posterior-state results.
+  ## Malformed eligible blobs produce an initialization panic. Resource refusals remain local errors.
   ## Refuse without publishing a partial program, memory or retained initialization wrapper.
   template fail(reason: AccumulationMachineError) =
     return AccumulationMachineResult[PreparedAccumulationMachine](status: reason)
@@ -110,23 +98,25 @@ proc initializeAccumulationMachine*(bootstrap: PreparedAccumulationInvocation,
   let arguments = bootstrap.bootstrapArguments.value
   let initialized = if execution != nil and execution[].initialized:
     # The admitted context lease precedes initialization and remains exclusive through publication.
-    initializeMachine(code.value, arguments, CodeAddress(5),
+    initializeJamProgram(code.value, arguments, CodeAddress(5),
       MachineGas(uint64(info.gas)), limits, execution[])
   else:
     # Standalone callers retain the existing one-shot or explicitly supplied worker contract.
-    initializeMachine(code.value, arguments, CodeAddress(5),
+    initializeJamProgram(code.value, arguments, CodeAddress(5),
       MachineGas(uint64(info.gas)), limits, worker)
   case initialized.error
   of InitializationError.None:
+    let heap = initialized.heapBounds
     # Keep the original bootstrap beside the complete immutable CPU without introducing back-references.
     AccumulationMachineResult[PreparedAccumulationMachine](status: AccumulationMachineError.None,
       completed: PreparedAccumulationMachine(data: AccumulationMachineData(
-        bootstrap: bootstrap, machine: initialized.value, heap: envelopeHeapBounds(code.value))))
+        bootstrap: bootstrap, machine: initialized.value,
+        heap: AccumulationHeapBounds(first: heap.first, past: heap.past))))
   of InitializationError.LimitExceeded:
     fail(AccumulationMachineError.LimitExceeded) # Local policy exhaustion is never a consensus panic.
-  of InitializationError.InvalidEnvelope:
-    fail(AccumulationMachineError.InvalidEnvelope) # Account code eligibility does not validate JAM framing.
-  of InitializationError.InvalidProgram:
-    fail(AccumulationMachineError.InvalidProgram) # Raw code and the mandatory entry must be executable.
+  of InitializationError.InvalidEnvelope, InitializationError.InvalidProgram:
+    AccumulationMachineResult[PreparedAccumulationMachine](status: AccumulationMachineError.None,
+      completed: PreparedAccumulationMachine(data: AccumulationMachineData(
+        bootstrap: bootstrap, initializationPanic: true)))
   else:
     fail(AccumulationMachineError.InvalidInvocation) # Impossible argument/default failures expose no CPU.

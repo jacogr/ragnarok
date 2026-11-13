@@ -5,8 +5,8 @@
 ## Exposes InitializationLimits, InitializationError/Result and initializeMachine. Inputs are borrowed
 ## only during the call; successful machines own immutable acyclic copies. See spec/pvm-initialization.md.
 
-import std/assertions
 import ./[program, machine]
+import ../codec/bounded
 
 type
   InitializationByteLimit* = distinct uint64 ## Local input policy bounds the complete JAM envelope independently of the embedded program.
@@ -21,11 +21,14 @@ type
     jumps: JumpCountLimit
   InitializationError* {.pure.} = enum ## No failed/default result contains a machine, memory or partially decoded input.
     Uninitialized, None, InvalidEnvelope, ArgumentsTooLarge, LimitExceeded, InvalidProgram
+  InitializationHeap* = object ## Half-open heap page interval, reserving the stack in major zones.
+    first*, past*: PageIndex
   InitializationResult* = object ## Private discriminated storage publishes only completely initialized executable snapshots.
     case status: InitializationError
     of None:
       # The resulting machine retains its program and memory children without back-references.
       completed: Machine
+      heap: InitializationHeap
     else:
       # Rejection carries only its reason, never partially allocated state.
       discard
@@ -38,6 +41,11 @@ func value*(r: InitializationResult): Machine {.inline, requires: r.status ==
     InitializationError.None.} =
   ## Borrowing the result yields a retained immutable machine only on successful selection.
   r.completed
+
+func heapBounds*(r: InitializationResult): InitializationHeap {.inline,
+    requires: r.status == InitializationError.None.} =
+  ## The exact decoded layout is available only after successful standard initialization.
+  r.heap
 
 func fixed(input: openArray[byte], start, width: int): uint64 =
   ## Decode a fixed little-endian field after its caller establishes the complete header extent.
@@ -53,8 +61,6 @@ func rounded(value, quantum: uint64): uint64 =
 func region(start, size: uint64, access: PageAccess, source: InitializationSource,
     offset, length: int): InitializationRegion =
   ## Convert the admitted page-aligned layout to exclusive page endpoints.
-  assert start mod 4096 == 0 and size mod 4096 == 0
-  assert start <= 0x100000000'u64 and size <= 0x100000000'u64-start
   InitializationRegion(first: PageIndex(uint32(start div 4096)),
     past: PageIndex(uint32((start+size) div 4096)), access: access, source: source,
     offset: offset, length: length)
@@ -62,8 +68,10 @@ func region(start, size: uint64, access: PageAccess, source: InitializationSourc
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits,
         retained: var InitializationCode): InitializationResult =
-  ## Apply standard Y framing/layout, validate the embedded program and entry, then capture a CPU.
+  ## Initialize the fixed program image after its metadata prefix has been decoded.
   ## Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
+  ## Resource refusals from program decoding, page capture or CPU snapshot allocation
+  ## return `InitializationError.LimitExceeded`.
   # Argument admissibility is a protocol bound, separate from caller allocation policy.
   if uint64(arguments.len) > 0x1000000'u64:
     return InitializationResult(status: InitializationError.ArgumentsTooLarge)
@@ -127,8 +135,10 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     region(0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, InitializationSource.Second,
       0, arguments.len)]
   let memory = captureInitializationMemory(regions, input, arguments, limits.pages)
-  # These invariants were established above; a failure indicates an internal layout bug.
-  assert memory.error == MachineError.None
+  if memory.error in {MachineError.LimitExceeded, MachineError.AllocationRefused}:
+    return InitializationResult(status: InitializationError.LimitExceeded)
+  if memory.error != MachineError.None:
+    return InitializationResult(status: InitializationError.InvalidEnvelope)
   var registers = default(RegisterFile)
   registers[0] = RegisterValue(0xffff0000'u64)
   registers[1] = RegisterValue(0xfefe0000'u64)
@@ -140,10 +150,32 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     return InitializationResult(status: InitializationError.LimitExceeded)
   if captured.error != MachineError.None:
     return InitializationResult(status: InitializationError.InvalidProgram)
-  InitializationResult(status: InitializationError.None, completed: captured.value)
+  let heap = InitializationHeap(
+    first: PageIndex(uint32((131072+rounded(readOnlyLength, 65536)) div 4096)),
+    past: PageIndex(uint32((0xfefd0000'u64-rounded(stackLength, 65536)) div 4096)))
+  InitializationResult(status: InitializationError.None, completed: captured.value, heap: heap)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits): InitializationResult =
-  ## Ordinary one-shot initialization owns no reusable worker cache after returning its immutable machine.
+  ## Initialize one immutable machine with a call-scoped decode cache.
+  ## Resource refusals return `InitializationError.LimitExceeded`.
   var retained = default(InitializationCode)
   initializeMachine(input, arguments, entry, gas, limits, retained)
+
+proc initializeJamProgram*(input, arguments: openArray[byte], entry: CodeAddress,
+    gas: MachineGas, limits: InitializationLimits,
+    retained: var InitializationCode): InitializationResult =
+  ## Standard Y admits one complete metadata-prefixed JAM blob. Metadata is opaque and ignored.
+  if uint64(input.len) > uint64(limits.envelope):
+    return InitializationResult(status: InitializationError.LimitExceeded)
+  let metadata = decodeBytesBorrowed(input, ByteLimit(uint64(input.len)))
+  if metadata.error != ContainerError.None or metadata.consumed == input.len:
+    return InitializationResult(status: InitializationError.InvalidEnvelope)
+  initializeMachine(input.toOpenArray(metadata.consumed, input.high), arguments,
+    entry, gas, limits, retained)
+
+proc initializeJamProgram*(input, arguments: openArray[byte], entry: CodeAddress,
+    gas: MachineGas, limits: InitializationLimits): InitializationResult =
+  ## One-shot standard initialization retains no worker cache.
+  var retained = default(InitializationCode)
+  initializeJamProgram(input, arguments, entry, gas, limits, retained)

@@ -114,19 +114,19 @@ proc projections() {.raises.} =
       else:
         assert owner.serviceCode.error == AccumulationServiceError.CodeUnavailable # Unavailable code cannot fabricate a valid empty blob.
         if info.code == AccumulationCodeStatus.Oversized:
-          assert info.codeBytes == unhex(f[5]).len # Size counts only code after metadata.
+          assert info.codeBytes == unhex(f[5]).len # Size counts the complete authenticated program blob.
     inc count
   assert count == 408
 
 ## Refuse invalid sources, hostile indices and corrupt state; ordinary absent code retains the actual account.
 proc boundaries(): PreparedAccumulationService =
   let source = inputs()
-  let config = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(100000))
+  let config = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(2), preimageBytes: ByteLimit(100000))
   var records = entries(@[0'u8, 7])
   let state = snapshot(records)
   let owner = prepareAccumulationService(source, InvocationServiceIndex(0), state, HeaderSlot(3), config).value
   records[1].value[1] = 9
-  assert owner.serviceCode.value == @[7'u8] # Caller state-entry mutation cannot alter owned code.
+  assert owner.serviceCode.value == @[0'u8, 7] # Caller state-entry mutation cannot alter owned code.
   assert owner.serviceInputAt(InvocationInputIndex(high(uint64))).error ==
       AccumulationServiceError.InvalidIndex
   assert prepareAccumulationService(source, InvocationServiceIndex(high(uint64)), state, HeaderSlot(
@@ -202,12 +202,12 @@ proc boundCase(base: OwnedReport): InvocationInput =
     )).value, queueConfig()).value
   let round = planBlockInitialAccumulation(bound, roundConfig()).value
   let prepared = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(3)))
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(3), preimageBytes: ByteLimit(3)))
   assert prepared.error == AccumulationServiceError.None
   let service = prepared.value.serviceProjection.value
   assert uint32(service.serviceInfo.value.slot) == 2
   assert uint64(service.serviceInfo.value.gas) == 10
-  assert service.serviceCode.value == @[7'u8]
+  assert service.serviceCode.value == @[1'u8, 99, 7]
   assert prepared.value.serviceBlockRound.value.roundProjection.value.roundInfo.error ==
       AccumulationRoundError.None
   result = service.serviceInputAt(InvocationInputIndex(0)).value
@@ -216,8 +216,8 @@ proc boundCase(base: OwnedReport): InvocationInput =
 proc lifetime() =
   let source = inputs()
   let state = snapshot(entries(@[0'u8, 7]))
-  let config = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(2))
-  let refused = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))
+  let config = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(2), preimageBytes: ByteLimit(2))
+  let refused = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(2), preimageBytes: ByteLimit(1))
   discard prepareAccumulationService(source, InvocationServiceIndex(0), state, HeaderSlot(2), config)
   discard prepareAccumulationService(source, InvocationServiceIndex(0), state, HeaderSlot(2), refused)
   let before = getOccupiedMem()
@@ -235,7 +235,7 @@ proc lifetime() =
 proc main() {.raises.} =
   projections()
   let retained = boundaries()
-  assert retained.serviceCode.value == @[7'u8]
+  assert retained.serviceCode.value == @[0'u8, 7]
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var wire = newSeq[byte](raw.len)
   for i in 0..<raw.len: wire[i] = byte(raw[i]) # Preserve exact binary fixture octets.

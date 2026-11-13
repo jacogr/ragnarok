@@ -35,6 +35,7 @@ type
   AccumulationDispatchResult* = object ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
     case status: AccumulationDispatchError
     of None:
+      initializationPanic: bool
       completed: StepOutcome                # Immutable successor; no reference back to this result.
       completedEffects: AccumulationEffects # Both dimensions belong to this exact execution.
     of ExecutionFailure:
@@ -61,9 +62,14 @@ func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError =
   outcome.status
 
 func value*(outcome: AccumulationDispatchResult): StepOutcome {.inline,
-    requires: outcome.status == AccumulationDispatchError.None.} =
+    requires: outcome.status == AccumulationDispatchError.None and
+        not outcome.initializationPanic.} =
   ## Retain a completed guest outcome independently of all preparation handles.
   outcome.completed
+
+func initializationPanicked*(outcome: AccumulationDispatchResult): bool =
+  ## Standard initialization can terminate before there is any guest CPU to expose.
+  outcome.status == AccumulationDispatchError.None and outcome.initializationPanic
 
 func effects*(outcome: AccumulationDispatchResult): AccumulationEffects {.inline,
     requires: outcome.status == AccumulationDispatchError.None.} =
@@ -1346,22 +1352,28 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   ## Omitted provision limits give zero retained capacity; no default authorizes unbounded capture.
   ## Each call prepares I from this machine's own bootstrap and starts from its immutable initial CPU.
   ## No caller-supplied replacement effects, persistent writes or partial results escape.
-  let captured = machineFetchContext(prepared, parameters, fetchLimits)
-  case captured.error
-  of InvocationFetchError.None:
-    discard # Successful capture also proves the machine and invocation owners are initialized.
-  of InvocationFetchError.InvalidMachine:
-    # No default owner may authorize a synthetic invocation.
-    return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidMachine)
-  of InvocationFetchError.InvalidParameters:
-    # Configuration must be valid before any guest instruction runs.
-    return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidParameters)
-  of InvocationFetchError.LimitExceeded:
-    # Pre-execution capture policy remains a local refusal.
-    return AccumulationDispatchResult(status: AccumulationDispatchError.LimitExceeded)
+  let initializationPanic = prepared.initializationPanicked
+  var captured = default(InvocationFetchResult)
+  if initializationPanic:
+    if not parameters.valid:
+      return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidParameters)
   else:
-    # Failed input encoding or context construction exposes no partial environment.
-    return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext)
+    captured = machineFetchContext(prepared, parameters, fetchLimits)
+    case captured.error
+    of InvocationFetchError.None:
+      discard # Successful capture also proves the machine and invocation owners are initialized.
+    of InvocationFetchError.InvalidMachine:
+      # No default owner may authorize a synthetic invocation.
+      return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidMachine)
+    of InvocationFetchError.InvalidParameters:
+      # Configuration must be valid before any guest instruction runs.
+      return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidParameters)
+    of InvocationFetchError.LimitExceeded:
+      # Pre-execution capture policy remains a local refusal.
+      return AccumulationDispatchResult(status: AccumulationDispatchError.LimitExceeded)
+    else:
+      # Failed input encoding or context construction exposes no partial environment.
+      return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext)
   let initial = prepareAccumulationContexts(prepared.machineBootstrap.value, contextConfig)
   if initial.error == AccumulationContextError.LimitExceeded:
     return AccumulationDispatchResult(status: AccumulationDispatchError.LimitExceeded) # Bound chapter copies.
@@ -1371,14 +1383,16 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
       deletedAccounts, modifiedAccounts, accountWriteFacts, storageFacts, requestFacts)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
+  if initializationPanic:
+    return AccumulationDispatchResult(status: AccumulationDispatchError.None,
+      initializationPanic: true, completedEffects: initialized.value)
   var context = DispatchContext(logger: logging, parameters: parameters,
       staging: contextConfig.staging, queues: contextConfig.queues,
       privileges: contextConfig.privileges,
       fetch: captured.value,
       heap: prepared.machineHeapBounds.value,
-          copyLimit: copyLimit,
-
-effects: initialized.value, provisionLimits: provisionLimits, serviceProbes: serviceProbes,
+      copyLimit: copyLimit, effects: initialized.value, provisionLimits: provisionLimits,
+      serviceProbes: serviceProbes,
       transferLimit: transferLimit)
   let evaluated = if execution != nil and execution[].initialized:
     # Opaque admission stays held during every synchronous host callback and immutable result publication.

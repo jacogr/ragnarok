@@ -157,7 +157,9 @@ for index in 0..<metadata.len: exact.add(metadata.bytes[index])
 for index in 0..<3999975: exact.add(0)
 for index in 3..<raw.len: exact.add(raw[index])
 assert exact.len == 4000000
-let boundary = prepare(exact).value
+var exactPolicy = limits()
+exactPolicy.initialization.envelope = InitializationByteLimit(4000000)
+let boundary = prepare(exact, cap = exactPolicy).value
 assert boundary.bootstrapInfo.value.status == RefinementCodeStatus.Ready
 assert boundary.bootstrapArguments.value.len == 39
 # Absent account/preimage/history availability selects BAD without executable bytes, even under a zero copy cap.
@@ -169,13 +171,13 @@ for damage in [1, 2, 4]:
   assert bad.bootstrapPackageHash.error == RefinementBootstrapError.NotReady
 assert prepare(anchor = 9).value.bootstrapInfo.value.status == RefinementCodeStatus.Bad
 assert prepare(damage = 3).error == RefinementBootstrapError.MalformedState
-# Invalid metadata is a local gate; malformed JAM framing/programs never become a ready CPU or fabricated BAD.
+# Malformed metadata, layout and program produce a bootstrap panic without an executable CPU.
 for malformed in [newSeq[byte](), @[1'u8], @[128'u8, 0]]:
-  assert prepare(malformed).error == RefinementBootstrapError.MalformedCode
-assert prepare(@[0'u8]).error == RefinementBootstrapError.InvalidEnvelope
+  assert prepare(malformed).value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
+assert prepare(@[0'u8]).value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
 var invalid = raw
 invalid[invalid.len-1] = 0 # No instruction start bit, despite a correctly hashed preimage and valid envelope framing.
-assert prepare(invalid).error == RefinementBootstrapError.InvalidProgram
+assert prepare(invalid).value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
 # Real historical lookup and hashing cannot promote final missing successors to a ready refinement CPU.
 for program in [@[0'u8, 0, 4, 51, 7, 7, 1, 9],
     @[0'u8, 0, 6, 51, 7, 7, 170, 0, 253, 9]]:
@@ -185,10 +187,10 @@ for program in [@[0'u8, 0, 4, 51, 7, 7, 1, 9],
   for index in 0..<3: authenticated.add(0)
   for octet in program: authenticated.add(octet)
   let source = authenticated
-  assert prepare(authenticated).error == RefinementBootstrapError.InvalidProgram
+  assert prepare(authenticated).value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
   assert authenticated == source
   authenticated[18] = 0 # An unreachable final successor is still a whole-module defect.
-  assert prepare(authenticated).error == RefinementBootstrapError.InvalidProgram
+  assert prepare(authenticated).value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
 # A present successor produces a Ready owner rather than a preparation failure.
 block:
   var authenticated = @[2'u8, 201, 202]
@@ -215,7 +217,7 @@ for width in [0'u8, 5]:
     assert execution.error == RefinementDispatchError.None
     assert execution.value.outcome.exit == StepExit.Panic
   else:
-    assert checked.error == RefinementBootstrapError.InvalidProgram
+    assert checked.value.bootstrapInfo.value.status == RefinementCodeStatus.Panic
 
 # A wrong committed preimage hash is invalid supplied state; backend failures cannot fabricate BAD/Ready/hash bytes.
 let originalState = state(raw, expectedCodeHash)
@@ -247,7 +249,7 @@ var precise = limits()
 precise.preimage = ByteLimit(24)
 precise.package = ByteLimit(329)
 precise.arguments = ByteLimit(39)
-precise.initialization.envelope = InitializationByteLimit(21)
+precise.initialization.envelope = InitializationByteLimit(24)
 precise.initialization.program = ProgramByteLimit(6)
 assert prepare(cap = precise).error == RefinementBootstrapError.None
 assert prepareRefinementBootstrap(default(StateStoreSnapshot), pkg, FetchItemIndex(0), CoreIndex(5),

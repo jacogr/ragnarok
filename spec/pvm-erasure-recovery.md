@@ -1,19 +1,20 @@
 # Bounded erasure chunk recovery
 
-Target GP fad0ded4a433052397bf7234352a57fe491883f7 erasure_coding.tex, recovery
+Target GP [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/erasure_coding.tex) erasure_coding.tex, recovery
 function and Generator Polynomial; JAMNP-S aa0e2b8498c0b1bc1725af2903704d701c6577ab
 CE133/138/139/140 fallback requires this computation. Accept exactly the geometry's
 recovery threshold of distinct indexed chunks in arbitrary order. Chunks consist
 of little-endian Cantor-coordinate words. Reconstruct systematic rows in index order,
 check recovered zero padding, and return the independently declared original length.
 
-Use Newton divided differences at the supplied distinct points. Precompute inverses
-for the distinct nonzero XOR differences of supplied indices (at most 1023); every
-inverse costs 31 products. Already supplied systematic rows are copied exactly.
-For k word columns, d original rows and m>0 missing original rows, complete products
-are 31*distinctDifferences + k*(d*(d-1)/2 + m*(d-1)); when m=0 no field products occur.
+Convert each validator ordinal to its evaluation point and append the d'-d
+implicit zero points. Use Newton divided differences at the resulting d' points.
+Precompute inverses for the distinct nonzero XOR differences, each costing 31
+products. For k word columns and m missing original rows, total products are
+31*distinctDifferences + k*(d'*(d'-1)/2 + m*(d'-1)). When all systematic rows
+are supplied, copy them exactly without field operations.
 Precharge all variable output/workspace buffers and products before allocation or
-field operations. Fixed scratch stays bounded by 2047 booleans. Payloads are capped
+field operations. Fixed scratch includes 512 coordinates and 2048 difference flags. Payloads are capped
 by the GP full bundle ceiling, validated before arithmetic and native narrowing.
 
 This detached arithmetic result provides no authenticity or availability certificate.

@@ -134,7 +134,7 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
     writes: ElementLimit(writes), writeValueBytes: ByteLimit(20000))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(
       if precedingService: 1 else: 0), state, slot,
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(code.len),
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(preimage.len),
       preimageBytes: ByteLimit(preimage.len))).value
   prepareAccumulationInvocation(service, entropy, ServiceProbeLimit(probes)).value
 

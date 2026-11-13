@@ -22,7 +22,7 @@ proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc generous(): BundleErasureLimits =
   ## Bound selected real-fixture work and storage explicitly.
-  BundleErasureLimits(bytes: ByteLimit(1000000), products: FieldProductLimit(10000000))
+  BundleErasureLimits(bytes: ByteLimit(1000000), products: FieldProductLimit(20000000))
 
 proc expect[T](outcome: BundleErasureResult[T], reason: BundleErasureError) =
   ## Check exact alternatives without reading refused encoded prefixes.
@@ -74,11 +74,11 @@ let code = verify(ordinary, Ordinary1023Hash)
 assert code.bundleErasureChunk(ErasureShardIndex(342)).value == @Ordinary1023First, "independent first parity LE bytes"
 assert code.bundleErasureChunk(ErasureShardIndex(1022)).value == @Ordinary1023Last, "independent final parity LE bytes"
 let info = code.bundleErasureInfo.value
-assert info.products == 3982849, "independent complete column work"
-assert info.workspaceBytes == 13251, "independent aggregate workspace"
+assert info.products == 6430424, "independent complete column work"
+assert info.workspaceBytes == 13591, "independent aggregate workspace"
 assert info.retainedBytes == 26598, "independent encoded output extent"
 let six = verify(layout(shards = 6), Ordinary6Hash)
-assert six.bundleErasureInfo.value.products == 149838, "independent six-validator work"
+assert six.bundleErasureInfo.value.products == 158652, "independent six-validator work"
 let rich = verify(layout(rich = true), Rich1023Hash)
 assert rich.bundleErasureChunk(ErasureShardIndex(342)).value == @Rich1023First, "rich first parity bytes"
 assert rich.bundleErasureChunk(ErasureShardIndex(1022)).value == @Rich1023Last, "rich last parity bytes"

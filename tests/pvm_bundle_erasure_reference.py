@@ -5,7 +5,7 @@
 import hashlib
 from functools import lru_cache
 from pvm_bundle_reference import witnesses as bundle_witnesses
-from pvm_erasure_reference import interpolate, original_count
+from pvm_erasure_reference import encode_words, original_count
 
 
 def digest(data):
@@ -44,7 +44,7 @@ def encode(data, validators):
     output = [bytearray() for _ in range(validators)]
     for position in range(0, len(chunks[0]), 2):
         words = [int.from_bytes(chunk[position:position+2], 'little') for chunk in chunks]
-        code = interpolate(list(range(original)), words, range(validators))
+        code = encode_words(words, validators)
         for chunk, word in zip(output, code):
             chunk.extend(word.to_bytes(2, 'little'))
     return [bytes(chunk) for chunk in output]

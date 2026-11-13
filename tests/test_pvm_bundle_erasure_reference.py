@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 from pvm_bundle_erasure_reference import witnesses
-from pvm_erasure_reference import interpolate, original_count
+from pvm_erasure_reference import recover_words, original_count
 
 
 def frozen(source, name):
@@ -36,7 +36,7 @@ class BundleErasureReferenceTests(unittest.TestCase):
         restored = [bytearray() for _ in range(original)]
         for offset in range(0, len(row['chunks'][0]), 2):
             values = [int.from_bytes(row['chunks'][index][offset:offset+2], 'little') for index in indices]
-            for chunk, word in zip(restored, interpolate(indices, values, range(original))):
+            for chunk, word in zip(restored, recover_words(indices, values, 6)):
                 chunk.extend(word.to_bytes(2, 'little'))
         padded = b''.join(restored)
         self.assertEqual(padded[:len(row['original'])], row['original'])

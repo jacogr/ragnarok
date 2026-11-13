@@ -113,6 +113,30 @@ def original_count(validators):
     return max(d for d in range(1, validators // 3 + 2) if 2052 % d == 0)
 
 
+def validator_points(validators):
+    """Pair systematic and parity validator slots with their polynomial evaluation points."""
+    count = original_count(validators)
+    span = 1 << (count - 1).bit_length()
+    return list(range(count)) + list(range(span, span + validators - count))
+
+
+def encode_words(words, validators):
+    """The implicit shortening coordinates all carry known zero words."""
+    span = 1 << (len(words) - 1).bit_length()
+    return interpolate(range(span), list(words) + [0] * (span - len(words)),
+                       validator_points(validators))
+
+
+def recover_words(indices, words, validators):
+    """Supply every implicit zero point alongside the independent received rows."""
+    count = original_count(validators)
+    span = 1 << (count - 1).bit_length()
+    points = validator_points(validators)
+    padding = list(range(count, span))
+    return interpolate([points[index] for index in indices] + padding,
+                       list(words) + [0] * len(padding), range(count))
+
+
 def message(validators):
     """Exercise high bits and nonconstant independent coordinates with a fixed arithmetic pattern."""
     return [((i * 257 + 0x8123) ^ (i * i * 19)) & 65535 for i in range(original_count(validators))]
@@ -120,7 +144,7 @@ def message(validators):
 
 def witnesses():
     """Return complete expected words for every selected validator geometry."""
-    return {v: interpolate(list(range(original_count(v))), message(v), range(v))
+    return {v: encode_words(message(v), v)
             for v in [6, 9, 51, 1023]}
 
 
