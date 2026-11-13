@@ -79,6 +79,9 @@ implementation work. For unfamiliar pinned APIs, consult the short
   private routines. Use `#` beside body statements for implementation notes and leave a blank
   line when a body note immediately follows the routine docs.
   Explain purpose, checks, errors and ownership for the maintainer learning Nim.
+- Declare locals in the narrowest scope that needs them. Place branch-only bindings inside that
+  branch and defer calculations, copies, ARC retains and allocations until the guards that can
+  skip them have passed. Preserve observable validation and side-effect ordering.
 - Project-owned source/build files start with `Copyright (c) 2026 Ragnarök contributors` and
   `SPDX-License-Identifier: MIT OR Apache-2.0`, after shebangs. Preserve third-party attribution;
   omit headers in generated/non-comment formats. Follow with an accurate purpose/API summary:
