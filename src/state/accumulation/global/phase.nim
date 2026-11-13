@@ -155,11 +155,11 @@ proc prepareAccumulationGlobalPhase*(provisions: PreparedAccumulationProvisionPh
   if queueEntry.error != AuthorizationError.None: queueFail(queueEntry.error)
   let stagingEntry = validatorEntry(ValidatorChapter.Staging, records, limits.staging)
   if stagingEntry.error != StateComponentError.None: stagingFail(stagingEntry.error)
-  let roleEntry = roles.value.globalRolesEntry.value
   let forked = forkStateStore(provisions.provisionPhaseSnapshot.value)
   if forked.error != StateStoreError.None:
     return AccumulationGlobalPhaseResult[PreparedAccumulationGlobalPhase](
         status: AccumulationGlobalPhaseError.StoreFailure, storeReason: forked.error)
+  let roleEntry = roles.value.globalRolesEntry.value
   var working = forked.value
   let applied = working.apply([StateWrite(key: roleEntry.key, kind: StateWriteKind.Put,
       value: roleEntry.value),

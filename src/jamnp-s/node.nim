@@ -1303,23 +1303,20 @@ proc poll*(owner: var NodeService, now: MonoTime, maximumMs: range[
     owner.sweep = (owner.sweep+1) mod owner.frames.len
     if owner.frames[index].kind == FrameKind.Empty or owner.frames[index].closing: continue
     let frame = addr owner.frames[index]
-    let stalledRead = now-frame.activity > initDuration(seconds = 30)
-    let expiredRead = now-frame.started > initDuration(seconds = 120)
-    let client = frame.kind in [FrameKind.Client, FrameKind.SharingClient]
-    let retiredClient = client and frame.handle == NativeStream(nil)
-    let completeClient = if frame.kind == FrameKind.Client: frame.client.ready
-      elif frame.kind == FrameKind.SharingClient: frame.sharingClient.ready
-      else: false # Other protocol families have no queued client intent.
-    let queuedExpired = retiredClient and not completeClient and now-frame.started > initDuration(seconds = 5)
     if not owner.node.active(frame.peer):
       owner.closeFrame(index)
     elif frame.kind == FrameKind.Selecting and now-frame.started > initDuration(seconds = 5):
       owner.closeFrame(index)
-    elif queuedExpired:
-      owner.closeFrame(index) # Complete replies retain ordinary read expiry rather than escaping all deadlines.
     elif frame.kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work, FrameKind.Sharing,
-        FrameKind.SharingClient] and (stalledRead or expiredRead):
-      owner.closeFrame(index) # A cancelled job still retains its host lease until Done/join.
+        FrameKind.SharingClient]:
+      # Complete replies retain ordinary read expiry rather than escaping all deadlines.
+      let queuedExpired = frame.handle == NativeStream(nil) and
+        now-frame.started > initDuration(seconds = 5) and
+        ((frame.kind == FrameKind.Client and not frame.client.ready) or
+         (frame.kind == FrameKind.SharingClient and not frame.sharingClient.ready))
+      if queuedExpired or now-frame.activity > initDuration(seconds = 30) or
+          now-frame.started > initDuration(seconds = 120):
+        owner.closeFrame(index) # A cancelled job still retains its host lease until Done/join.
     elif frame.kind == FrameKind.Persistent:
       if not owner.node.announcements(frame.peer) or frame.announcement.failed or
           (not frame.announcement.active and now-frame.started > initDuration(seconds = 5)) or

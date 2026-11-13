@@ -101,13 +101,13 @@ proc liveViews*(owner: AuditBranches, selected: ChainView): seq[ChainView] =
 proc chargeBlock(selected: BlockSnapshot, used: var uint64, limit: uint64): bool =
   ## Reserve the inherited map ceiling, committed entries/nodes and the exact optional block body.
   let state = selected.stateSnapshot
-  let counts = state.commitment
   let values = state.retainedValueLimit
-  let body = if selected.hasBlockBody: uint64(selected.blockBodyLength) else: 0'u64
   if values > limit-used: return false
   used += values
+  let body = if selected.hasBlockBody: uint64(selected.blockBodyLength) else: 0'u64
   if body > limit-used: return false
   used += body
+  let counts = state.commitment
   if counts.nodes > (limit-used) div 256: return false
   used += counts.nodes*256
   if uint64(counts.entries) > (limit-used) div 128: return false

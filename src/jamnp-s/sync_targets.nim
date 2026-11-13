@@ -107,8 +107,8 @@ proc observePeer*(targets: var SyncTargets, peer: DownloadPeerId,
     source[] = TargetSource(sampled: true)
     return true # TLS failure, reset, FIN or retirement revokes both freshness and old receipts immediately.
   let claims = snapshot.value
-  let leaves = if claims.leaves.len == 0: @[claims.finalized] else: claims.leaves
   if not source.live or source.incarnation != incarnation or source.sequence != claims.sequence:
+    let leaves = if claims.leaves.len == 0: @[claims.finalized] else: claims.leaves
     var reached: seq[AnnouncedBlock] = @[]
     if source.live and source.incarnation == incarnation:
       for leaf in leaves:

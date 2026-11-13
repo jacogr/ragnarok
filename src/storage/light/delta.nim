@@ -333,27 +333,28 @@ proc verified(input: openArray[byte], before: PreparedLightSnapshot, expected: L
   cursor = LightDeltaHeaderBytes
   for index in 0..<int(count):
     # Only bounded shape-validated checksum-authenticated transport is materialized for atomic proof admission.
-    let key = readKey(input, cursor)
-    let tag = input[cursor+31]
-    let count = int(number(input, cursor+32, 2))
-    let size = int(number(input, cursor+34))
+    let editStart = cursor
+    let tag = input[editStart+31]
     cursor += EditBytes
     if tag == 0:
       if old >= forgotten.len: return failed[DeltaData](LightDeltaError.InvalidFormat)
-      forgotten[old] = key
+      forgotten[old] = readKey(input, editStart)
       inc old
     else:
       if fresh >= proofs.len: return failed[DeltaData](LightDeltaError.InvalidFormat)
+      let count = int(number(input, editStart+32, 2))
       var nodes = newSeq[EncodedStateNode](count)
       for slot in 0..<count:
         var raw = default(array[64, byte])
         for offset in 0..<64: raw[offset] = input[cursor+offset]
         nodes[slot] = EncodedStateNode(raw)
         cursor += 64
+      let size = int(number(input, editStart+34))
       var value = newSeq[byte](size)
       for offset in 0..<size: value[offset] = input[cursor+offset]
       cursor += size
-      proofs[fresh] = LightStateProof(key: key, proof: StateProof(nodes: nodes, value: value))
+      proofs[fresh] = LightStateProof(key: readKey(input, editStart), proof: StateProof(
+          nodes: nodes, value: value))
       inc fresh
   if cursor != stop or fresh != admitted or old != removed:
     return failed[DeltaData](LightDeltaError.InvalidFormat)

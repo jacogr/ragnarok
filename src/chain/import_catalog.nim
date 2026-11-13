@@ -71,10 +71,10 @@ proc importAssurer*(source: ReportedImport, index: StateValidatorIndex): ImportC
   let geometry = erasureGeometry(BundleLength(4104), data.info.specifier.erasureShards)
   if geometry.error != ErasureLayoutError.None: return failure[ImportAssurer](
       ImportCatalogError.InvalidSource)
-  let ordinal = (uint64(data.info.core)*geometry.value.originalShards+uint64(index)) mod count
   let validator = data.roster.validatorAt(index)
   if validator.error != StateComponentError.None: return failure[ImportAssurer](
       ImportCatalogError.InvalidSource)
+  let ordinal = (uint64(data.info.core)*geometry.value.originalShards+uint64(index)) mod count
   ImportCatalogResult[ImportAssurer](status: ImportCatalogError.None,
     completed: ImportAssurer(identity: validator.value.ed25519, metadata: validator.value.metadata,
       shard: ErasureShardIndex(ordinal)))

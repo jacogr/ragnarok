@@ -155,9 +155,9 @@ proc qualifyStoredAssurance*(owner: var AssuranceStore, source: BlockSnapshotRes
       if work.payloadBytes > 16'u64*1024*1024 or
           work.payloadBytes*3+uint64(AssuranceRecordHeaderBytes) > uint64(limits.workspaceBytes):
         return refused[AssurancePossessionInfo](AssurancePossessionError.LimitExceeded)
-      let encoded = work.payloadBytes+uint64(AssuranceRecordHeaderBytes)
       if not charge(shards, 1, uint64(limits.shards)):
         return refused[AssurancePossessionInfo](AssurancePossessionError.LimitExceeded)
+      let encoded = work.payloadBytes+uint64(AssuranceRecordHeaderBytes)
       if not charge(ioBytes, encoded*2+1, uint64(limits.ioBytes)):
         return refused[AssurancePossessionInfo](AssurancePossessionError.LimitExceeded)
       if not charge(hashes, work.hashes+2, uint64(limits.hashes)):

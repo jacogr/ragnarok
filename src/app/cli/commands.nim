@@ -235,11 +235,11 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     service.add("--chain"); service.add(DefaultChainFile)
   if topic in ["server", "client", "mesh", "download", "download-current", "sync-current"]:
     # Only selected features receive paths; omitted flags never enable state, disk or remote services.
-    let lightValues = fields[optionIndex("--state-mode")]
-    let light = lightValues.len > 0 and lightValues[0] == "light"
     let storage = fields[optionIndex("--state-storage")]
-    let layouts = fields[optionIndex("--state-layout")]
     if state and storage.len > 0 and storage[0] == "disk":
+      let lightValues = fields[optionIndex("--state-mode")]
+      let light = lightValues.len > 0 and lightValues[0] == "light"
+      let layouts = fields[optionIndex("--state-layout")]
       var layout = if light: StateDiskLayout.Paged else: DefaultStateLayout
       if layouts.len > 0:
         case layouts[0]

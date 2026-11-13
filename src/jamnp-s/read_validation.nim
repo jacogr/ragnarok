@@ -218,9 +218,9 @@ proc parts(wire: openArray[byte], count: int): ReadVerificationResult[FrameParts
 proc checkState(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     limits: ReadVerificationLimits): ReadVerificationResult[CheckedReadReply] =
   ## Decode exact bare node/pair sequences, then authenticate every covered subtree against caller trust.
-  let payload = request.payload
   if not source.available: return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.NoSource)
+  let payload = request.payload
   if hash(payload) != array[32, byte](source.hash): return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.IdentityMismatch)
   if not validRangeLimits(limits.map): return ReadVerificationResult[CheckedReadReply](
@@ -247,7 +247,7 @@ proc checkState(request: ReadRequest, wire: openArray[byte], source: ReadSource,
         CheckedReadReply](status: ReadVerificationError.LimitExceeded)
     if span.secondStop-offset < 32: return ReadVerificationResult[CheckedReadReply](
         status: ReadVerificationError.InvalidFormat)
-    let identity = key(wire, offset)
+    let keyOffset = offset
     offset += 31
     let length = natural.decode(wire.toOpenArray(offset, span.secondStop-1))
     if not length.ok: return ReadVerificationResult[CheckedReadReply](
@@ -263,7 +263,7 @@ proc checkState(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     if size > uint64(limits.map.totalValueBytes)-valueBytes: return ReadVerificationResult[
         CheckedReadReply](status: ReadVerificationError.LimitExceeded)
     let stop = offset+int(size)
-    entries.add(StateEntry(key: identity, value: copyBytes(wire, offset, stop)))
+    entries.add(StateEntry(key: key(wire, keyOffset), value: copyBytes(wire, offset, stop)))
     valueBytes += size
     offset = stop # Every record consumes at least a key and one natural byte, including empty values.
   if uint64(wire.len) > e4(payload, 94) and entries.len != 1:
@@ -357,11 +357,11 @@ proc checkBlocks(request: ReadRequest, wire: openArray[byte], source: ReadSource
   let direction = payload[32]
   if direction > 1: return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.InvalidRequest)
-  let maximum = e4(payload, 33)
   let frames = parts(wire, 1)
   if frames.error != ReadVerificationError.None: return ReadVerificationResult[CheckedReadReply](
       status: frames.error)
   let span = frames.value
+  let maximum = e4(payload, 33)
   var blocks: seq[OwnedBlock] = @[]
   var hashes: seq[BlockHash] = @[]
   var expected = hash(payload)

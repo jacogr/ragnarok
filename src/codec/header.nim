@@ -309,8 +309,7 @@ proc scanEpoch(input: openArray[byte], cursor: var int, config: HeaderConfig,
     # Both complete entropy identities are required before copying either.
     if checked != HeaderError.None:
       return checked
-    let entropy = EpochEntropy(fixed[32](input, cursor))
-    let ticketsEntropy = TicketsEntropy(fixed[32](input, cursor+32))
+    let entropyStart = cursor
     cursor += 64
     let count = number(input, cursor, 3*uint64(config.cores), config)
     # A canonical bounded count precedes key access or iteration.
@@ -324,8 +323,9 @@ proc scanEpoch(input: openArray[byte], cursor: var int, config: HeaderConfig,
     if keys != HeaderError.None:
       return keys
     layout.validatorStart = cursor
-    layout.epoch = EpochMarkerInfo(isPresent: true, entropyValue: entropy,
-      ticketEntropyValue: ticketsEntropy, validatorCount: count.value)
+    layout.epoch = EpochMarkerInfo(isPresent: true, entropyValue: EpochEntropy(fixed[32](
+        input, entropyStart)), ticketEntropyValue: TicketsEntropy(fixed[32](input,
+        entropyStart+32)), validatorCount: count.value)
     cursor += count.value*64
   layout.epochLength = cursor-layout.epochStart
   HeaderError.None

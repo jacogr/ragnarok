@@ -113,13 +113,13 @@ proc configure(sync: var CurrentSync, owner: var Services, peers: seq[DownloadPe
     return CurrentSyncError.Busy # No canonical alias escapes a current worker lease.
   if owner.stateSnapshot.error != StateStoreError.None: return CurrentSyncError.MissingState
   let head = owner.chainView.bestBlock
-  let selectedFinality = owner.chainView.finalizedBlock
   if head.error != GenesisError.None:
     return CurrentSyncError.MissingState # A peer's claimed finality never supplies this local anchor.
-  let local = AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.value.blockHash)),
-    slot: HeaderSlot(head.value.slot))
   let original = owner.startupBlockAnchor
   if not original.available: return CurrentSyncError.MissingState
+  let selectedFinality = owner.chainView.finalizedBlock
+  let local = AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.value.blockHash)),
+    slot: HeaderSlot(head.value.slot))
   # A restored best head can contain unfinalized imports. Only separately selected local finality
   # or the independently configured startup checkpoint can supply the advertised fixed anchor.
   let anchor = if selectedFinality.error == GenesisError.None:

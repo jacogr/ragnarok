@@ -658,12 +658,12 @@ proc rememberAssuranceShard*(owner: var AssuranceStore, transfer: VerifiedAvaila
       StoredAssuranceShard, uint64](present)
   let replacing = present.error == AssuranceStoreError.None
   let previousBytes = if replacing: present.value else: 0'u64
-  let required = uint64(AssuranceRecordHeaderBytes)+transfer.payloadBytes
   if previousBytes > owner.bytes: return refused[StoredAssuranceShard](
       AssuranceStoreError.InvalidNamespace)
   if not replacing and owner.count >= uint64(owner.limits.entries): return refused[
       StoredAssuranceShard](AssuranceStoreError.LimitExceeded)
   let used = owner.bytes-previousBytes
+  let required = uint64(AssuranceRecordHeaderBytes)+transfer.payloadBytes
   if used > uint64(owner.limits.bytes) or required > uint64(
       owner.limits.bytes)-used: return refused[StoredAssuranceShard](
       AssuranceStoreError.LimitExceeded)

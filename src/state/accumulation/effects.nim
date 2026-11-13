@@ -2426,7 +2426,6 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
       RequestSlot(uint32(slot))) # Append the actual invocation time without age checks or timestamp repair.
   else:
     fail(prior.error) # Preserve malformed state and backend errors from the bounded current-history reader.
-  let accountKey = chapterServiceKey(StateChapter(255), target)
   var metadata = selected.value
   if fresh:
     let added = 81'u64+uint64(uint32(length)) # E4 length plus fixed overhead is below 2^33.
@@ -2444,6 +2443,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   var writes = @[StateWrite(key: request.value.key, kind: StateWriteKind.Put,
       value: request.value.value)]
   if fresh:
+    let accountKey = chapterServiceKey(StateChapter(255), target)
     let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put,
         value: encoded.value)) # Only creation changes metadata; restoration needs one write.

@@ -67,8 +67,8 @@ proc upgradeRpcWebSocket*(connection: var http.HttpConnection, uiPort: uint16 = 
       connection.countRequestHeader("Transfer-Encoding") > 0:
     connection.close()
     raise ProtocolError
-  let origin = connection.requestHeader("Origin")
   if connection.countRequestHeader("Origin") > 0:
+    let origin = connection.requestHeader("Origin")
     let suffix = if uiPort == 80: "" else: ":" & $uiPort
     if uiPort == 0 or origin notin ["http://127.0.0.1" & suffix, "http://localhost" & suffix]:
       connection.close()

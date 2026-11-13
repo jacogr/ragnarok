@@ -1567,8 +1567,6 @@ proc captureLightStartup(text: string, options: Options): LightStartup =
       parameters.value.encodeParameters: return default(
       LightStartup) # A current checkpoint must belong to the configured fetch profile.
   let selected = genesis.value
-  let profile = HeaderConfig(cores: selected.cores, authorValidators: selected.activeValidators,
-    epochSlots: selected.epochSlots, maxBytes: ByteLimit(262144))
   var domain: seq[byte] = @[]
   for character in "RAGNAROK-CHAIN-V1\n": domain.add(byte(
       character)) # Same independently configured network identity domain as full storage.
@@ -1578,6 +1576,8 @@ proc captureLightStartup(text: string, options: Options): LightStartup =
   let digest = blake2b256(domain)
   if digest.error != CryptoError.None: return default(
       LightStartup) # No default chain identity escapes backend failure.
+  let profile = HeaderConfig(cores: selected.cores, authorValidators: selected.activeValidators,
+    epochSlots: selected.epochSlots, maxBytes: ByteLimit(262144))
   let policy = lightRuntimePolicy(StorageChainId(array[32, byte](digest.value)),
       trust.value.identity.stateRoot, profile)
   LightStartup(ready: true, trust: trust.value, policy: policy, parameters: parameters,
@@ -3757,13 +3757,13 @@ proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
         recovery: WorkRecoveryPolicy): WorkJobError =
   ## Raw transcript and decoded package aliases retire here; only private job ownership survives before CPU admission.
   if not header.valid or not recipient.valid: return WorkJobError.InvalidInput
-  let first = header.firstMessage
-  let package = header.packageMessage
   let head = services.canonical.chainView.bestBlock
   if head.error != GenesisError.None: return WorkJobError.InvalidInput
   let parameters = head.value.chainParameters
   let config = PackageConfig(refineGas: Gas(parameters.get(maxRefineGas)),
     accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(MaxBundleBytes))
+  let first = header.firstMessage
+  let package = header.packageMessage
   let decoded = decodeWorkSubmission(header.kind, first, package, config)
   if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
   services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits, recovery)

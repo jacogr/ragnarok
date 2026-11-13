@@ -270,9 +270,9 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint, headByte
   if not isGet and not isHead:
     slot.output = "HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     return
-  let encoding = head.getStr(http_msg.hAcceptEncoding)
   let path = staticPath(head.target)
   if path.len == 0: return
+  let encoding = head.getStr(http_msg.hAcceptEncoding)
   if not acceptsGzip(encoding): # This server offers gzip only, without an identity fallback.
     slot.output = response("406 Not Acceptable", "text/plain", 0)
     return

@@ -222,11 +222,11 @@ proc completeCandidateReports*(chain: ApplicationChain, prepared: PreparedCandid
     return ApplicationCandidateResult(status: ApplicationCandidateError.Uninitialized)
   if not sameChainView(data.original, chain.chainView):
     return ApplicationCandidateResult(status: ApplicationCandidateError.StateChanged)
-  let limits = data.limits
   let reports = completeBlockReports(data.reports, ancestors)
   if reports.error != ReportAdmissionError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.ReportFailure,
         reportReason: reports)
+  let limits = data.limits
   let queue = planBlockAccumulationQueue(reports.value, limits.queue)
   if queue.error != AccumulationQueueError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.QueueFailure,
@@ -389,10 +389,10 @@ reports: ReportAdmissionResult[AdmittedReports],
   if data == nil: return default(CurrentCandidateResult) # A default prefix has no original map/profile authority.
   if not sameChainView(data.original, chain.chainView):
     return CurrentCandidateResult(status: CurrentCandidateError.StateChanged)
-  let limits = prepared.limits
   if reports.error != ReportAdmissionError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.ReportFailure,
         reportReason: reports)
+  let limits = prepared.limits
   let queue = planBlockAccumulationQueue(reports.value, limits.queue)
   if queue.error != AccumulationQueueError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.QueueFailure,

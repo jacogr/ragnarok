@@ -526,9 +526,8 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
     return refused[FullPagedManifest](FullPagedError.WrongRoot)
   let epoch = number(input, 96)
   let pages = number(input, 112)
-  let extent = number(input, 120)
-  let maximum = min(uint64(limits.bytes), uint64(high(int)))
   if epoch == 0 or pages == 0: return refused[FullPagedManifest](FullPagedError.InvalidFormat)
+  let maximum = min(uint64(limits.bytes), uint64(high(int)))
   if pages > maximum div 4096: return refused[FullPagedManifest](FullPagedError.LimitExceeded)
   var leaves = 1'u64
   while leaves < pages:
@@ -539,6 +538,7 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
   let body = pages*4096
   let slots = leaves+(leaves-1)
   if slots > (maximum-body) div 32: return refused[FullPagedManifest](FullPagedError.LimitExceeded)
+  let extent = number(input, 120)
   if extent != body+slots*32: return refused[FullPagedManifest](FullPagedError.InvalidFormat)
   let sum = hashBytes(input.toOpenArray(0, 159))
   if sum.error != FullPagedError.None: return refused[FullPagedManifest](sum.error)

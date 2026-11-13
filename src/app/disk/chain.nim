@@ -146,7 +146,6 @@ proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: Storage
   ## Exclusive creation provisions the configured rolling roots/finality, then one atomic canonical context.
   ## Intermediate bootstrap frames are forensic evidence, never a resumable canonical fallback.
   if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
-  let current = owner.stateSnapshot
   let captured = diskSources(owner)
   if captured.error != DiskChainError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
@@ -171,6 +170,7 @@ proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: Storage
     if provisioned.error != DiskStoreError.None:
       return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: provisioned)
+  let current = owner.stateSnapshot
   let selected = disk.commit(disk.snapshot.value, current.value, context.value)
   if selected.error != DiskStoreError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
@@ -269,7 +269,6 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   if owner.chainView.hasHistoricalIndex or view.hasHistoricalIndex:
     return DiskChainResult[DiskPublicationContext](
         status: DiskChainError.CanonicalMismatch) # A resident memory archive requires explicit migration, not a silent disk adoption.
-  let maximum = ByteLimit(min(uint64(limit), uint64(disk.applicationContextLimit)))
   let current = disk.snapshot
   let canonical = owner.stateSnapshot
   if current.error != DiskStoreError.None or canonical.error != StateStoreError.None or
@@ -282,6 +281,7 @@ proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: Cha
   if selected.error != FileError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.FileFailure,
         fileReason: selected.error)
+  let maximum = ByteLimit(min(uint64(limit), uint64(disk.applicationContextLimit)))
   let previous = encodeMatchingDiskHistory(owner, chain, generation.value, maximum, selected.value)
   if previous.error != DiskHistoryError.None:
     return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
@@ -724,11 +724,11 @@ proc configureDiskHistory*(disk: var DiskStateStore, owner: var ApplicationChain
     discard completeHistorySelection(disk, prepared.cleanupFrom, prepared.selection)
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.None,
         completed: generation.value)
-  let nextOwner = prepared.configuredOwner
   let retirement = retireHistoryPredecessor(disk)
   if retirement != HistoryError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.HistoryFailure,
         historyReason: retirement)
+  let nextOwner = prepared.configuredOwner
   let sources = liveDiskSources(nextOwner)
   if sources.error != HistoryError.None:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)

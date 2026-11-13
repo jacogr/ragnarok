@@ -700,8 +700,6 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
   var response = charged.value
   if response.action == HostAction.OutOfGas:
     return charged # No input capture or state work before affordability.
-  let current = context.effects.effectContext(AccumulationDimension.Regular).value
-  let self = uint64(uint32(current.effectInfo.value.service))
   var bytes = default(array[60, byte])
   let captured = readBytesInto(memory, MemoryAddress(uint64(cpu.registers[10])), bytes,
       context.copyLimit)
@@ -721,6 +719,8 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return hostSuccess[AccumulationDispatchError](
         response) # Current preimagelen excludes both reserved namespace prefixes.
   let raw = uint64(cpu.registers[7])
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
   let funder = if raw == high(uint64): self else: raw
   if funder > uint64(high(uint32)):
     response.registers[7] = RegisterValue(high(uint64)-3)
@@ -937,8 +937,6 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
   if uint64(cpu.registers[9]) > 3:
     return invalidTransferModeResponse(context, cpu,
         memory) # Undefined modes are protocol refusals, not valid unimplemented funding paths.
-  let current = context.effects.effectContext(AccumulationDimension.Regular).value
-  let self = uint64(uint32(current.effectInfo.value.service))
   if uint64(cpu.registers[12]) == 0:
     return directTransferResponse(context, cpu, memory) # Zero memo pointer selects immediate atomic credit, independent of deferred gas.
   if context.parameters.get(transferMemoSize) != 128:
@@ -952,6 +950,8 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
       context.copyLimit)
   case captured.error
   of MachineError.None:
+    let current = context.effects.effectContext(AccumulationDimension.Regular).value
+    let self = uint64(uint32(current.effectInfo.value.service))
     let rawFunder = uint64(cpu.registers[7])
     let funder = if rawFunder == high(uint64): self else: rawFunder
     if funder > uint64(high(uint32)):

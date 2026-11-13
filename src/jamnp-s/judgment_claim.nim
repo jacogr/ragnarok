@@ -166,12 +166,12 @@ proc checkJudgmentRoster(source: BlockSnapshotResult, decoded: JudgmentBatch,
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidSource)
   let epoch = source.value.slot div epochSlots
   let activeBytes = state.lookup(chapterKey(StateChapter(8))).value.bytes
-  let previousBytes = state.lookup(chapterKey(StateChapter(9))).value.bytes
   let active = decodeStateValidators(activeBytes, limits.rosters)
-  let previous = decodeStateValidators(previousBytes, limits.rosters)
   if active.error != StateComponentError.None:
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.ComponentFailure,
         componentReason: active.error)
+  let previousBytes = state.lookup(chapterKey(StateChapter(9))).value.bytes
+  let previous = decodeStateValidators(previousBytes, limits.rosters)
   if previous.error != StateComponentError.None:
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.ComponentFailure,
         componentReason: previous.error)

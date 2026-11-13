@@ -243,7 +243,6 @@ proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): Safro
     return SafroleStateResult[StateEntry](status: StateComponentError.InvalidCount) # Schedule is fixed; accumulator is epoch-bounded.
   if uint64(source.accumulator.len) > uint64(config.maxAccumulator):
     return SafroleStateResult[StateEntry](status: StateComponentError.LimitExceeded) # Apply stricter caller policy before allocating children.
-  let prefix = natural.encode(JamNatural(source.accumulator.len))
   var size = roster.value
   var error = grow(size, 145, 1, config.maxBytes)
   if error != StateComponentError.None: return SafroleStateResult[StateEntry](
@@ -252,6 +251,7 @@ proc safroleStateEntry*(source: SafroleState, config: SafroleStateConfig): Safro
   error = grow(size, uint64(slots), width, config.maxBytes)
   if error != StateComponentError.None: return SafroleStateResult[StateEntry](
       status: error) # Bound schedule bytes before multiplication.
+  let prefix = natural.encode(JamNatural(source.accumulator.len))
   error = grow(size, uint64(prefix.len), 1, config.maxBytes)
   if error != StateComponentError.None: return SafroleStateResult[StateEntry](
       status: error) # Account for canonical accumulator framing.

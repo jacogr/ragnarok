@@ -340,9 +340,9 @@ proc release(owner: var NodeConnections, kind: ConnectionKind, position: int,
     observed: bool) =
   ## Call only after actual native close or final engine retirement; clear before notifying user code.
   let current = state(owner, kind, position)
-  let peer = token(kind, position, current)
   setState(owner, kind, position, default(ConnectionState))
   if current.logical >= 0 and current.announced:
+    let peer = token(kind, position, current)
     if current.logical >= owner.locations.len or not owner.locations[current.logical].occupied:
       owner.fail()
     else:

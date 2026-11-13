@@ -159,7 +159,6 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
   # Incomplete directions expose no payload extent until exact FIN; malformed framing settles the stream.
   if boundary.error == FrameError.Pending: return (false, true)
   if boundary.error != FrameError.None: return (false, false)
-  let extent = boundary.extent
   let payloadSize = boundary.size
   # The integration corpus deliberately uses complete C.2 digests as otherwise opaque CE preimages.
   if peer.integrated:
@@ -182,6 +181,7 @@ proc frameExtent(peer: ptr Peer, state: ptr StreamState): tuple[complete, valid:
       state.verified = checked.value
       progress "OWNED_VERIFIED"
     else:
+      let extent = boundary.extent
       # Capture the actual received preimage; its query key is retained independently of source storage.
       let checked = captureDigest(state.received.toOpenArray(4, extent - 1), state.query)
       if checked.error != IntegrationError.None:
@@ -889,10 +889,10 @@ proc observeMesh(incoming, outgoing: var Peer) =
   ## Sample one logical remote peer across both retained engines; duplicate arbitration must not double count it.
   if incoming.telemetry == nil: return # Disabled mesh runs add no clock, encoding or socket work.
   observeMeshDial(outgoing)
-  let connected = peerMetric(incoming.transport, 0) > 0 or
-      (outgoing.meshDial.authenticated and peerMetric(outgoing.transport, 0) > 0)
   let exporter = incoming.telemetry
   if exporter != nil: # Re-establish the borrow after observing the other role's mutable owner.
+    let connected = peerMetric(incoming.transport, 0) > 0 or
+        (outgoing.meshDial.authenticated and peerMetric(outgoing.transport, 0) > 0)
     exporter[].observe(if connected: 1'u32 else: 0'u32)
 
 proc dialMesh(outgoing: var Peer, port: uint16, remote, local: NetworkAddress): bool =

@@ -196,8 +196,8 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
       return FuzzBackendResult[FuzzMessage](status: FuzzBackendError.AncestryFailure,
           ancestryReason: nextAncestry.error)
     var siblings: seq[ForkState] = @[]
-    let identity = prepared.value.currentUpdateChild.blockHash
     if uint64(config.forkStates) > 0:
+      let identity = prepared.value.currentUpdateChild.blockHash
       if sibling:
         for saved in backend.siblings:
           if array[32, byte](saved.hash) != array[32, byte](identity):

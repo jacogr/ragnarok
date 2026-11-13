@@ -364,9 +364,9 @@ proc matchesTrustedBlock*(origin: AuditBlockOrigin, trusted: BlockSnapshotResult
   let data = origin.data
   if data == nil or trusted.error != GenesisError.None: return false
   let selected = trusted.value
-  let facts = data.context.contextInfo.value
   let described = selected.header.headerInfo
   if described.error != HeaderError.None: return false
+  let facts = data.context.contextInfo.value
   let parent = described.value.unsigned
   if array[32, byte](facts.blockHash) != array[32, byte](selected.blockHash) or
       array[32, byte](facts.blockRoot) != array[32, byte](selected.stateRoot) or
@@ -487,10 +487,10 @@ proc captureAuditDisputeOrigin*(view: ChainView, support: VerifiedJudgmentSuppor
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
   let membership = support.supportInfo.value
   let receipt = view.blockAt(membership.membershipHash)
-  let parameters = support.supportParameters.value
   if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) != array[32,
       byte](membership.membershipRoot):
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
+  let parameters = support.supportParameters.value
   if receipt.value.slot != uint64(uint32(membership.membershipTime)) or
       not parameters.sameParameterProfile(receipt.value.chainParameters):
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
