@@ -229,7 +229,7 @@ try:
     assert runPvmCode(parsed, diagnostic), diagnostic
     assert "PVM_CODE_OK" in diagnostic and "actual=interpreted" in diagnostic, "artifact witness 156: \"PVM_CODE_OK\" in diagnostic and \"actual=interpreted\" in diagnostic"
     assert loadArtifact(path).error == ArtifactError.None, "artifact witness 157: loadArtifact(path).error == ArtifactError.None"
-    # An optional section spans two full reads and leaves a short final read.
+    # A file larger than the I/O buffer still fits an exact caller byte ceiling.
     var padded = raw
     padded.setLen(padded.len-1)
     section(padded, 201, newSeq[byte](8197))
