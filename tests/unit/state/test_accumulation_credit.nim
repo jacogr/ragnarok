@@ -48,9 +48,9 @@ proc inputs(transfers: openArray[DeferredTransfer], service = ServiceIndex(
     AccumulationInputConfig(inputs: ElementLimit(100), allowances: ElementLimit(1),
       services: ElementLimit(100))).value
 
-## Keep one-byte code eligible while bounding full preimage work independently.
+## Keep a two-byte complete program blob eligible within the local preimage budget.
 proc config(): AccumulationServiceConfig =
-  AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(100))
+  AccumulationServiceConfig(codeLimit: ServiceCodeLimit(2), preimageBytes: ByteLimit(100))
 
 ## Observe full root identity only through the initialized immutable map contract.
 proc root(state: StateStoreSnapshot): array[32, byte] = array[32, byte](state.commitment.root)
@@ -125,7 +125,7 @@ proc boundaries(): PreparedAccumulationService =
   # Every code gate receives the same incoming credit before skip or real invocation setup.
   for mode in 0..<5:
     let raw = if mode == 1: @[128'u8] elif mode == 2: @[0'u8, 1, 2] elif mode == 4: @[0'u8] else: @[
-        0'u8, 7] # Missing, malformed, oversized, ready and empty ready.
+        0'u8, 7] # Missing, malformed, oversized, exact-size and metadata-only blobs.
     let prior = newStateStore(records(raw, mode != 0), limits()).value.snapshot.value
     let owner = prepareAccumulationService(source, InvocationServiceIndex(0), prior, HeaderSlot(3),
         config()).value
@@ -136,10 +136,10 @@ proc boundaries(): PreparedAccumulationService =
     assert uint32(owner.serviceInfo.value.account.lastAccumulation) == 9
     assert uint32(owner.serviceInputAt(InvocationInputIndex(0)).value.transfer.source) == 42
     assert uint32(owner.serviceInputAt(InvocationInputIndex(1)).value.transfer.source) == 7
-    if mode < 3:
+    if mode in [0, 2]:
       let skipped = finishUninvokedAccumulation(owner).value
       assert uint64(skipped.skipState.value.account.balance) ==
-          30 # Missing/malformed/oversized code retains credit.
+          30 # Missing and oversized code retain credit.
     else:
       let invoked = prepareAccumulationInvocation(owner, default(StateEntropyWord),
           ServiceProbeLimit(1)).value
