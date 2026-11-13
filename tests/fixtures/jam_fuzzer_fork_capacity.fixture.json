@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FORK_CAPACITY",
   "files": {
-    "jam-fuzzer-fork-capacity.json": "215c1f1ad3a39028178ee90ef85770c229522d812d8e6f977c72382078cf9ca2"
+    "jam-fuzzer-fork-capacity.json": "01a3f3a260d639234b20e927b4846202b97a8dcff1845b322ce258faf71b6315"
   },
   "target": "jam-fuzzer-fork-capacity.json"
 }
