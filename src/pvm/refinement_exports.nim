@@ -62,6 +62,9 @@ proc segment*(exports: RefinementExports, index: ExportCount): FetchSegment
 
 proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: RegisterFile,
     memory: Memory, limits: ExportLimits): RefinementExportResult =
+  ## After charging, validate the full selected input before protocol capacity or local limits.
+  ## Publish the zero-padded segment and charged reply together after all allocations succeed.
+  ## A local allocation refusal returns LimitExceeded without a reply or a successor.
   ## Evaluate Omega_E; the dispatcher separately selects host 8 and applies the returned pair atomically.
   let data = exports.data
   if data == nil:
