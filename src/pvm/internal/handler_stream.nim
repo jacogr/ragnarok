@@ -1667,7 +1667,11 @@ proc sourceRanks(source: Program, extent: uint64, count: uint32,
     seen += added
     inc slot
   if slot != words or seen != count: return FlatError.InvalidProgram
-  ranks = FlatSourceRanks(words: move(masks), prefixes: move(prefixes))
+  let owner: nil FlatSourceRanks = FlatSourceRanks()
+  if owner == nil: return FlatError.PreparationLimitExceeded
+  owner.words = move(masks)
+  owner.prefixes = move(prefixes)
+  ranks = owner
   FlatError.None
 
 func sourceOrdinal(ranks: FlatSourceRanks, pc: uint32): uint32 =
@@ -1687,10 +1691,15 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
   let ranked = sourceRanks(source, extent, count, ranks)
   if ranked != FlatError.None: return FlatResult[FlatPlan](status: ranked)
   let admittedRanks = ranks
-  if admittedRanks == nil: return FlatResult[FlatPlan](status: FlatError.InvalidProgram)
-  var owner = FlatPlan(source: source, limits: limits, cycles: cycles,
-    allowNative: allowNative, singleStep: false, admittedFacts: count, codeBytes: uint32(extent),
-    ranks: admittedRanks)
+  if admittedRanks == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
+  let owner: nil FlatPlan = FlatPlan(ranks: admittedRanks)
+  if owner == nil: return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
+  owner.source = source
+  owner.limits = limits
+  owner.cycles = cycles
+  owner.allowNative = allowNative
+  owner.admittedFacts = count
+  owner.codeBytes = uint32(extent)
   var ordinal = 0'u64
   while true:
     # Jump-table membership remains eager and preserves fact-before-jump refusal precedence.
@@ -1705,7 +1714,7 @@ proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     if uint64(owner.jumps.len) != ordinal+1:
       return FlatResult[FlatPlan](status: FlatError.PreparationLimitExceeded)
     inc ordinal
-  FlatResult[FlatPlan](status: FlatError.None, completed: move(owner))
+  FlatResult[FlatPlan](status: FlatError.None, completed: owner)
 
 func flatPlanIdentity(plan: FlatPlan): FlatPlan =
   ## Private derived catalogues never replace the immutable identity used for cache leasing.

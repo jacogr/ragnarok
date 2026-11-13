@@ -42,4 +42,24 @@ block:
   assert pressure[0] == 0
 assert newPreparedProgram(owner, defaultPreparedLimits(Cycles)).error == PreparationError.None
 assert instructionOpcode(owner, CodeAddress(uint64(MediumCode-1))).value == 0
+
+# Leave room for the five-byte program copy and refuse its owning ref.
+let tiny = [0'u8, 0, 1, 0, 1]
+let filler = alloc(1024*1024-getOccupiedMem()-131072)
+assert filler != nil
+var pressure = default(array[1024, nil pointer])
+var used = 0
+while 1024*1024-getOccupiedMem() > 64:
+  assert used < pressure.len
+  pressure[used] = alloc(if 1024*1024-getOccupiedMem() > 512: 256 else: 16)
+  assert pressure[used] != nil
+  inc used
+let before = getOccupiedMem()
+assert 1024*1024-before >= 16
+let refusedOwner = decodeJamProgram(tiny, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
+assert refusedOwner.error == ProgramError.AllocationRefused and getOccupiedMem() == before
+for i in 0..<used: dealloc(pressure[i])
+dealloc(filler)
+assert decodeJamProgram(tiny, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0)).error ==
+  ProgramError.None
 echo "PVM code allocation refusal passed"

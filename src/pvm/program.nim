@@ -325,11 +325,14 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # One bounded copy preserves all framing bytes without a checked sequence store per byte.
   # Callers may mutate or release their input immediately after this capture returns.
   copyMem(addr owned[0], unsafeAddr input[0], input.len)
-  ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
-    bytes: move(owned), codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
+  let data: nil ProgramData = ProgramData(codeOffset: codeOffset, codeLength: codeLength,
+    maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width,
     jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps), profile: profile,
-    instructionCountValue: validatedInstructions)))
+    instructionCountValue: validatedInstructions)
+  if data == nil: return ProgramResult[Program](status: ProgramError.AllocationRefused)
+  data.bytes = move(owned)
+  ProgramResult[Program](status: ProgramError.None, completed: Program(data: data))
 
 proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =

@@ -431,12 +431,15 @@ proc prepareIndependent(source: Program, limits: PreparedLimits,
         FlatError.InvalidProgram:
       PreparationError.InvalidProgram else: PreparationError.LimitExceeded))
   let plan = takeValue(admitted)
-  var stream = default(FlatStream)
-  PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
-    data: PreparedData(source: source, plan: plan, stream: move(stream), limits: limits,
-        busy: false, selected: selected, memoryScratch: nil, memoryReuses: 0,
-        native: (if selected == PvmBackend.Jit: newNativeSession(nativeRuntime) else: default(
-            NativeSession)))))
+  let data: nil PreparedData = PreparedData(plan: plan)
+  if data == nil: return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
+  data.source = source
+  data.limits = limits
+  data.selected = selected
+  if selected == PvmBackend.Jit:
+    data.native = newNativeSession(nativeRuntime)
+  PreparationResult[PreparedProgram](status: PreparationError.None,
+    completed: PreparedProgram(data: data))
 
 proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
     PreparedProgram] =
