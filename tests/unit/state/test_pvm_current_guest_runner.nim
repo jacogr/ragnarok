@@ -251,11 +251,11 @@ assert laterFailure.error == AccumulationGuestError.ServiceFailure and
     laterFailure.serviceFailure == AccumulationServiceError.MalformedAccount,
   "a later malformed account does not release the already successful creator as complete coverage"
 assert sameStateSnapshot(malformedPrior, malformed.state.snapshot.value), "current guest check: sameStateSnapshot(malformedPrior, malformed.state.snapshot.value)"
-# Present ready code with malformed VM structure is a machine failure, not an unavailable-code completion.
+# A present program with invalid VM structure completes through the exceptional context.
 let invalidProgram = batchFixture(incoming = false, firstEnvelope = pvmEnvelope(@[0'u8]))
 let invalid = run(invalidProgram, residency = addr resident)
-assert invalid.error == AccumulationGuestError.MachineFailure and invalid.machineFailure ==
-    AccumulationMachineError.InvalidProgram, "current guest check: invalid.error == AccumulationGuestError.MachineFailure and invalid.machineFailure =="
+assert invalid.error == AccumulationGuestError.None
+assert invalid.value.coverageInfo.value.executed > 0
 # Prior resident hits cannot replace current missing or hash-mismatched code with an earlier valid program.
 block:
   var missing = fixture()

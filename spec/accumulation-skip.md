@@ -3,10 +3,9 @@
 ## Authorized bounded scope
 
 Implement the first `Psi_A` alternative in GP 0.8.0 `pvm_invocations.tex`, equation
-`accinvocation`, revision `07f041dabd073f9018b418e9ee72e79dd2185401` (SHA-256
-`67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb`). Reuse the
-[service code resolution](accumulation-service.md) certificate. Missing code, an invalid envelope
-(which supplies no code), or code exceeding the protocol limit returns the post-transfer execution state,
+`accinvocation`, revision [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/pvm_invocations.tex) (SHA-256
+`ecf84b575cd427b48f8648ae18bae992a8ed3fd9c01203dbe1978e573905137d`). Reuse the
+[service code resolution](accumulation-service.md) certificate. Missing code or a complete blob exceeding the protocol limit returns the post-transfer execution state,
 zero gas usage, no deferred transfers/provisions and absent yield.
 
 This adapter accepts contexts already credited by [service preparation](accumulation-credit.md).
@@ -15,8 +14,8 @@ successful skipped outcome. Missing/corrupt accounts, backend failure and local 
 remain preparation failures, not protocol skip outcomes. Do not initialize `I`, probe service IDs,
 read posterior entropy, invoke the PVM or publish state for this alternative.
 
-Standard PVM initialization exists in the separately open [#83](https://github.com/jacogr/ragnarok/pull/83). Machine-entry integration follows
-that dependency; this slice avoids duplicating or merging another native stack's implementation.
+Eligible blobs use [standard PVM initialization](pvm-initialization.md). A malformed blob
+completes through the exceptional accumulation context with zero gas.
 
 ## Completion tests
 
@@ -31,7 +30,7 @@ and failed result contracts, private/nominal compiler guards and repeated ARC re
 
 `src/state/accumulation/skip.nim` exposes `finishUninvokedAccumulation` for a successful
 `PreparedAccumulationService`, and `finishBlockUninvokedAccumulation` for its genuine bound
-counterpart. An exhaustive code-status selection completes only Missing, Malformed and Oversized.
+counterpart. An exhaustive code-status selection completes only Missing and Oversized.
 Ready returns the typed `ExecutionRequired` refusal, including a valid empty program blob and code
 exactly at its protocol size limit. Default service handles return `InvalidService`; no API accepts
 a failed preparation result or a caller-supplied code-status flag as a substitute certificate.

@@ -54,7 +54,7 @@ proc refinementLimits*(): RefinementInvocationLimits =
 proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     missing = false, oversized = false, pages = 3'u32,
     writable: seq[byte] = @[21'u8, 22, 23], worker: ExecutionWorker = default(
-        ExecutionWorker)): PreparedRefinementBootstrap =
+        ExecutionWorker), malformed = false): PreparedRefinementBootstrap =
   ## Build one original standard envelope with distinguishable RO/RW prefixes and genuine code commitments.
   ## Sources die before extraction; the bootstrap owns complete state/package/code/arguments independently.
   var code: seq[byte] = @[]
@@ -83,6 +83,7 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
   preimage.add(byte(raw.len))
   for index in 0..<3: preimage.add(0) # E4 raw-program length follows the fixed RO/RW bytes.
   for octet in raw: preimage.add(octet)
+  if malformed: preimage = @[2'u8, 31] # A truncated authenticated metadata prefix.
   if oversized: preimage = newSeq[byte](4000001) # BIG is selected before metadata/program parsing or bounded copying.
   let hash = array[32, byte](blake2b256(preimage).value)
   var entries: seq[StateEntry] = @[]

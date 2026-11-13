@@ -1,6 +1,6 @@
 # Systematic Reed–Solomon word encoding
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: GP 0.8.0 [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/erasure_coding.tex),
 erasure_coding.tex Code Word representation, Cantor basis and Generator Polynomial;
 ecoriginalshards and safrole valcount. Vector pin remains
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
@@ -9,8 +9,10 @@ Scope: the scalar erasurecode(v) transform from d input words to v output words.
 Words are nominal uint16 numeric values corresponding to little-endian E2 wire
 pairs; numeric word bits and validator indices both denote Cantor coordinates.
 The polynomial field uses x^16+x^5+x^3+x^2+1 (0x1002d). Convert using the exact
-sixteen pinned basis columns, interpolate degree below d through validator
-indices 0..d-1, and evaluate parity indices d..v-1. Original words remain exact.
+sixteen pinned basis columns and interpolate through d' points, where d' is the
+least power of two at least d. The original words occupy points 0..d-1, and
+points d..d'-1 are implicit zeroes. Validator indices d..v-1 receive the values
+at points d'..v+d'-d-1. Original words remain exact.
 This primitive accepts detached words deliberately: it certifies no bundle,
 execution, active roster, availability root or state provenance.
 
@@ -20,11 +22,11 @@ are XOR differences of consecutive original indices. Precompute inverses for
 nonzero indices below the least power of two at least d (at most 512). The
 inverse of zero is never selected. Every inverse uses exactly 31 field products
 (15 selected multiplies and 16 squares). Total field products are
-31*(span-1)+d*(d-1)/2+(v-d)*(d-1). All dimensions derive from validated geometry;
+31*(d'-1)+d'*(d'-1)/2+(v-d)*(d'-1). All dimensions derive from validated geometry;
 counts are bounded below 2^20 before arithmetic or int conversion.
 
-Local limits cover the exact retained v-word output and transient d-word Newton
-coefficients plus span-word inverse table: 2*(v+d+span) bytes. This is logical
+Local limits cover the exact retained v-word output and transient d'-word Newton
+coefficients plus a d'-word inverse table, totaling 2*(v+2d') bytes. This is logical
 buffer payload, excluding allocator headers and fixed stack data. Preflight
 byte and field-product budgets before variable allocation or field arithmetic.
 Success retains private immutable output and copied work facts. Indexed word

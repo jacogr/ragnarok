@@ -19,11 +19,11 @@ import ../store
 
 type
   ServiceCodeLimit* = distinct uint64 ## Protocol code-size eligibility is distinct from local preimage-copy/hash resource policy.
-  AccumulationServiceConfig* = object ## Bound complete preimage work independently of the protocol limit on the extracted code suffix.
+  AccumulationServiceConfig* = object ## Bound complete preimage work independently of the protocol limit on the whole JAM program blob.
     codeLimit*: ServiceCodeLimit
     preimageBytes*: ByteLimit
-  AccumulationCodeStatus* {.pure.} = enum ## Successful contexts distinguish absent/malformed/oversized code from a valid empty code blob.
-    Missing, Malformed, Oversized, Ready
+  AccumulationCodeStatus* {.pure.} = enum ## Successful contexts distinguish absent or oversized code from a blob eligible for initialization.
+    Missing, Oversized, Ready
   AccumulationServiceError* {.pure.} = enum ## Failures expose no partially resolved account, code or input sequence.
     Uninitialized, None, InvalidInputs, InvalidIndex, InvalidState, MissingAccount,
     MalformedAccount, LimitExceeded, BackendFailure, CodeUnavailable, InvalidRound, BalanceOverflow
@@ -34,7 +34,7 @@ type
     transfers*, operands*, codeBytes*: int
     account*: ServiceMetadata
     code*: AccumulationCodeStatus
-  ## Private acyclic storage retains the exact complete map and inputs, with an independent code suffix copy.
+  ## Private acyclic storage retains the exact complete map and inputs, with an independent code blob copy.
   ServiceData = ref object
     info: AccumulationServiceInfo
     state, prior: StateStoreSnapshot
@@ -132,7 +132,7 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
     config: AccumulationServiceConfig): AccumulationServiceResult[PreparedAccumulationService] =
   ## Resolve one service from explicit state/slot and prepared inputs; missing accounts are a preparation refusal,
   ## not a fabricated Psi_A outcome. No invocation-time minimum-gas or balance filter is added by this layer.
-  ## The account's code preimage is E(length(metadata)) || metadata || code, with no outer code length.
+  ## The account code preimage is the complete JAM program blob, including its metadata prefix.
   ## Refuse without exposing an earlier metadata record or partially copied code.
   template fail(reason: AccumulationServiceError) =
     return AccumulationServiceResult[PreparedAccumulationService](status: reason)
@@ -181,26 +181,19 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
   var code: seq[byte] = @[]
   var codeBytes = 0
   if preimage.error == StateStoreError.None:
-    if uint64(preimage.value.byteLength) > uint64(config.preimageBytes):
-      fail(AccumulationServiceError.LimitExceeded) # Bound complete copy/hash work, including metadata, first.
-    let raw = preimage.value.bytes
-    let hash = blake2b256(raw)
-    if hash.error != CryptoError.None:
-      fail(AccumulationServiceError.BackendFailure) # A rejected backend must not fabricate code eligibility.
-    if array[32, byte](hash.value) != array[32, byte](metadata.codeHash):
-      fail(AccumulationServiceError.InvalidState) # Enforce the preimage/hash invariant without treating corruption as absence.
-    let envelope = decodeBytesBorrowed(raw, ByteLimit(raw.len))
-    if envelope.error != ContainerError.None:
-      status = AccumulationCodeStatus.Malformed # Accounts definition maps an invalid two-blob envelope to absent code.
+    codeBytes = preimage.value.byteLength
+    if uint64(codeBytes) > uint64(config.codeLimit):
+      status = AccumulationCodeStatus.Oversized
     else:
-      let start = envelope.consumed
-      codeBytes = raw.len-start
-      if uint64(codeBytes) > uint64(config.codeLimit):
-        status = AccumulationCodeStatus.Oversized # Protocol size gate concerns code, not preceding metadata.
-      else:
-        status = AccumulationCodeStatus.Ready # PVM program validity is checked later, including empty programs.
-        code = newSeq[byte](codeBytes)
-        for i in 0..<code.len: code[i] = raw[start+i] # Copy only proved suffix bytes, retaining no detached span.
+      if uint64(codeBytes) > uint64(config.preimageBytes):
+        fail(AccumulationServiceError.LimitExceeded)
+      let raw = preimage.value.bytes
+      let hash = blake2b256(raw)
+      if hash.error != CryptoError.None: fail(AccumulationServiceError.BackendFailure)
+      if array[32, byte](hash.value) != array[32, byte](metadata.codeHash):
+        fail(AccumulationServiceError.InvalidState)
+      status = AccumulationCodeStatus.Ready
+      code = raw # Standard initialization validates the metadata and fixed program image.
   elif preimage.error != StateStoreError.MissingKey:
     fail(AccumulationServiceError.InvalidState) # Only actual absence becomes Missing code.
   else:

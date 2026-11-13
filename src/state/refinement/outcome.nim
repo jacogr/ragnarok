@@ -158,6 +158,8 @@ proc runRefinementInvocation*(bootstrap: PreparedRefinementBootstrap, trace: ope
     return complete(bootstrap, facts, WorkKind.Bad, Gas(0), empty, @[]) # No guest or external-input capture for BAD.
   of RefinementCodeStatus.Big:
     return complete(bootstrap, facts, WorkKind.Big, Gas(0), empty, @[]) # BIG likewise consumes no invocation gas.
+  of RefinementCodeStatus.Panic:
+    return complete(bootstrap, facts, WorkKind.Panic, Gas(0), empty, @[])
   of RefinementCodeStatus.Ready:
     discard # Only a verified executable bootstrap can authorize host capture and execution.
   let captured = bootstrap.bootstrapHosts(trace, inputs, offset, limits.capture)

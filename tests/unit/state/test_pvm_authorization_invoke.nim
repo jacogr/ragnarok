@@ -68,11 +68,11 @@ assert remaining == 50000000'u64-gasUsed
 # Metadata never contributes to the 196608-byte code ceiling; exact-sized code remains executable.
 let metadata = authorizationFixture([halt], metadata = newSeq[byte](196608))
 assert metadata.preimage.len > 196608
-assert authorizationRun(metadata).value.authorizationTrace.value == @[0x34'u8, 0x12]
-let exact = authorizationFixture([halt], codeSize = 196608)
-assert exact.envelope.len == 196608
+check(authorizationRun(metadata).value, WorkKind.Big, 0)
+let exact = authorizationFixture([halt], metadata = @[201'u8, 202], codeSize = 196608)
+assert exact.preimage.len == 196608 and exact.envelope.len == 196605
 assert authorizationRun(exact).value.authorizationInfo.value.kind == WorkKind.Success
-let big = authorizationFixture([halt], codeSize = 196609)
+let big = authorizationFixture([halt], metadata = @[201'u8, 202], codeSize = 196609)
 var bigCap = default(AuthorizationInvocationLimits)
 bigCap.preimage = ByteLimit(200000)
 check(authorizationRun(big, bigCap).value, WorkKind.Big,
@@ -172,20 +172,16 @@ assert runAuthorizationInvocation(fixture.state, default(OwnedWorkPackage), Core
   authorizationLimits()).error == AuthorizationInvocationError.InvalidSelection
 assert authorizationRun(authorizationFixture([halt], wrongHash = true)).error ==
     AuthorizationInvocationError.InvalidState
-assert authorizationRun(authorizationFixture([halt], overrideBytes = @[128'u8])).error ==
-    AuthorizationInvocationError.MalformedCode
-let malformed = authorizationRun(authorizationFixture([halt], overrideBytes = @[0'u8, 1]))
-assert malformed.error == AuthorizationInvocationError.InitializationFailure and
-    malformed.initializationError == InitializationError.InvalidEnvelope
+for invalid in [@[128'u8], @[0'u8, 1]]:
+  check(authorizationRun(authorizationFixture([halt], overrideBytes = invalid)).value,
+    WorkKind.Panic, 0)
 # Authenticated authorizers with missing final successors refuse before an invocation can execute.
 for terminal in [@[1'u8], @[170'u8, 0, 253]]:
   let refused = authorizationRun(authorizationFixture([@[51'u8, 7, 7], terminal]))
-  assert refused.error == AuthorizationInvocationError.InitializationFailure
-  assert refused.initializationError == InitializationError.InvalidProgram
+  check(refused.value, WorkKind.Panic, 0)
   # Even an unreachable malformed suffix prevents whole-module preparation.
   let unreachable = authorizationRun(authorizationFixture([halt, terminal]))
-  assert unreachable.error == AuthorizationInvocationError.InitializationFailure
-  assert unreachable.initializationError == InitializationError.InvalidProgram
+  check(unreachable.value, WorkKind.Panic, 0)
   # An explicit trap successor restores preparation; the trap is an actual guest work result.
   let safeTerminal = if terminal.len == 1: terminal else: @[171'u8, 0, 253]
   let completed = authorizationRun(authorizationFixture([@[51'u8, 7, 7], safeTerminal, @[0'u8]]))
@@ -209,8 +205,7 @@ for width in [0'u8, 5]:
     assert checked.error == AuthorizationInvocationError.None
     assert checked.value.authorizationInfo.value.kind == WorkKind.Panic
   else:
-    assert checked.error == AuthorizationInvocationError.InitializationFailure
-    assert checked.initializationError == InitializationError.InvalidProgram
+    check(checked.value, WorkKind.Panic, 0)
 
 let lookup = authorizationRun(authorizationFixture([halt], malformedState = true))
 assert lookup.error == AuthorizationInvocationError.LookupFailure and lookup.lookupError ==

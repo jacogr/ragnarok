@@ -4,20 +4,18 @@
 
 `src/state/accumulation/service.nim` resolves the account and code entry gate for one prepared
 initial-round service. Authority is GP 0.8.0 at revision
-`07f041dabd073f9018b418e9ee72e79dd2185401`: `accounts.tex`'s service code/metadata definition
-(SHA-256 `badaf09677a420ec6d47ae439f8d7641173e8fd460ed8f2305e336d999073d7a`) and
+[`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/accounts.tex): `accounts.tex`'s service code/metadata definition
+(SHA-256 `aab24adf8ead83658c95eb6769519dcae888917a5308371c969b8658bb78cbb5`) and
 `pvm_invocations.tex`, equation `accinvocation` / `Psi_A`
-(SHA-256 `67a4fa455d2c1e7979ed9eec8849cb2dcdda7386c2f4085f1d11e93e72f7d6cb`).
+(SHA-256 `ecf84b575cd427b48f8648ae18bae992a8ed3fd9c01203dbe1978e573905137d`).
 It builds on [initial round planning](accumulation-round.md). [Incoming credit](accumulation-credit.md)
 now prepares a private credited map without invoking a PVM or publishing the caller's store.
 
-The account's code-hash preimage is `E(length(metadata)) || metadata || code`. Only metadata has a
-length prefix; the remaining suffix is the complete code blob. There is no additional code-length
-field and no alternate-envelope fallback. A malformed/truncated/noncanonical envelope supplies no
-code. Valid empty code is a distinct eligible blob: program validation and its execution outcome
-belong to the PVM layer, not this lookup gate.
+The account's code-hash preimage is the complete standard JAM program blob. The shared
+initializer decodes its opaque metadata prefix and validates the image. An eligible malformed
+blob completes through the invocation's exceptional context with zero gas.
 
-`Psi_A`'s protocol size gate measures extracted code, excluding the metadata and its framing.
+`Psi_A`'s protocol size gate measures the entire preimage, including metadata and its framing.
 `ServiceCodeLimit` supplies that explicit chain parameter; the ordinary GP value is 4,000,000.
 The bound API authenticates the source state and candidate slot, not the caller's chain constants.
 There is no additional invocation-time minimum-gas, code-hash-versus-old-report or balance filter:
@@ -32,7 +30,7 @@ service's C(255, service), requires the complete fixed version-zero metadata rec
 its code-hash preimage through the existing preimage namespace. The preimage/hash invariant is
 checked; corrupt state and cryptographic backend failures cannot masquerade as absent code.
 
-Successful copied metadata distinguishes `Missing`, `Malformed`, `Oversized` and `Ready` code.
+Successful copied metadata distinguishes `Missing`, `Oversized` and `Ready` code.
 Unavailable alternatives carry no executable byte copy: `serviceCode` refuses extraction with
 `CodeUnavailable`. Ready code, including empty code, is copied independently on extraction.
 `serviceInputAt` accepts only an inner input ordinal; it cannot substitute a different service group.
@@ -48,10 +46,8 @@ owner retains both the original round and the resolved pure context.
 
 The API prepares one service at a time, avoiding speculative batch copies of every program.
 The original input projection already bounds service and input counts. `preimageBytes` independently
-bounds a complete raw preimage before copying, content hashing or envelope parsing. Exceeding this
-local resource ceiling is `LimitExceeded`, not successful protocol-size ineligibility. Fixed account
-extent checks precede account copying. Envelope offsets and suffix lengths come from the existing
-bounded canonical parser, and no unchecked length addition or narrowing is introduced.
+bounds the copy and content hash of an eligible preimage. Exceeding this local resource
+ceiling is `LimitExceeded`. Fixed account extent checks precede account copying.
 
 ## Deliberate execution boundary
 
@@ -69,10 +65,10 @@ zero-used-gas execution results or checkpoint states.
 ## Verification
 
 `tests/unit/state/test_accumulation_service.nim` checks 408 deterministic independently authored
-metadata/code envelopes and protocol/resource limits. The Python oracle uses unbounded prefix/length
-arithmetic and independently encoded compact lengths; native code uses the maintained bounded parser.
+program blobs and protocol/resource limits. The Python oracle uses independently encoded
+compact lengths when constructing metadata prefixes.
 Both empty/malformed encodings and metadata lengths around 127/128 and 16,383/16,384 are covered.
-Tests compare the gate status and complete code suffix, preserve zero gas with maximum account
+Tests compare the gate status and complete program blob, preserve zero gas with maximum account
 minimums, and check that returned bytes are independent copies.
 
 Literal cases cover missing accounts/preimages, malformed/extended/versioned account records,

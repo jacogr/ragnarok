@@ -13,7 +13,7 @@ import ../../../src/pvm/[initialize, machine, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/state/accumulation/[runner as accumulation_runner,
     execution as accumulation_execution, round as accumulation_round, inputs as accumulation_inputs,
-    batch as accumulation_batch, dispatch as accumulation_dispatch,
+    batch as accumulation_batch, dispatch as accumulation_dispatch, outcome as accumulation_outcome,
     invocation as accumulation_invocation, service as accumulation_service,
     context as accumulation_context, machine as accumulation_machine, skip as accumulation_skip,
     effects as accumulation_effects, provisions as accumulation_provisions]
@@ -159,13 +159,15 @@ proc main() {.raises.} =
   var executionOptions4 = executionFixtureConfig()
   executionOptions4.firstProgram = @[255'u8]
   let malformed = executionFixture(base, executionOptions4)
-  assert runBlockAccumulation(malformed.round, parameters,
-      limits).value.executionInfo.value.batch.skipped == 1
   var executionOptions5 = executionFixtureConfig()
   executionOptions5.firstProgram = @[0'u8, 1]
   let invalidEnvelope = executionFixture(base, executionOptions5)
-  assert runBlockAccumulation(invalidEnvelope.round, parameters, limits).machineError ==
-    AccumulationMachineError.InvalidEnvelope
+  for fixture in [malformed, invalidEnvelope]:
+    let completed = runBlockAccumulation(fixture.round, parameters, limits).value
+    assert completed.executionInfo.value.batch.skipped == 0
+    let first = completed.executionBatch.value.batchOutcomeAt(AccumulationProvisionSourceIndex(
+        0)).value.outcomeInfo.value
+    assert first.termination == AccumulationTermination.Panic and uint64(first.gasUsed) == 0
   var executionOptions6 = executionFixtureConfig()
   executionOptions6.omitAuthorizationQueue = true
   let missingContexts = executionFixture(base, executionOptions6)

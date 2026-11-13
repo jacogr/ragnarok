@@ -141,12 +141,19 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   assert owner != nil and owner[].busy
   result = initializeMachine(input, arguments, entry, gas, limits, owner[].slots[
       lease.index].worker)
-  if result.error != InitializationError.None:
-    # Keep the live lease's exact worker/key/backend until release; another initialization can retry safely.
-    owner[].slots[lease.index].ready = false
-  else:
-    # Only successful complete initialization makes a new key resident beyond its admission scope.
-    owner[].slots[lease.index].ready = true
+  owner[].slots[lease.index].ready = result.error == InitializationError.None
+
+proc initializeJamProgram*(input, arguments: openArray[byte], entry: CodeAddress,
+    gas: MachineGas, limits: InitializationLimits,
+        lease: ServiceExecutionLease): InitializationResult
+    {.requires: lease.owner != nil.} =
+  ## Preserve all envelope/parse/entry/resource checks and build a fresh CPU/memory/argument owner.
+  let owner = lease.owner
+  if owner == nil or not owner[].busy:
+    return default(InitializationResult)
+  result = initializeJamProgram(input, arguments, entry, gas, limits, owner[].slots[
+      lease.index].worker)
+  owner[].slots[lease.index].ready = result.error == InitializationError.None
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,

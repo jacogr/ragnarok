@@ -13,7 +13,8 @@ type
   OriginalShardIndex* = distinct uint64 ## Only original systematic shard ordinals are accepted here.
   ErasureGeometry* = object ## Copied descriptive sizes do not certify parity or an availability root.
     shards*: ErasureShards
-    originalShards*, stripeBytes*, bundleChunkBytes*, segmentChunkBytes*: uint64
+    originalShards*, interpolationPoints*, stripeBytes*, bundleChunkBytes*,
+      segmentChunkBytes*: uint64
     paddedBytes*, paddingBytes*, encodedBytes*: uint64
   LayoutData = ref object ## Immutable acyclic ownership retains original executed bundle provenance.
     source: AuditableBundle
@@ -46,13 +47,16 @@ proc erasureGeometry*(length: BundleLength, shards: ErasureShards): ErasureLayou
   var original = count div 3+1
   # One always divides 2052; the search cannot underflow and starts at most 342.
   while 2052 mod original != 0: dec original
+  var points = 1'u64
+  while points < original: points *= 2 # At most 342 original shards need at most 512 interpolation points.
   let stripe = original*2
   let bytes = uint64(uint32(length))
   let words = (bytes+stripe-1) div stripe # E4 plus at most 683 fits uint64.
   let padded = words*stripe # At most E4 plus one stripe; no native allocation occurs here.
   let chunk = words*2
   ErasureLayoutResult[ErasureGeometry](status: ErasureLayoutError.None,
-    completed: ErasureGeometry(shards: shards, originalShards: original, stripeBytes: stripe,
+    completed: ErasureGeometry(shards: shards, originalShards: original,
+      interpolationPoints: points, stripeBytes: stripe,
       bundleChunkBytes: chunk, segmentChunkBytes: 4104 div original,
       paddedBytes: padded, paddingBytes: padded-bytes, encodedBytes: chunk*count))
 

@@ -41,6 +41,13 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   if data == nil: return initializeMachine(input, arguments, entry, gas, limits)
   initializeMachine(input, arguments, entry, gas, limits, data.initialization)
 
+proc initializeJamProgram*(input, arguments: openArray[byte], entry: CodeAddress,
+    gas: MachineGas, limits: InitializationLimits, worker: ExecutionWorker): InitializationResult =
+  ## Decode the full blob on every invocation; only exact validated program code may be reused.
+  let data = worker.data
+  if data == nil: return initializeJamProgram(input, arguments, entry, gas, limits)
+  initializeJamProgram(input, arguments, entry, gas, limits, data.initialization)
+
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
         raises: [].},

@@ -106,14 +106,14 @@ assert single.exportErasureChunk(ErasureShardIndex(342), ExportErasureIndex(0)).
     @SingleData, "single explicit data parity"
 assert single.exportErasureChunk(ErasureShardIndex(1022), ExportErasureIndex(1)).value ==
     @SinglePage, "single explicit page parity"
-assert single.exportErasureInfo.value.products == 3676476, "independent twelve-column field work"
-assert single.exportErasureInfo.value.workspaceBytes == 4438, "independent aggregate coding workspace"
+assert single.exportErasureInfo.value.products == 5935776, "independent twelve-column field work"
+assert single.exportErasureInfo.value.workspaceBytes == 4778, "independent aggregate coding workspace"
 let mixed = verify(exportBundle(3), 3, MixedRoot, MixedHash)
 assert mixed.exportErasureChunk(ErasureShardIndex(342), ExportErasureIndex(0)).value == @MixedData, "mixed data parity"
 assert mixed.exportErasureChunk(ErasureShardIndex(1022), ExportErasureIndex(3)).value == @MixedPage, "mixed page parity"
 let paged = verify(exportBundle(65, 6), 65, PagedRoot, PagedHash)
 assert paged.exportErasureInfo.value.rows == 67, "65 exports precede two proof pages"
-assert paged.exportErasureInfo.value.products == 4674456, "independent page-boundary field work"
+assert paged.exportErasureInfo.value.products == 4949424, "independent page-boundary field work"
 # Metadata and extracted bytes cannot mutate retained roots, identities or original encoded chunks.
 var copied = single.exportErasureChunk(ErasureShardIndex(1022), ExportErasureIndex(1)).value
 copied[0] = copied[0] xor 1

@@ -75,6 +75,16 @@ proc normalizeAccumulationOutcome*(execution: AccumulationDispatchResult):
     return AccumulationOutcomeResult[AccumulationOutcome](status: reason)
   if execution.error != AccumulationDispatchError.None:
     fail(AccumulationOutcomeError.InvalidExecution) # Local engine/host refusals never become guest panic.
+  if execution.initializationPanicked:
+    let selected = execution.effects.effectContext(AccumulationDimension.Exceptional)
+    if selected.error != AccumulationEffectError.None: fail(AccumulationOutcomeError.InvalidContext)
+    let info = selected.value.effectInfo.value
+    return AccumulationOutcomeResult[AccumulationOutcome](status: AccumulationOutcomeError.None,
+      completed: AccumulationOutcome(data: OutcomeData(context: selected.value,
+        info: AccumulationOutcomeInfo(service: info.service,
+          termination: AccumulationTermination.Panic,
+          dimension: AccumulationDimension.Exceptional, gasUsed: Gas(0),
+          hasYield: info.hasYield, transfers: info.transfers, provisions: info.provisions))))
   let stopped = execution.value
   var dimension = AccumulationDimension.Exceptional
   var termination = AccumulationTermination.Panic

@@ -343,9 +343,9 @@ Do not claim these differing expected observations establish loading parity.
 **Question to raise:** should a structurally valid final terminator with a missing
 successor be rejected by deblob, or admitted and panic when reached? Clarify the
 validation rule and preservation of earlier register/memory/host effects.
-The local approved exception belongs to JAM preparation, with existing typed failure
-mapping and no fabricated guest panic. It does not resolve the formal upstream
-question or establish blanket PolkaVM validation precedence.
+The local approved exception belongs to JAM preparation. At the current Gray Paper
+pin, the three outer invocations map the typed initializer failure to a zero-gas
+panic. The upstream validation question remains open.
 
 ## GP-PVM-005: jump-table entry widths above four bytes
 

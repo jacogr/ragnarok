@@ -18,7 +18,7 @@ proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 
 ## Exact envelope/program extents and five materialized pages for the authored fixture.
 proc policy(): InitializationLimits =
-  InitializationLimits(envelope: InitializationByteLimit(28), program: ProgramByteLimit(11),
+  InitializationLimits(envelope: InitializationByteLimit(29), program: ProgramByteLimit(11),
     jumps: JumpCountLimit(0), pages: PageLimit(5))
 
 ## Retain a machine after every preparation owner leaves scope; caller code/argument mutation is isolated.
@@ -68,7 +68,9 @@ assert readBytes(changed, MemoryAddress(196608), MemoryLength(1), MemoryByteLimi
 assert readBytes(memory, MemoryAddress(196608), MemoryLength(1), MemoryByteLimit(1)).value == @[81'u8]
 let retained = prepared.machineBootstrap.value
 assert retained.bootstrapArguments.value == @[128'u8, 128, 42, 0]
-assert retained.bootstrapService.value.serviceCode.value == pvmEnvelope()
+var blob = @[0'u8]
+for octet in pvmEnvelope(): blob.add(octet)
+assert retained.bootstrapService.value.serviceCode.value == blob
 assert uint32(retained.bootstrapInfo.value.service) == 42
 assert execute(cpu, ExecutionStepLimit(1), GasCycleLimit(100)).value.exit == StepExit.Halt
 checkCpu(cpu, 100) # Executing a retained child cannot mutate the stored initial CPU.
@@ -96,23 +98,21 @@ for field in 0..<3:
   # Every independent allocation/decoding ceiling refuses one below its exact fixture requirement.
   var tight = policy()
   case field
-  of 0: tight.envelope = InitializationByteLimit(27) # Before copying the complete service code.
+  of 0: tight.envelope = InitializationByteLimit(28) # Before copying the complete service code.
   of 1: tight.program = ProgramByteLimit(10) # Embedded program has independent policy.
   else: tight.pages = PageLimit(4) # Include RO, RW, extra heap, stack and argument pages.
   assert initializeAccumulationMachine(source, tight).error ==
       AccumulationMachineError.LimitExceeded
-assert initializeAccumulationMachine(pvmBootstrap([]), policy()).error ==
-    AccumulationMachineError.InvalidEnvelope
+assert initializeAccumulationMachine(pvmBootstrap([]), policy()).value.initializationPanicked
 var trailing = pvmEnvelope()
 trailing.add(0)
 var wide = policy()
 wide.envelope = InitializationByteLimit(1000)
-assert initializeAccumulationMachine(pvmBootstrap(trailing), wide).error ==
-    AccumulationMachineError.InvalidEnvelope
+assert initializeAccumulationMachine(pvmBootstrap(trailing), wide).value.initializationPanicked
 for raw in [@[0'u8, 0, 1, 0, 1], @[255'u8], newSeq[byte](0), @[0'u8, 0, 7, 0, 0, 0, 0, 50, 0, 0, 31]]:
   # Valid entry-zero code is insufficient: accumulation's required PC 5 must also exist and be valid.
-  assert initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw)), wide).error ==
-    AccumulationMachineError.InvalidProgram
+  assert initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw)),
+      wide).value.initializationPanicked
 # The mandatory accumulation entry5 exists; only the final missing successor causes rejection.
 var validationPolicy = wide
 validationPolicy.program = ProgramByteLimit(64)
@@ -120,8 +120,7 @@ for program in [@[0'u8, 0, 9, 0, 0, 0, 0, 0, 51, 7, 7, 1, 63, 1],
     @[0'u8, 0, 11, 0, 0, 0, 0, 0, 51, 7, 7, 170, 0, 253, 63, 1]]:
   let bootstrap = pvmBootstrap(pvmEnvelope(program))
   let code = bootstrap.bootstrapService.value.serviceCode.value
-  assert initializeAccumulationMachine(bootstrap, validationPolicy).error ==
-      AccumulationMachineError.InvalidProgram
+  assert initializeAccumulationMachine(bootstrap, validationPolicy).value.initializationPanicked
   assert bootstrap.bootstrapService.value.serviceCode.value == code
 # A trailing trap restores preparation at the same accumulation entry; raw execution still panics normally.
 let successor = pvmEnvelope([0'u8, 0, 10, 0, 0, 0, 0, 0, 51, 7, 7, 1, 0, 63, 3])
@@ -146,7 +145,7 @@ for width in [0'u8, 5]:
     assert execution.error == StepError.None and execution.value.exit == StepExit.Panic
     assert uint64(machineInfo(execution.value.machine).value.registers[8]) == 2
   else:
-    assert checked.error == AccumulationMachineError.InvalidProgram
+    assert checked.value.initializationPanicked
 
 let panic = pvmEnvelope([0'u8, 0, 6, 0, 0, 0, 0, 0, 0, 63])
 let trapping = initializeAccumulationMachine(pvmBootstrap(panic),

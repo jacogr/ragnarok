@@ -19,7 +19,7 @@ import ./[lookup as refinement_lookup, dispatch as refinement_dispatch]
 
 type
   RefinementCodeStatus* {.pure.} = enum ## Protocol eligibility selections precede CPU initialization and guest gas use.
-    Bad, Big, Ready
+    Bad, Big, Panic, Ready
   RefinementBootstrapError* {.pure.} = enum ## Local refusals carry no bootstrap, partial arguments or machine.
     Uninitialized, None, InvalidSelection, InvalidParameters, InvalidState, MalformedState,
     LimitExceeded, BackendFailure, MalformedCode, InvalidEnvelope, InvalidProgram, NotReady,
@@ -153,12 +153,8 @@ proc prepareRefinementBootstrap*(state: StateStoreSnapshot, package: OwnedWorkPa
   if digest.error != CryptoError.None: fail(RefinementBootstrapError.BackendFailure)
   if array[32, byte](digest.value) != array[32, byte](info.codeHash):
     fail(RefinementBootstrapError.InvalidState) # A synthetic map value cannot certify the item's code commitment.
-  let metadata = decodeBytesBorrowed(raw, ByteLimit(raw.len))
-  if metadata.error != ContainerError.None: fail(RefinementBootstrapError.MalformedCode)
-  let start = metadata.consumed
-  let codeBytes = raw.len-start # The canonical prefix decoder proves this subtraction and the suffix extent.
-  if uint64(codeBytes) > uint64(limits.initialization.envelope): fail(
-      RefinementBootstrapError.LimitExceeded)
+  if facts.preimageBytes > uint64(limits.initialization.envelope):
+    fail(RefinementBootstrapError.LimitExceeded)
   let prefix = [natural.encode(JamNatural(uint64(core))), natural.encode(JamNatural(uint64(item))),
     natural.encode(JamNatural(uint64(uint32(info.service)))), natural.encode(JamNatural(uint64(
         info.payloadBytes)))]
@@ -191,31 +187,23 @@ proc prepareRefinementBootstrap*(state: StateStoreSnapshot, package: OwnedWorkPa
   for octet in hash:
     arguments[cursor] = octet
     inc cursor # Append raw hash bytes, with no count prefix or domain token.
-  var envelope = newSeq[byte](codeBytes)
-  for index in 0..<codeBytes: envelope[index] = raw[
-      start+index] # Copy only the authenticated suffix after metadata.
-  let initialized = initializeMachine(envelope, arguments, CodeAddress(0), facts.gas,
+  let initialized = initializeJamProgram(raw, arguments, CodeAddress(0), facts.gas,
       limits.initialization, worker)
   case initialized.error
   of InitializationError.None:
-    discard # Only a complete executable initializer can authorize Ready machine extraction.
-  of InitializationError.InvalidEnvelope:
-    fail(RefinementBootstrapError.InvalidEnvelope)
-  of InitializationError.InvalidProgram:
-    fail(RefinementBootstrapError.InvalidProgram)
+    discard
+  of InitializationError.InvalidEnvelope, InitializationError.InvalidProgram:
+    facts.status = RefinementCodeStatus.Panic
+    return RefinementBootstrapResult[PreparedRefinementBootstrap](
+      status: RefinementBootstrapError.None,
+      completed: PreparedRefinementBootstrap(data: BootstrapData(info: facts, state: state,
+        package: package, parameters: parameters, ready: nil)))
   of InitializationError.LimitExceeded, InitializationError.ArgumentsTooLarge:
     fail(RefinementBootstrapError.LimitExceeded)
   else:
     fail(RefinementBootstrapError.InvalidState)
-  var ro = 0'u64
-  var stack = 0'u64
-  for index in 0..<3:
-    ro = ro or (uint64(envelope[index]) shl (index*8))
-    stack = stack or (uint64(envelope[8+index]) shl (
-        index*8)) # The validated initializer proves both E3 fields exist.
-  # E3 fields are <=2^24-1, proving zone rounding, endpoint subtraction and page narrowing fit.
-  let heap = RefinementHeapBounds(first: PageIndex(uint32(32+((ro+65535) div 65536)*16)),
-    past: PageIndex(uint32((0xfefd0000'u64-((stack+65535) div 65536)*65536) div 4096)))
+  let bounds = initialized.heapBounds
+  let heap = RefinementHeapBounds(first: bounds.first, past: bounds.past)
   RefinementBootstrapResult[PreparedRefinementBootstrap](status: RefinementBootstrapError.None,
     completed: PreparedRefinementBootstrap(data: BootstrapData(info: facts, state: state,
       package: package, parameters: parameters, ready: ReadyData(machine: initialized.value,

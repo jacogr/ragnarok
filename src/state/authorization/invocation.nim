@@ -236,26 +236,20 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
       status: AuthorizationInvocationError.LookupFailure,
       lookupReason: code.error)
   if not code.value.present: return complete(source, WorkKind.Bad, Gas(0), @[]) # Absence needs neither code copying nor execution.
-  if uint64(code.value.value.byteLength) > uint64(limits.preimage): fail(
-      AuthorizationInvocationError.LimitExceeded)
+  if code.value.value.byteLength > 196608: return complete(source, WorkKind.Big, Gas(0), @[])
+  let codeBytes = uint64(code.value.value.byteLength)
+  if codeBytes > uint64(limits.preimage) or codeBytes > uint64(limits.initialization.envelope):
+    fail(AuthorizationInvocationError.LimitExceeded)
   let preimage = code.value.value.bytes
   let hash = blake2b256(preimage)
   if hash.error != CryptoError.None: fail(AuthorizationInvocationError.BackendFailure)
   if array[32, byte](hash.value) != array[32, byte](described.value.codeHash):
     fail(AuthorizationInvocationError.InvalidState) # A synthetic map under the wrong key cannot certify authorization code.
-  let metadata = decodeBytesBorrowed(preimage, ByteLimit(uint64(preimage.len)))
-  if metadata.error != ContainerError.None: fail(AuthorizationInvocationError.MalformedCode)
-  let start = metadata.consumed
-  let size = preimage.len-start # Canonical metadata parsing proves the subtraction and exact suffix extent.
-  if size > 196608: return complete(source, WorkKind.Big, Gas(0), @[]) # The code suffix, not metadata/preimage size, selects BIG.
-  if uint64(size) > uint64(limits.initialization.envelope): fail(
-      AuthorizationInvocationError.LimitExceeded)
-  var envelope = newSeq[byte](size)
-  for index in 0..<size: envelope[index] = preimage[
-      start+index] # Bound copying before allocation, preserving exact authenticated suffix.
   let arguments = [byte(uint64(core) and 255), byte((uint64(core) shr 8) and 255)]
-  let initialized = initializeMachine(envelope, arguments, CodeAddress(0), MachineGas(50000000),
-      limits.initialization)
+  let initialized = initializeJamProgram(preimage, arguments, CodeAddress(0),
+      MachineGas(50000000), limits.initialization)
+  if initialized.error in [InitializationError.InvalidEnvelope, InitializationError.InvalidProgram]:
+    return complete(source, WorkKind.Panic, Gas(0), @[])
   if initialized.error != InitializationError.None:
     return AuthorizationInvocationResult[AuthorizationInvocation](
       status: AuthorizationInvocationError.InitializationFailure,
@@ -271,16 +265,9 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
   if fetched.error != FetchError.None:
     return AuthorizationInvocationResult[AuthorizationInvocation](
         status: AuthorizationInvocationError.FetchFailure, fetchReason: fetched.error)
-  var ro = 0'u64
-  var stack = 0'u64
-  for index in 0..<3:
-    ro = ro or (uint64(envelope[index]) shl (8*index))
-    stack = stack or (uint64(envelope[8+index]) shl (
-        8*index)) # Initialized E3 values prove zone rounding and page narrowing fit.
+  let heap = initialized.heapBounds
   var context = AuthorizationContext(logger: limits.logging, fetch: fetched.value,
-    copy: limits.copy,
-    first: PageIndex(uint32(32+((ro+65535) div 65536)*16)),
-    past: PageIndex(uint32((0xfefd0000'u64-((stack+65535) div 65536)*65536) div 4096)))
+    copy: limits.copy, first: heap.first, past: heap.past)
   let executed = executeWithHost(initialized.value, context, dispatch, limits.steps, limits.calls,
       limits.cycles, limits.backend)
   case executed.error

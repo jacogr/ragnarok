@@ -80,10 +80,9 @@ proc prepareBundleErasure*(source: ErasureLayout, limits: BundleErasureLimits): 
   let originalInfo = originalBundle.bundleInfo.value
   let count = int(uint16(geometry.shards))
   let original = int(geometry.originalShards)
-  var span = 1
-  while span < original: span *= 2 # Validated originals <=342 prove span <=512 before doubling.
-  let columnProducts = uint64(31*(span-1)+original*(original-1) div 2+(count-original)*(original-1))
-  let scalarBytes = uint64(count+original+span)*2
+  let columnLimits = encodingLimits(geometry)
+  let columnProducts = uint64(columnLimits.products)
+  let scalarBytes = uint64(columnLimits.bytes)
   let products = geometry.bundleChunkBytes div 2*columnProducts
   let workspace = uint64(uint32(originalInfo.length))+uint64(original)*2+scalarBytes
   if geometry.encodedBytes > uint64(high(int)): fail(BundleErasureError.LimitExceeded)
@@ -93,7 +92,6 @@ proc prepareBundleErasure*(source: ErasureLayout, limits: BundleErasureLimits): 
   var input = newSeq[ErasureWord](original)
   var encoded = newSeq[byte](int(geometry.encodedBytes))
   let chunkBytes = int(geometry.bundleChunkBytes)
-  let columnLimits = ErasureWordLimits(bytes: ByteLimit(scalarBytes), products: FieldProductLimit(columnProducts))
   # Original chunks are contiguous; zero suffixes are synthesized before little-endian word decoding.
   for column in 0..<chunkBytes div 2:
     for index in 0..<original:

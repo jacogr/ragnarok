@@ -61,7 +61,7 @@ proc service(includeCode = true): PreparedAccumulationService =
           1))).value) # Empty code after a valid zero metadata length.
   let state = newStateStore(entries, limits()).value.snapshot.value
   prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(128),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))).value
 
 ## Full-width fixture counts never pass through signed native parsing.
 proc number(text: string): uint64 =
@@ -132,7 +132,7 @@ proc boundaries(): PreparedAccumulationInvocation =
   args[0] = args[0] xor 1
   assert prepared.bootstrapArguments.value == @[128'u8, 128, 42,
       0] # Compact slot 128, service 42, input count zero.
-  assert prepared.bootstrapService.value.serviceCode.value.len == 0
+  assert prepared.bootstrapService.value.serviceCode.value == @[0'u8]
   assert prepareAccumulationInvocation(ready, default(StateEntropyWord), ServiceProbeLimit(
       0)).error == AccumulationInvocationError.LimitExceeded
   assert prepareAccumulationInvocation(service(false), default(StateEntropyWord), ServiceProbeLimit(
@@ -179,7 +179,7 @@ proc boundCase(base: OwnedReport): PreparedAccumulationInvocation =
   let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
   let round = planBlockInitialAccumulation(queue, roundConfig()).value
   let boundService = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
-    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
+    AccumulationServiceConfig(codeLimit: ServiceCodeLimit(1), preimageBytes: ByteLimit(1))).value
   let prepared = prepareBlockAccumulationInvocation(boundService, ServiceProbeLimit(1)).value
   let posterior = decodeStateEntropy(context.staged.value.snapshot.lookup(chapterKey(StateChapter(
       6))).value.bytes).value.value[0]
@@ -215,7 +215,7 @@ proc lifetime() =
 proc main() {.raises.} =
   projections()
   let retained = boundaries()
-  assert retained.bootstrapService.value.serviceCode.value.len == 0
+  assert retained.bootstrapService.value.serviceCode.value == @[0'u8]
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for i in 0..<raw.len: bytes[i] = byte(raw[i]) # Preserve binary fixture bytes without text conversion.

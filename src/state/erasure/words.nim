@@ -91,6 +91,21 @@ proc codeWord*(code: ErasureWordCode, index: ErasureShardIndex): ErasureWordResu
     return ErasureWordResult[ErasureWord](status: ErasureWordError.InvalidIndex)
   ErasureWordResult[ErasureWord](status: ErasureWordError.None, completed: data.words[int(uint64(index))])
 
+func encodingLimits*(geometry: ErasureGeometry): ErasureWordLimits =
+  ## Bounds for one column of validated erasure geometry, including implicit zero coordinates.
+  let count = uint64(uint16(geometry.shards))
+  let span = geometry.interpolationPoints
+  if count > 1023 or geometry.originalShards == 0 or geometry.originalShards > count or
+      span < geometry.originalShards or span > 512:
+    return default(ErasureWordLimits)
+  let parity = count-geometry.originalShards
+  ErasureWordLimits(bytes: ByteLimit((count+2*span)*2),
+    products: FieldProductLimit(31*(span-1)+span*(span-1) div 2+parity*(span-1)))
+
+func evaluationIndex(index, original, span: int): int =
+  ## Systematic coordinates are unchanged. Parity follows the implicit zero coordinates.
+  if index < original: index else: index+span-original
+
 proc encodeErasureWords*(input: openArray[ErasureWord], shards: ErasureShards,
     limits: ErasureWordLimits): ErasureWordResult[ErasureWordCode] =
   ## Borrow stable original words during encoding; preflight all variable buffers and multiplication work.
@@ -101,14 +116,14 @@ proc encodeErasureWords*(input: openArray[ErasureWord], shards: ErasureShards,
   let count = int(uint16(shards))
   let original = int(described.value.originalShards)
   if input.len != original: fail(ErasureWordError.InvalidLength)
-  var span = 1
-  while span < original: span *= 2 # Original <=342 proves span <=512 before multiplication/index conversion.
-  let products = uint64(31*(span-1)+original*(original-1) div 2+(count-original)*(original-1))
+  let span = int(described.value.interpolationPoints)
+  let required = encodingLimits(described.value)
+  let products = uint64(required.products)
   let retained = uint64(count)*2
-  let workspace = uint64(original+span)*2
-  if retained+workspace > uint64(limits.bytes) or products > uint64(limits.products):
+  let workspace = uint64(required.bytes)-retained
+  if uint64(required.bytes) > uint64(limits.bytes) or products > uint64(limits.products):
     fail(ErasureWordError.LimitExceeded)
-  var coefficients = newSeq[uint16](original)
+  var coefficients = newSeq[uint16](span)
   var inverses = newSeq[uint16](span)
   var words = newSeq[ErasureWord](count)
   # Every nonzero original-index XOR fits below span and denotes a nonzero Cantor field element.
@@ -117,17 +132,17 @@ proc encodeErasureWords*(input: openArray[ErasureWord], shards: ErasureShards,
     words[index] = input[index] # Retain exact systematic words, independent of caller mutation after return.
     coefficients[index] = changeBasis(uint16(input[index]), CantorBasis)
   # Descending updates preserve the preceding divided-difference row in place.
-  for order in 1..<original:
-    var index = original-1
+  for order in 1..<span:
+    var index = span-1
     while index >= order:
       coefficients[index] = multiply(coefficients[index] xor coefficients[index-1], inverses[
           index xor (index-order)])
       dec index
-  # Nested Newton evaluation needs original-1 products per parity position.
+  # Nested Newton evaluation needs span-1 products per parity position.
   for index in original..<count:
-    let point = changeBasis(uint16(index), CantorBasis)
-    var evaluated = coefficients[original-1]
-    var term = original-2
+    let point = changeBasis(uint16(evaluationIndex(index, original, span)), CantorBasis)
+    var evaluated = coefficients[span-1]
+    var term = span-2
     while term >= 0:
       evaluated = multiply(evaluated, point xor changeBasis(uint16(term),
           CantorBasis)) xor coefficients[term]
@@ -188,21 +203,28 @@ proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureSha
     if seen[position]: fail(ErasureWordError.InvalidIndex)
     seen[position] = true
     if position < original: dec missing
-  var differences = default(array[1024, bool])
+  let span = int(described.value.interpolationPoints)
+  # At most 1023 validator slots plus 170 implicit points fit below 2048.
+  # Store coordinates in supplied-row order, then append the known zero points.
+  var coordinates = default(array[512, int])
+  var differences = default(array[2048, bool])
   var differenceCount = 0'u64
   if missing > 0:
     for row in 0..<original:
+      coordinates[row] = evaluationIndex(int(uint64(indices[row])), original, span)
+    for row in original..<span: coordinates[row] = row
+    for row in 0..<span:
       for preceding in 0..<row:
-        # All supplied-index XORs fit 1..1023 because the validated coordinates are distinct and below1023.
-        let difference = int(uint64(indices[row]) xor uint64(indices[preceding]))
+        let difference = coordinates[row] xor coordinates[preceding]
         if not differences[difference]:
           differences[difference] = true
           inc differenceCount
   let columns = width div 2
+  let inverseCount = if count+span-original <= 1024: 1024 else: 2048
   let products = if missing == 0: 0'u64 else:
-    differenceCount*31+uint64(columns)*(uint64(original*(original-1) div 2)+uint64(missing*(original-1)))
-  let workspace = uint64(original*sizeof(int))+(if missing == 0: 0'u64 else: uint64(
-      original)*4+2048)
+    differenceCount*31+uint64(columns)*(uint64(span*(span-1) div 2)+uint64(missing*(span-1)))
+  let workspace = uint64(original*sizeof(int))+(if missing == 0: 0'u64 else:
+    uint64(span*4+inverseCount*2))
   let retained = described.value.paddedBytes
   if retained+workspace > uint64(limits.bytes) or products > uint64(limits.products):
     fail(ErasureWordError.LimitExceeded)
@@ -212,12 +234,12 @@ proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureSha
     if uint64(indices[row]) < uint64(original): positions[int(uint64(indices[row]))] = row
   var coefficients, points, inverses: seq[uint16] = @[]
   if missing > 0:
-    coefficients = newSeq[uint16](original)
-    points = newSeq[uint16](original)
-    inverses = newSeq[uint16](1024)
-    for index in 1..<1024:
+    coefficients = newSeq[uint16](span)
+    points = newSeq[uint16](span)
+    inverses = newSeq[uint16](inverseCount)
+    for index in 1..<inverseCount:
       if differences[index]: inverses[index] = inverse(changeBasis(uint16(index), CantorBasis))
-    for row in 0..<original: points[row] = changeBasis(uint16(uint64(indices[row])), CantorBasis)
+    for row in 0..<span: points[row] = changeBasis(uint16(coordinates[row]), CantorBasis)
   var output = newSeq[byte](int(retained))
   for column in 0..<columns:
     if missing > 0:
@@ -225,10 +247,11 @@ proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureSha
         let offset = row*width+column*2
         let word = uint16(input[offset]) or (uint16(input[offset+1]) shl 8)
         coefficients[row] = changeBasis(word, CantorBasis)
-      for order in 1..<original:
-        var row = original-1
+      for row in original..<span: coefficients[row] = 0
+      for order in 1..<span:
+        var row = span-1
         while row >= order:
-          let difference = int(uint64(indices[row]) xor uint64(indices[row-order]))
+          let difference = coordinates[row] xor coordinates[row-order]
           coefficients[row] = multiply(coefficients[row] xor coefficients[row-1], inverses[difference])
           dec row
     for row in 0..<original:
@@ -240,8 +263,8 @@ proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureSha
       else:
         # Newton evaluation uses supplied-point order; output order is always systematic coordinate order.
         let point = changeBasis(uint16(row), CantorBasis)
-        var evaluated = coefficients[original-1]
-        var term = original-2
+        var evaluated = coefficients[span-1]
+        var term = span-2
         while term >= 0:
           evaluated = multiply(evaluated, point xor points[term]) xor coefficients[term]
           dec term

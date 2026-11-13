@@ -53,7 +53,8 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   for index, marked in starts:
     if marked: mask[index div 8] = mask[index div 8] or byte(1 shl (index mod 8))
   for octet in mask: raw.add(octet)
-  let writableSize = if codeSize > 0: codeSize-18-raw.len else: 3
+  let prefix = natural.encode(JamNatural(uint64(metadata.len)))
+  let writableSize = if codeSize > 0: codeSize-prefix.len-metadata.len-18-raw.len else: 3
   assert writableSize >= 3 and writableSize <= 0xffffff # Prove the literal E3 header and test allocation extents.
   result.envelope = @[3'u8, 0, 0, byte(writableSize and 255), byte((writableSize shr 8) and 255),
     byte(writableSize shr 16), 0, 0, 0, 0, 0, 11, 12, 13]
@@ -65,7 +66,6 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   result.envelope.add(byte(raw.len))
   for index in 0..<3: result.envelope.add(0) # E4 raw length is bounded by the authored short program.
   for octet in raw: result.envelope.add(octet)
-  let prefix = natural.encode(JamNatural(uint64(metadata.len)))
   for index in 0..<prefix.len: result.preimage.add(prefix.bytes[index])
   for octet in metadata: result.preimage.add(octet)
   for octet in result.envelope: result.preimage.add(octet)
