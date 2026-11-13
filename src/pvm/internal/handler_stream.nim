@@ -17,6 +17,8 @@
 ##
 ## Node and preparation-work refusals stay with the active frame. A prepared
 ## owner retains admitted entries and cumulative occupancy under the same ceilings.
+## A refused stream allocation can interrupt emission after partial writes.
+## Discard that catalogue and its native epoch before the next invocation.
 ##
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
@@ -109,7 +111,7 @@ type
   FlatError* {.pure.} = enum ## Local preparation refusals never masquerade as successful guest exits.
     Uninitialized, None, InvalidPolicy, InvalidProgram, CodeLimitExceeded,
     FactLimitExceeded, JumpLimitExceeded, PageLimitExceeded, StreamLimitExceeded,
-      PreparationLimitExceeded, InvalidMemory, ResidentAllocationRefused
+      PreparationLimitExceeded, InvalidMemory, ResidentAllocationRefused, StreamAllocationRefused
   FlatResult*[T] = object ## Private alternatives publish only completely admitted owners.
     case status: FlatError
     of None: completed: T
@@ -415,6 +417,9 @@ proc flatInstallNativePatch(f: var FlatFrame, offset: uint32, selected: FlatHand
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
+
+func flatPlanIdentity(plan: FlatPlan): FlatPlan
+  ## Dynamic targets use the admission owner's immutable table.
 
 proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
     attempted: bool = true): uint32 =
@@ -1297,8 +1302,9 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
       valid: starts.error == ProgramError.None and starts.value)
   else:
     # Ordinary prepared execution retains the qualified dense-table lookup without a runtime mode branch.
-    if index >= uint64(f.plan.jumps.len): return flatStopExit(f, off, oracle.StepExit.Panic)
-    target = f.plan.jumps[int(index)]
+    let admitted = flatPlanIdentity(f.plan)
+    if index >= uint64(admitted.jumps.len): return flatStopExit(f, off, oracle.StepExit.Panic)
+    target = admitted.jumps[int(index)]
   if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
   if resolved == flatStop: return flatResolutionFailure(f, off)
@@ -1307,9 +1313,11 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
     let cache {.cursor.} = f.dynamicOffsets
     let tag = ((index+1) shl 32) or uint64(resolved+1)
     if cache == nil:
-      let fresh = FlatDynamicOffsets(slots: default(array[256, uint64]))
-      fresh.slots[slot] = tag
-      f.dynamicOffsets = fresh
+      let fresh: nil FlatDynamicOffsets = FlatDynamicOffsets(slots: default(array[256, uint64]))
+      if fresh != nil:
+        # The resolved offset is already valid. A refused optional cache leaves it usable.
+        fresh.slots[slot] = tag
+        f.dynamicOffsets = fresh
     else:
       cache.slots[slot] = tag
   f.info.blockCharged = false
@@ -1755,10 +1763,13 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   var fact = flatFact(decoded, 0)
   fact.sourceCount = 1
   fact.nodeCount = 1
-  FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
-    facts: singletonMetadataStore(fact), factAt: default(MetadataStore[uint32]), pricePcs: @[],
-        cycles: cycles, jumps: @[], limits: limits,
-    allowNative: false, singleStep: true))
+  var facts = singletonMetadataStore(fact)
+  if facts.len != 1: return FlatResult[FlatPlan](status: FlatError.StreamAllocationRefused)
+  let owner: nil FlatPlan = FlatPlan(source: source, cycles: cycles, limits: limits,
+    allowNative: false, singleStep: true)
+  if owner == nil: return FlatResult[FlatPlan](status: FlatError.StreamAllocationRefused)
+  owner.facts = move(facts)
+  FlatResult[FlatPlan](status: FlatError.None, completed: owner)
 
 proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
   ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
@@ -1766,12 +1777,15 @@ proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
   assert prepared.error == FlatError.None
   takeValue(prepared)
 
-proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint32) =
+proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint32): bool =
   ## Parallel contiguous arrays preserve a 24-byte handler/argument payload plus a source index for rare exits.
-  assert f.handlers.len < 2147483646
+  let past = f.handlers.len+1
   f.handlers.add(handler)
   f.arguments.add(args)
   f.sites.add(site)
+  if f.handlers.len == past and f.arguments.len == past and f.sites.len == past: return true
+  f.preparationFailure = FlatError.StreamAllocationRefused
+  false
 
 proc flatPrice(f: var FlatFrame, start: CodeAddress, cost: var uint64): oracle.StepError =
   ## Query the selected exact-owner pricing policy only when preparing a previously unseen suffix.
@@ -1823,7 +1837,8 @@ proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
   if decoded.error != ProgramError.None: return flatStop
   assert f.handlers.len < 5
   let offset = uint32(f.handlers.len)
-  flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(pc), y: 0, slots: default(RegisterSlots)), 0)
+  if not flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(pc), y: 0,
+      slots: default(RegisterSlots)), 0): return flatStop
   offset
 
 proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
@@ -1837,11 +1852,22 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   if f.plan.admission == nil:
     # Fork only on the first valid resolution; never let two frames mutate one admission catalogue.
     let original = f.plan
-    f.plan = FlatPlan(source: original.source, limits: original.limits, cycles: original.cycles,
-      jumps: original.jumps, allowNative: original.allowNative, singleStep: false,
+    var locations = initMetadataStore[uint32](int(original.codeBytes))
+    var facts = initMetadataStore[FlatFact](int(original.admittedFacts))
+    if locations.len != int(original.codeBytes) or facts.len != int(original.admittedFacts):
+      f.preparationFailure = FlatError.StreamAllocationRefused
+      return false
+    let derived: nil FlatPlan = FlatPlan(source: original.source, limits: original.limits,
+      cycles: original.cycles,
+      allowNative: original.allowNative, singleStep: false,
       admission: original, admittedFacts: original.admittedFacts, codeBytes: original.codeBytes,
-      factAt: initMetadataStore[uint32](int(original.codeBytes)), ranks: original.ranks,
-      facts: initMetadataStore[FlatFact](int(original.admittedFacts)))
+      ranks: original.ranks)
+    if derived == nil:
+      f.preparationFailure = FlatError.StreamAllocationRefused
+      return false
+    derived.factAt = move(locations)
+    derived.facts = move(facts)
+    f.plan = derived
   let owner = f.plan
   if owner.factAt[int(pc)] != 0: return true
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
@@ -1855,6 +1881,9 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   var past = first
   let priceIndex = uint32(owner.pricePcs.len)
   owner.pricePcs.add(containing.value)
+  if uint64(owner.pricePcs.len) != uint64(priceIndex)+1:
+    f.preparationFailure = FlatError.StreamAllocationRefused
+    return false
   while true:
     # Immutable validation guarantees complete marked headers through the block terminator.
     assert at < uint64(owner.codeBytes) and owner.factAt[int(at)] == 0
@@ -1863,8 +1892,10 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     assert decoded.error == ProgramError.None
     let fact = flatFact(decoded, priceIndex)
     assert owner.facts[past].sourceCount == 0
-    owner.factAt[int(at)] = uint32(past+1)
-    owner.facts[past] = fact
+    if not writeMetadata(owner.factAt, int(at), uint32(past+1)) or
+        not writeMetadata(owner.facts, past, fact):
+      f.preparationFailure = FlatError.StreamAllocationRefused
+      return false
     inc past
     inc owner.materialized
     if fact.ending: break
@@ -1880,7 +1911,9 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     var fact = owner.facts[index]
     fact.sourceCount = count
     fact.nodeCount = nodes
-    owner.facts[index] = fact
+    if not writeMetadata(owner.facts, index, fact):
+      f.preparationFailure = FlatError.StreamAllocationRefused
+      return false
   assert owner.factAt[int(pc)] != 0
   true
 
@@ -1925,6 +1958,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     return flatStop
   f.preparationUsed+=neededWork
   if f.compiledForPc.len == 0: f.compiledForPc = initMetadataStore[uint32](f.plan.factAt.len)
+  if f.compiledForPc.len != f.plan.factAt.len:
+    f.preparationFailure = FlatError.StreamAllocationRefused
+    return flatStop
   let origin = uint32(f.handlers.len)
   var index = start
   var first = true
@@ -1939,7 +1975,10 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     let packed = f.compiledForPc[int(fact.pc)]
     if packed == 0 or ((packed-1) and 0x80000000'u32) == 0:
       # An overlapping suffix may replace an interior coordinate, never an already published complete entry header.
-      f.compiledForPc[int(fact.pc)] = (coordinate or (if first: 0x80000000'u32 else: 0'u32))+1
+      let packed = (coordinate or (if first: 0x80000000'u32 else: 0'u32))+1
+      if not writeMetadata(f.compiledForPc, int(fact.pc), packed):
+        f.preparationFailure = FlatError.StreamAllocationRefused
+        return flatStop
     if first:
       # Only a newly emitted header prices its genuine containing block. Its existing sealed charge/error node is the memo; interior suffixes may price once each.
       var charge: FlatHandler = flatCharge
@@ -1979,8 +2018,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
         of oracle.StepError.NegativeBranchTarget: charge = flatChargeFailure[
             oracle.StepError.NegativeBranchTarget]
         else: charge = flatChargeFailure[oracle.StepError.InvalidMachine]
-      flatEmit(f, charge, FlatArgs(x: needed, y: fact.sourceCount, slots: default(RegisterSlots)),
-          uint32(index))
+      if not flatEmit(f, charge, FlatArgs(x: needed, y: fact.sourceCount,
+          slots: default(RegisterSlots)), uint32(index)): return flatStop
       first = false
     let payload = flatSourcePayload(f.plan, fact)
     var selected = payload.handler
@@ -2005,7 +2044,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           inc continuations
         else: continuations = 0
       else: continuations = 0
-      if selected != nil: flatEmit(f, selected, payload.args, uint32(index))
+      if selected != nil and not flatEmit(f, selected, payload.args, uint32(index)): return flatStop
     if fact.ending: break
     inc index
   flatConsiderNative(f, origin)
@@ -3542,12 +3581,15 @@ proc runFlatSingle*(f: var FlatFrame) =
     if priced != oracle.StepError.None:
       f.reason = priced
       return
-  flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0)
   let payload = flatSourcePayload(f.plan, fact)
   let selected = payload.handler
   assert selected != nil
-  if selected != nil: flatEmit(f, selected, payload.args, 0)
-  flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(fact.next), y: 0, slots: default(RegisterSlots)), 0)
+  if not flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0) or
+      (selected != nil and not flatEmit(f, selected, payload.args, 0)) or
+      not flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(fact.next), y: 0,
+        slots: default(RegisterSlots)), 0):
+    f.reason = oracle.StepError.InvalidPreparedProgram
+    return
   var offset = 0'u32
   while offset != flatStop:
     assert int(offset) < f.handlers.len
@@ -3926,6 +3968,13 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## retain no invocation pointers.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
+  if f.preparationFailure == FlatError.StreamAllocationRefused:
+    # A partial catalogue or node sequence cannot be leased again. Invalidate
+    # its source epoch before another invocation can install its native image.
+    invalidateNativeStream(f.nativeSession)
+    result = default(FlatStream)
+    result.preparation = f.preparationUsed
+    return
   let savedFailure = if f.preparationFailure in {FlatError.StreamLimitExceeded,
       FlatError.PreparationLimitExceeded}: FlatError.Uninitialized else: f.preparationFailure
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
