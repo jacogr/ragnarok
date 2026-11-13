@@ -20,6 +20,8 @@
 ## A refused stream allocation can interrupt emission after partial writes.
 ## Discard that catalogue and its native epoch before the next invocation.
 ##
+## Snapshot publication returns a local refusal if dirty coordinates, page staging
+## or replacement directory assembly fail. Host readiness is set only on success.
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
@@ -3596,54 +3598,47 @@ proc runFlatSingle*(f: var FlatFrame) =
     let handler = f.handlers[int(offset)]
     offset = handler(f, offset)
 
-proc flatCollectResidentPage(f: FlatFrame, page: int, resident: openArray[byte],
-    batch: var ResidentReplacementBatch) =
-  ## Stage one complete page against the exact immutable owner and ordered slot.
-  let staged = stageResidentPage(batch, MemoryPageSlot(uint32(page)), f.sourcePages[page], resident)
-  assert staged == MachineError.None
+func flatPublicationError(error: MachineError): oracle.StepError =
+  ## Publication failures carry no committed memory, CPU or gas.
+  if error == MachineError.None: oracle.StepError.None
+  elif error == MachineError.LimitExceeded: oracle.StepError.ResidentAllocationRefused
+  else: oracle.StepError.InvalidMachine
 
-proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatch) =
+proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatch): oracle.StepError =
   ## Writing original bytes back still publishes no replacement or mutable source alias.
   let description = f.sourcePages[page]
-  if description.access != PageAccess.ReadWrite:
-    # Preserve the existing checked source-owner validation on an impossible dirty permission.
-    var original = PageImage(index: description.index, access: description.access)
-    flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
-    return
+  if description.access != PageAccess.ReadWrite: return oracle.StepError.InvalidMachine
+  let sourceSlot = MemoryPageSlot(uint32(page))
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), batch)
-    return
+    return flatPublicationError(stageResidentPage(batch, sourceSlot, description,
+      f.stack.toOpenArray(offset, offset+4095)))
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), batch)
-    return
+    return flatPublicationError(stageResidentPage(batch, sourceSlot, description,
+      f.rw.toOpenArray(offset, offset+4095)))
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.size):
-      assert region.bytes.len == region.size # Only a completed materialized payload can become dirty.
+      if region.bytes.len != region.size: return oracle.StepError.InvalidMachine
       let offset = int(address-region.first)
-      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), batch)
-      return
-  # Preserve the old checked observer fallback if a future region representation needs it.
-  var original = PageImage(index: description.index, access: description.access)
-  flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
-  var image = original
-  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at), original.bytes[at])
-  flatCollectResidentPage(f, page, image.bytes, batch)
+      return flatPublicationError(stageResidentPage(batch, sourceSlot, description,
+        region.bytes.toOpenArray(offset, offset+4095)))
+  oracle.StepError.InvalidMachine # Every dirty page needs a complete writable payload.
 
-proc flatPublishMemory(f: FlatFrame): Memory =
+proc tryFlatMemorySnapshot*(f: FlatFrame, snapshot: var Memory): oracle.StepError =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
-  result = f.sourceMemory
   if f.dirtyIndices.len == 0:
     # An untouched epoch has exactly its existing immutable bytes, permissions and local ceiling.
-    return
+    snapshot = f.sourceMemory
+    return oracle.StepError.None
   var batch = beginResidentReplacements(f.sourceMemory)
   if f.dirtyIndices.len < f.sourcePages.len div 8:
     # Sparse writes sort only their copied ordinals; publication never mutates the epoch's membership.
     var indices = newSeq[uint32](f.dirtyIndices.len)
+    if indices.len != f.dirtyIndices.len: return oracle.StepError.ResidentAllocationRefused
     for index in 0..<indices.len: indices[index] = f.dirtyIndices[index]
     indices.sort()
     var start = 0
@@ -3655,30 +3650,45 @@ proc flatPublishMemory(f: FlatFrame): Memory =
         let middle = low+(high-low) div 2
         if uint32(f.sourcePages[middle].index) < index: low = middle+1
         else: high = middle
-      assert low < f.sourcePages.len and uint32(f.sourcePages[low].index) == index
-      flatCollectPage(f, low, batch)
+      if low >= f.sourcePages.len or uint32(f.sourcePages[low].index) != index:
+        return oracle.StepError.InvalidMachine
+      let collected = flatCollectPage(f, low, batch)
+      if collected != oracle.StepError.None: return collected
       start = low+1
   else:
     # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
     for page in 0..<f.sourcePages.len:
       if flatDirty(f, f.sourcePages[page].index):
-        flatCollectPage(f, page, batch)
+        let collected = flatCollectPage(f, page, batch)
+        if collected != oracle.StepError.None: return collected
   # Share untouched blocks and publish only after all resident pages have been accepted.
   let updated = finishResidentReplacements(batch)
-  assert updated.error == MachineError.None
-  result = updated.value
+  if updated.error != MachineError.None: return flatPublicationError(updated.error)
+  snapshot = updated.value
+  oracle.StepError.None
 
 proc flatMemorySnapshot*(f: FlatFrame): Memory =
-  ## A complete independently owned observation; no mutable resident buffer alias escapes.
-  flatPublishMemory(f)
+  ## Witness convenience. The public stepping adapter checks the typed outcome.
+  result = default(Memory)
+  let observed = tryFlatMemorySnapshot(f, result)
+  assert observed == oracle.StepError.None
 
-proc observeFlatHostMemory*(f: var FlatFrame): Memory =
-  ## Bind one genuine stopped host PC to a copied immutable snapshot, retained independently by callers.
-  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
-  f.hostSnapshot = flatPublishMemory(f)
+proc tryObserveFlatHostMemory*(f: var FlatFrame, snapshot: var Memory): oracle.StepError =
+  ## Bind a host stop only after the complete observation succeeds.
+  if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host:
+    return oracle.StepError.InvalidHostSuspension
+  let observed = tryFlatMemorySnapshot(f, snapshot)
+  if observed != oracle.StepError.None: return observed
+  f.hostSnapshot = snapshot
   f.hostSnapshotPc = f.info.pc
   f.hostReady = true
-  f.hostSnapshot
+  oracle.StepError.None
+
+proc observeFlatHostMemory*(f: var FlatFrame): Memory =
+  ## Witness convenience. Public callbacks receive only a successful observation.
+  result = default(Memory)
+  let observed = tryObserveFlatHostMemory(f, result)
+  assert observed == oracle.StepError.None
 
 proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
   ## Bind a genuine host stop without publishing memory; the callback receives only copied CPU state.

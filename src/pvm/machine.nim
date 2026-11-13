@@ -184,31 +184,35 @@ proc pageDirectory(pages: sink seq[PageData]): PageDirectory =
     first += count
 
 proc replacedDirectory(pages: PageDirectory, slots: openArray[int],
-    replacements: openArray[PageData]): PageDirectory =
+    replacements: openArray[PageData], directory: var PageDirectory): MachineError =
   ## All callers preflight before construction; copy the root and clone each affected block exactly once.
-  assert slots.len == replacements.len
-  result = PageDirectory(len: pages.len, blocks: newSeqOfCap[PageBlock](pages.blocks.len))
+  if slots.len != replacements.len: return MachineError.InvalidRange
+  var built = PageDirectory(len: pages.len, blocks: newSeqOfCap[PageBlock](pages.blocks.len))
+  if pages.blocks.len > 0 and built.blocks.rawData == nil: return MachineError.LimitExceeded
   for index in 0..<pages.blocks.len:
     # Unchanged immutable blocks retain their shared children rather than retaining every page anew.
-    result.blocks.add(pages.blocks[index])
+    built.blocks.add(pages.blocks[index])
   var previous = -1
   var previousGroup = -1
   for index in 0..<slots.len:
     # Strict ascending slots make repeated changes within a block share one fresh private copy.
     let slot = slots[index]
-    assert slot >= 0 and slot < pages.len and slot > previous
+    if slot < 0 or slot >= pages.len or slot <= previous: return MachineError.InvalidRange
     let group = slot div 64
     if group != previousGroup:
       # The old block remains immutable through its retained source root.
       var entries = newSeqOfCap[PageData](pages.blocks[group].entries.len)
+      if entries.rawData == nil: return MachineError.LimitExceeded
       for offset in 0..<pages.blocks[group].entries.len:
         # Copy only this block's initialized references; no mutable sequence is shared.
         entries.add(pages.blocks[group].entries[offset])
       let copied = PageBlock(entries: move(entries))
-      result.blocks[group] = copied
+      built.blocks[group] = copied
       previousGroup = group
-    result.blocks[group].entries[slot and 63] = replacements[index]
+    built.blocks[group].entries[slot and 63] = replacements[index]
     previous = slot
+  directory = move(built)
+  MachineError.None
 
 func error*[T](r: MachineResult[T]): MachineError =
   ## Status inspection cannot retag or forge a result.
@@ -793,6 +797,8 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     return MachineResult[Memory](status: MachineError.None, completed: memory)
   var slots = newSeqOfCap[int](replacements.len)
   var changed = newSeqOfCap[PageData](replacements.len)
+  if slots.rawData == nil or changed.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   cursor = 0
   for index in 0..<replacements.len:
     # Every input has passed; collect exact slots and new immutable byte owners only now.
@@ -803,7 +809,9 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     slots.add(cursor)
     changed.add(pageFromReplacement(data.pages[cursor], replacements[index]))
     inc cursor
-  var directory = replacedDirectory(data.pages, slots, changed)
+  var directory = default(PageDirectory)
+  let replaced = replacedDirectory(data.pages, slots, changed, directory)
+  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
@@ -823,7 +831,9 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
   ## the immutable owners of the unchanged bytes. The input borrow ends here.
   if batch.status != MachineError.None: return batch.status
   let data {.cursor.} = batch.source.data
-  assert data != nil
+  if data == nil:
+    batch.status = MachineError.InvalidOwner
+    return batch.status
   if uint64(slot) >= uint64(data.pages.len) or bytes.len != 4096:
     batch.status = MachineError.InvalidRange
     return batch.status
@@ -859,8 +869,12 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
         backing: previous.backing, chunks: move(chunks))
       dropCoveredBacking(sparse)
       sparse
+    let past = batch.slots.len+1
     batch.slots.add(at)
     batch.changed.add(changed)
+    if batch.slots.len != past or batch.changed.len != past:
+      batch.status = MachineError.LimitExceeded
+      return batch.status
   batch.lastSlot = at
   MachineError.None
 
@@ -870,8 +884,10 @@ proc finishResidentReplacements*(batch: ResidentReplacementBatch): MachineResult
   if batch.changed.len == 0:
     return MachineResult[Memory](status: MachineError.None, completed: batch.source)
   let data {.cursor.} = batch.source.data
-  assert data != nil
-  var directory = replacedDirectory(data.pages, batch.slots, batch.changed)
+  if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  var directory = default(PageDirectory)
+  let replaced = replacedDirectory(data.pages, batch.slots, batch.changed, directory)
+  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
@@ -1107,13 +1123,19 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   let span = checked.value
   var slots = @[span.first]
   var changed = @[writablePageClone(data.pages[span.first], span.offset, span.firstCount)]
+  if slots.len != 1 or changed.len != 1: return MachineResult[Memory](
+      status: MachineError.LimitExceeded)
   setPageScalar(changed[0], span.offset, span.firstCount, uint64(value))
   if span.firstCount < span.count:
     # Both permissions were validated before either private write; a crossing clones its second page once.
     slots.add(span.last)
     changed.add(writablePageClone(data.pages[span.last], 0, span.count-span.firstCount))
+    if slots.len != 2 or changed.len != 2: return MachineResult[Memory](
+        status: MachineError.LimitExceeded)
     setPageScalar(changed[1], 0, span.count-span.firstCount, uint64(value) shr (8*span.firstCount))
-  var directory = replacedDirectory(data.pages, slots, changed)
+  var directory = default(PageDirectory)
+  let replaced = replacedDirectory(data.pages, slots, changed, directory)
+  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
@@ -1230,6 +1252,8 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
   let data = memory.data
   var slots = newSeqOfCap[int](input.len div 4096+2)
   var changed = newSeqOfCap[PageData](input.len div 4096+2)
+  if slots.rawData == nil or changed.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   var copied = 0
   var at = lowerBound(data, uint32(uint64(address) div 4096))
   while copied < input.len:
@@ -1243,7 +1267,9 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     changed.add(move(page))
     copied += count
     inc at
-  var directory = replacedDirectory(data.pages, slots, changed)
+  var directory = default(PageDirectory)
+  let replaced = replacedDirectory(data.pages, slots, changed, directory)
+  if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
