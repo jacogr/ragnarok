@@ -261,7 +261,7 @@ type
       fusionBlocks: nil ptr seq[NativeFusionBlock]
       fusionReceipts: nil ptr NativeFusionReceipts
       fusionContext: nil ptr NativeFusionContext
-      fusionSlots: nil ptr array[256, FlatFusionSlot]
+      fusionSlots: nil ptr array[NativeFusionSlotLimit, FlatFusionSlot]
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
@@ -3449,7 +3449,7 @@ when NativeReadCycleEnabled:
       flatDispatchSegment(f, entry)
       return
     var patches = default(array[NativeFusionBlockLimit, uint32])
-    var slots = default(array[256, FlatFusionSlot])
+    var slots = default(array[NativeFusionSlotLimit, FlatFusionSlot])
     var count = 0
     for slot in 0..<blocks[].len:
       if not nativeFusionEntry(image[], slot): continue
@@ -3459,8 +3459,8 @@ when NativeReadCycleEnabled:
         flatDispatchSegment(f, entry)
         return
       let token = header+1
-      var at = int((token*0x9e3779b9'u32) shr 24)
-      while slots[at].token != 0: at = (at+1) and 255
+      var at = nativeFusionSlot(token)
+      while slots[at].token != 0: at = (at+1) and (NativeFusionSlotLimit-1)
       slots[at] = FlatFusionSlot(token: token, index: uint32(slot))
       patches[count] = header
       inc count

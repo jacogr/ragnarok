@@ -62,7 +62,7 @@ when declared(X86Block):
         if branch.opcode > 90: inc uses[branch.slots.bIndex]
     var mask = 0'u32
     for position in 0..<X86ResidentHardware.len:
-      # At most128 blocks of32 operations, each with three references, fit a uint16 score.
+      # At most 255 blocks of 32 operations, each with three references, fit a uint16 score.
       var best = -1
       var score = 0'u16
       for slot in 0..12:

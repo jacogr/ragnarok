@@ -7,7 +7,7 @@
 import std/assertions
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
-import ../../src/pvm/internal/[native_pipeline, native_fusion]
+import ../../src/pvm/internal/[native_pipeline, native_fusion, native_platform]
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -143,6 +143,59 @@ proc fusionGuest(late: bool = false, wide: bool = false): Program =
   assert decoded.error == ProgramError.None
   decoded.value
 
+when NativeReadCycleEnabled:
+  proc checkFusionGraphTokens() =
+    ## A real255-entry image crosses every receipt byte boundary and reaches token255 on both ISAs.
+    ## These literal lowering records test image geometry; only the ordinary public fixtures below
+    ## bind execution authority to a Program, gas plan and immutable machine.
+    let owner = fusionGuest()
+    let original = instruction(owner, CodeAddress(0))
+    assert original.error == ProgramError.None
+    let slots = instructionRegisters(original)
+    var blocks = newSeq[NativeFusionBlock](NativeFusionBlockLimit)
+    let outside = NativeEntryLimit-1
+    for index in 0..<blocks.len:
+      # Each block increments the same full-width lane then follows its unique static successor.
+      let header = uint32(index*3)
+      blocks[index] = NativeFusionBlock(header: header, terminal: header+2, first: uint32(index*2),
+        span: 2, price: 3, targets: [(if index+1 < blocks.len: header+3 else: outside),
+          NativeEntryFailure], branch: NativeOperation(opcode: 40))
+      blocks[index].operations[0] = NativeOperation(opcode: 149, slots: slots, immediate: 1)
+    let image = lowerNativeFusion(blocks)
+    assert image.ready and image.codeBytes <= uint64(NativeFusionImageLimit)
+    assert nativeFusionEntry(image, NativeFusionBlockLimit-1)
+    assert not nativeFusionEntry(image, NativeFusionBlockLimit)
+    var memo = default(NativeFusionReceipts)
+    for entry in [0, 63, 64, 127, 128, 191, 192, 254]:
+      # Entry191 includes token255 as the64th visit; entry254 tests it as the sole visit.
+      var registers = default(RegisterFile)
+      for slot in 0..12: registers[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
+      let before = registers
+      var context = NativeFusionContext(gas: 10000, remaining: 10000)
+      let count = min(NativeFusionVisitLimit, blocks.len-entry)
+      let expected = if entry+count == blocks.len: outside else: uint32((entry+count)*3)
+      let next = enterNativeFusion(image, entry, registers, context)
+      assert next == expected and context.visits == uint64(count) and context.paid == 0
+      for slot in 0..12:
+        assert uint64(registers[slot]) == uint64(before[slot])+(if slot == 7: uint64(
+            count) else: 0'u64)
+      let receipt = checkNativeFusionExit(memo, blocks, uint32(entry*3), next, 10000, 10000, context)
+      assert receipt.valid and receipt.lastToken == uint32(entry+count)
+      assert receipt.attempted == uint32(count*2) and receipt.branches
+      assert context.gas == 10000'u64-uint64(count*3)
+      assert context.remaining == 10000'u64-uint64(count*2)
+      # A proved large-token path never authorizes an internal zero byte on cache reuse.
+      let last = count-1
+      context.path[last div 8] = context.path[last div 8] and not (255'u64 shl ((last and 7)*8))
+      assert not checkNativeFusionExit(memo, blocks, uint32(entry*3), next, 10000, 10000, context).valid
+    var idleRegisters = default(RegisterFile)
+    var idle = NativeFusionContext(gas: 2, remaining: 10000)
+    assert enterNativeFusion(image, NativeFusionBlockLimit-1, idleRegisters, idle) ==
+      blocks[NativeFusionBlockLimit-1].header
+    assert idle.visits == 0 and idle.gas == 2 and idle.remaining == 10000
+    blocks.add(default(NativeFusionBlock))
+    assert not lowerNativeFusion(blocks).ready, "a256th graph entry must refuse before publication"
+
 proc assertSameFusionResult(actual, expected: StepResult) =
   ## Checked output owns the independent guest state and attempt accounting oracle.
   assert actual.error == expected.error, "paired step error"
@@ -166,6 +219,7 @@ proc runStaticFusion*() =
   ## Exercise natural selection and exact paid/unpaid exits with changed public inputs.
   checkRepeatedFusionReceipt()
   checkLongFusionReceipts()
+  when NativeReadCycleEnabled: checkFusionGraphTokens()
   let program = fusionGuest()
   let runtime = newNativeRuntime()
   try:
