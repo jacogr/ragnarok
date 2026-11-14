@@ -211,6 +211,109 @@ proc closedHandleMoves() =
   assert default(NativeRuntime).close(), "closedHandleMoves.4: default(NativeRuntime).close()"
 
 when defined(pvmSharedAsyncWitness):
+  proc startupPrefixOwner(addend: byte): Program =
+    ## PC0/3 initialize R7/R8 once; PC6 jumps to the separately priced counted loop.
+    ## PC11 increments R10; PC14 repeats to PC11; PC20 halts through R0.
+    let wire = @[0'u8, 0, 22, 149, 0x77, addend, 149, 0x88, 1,
+      40, 5, 0, 0, 0, 131, 0xaa, 1, 172, 0xba, 0xfd, 0xff, 0xff, 0xff,
+      50, 0, 0x49, 0x48, 0x10]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    decoded.value
+
+  proc prefixAdmission() =
+    ## Four one-time prefixes leave credit for real native work; repeated calls never aggregate heat.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    pauseNativeCompiler(runtime, true)
+    var held = default(array[4, PreparedProgram])
+    var owners = default(array[4, Program])
+    for index in 0..<held.len:
+      # Distinct source owners remain retained while the fifth owner qualifies.
+      let owner = startupPrefixOwner(byte(index+1))
+      owners[index] = owner
+      held[index] = prepared(owner, runtime)
+      let checked = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000))).value
+      let source = input(owner, 2048)
+      let expected = execute(source, ExecutionStepLimit(4100), checked)
+      assert expected.error == StepError.None and expected.value.exit == StepExit.Halt,
+        "startup prefix: checked oracle halts"
+      for call in 0..<3:
+        let actual = execute(source, ExecutionStepLimit(4100), held[index])
+        assert actual.error == StepError.None and actual.value.backend == PvmBackend.Interpreted,
+          "startup prefix: actual backend/error " & $actual.error
+        assert machineInfo(actual.value.machine).value == machineInfo(expected.value.machine).value
+        assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+          pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+      assert preparedInfo(held[index]).value.nativeFragments == 0
+      assert runtime.runtimeInfo.submitted == 0 and runtime.runtimeInfo.registered == 0,
+        "startup prefix: unmeasured owner consumes no credit; submitted=" &
+            $runtime.runtimeInfo.submitted
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let hot = prepared(owner, runtime)
+    verify(execute(source, ExecutionStepLimit(6145), hot), source, 2048)
+    assert runtime.runtimeInfo.submitted == 1 and runtime.runtimeInfo.registered == 1
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    let ready = execute(source, ExecutionStepLimit(6145), hot)
+    verify(ready, source, 2048)
+    assert ready.value.backend == PvmBackend.Jit
+    assert preparedInfo(hot).value.nativeOperations == 6144
+    when NativeReadCycleEnabled:
+      # Larger work from the same previously deferred owner still opens the fusion seed route.
+      let same = owners[0]
+      let larger = input(same, 300000, 20000000)
+      let code = held[0]
+      let first = execute(larger, ExecutionStepLimit(600004), code)
+      assert first.error == StepError.None and first.value.exit == StepExit.Halt
+      assert runtime.runtimeInfo.submitted == 2
+      waitNativeCompiler(runtime)
+      let next = execute(input(same, 2048), ExecutionStepLimit(4100), code)
+      assert next.error == StepError.None and next.value.backend == PvmBackend.Jit
+      assert preparedInfo(code).value.nativeOperations == 2
+    assert runtime.close()
+
+  proc recurringPrefixAdmission() =
+    ## A resolved backedge across two blocks retains useful repeated-prefix eligibility.
+    ## A store separates the two scalar operations from the branch, preventing full-loop promotion.
+    let wire = @[0'u8, 0, 25, 149, 0x77, 1, 149, 0x88, 1, 120, 0x50, 0,
+      40, 5, 0, 0, 0, 131, 0xaa, 1, 172, 0xba, 0xef, 0xff, 0xff, 0xff,
+      50, 0, 0x49, 0x42, 0x82, 0]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    if not nativePlatformSupported(): return
+    let owner = decoded.value
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    pauseNativeCompiler(runtime, true)
+    let native = prepared(owner, runtime)
+    let checked = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000))).value
+    let seed = input(owner, 2048)
+    var cpu = machineInfo(seed).value
+    cpu.registers[5] = RegisterValue(32*4096)
+    let captured = captureMachine(owner, memoryOf(seed).value, cpu)
+    assert captured.error == MachineError.None
+    let source = captured.value
+    assert execute(source, ExecutionStepLimit(4096), native).error == StepError.StepLimitExceeded
+    assert runtime.runtimeInfo.submitted == 0
+    let expected = execute(source, ExecutionStepLimit(12289), checked)
+    assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+    assert execute(source, ExecutionStepLimit(12289), native).error == StepError.None
+    assert runtime.runtimeInfo.submitted == 1
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    let actual = execute(source, ExecutionStepLimit(12289), native)
+    assert actual.error == StepError.None and actual.value.backend == PvmBackend.Jit
+    assert actual.value.exit == expected.value.exit
+    assert machineInfo(actual.value.machine).value == machineInfo(expected.value.machine).value
+    assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+      pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+    assert pageImage(memoryOf(source).value, PageIndex(32)).value.bytes[0] == 29
+    assert preparedInfo(native).value.nativeOperations == 4096
+    assert runtime.close()
+
   proc bitCountExpected(value: uint64, opcode: byte): uint64 =
     ## Independent bit-by-bit oracle includes the selected width's zero case.
     let bits = if opcode in [102'u8, 104, 106]: 32 else: 64
@@ -1008,6 +1111,7 @@ when defined(pvmSharedAsyncWitness):
     ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
     if not nativePlatformSupported(): return
     for folded in [false, true]:
+      diagnosticPhase("purePrefixControl folded=" & $folded)
       # Use separate real owners so the folded case cannot collect the signed fixture's image.
       let runtime = newNativeRuntime()
       assert launch(runtime)
@@ -1017,26 +1121,31 @@ when defined(pvmSharedAsyncWitness):
       let source = input(owner, 2048)
       let code = prepared(owner, runtime)
       let cold = execute(source, limit, code)
-      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt
-      assert cold.value.backend == PvmBackend.Interpreted
+      assert cold.error == StepError.None, "pure prefix cold error; folded=" & $folded & "; " & $cold.error
+      assert cold.value.exit == StepExit.Halt, "pure prefix cold exit; folded=" & $folded & "; " &
+          $cold.value.exit
+      assert cold.value.backend == PvmBackend.Interpreted, "pure prefix cold backend; folded=" & $folded
+      assert runtime.runtimeInfo.submitted == 1, "pure prefix submission; folded=" & $folded
       pauseNativeCompiler(runtime, false)
       waitNativeCompiler(runtime)
       let ready = execute(source, limit, code)
-      assert ready.error == StepError.None and ready.value.exit == StepExit.Halt
-      assert ready.value.backend == PvmBackend.Jit
+      assert ready.error == StepError.None, "pure prefix ready error; folded=" & $folded & "; " & $ready.error
+      assert ready.value.exit == StepExit.Halt, "pure prefix ready exit; folded=" & $folded & "; " &
+          $ready.value.exit
+      assert ready.value.backend == PvmBackend.Jit, "pure prefix ready backend; folded=" & $folded
       if folded:
         # The folded instruction still consumes an attempt and affects the checked block price.
         let expected = cold.value.machine.machineInfo.value
         let actual = ready.value.machine.machineInfo.value
-        assert uint64(actual.pc) == 0 and actual.blockCharged
+        assert uint64(actual.pc) == 0 and actual.blockCharged, "folded PC/paid"
         assert uint64(actual.gas) == uint64(expected.gas) and
-          uint64(actual.gasDeficit) == uint64(expected.gasDeficit)
-        assert uint64(actual.registers[7]) == 6144 and uint64(actual.registers[10]) == 2048
+          uint64(actual.gasDeficit) == uint64(expected.gasDeficit), "folded gas/deficit"
+        assert uint64(actual.registers[7]) == 6144 and uint64(actual.registers[10]) == 2048, "folded values"
         for index in 0..<13:
-          assert uint64(actual.registers[index]) == uint64(expected.registers[index])
+          assert uint64(actual.registers[index]) == uint64(expected.registers[index]), "folded registers"
         let before = cold.value.machine.memoryOf.value.pageImage(PageIndex(32)).value
         let after = ready.value.machine.memoryOf.value.pageImage(PageIndex(32)).value
-        assert before.access == after.access and before.bytes == after.bytes
+        assert before.access == after.access and before.bytes == after.bytes, "folded memory"
       else:
         verify(cold, source, 2048)
         verify(ready, source, 2048)
@@ -1767,6 +1876,10 @@ proc runSharedAsync*() =
   closedHandleMoves()
   when defined(pvmSharedAsyncWitness):
     witnessRetirementIdentity()
+    diagnosticPhase("prefixAdmission")
+    prefixAdmission()
+    diagnosticPhase("recurringPrefixAdmission")
+    recurringPrefixAdmission()
     nativeBitCounts()
     nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
@@ -1801,6 +1914,7 @@ proc runSharedAsync*() =
       invalidQuotaPredecessor()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
+    diagnosticPhase("adjacentNativePrefix")
     adjacentNativePrefix()
     when NativeReadCycleEnabled:
       diagnosticPhase("bitmapLoopExecution")

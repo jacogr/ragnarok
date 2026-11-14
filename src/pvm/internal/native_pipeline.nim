@@ -30,6 +30,12 @@
 ## evidence that the selected candidate is profitable. Ready entry also needs the current
 ## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
 ## revalidation, and acquire a credit only when eligible work can queue.
+## Bare prefixes additionally need two entries of their exact emitted checked header
+## in one settled eligible call. Ordinary and adjacent-pair headers use original body
+## nodes during at most two observations; other charged workers keep their dispatch.
+## The temporary observer is restored before any stream handback.
+## A prefix without this evidence can still seed fusion once a call reaches its
+## existing training floor. Recurrence is evidence of reuse, not measured profitability.
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
@@ -165,6 +171,9 @@ type
     retirementKey: JobKey                ## Host receipt survives collection, repricing and final drop.
     state: NativeState
     span: NativeSpan
+    prefixRepeated: bool                 ## Two selected header entries in one settled eligible call.
+    prefixVisits: uint8                  ## Saturates at two; never accumulated across public calls.
+    prefixHeader: uint32                 ## Exact emitted header; overlapping suffixes stay distinct.
     when NativeCheckedReadEnabled:
       readProof: NativeReadStorage
       readNominated, readValidated: bool # Validation belongs to this invocation's restored stream.
@@ -1198,6 +1207,7 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     data.invocationQualified = false
     data.invocationImageKey = default(NativeImageKey)
     data.invocationWork = 0
+    data.prefixVisits = 0
     data.invocationBudget = budget
     data.workValid = true
     when NativeCheckedReadEnabled:
@@ -1218,12 +1228,13 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     collectNative(session)
     if data.allowed: data.invocationImageKey = nativeInstalledKey(session)
 
-proc considerNativeSpan*(session: NativeSession, span: NativeSpan) =
+proc considerNativeSpan*(session: NativeSession, span: NativeSpan, header: uint32) =
   ## Keep one structural pure candidate per source epoch; profit deferral does not buy emission work.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation or data.state != NativeState.Deferred: return
   if data.span.len == 0 and span.len >= NativeMinimumOperations and span.epoch == data.epoch:
     data.span = span
+    data.prefixHeader = header
 
 func nativePromotionOpen*(session: NativeSession): bool =
   ## Deferred zero-ticket storage is caller-owned. Queued and completed requests remain immutable.
@@ -1232,6 +1243,30 @@ func nativePromotionOpen*(session: NativeSession): bool =
   data.invocation and data.state == NativeState.Deferred and data.ticket == 0 and
     not data.image.ready and data.span.len >= NativeMinimumOperations and
     data.span.epoch == data.epoch and data.span.kind == NativeKind.PurePrefix
+
+func nativePrefixObservation*(session: NativeSession): bool {.inline.} =
+  ## Only a deferred unproved prefix samples checked entries, at most twice per call.
+  let data {.cursor.} = session.data
+  if data == nil: return false
+  data.invocation and data.state == NativeState.Deferred and not data.prefixRepeated and
+    data.prefixVisits < 2 and data.span.len >= NativeMinimumOperations and
+    data.prefixHeader < NativeEntryLimit and data.span.epoch == data.epoch and
+    data.span.kind == NativeKind.PurePrefix
+
+func nativePrefixHeader*(session: NativeSession): uint32 =
+  ## Only an open observation names the selected prefix's own emitted header.
+  let data {.cursor.} = session.data
+  if data == nil or not nativePrefixObservation(session): return NativeEntryFailure
+  data.prefixHeader
+
+proc observeNativePrefix*(session: NativeSession): bool =
+  ## The frame invokes this after the original checked header returns without a local error.
+  ## Final settled work qualifies the observation; a partial or failed call buys no eligibility.
+  ## Return true when the caller must remove its observer, including a closed observation window.
+  let data {.cursor.} = session.data
+  if data == nil or not nativePrefixObservation(session): return true
+  inc data.prefixVisits
+  data.prefixVisits == 2
 
 proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
   ## The checked stream verified this certificate against the already selected prefix.
@@ -1518,6 +1553,9 @@ proc invalidateNativeStream*(session: NativeSession) =
     data.state = NativeState.Unavailable
     return
   data.span = default(NativeSpan)
+  data.prefixRepeated = false
+  data.prefixVisits = 0
+  data.prefixHeader = NativeEntryFailure
   when NativeReadCycleEnabled:
     data.bitmap = default(NativeBitmapLoop)
   when NativeCheckedReadEnabled:
@@ -1631,6 +1669,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Keep a source/epoch-bound maximum of ONE call, not the immediately prior input or a lifetime sum.
   # Short inputs neither manufacture eligibility nor revoke a genuinely long same-source observation.
   data.provenWork = max(data.provenWork, completedWork)
+  if completedWork >= NativeInvocationFloor and data.prefixVisits == 2:
+    data.prefixRepeated = true
   when NativeReadCycleEnabled:
     let nativeWork = addNativeCount(data.operations, data.mixedOperations)
     data.lastNativeWork = nativeWork-data.invocationNativeStart
@@ -1670,10 +1710,14 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     not waitingRead and data.span.kind == NativeKind.PurePrefix and data.ringEpoch == data.epoch
   else:
     false
+  # Unmeasured one-time prefixes wait until the source can use fusion's existing training route.
+  let pureEligible = data.prefixRepeated or (when NativeReadCycleEnabled:
+    data.provenWork >= NativeFusionTrainingFloor else: false)
   # The complete bitmap route supersedes a prefix. Other read, loop and ring precedence stays intact.
   let candidate = if selectBitmap: true
     elif waitingRead: selectRead
-    else: selectRing or data.span.len >= NativeMinimumOperations
+    else: selectRing or (data.span.len >= NativeMinimumOperations and
+      (data.span.kind == NativeKind.ClosedRegisterLoop or pureEligible))
   # Check admission under the mutex already required to release this invocation's lease.
   var submitted = false
   acquire(runtime.lock)
