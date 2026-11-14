@@ -1667,6 +1667,7 @@ proc runSharedAsync*() =
   diagnosticPhase("closedHandleMoves")
   closedHandleMoves()
   when defined(pvmSharedAsyncWitness):
+    witnessRetirementIdentity()
     diagnosticPhase("hostReceipts")
     hostReceipts()
     hostedNativeParity()
