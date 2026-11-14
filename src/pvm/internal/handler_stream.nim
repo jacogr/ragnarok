@@ -240,6 +240,8 @@ type
     nativeOriginal: nil FlatHandler
     prefixProbeOriginal: nil FlatHandler      # Invocation-local observer, restored before stream handback.
     prefixProbeHeader: uint32
+    prefixProbeBodyOriginal: nil FlatHandler  # Exact scalar entry; headers alone do not prove it was reached.
+    prefixProbeBody: uint32
     when NativeCheckedReadEnabled:
       nativeRingInstalled: bool               # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
@@ -299,6 +301,8 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.nativeSession)
   frame.prefixProbeOriginal = nil
   frame.prefixProbeHeader = 0
+  frame.prefixProbeBodyOriginal = nil
+  frame.prefixProbeBody = 0
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
   when NativeCheckedReadEnabled:
@@ -444,10 +448,10 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
 
 proc installFlatPrefixProbe(f: var FlatFrame)
-  ## Bind the selected prefix to an ordinary header after its source block has been emitted.
+  ## Bind the selected scalar entry and preserve its header's ordinary handoff after full emission.
 
 proc restoreFlatPrefixProbe(f: var FlatFrame)
-  ## Remove this invocation's temporary handler through the exact quota-predecessor rule.
+  ## Remove both invocation-local patches through the exact quota-predecessor rule.
 
 func flatPlanIdentity(plan: FlatPlan): FlatPlan
   ## Dynamic targets use the admission owner's immutable table.
@@ -566,11 +570,19 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   selected(f, next)
 
 proc flatPrefixProbe(f: var FlatFrame, off: uint32): uint32 =
-  ## Execute original reservation/body nodes, then restore the saved charged worker after two entries.
+  ## Keep adjacent specializations on original body nodes so they cannot bypass the scalar observer.
   let original = f.prefixProbeOriginal
   if original == nil or off != f.prefixProbeHeader:
     return flatLocal(f, off, oracle.StepError.BackendFailure)
-  result = flatCharge(f, off)
+  flatCharge(f, off)
+
+proc flatPrefixBodyProbe(f: var FlatFrame, off: uint32): uint32 =
+  ## Count only reaching and executing the candidate's exact scalar entry, after any earlier host.
+  ## Segment settlement still discards work when a later instruction faults or otherwise refuses.
+  let original = f.prefixProbeBodyOriginal
+  if original == nil or off != f.prefixProbeBody:
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
+  result = original(f, off)
   if f.reason == oracle.StepError.None and observeNativePrefix(f.nativeSession):
     restoreFlatPrefixProbe(f)
 
@@ -2380,7 +2392,7 @@ proc installNative(f: var FlatFrame) =
 
 proc installFlatPrefixProbe(f: var FlatFrame) =
   ## Ordinary and adjacent-pair headers share the same reservation/body fallback.
-  ## Defer their private specialization for at most two visits; other temporary owners keep their slots.
+  ## Defer their private specialization until two actual scalar entries; a host before the prefix buys no visit.
   ## The containing block must be fully materialized. No operand decode, admission or allocation is needed.
   if f.prefixProbeOriginal != nil or f.pricingKind != 0 or
       not nativePrefixObservation(f.nativeSession) or f.plan == nil: return
@@ -2388,7 +2400,10 @@ proc installFlatPrefixProbe(f: var FlatFrame) =
   if uint64(span.first) >= uint64(f.plan.facts.len): return
   let header = nativePrefixHeader(f.nativeSession)
   if header >= span.entry or uint64(header) >= uint64(f.handlers.len) or
-      uint64(header) >= uint64(f.sites.len) or uint64(header) >= uint64(f.arguments.len): return
+      uint64(header) >= uint64(f.sites.len) or uint64(header) >= uint64(f.arguments.len) or
+      uint64(span.entry) >= uint64(f.handlers.len) or uint64(span.entry) >= uint64(f.sites.len) or
+      uint64(span.entry) >= uint64(f.arguments.len) or f.sites[int(span.entry)] != span.first or
+          f.barrier == span.entry: return
   let original = f.handlers[int(header)]
   if original != flatCharge:
     # Only these specialized workers promise the same original-body fallback as an ordinary header.
@@ -2407,14 +2422,22 @@ proc installFlatPrefixProbe(f: var FlatFrame) =
       f.compiledForPc[int(fact.pc)] != (header or flatReservationHeaderFlag)+1: return
   f.prefixProbeHeader = header
   f.prefixProbeOriginal = original
+  f.prefixProbeBody = span.entry
+  f.prefixProbeBodyOriginal = f.handlers[int(span.entry)]
   f.handlers[int(header)] = flatPrefixProbe
+  f.handlers[int(span.entry)] = flatPrefixBodyProbe
 
 proc restoreFlatPrefixProbe(f: var FlatFrame) =
-  ## A failed/moved/finished observation owns no patch. A live patch restores only its exact predecessor.
+  ## Restore both exact predecessors before handback, including either slot's saved quota predecessor.
   let original = f.prefixProbeOriginal
-  if original == nil: return
+  let body = f.prefixProbeBodyOriginal
+  if original == nil and body == nil: return
   f.prefixProbeOriginal = nil
-  restoreFlatTemporaryHandler(f, f.prefixProbeHeader, flatPrefixProbe, original)
+  f.prefixProbeBodyOriginal = nil
+  if body != nil:
+    restoreFlatTemporaryHandler(f, f.prefixProbeBody, flatPrefixBodyProbe, body)
+  if original != nil:
+    restoreFlatTemporaryHandler(f, f.prefixProbeHeader, flatPrefixProbe, original)
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
   ## Shared structural classification precedes any native cache/byte allocation and all ISA decisions.

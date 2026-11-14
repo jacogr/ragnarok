@@ -30,10 +30,11 @@
 ## evidence that the selected candidate is profitable. Ready entry also needs the current
 ## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
 ## revalidation, and acquire a credit only when eligible work can queue.
-## Bare prefixes additionally need two entries of their exact emitted checked header
+## Bare prefixes additionally need two executions of their exact emitted scalar entry
 ## in settled segments of one eligible call. Unsettled segment visits buy no evidence,
 ## even when an earlier host segment contributed work. Ordinary and adjacent-pair headers
-## use original body nodes during at most two observations; other charged workers keep their dispatch.
+## use original body nodes while sampling; a host before the prefix buys no visit.
+## Other charged workers keep their dispatch.
 ## The temporary observer is restored before any stream handback.
 ## A prefix without this evidence can still seed fusion once a call reaches its
 ## existing training floor. Recurrence is evidence of reuse, not measured profitability.
@@ -172,7 +173,7 @@ type
     retirementKey: JobKey                ## Host receipt survives collection, repricing and final drop.
     state: NativeState
     span: NativeSpan
-    prefixRepeated: bool                 ## Two selected header entries in one settled eligible call.
+    prefixRepeated: bool                 ## Two selected scalar entries in one settled eligible call.
     prefixVisits: uint8                  ## Pending current-segment visits, bounded with settled visits by two.
     prefixSettledVisits: uint8           ## Only settled segments contribute; reset at each public call.
     prefixHeader: uint32                 ## Exact emitted header; overlapping suffixes stay distinct.
@@ -1263,7 +1264,7 @@ func nativePrefixHeader*(session: NativeSession): uint32 =
   data.prefixHeader
 
 proc observeNativePrefix*(session: NativeSession): bool =
-  ## The frame invokes this after the original checked header returns without a local error.
+  ## The frame invokes this after the selected scalar entry executes without a local error.
   ## recordNativeWork settles or discards this segment's observations before call-level eligibility.
   ## Return true when the caller must remove its observer, including a closed observation window.
   let data {.cursor.} = session.data

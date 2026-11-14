@@ -377,6 +377,59 @@ when defined(pvmSharedAsyncWitness):
         assert runtime.runtimeInfo.submitted == 0 and runtime.runtimeInfo.registered == 0
         assert runtime.close()
 
+  type PrefixHostStop = object
+    ## The supported host panic ends control before its following suffix can execute again.
+    calls, stopAfter: int
+
+  proc stopBeforePrefix(context: var PrefixHostStop, stopped: StepOutcome): HostResponse =
+    ## Continue exactly the requested prefix executions, then terminate at the next real host.
+    assert stopped.exit == StepExit.Host
+    inc context.calls
+    let cpu = machineInfo(stopped.machine).value
+    HostResponse(action: (if context.calls < context.stopAfter: HostAction.Continue else: HostAction.Panic),
+      gas: cpu.gas, registers: cpu.registers, memory: memoryOf(stopped.machine).value)
+
+  proc hostPrefixAdmission() =
+    ## Repeated settled headers before a host are insufficient; actual body visits retain eligibility.
+    let wire = [0'u8, 0, 24, 131, 0xaa, 1, 172, 0xba, 0xfd, 0xff, 0xff, 0xff,
+      10, 7, 149, 0x77, 1, 149, 0x88, 1, 40, 0xf8, 0xff, 0xff, 0xff, 50, 0,
+      9, 0x4a, 0x42]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    if not nativePlatformSupported(): return
+    for iterations in [1'u64, 2048]:
+      for stopAfter in [2, 3]:
+        # Two callbacks reach the prefix once; three callbacks reach it twice in settled segments.
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        pauseNativeCompiler(runtime, true)
+        let owner = decoded.value
+        let source = input(owner, iterations)
+        let before = machineInfo(source).value
+        let native = prepared(owner, runtime)
+        let checked = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000))).value
+        var left = PrefixHostStop(stopAfter: stopAfter)
+        var right = left
+        let expected = executeWithHost(source, left, stopBeforePrefix, ExecutionStepLimit(10000),
+          HostCallLimit(3), checked)
+        let actual = executeWithHost(source, right, stopBeforePrefix, ExecutionStepLimit(10000),
+          HostCallLimit(3), native)
+        assert actual.error == StepError.None and expected.error == StepError.None
+        assert actual.value.exit == StepExit.Panic and expected.value.exit == StepExit.Panic
+        assert machineInfo(actual.value.machine).value == machineInfo(expected.value.machine).value
+        assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+          pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+        let cpu = machineInfo(actual.value.machine).value
+        assert uint64(cpu.registers[7]) == uint64(stopAfter-1)
+        assert uint64(cpu.registers[8]) == uint64(888+stopAfter-1)
+        assert left.calls == stopAfter and right.calls == stopAfter
+        assert machineInfo(source).value == before
+        assert pageImage(memoryOf(source).value, PageIndex(32)).value.bytes[0] == 29
+        let eligible = iterations == 2048 and stopAfter == 3
+        assert runtime.runtimeInfo.submitted == (if eligible: 1'u64 else: 0'u64)
+        assert runtime.runtimeInfo.registered == (if eligible: 1 else: 0)
+        assert runtime.close()
+
   proc bitCountExpected(value: uint64, opcode: byte): uint64 =
     ## Independent bit-by-bit oracle includes the selected width's zero case.
     let bits = if opcode in [102'u8, 104, 106]: 32 else: 64
@@ -1945,6 +1998,8 @@ proc runSharedAsync*() =
     recurringPrefixAdmission()
     diagnosticPhase("unsettledPrefixAdmission")
     unsettledPrefixAdmission()
+    diagnosticPhase("hostPrefixAdmission")
+    hostPrefixAdmission()
     nativeBitCounts()
     nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
