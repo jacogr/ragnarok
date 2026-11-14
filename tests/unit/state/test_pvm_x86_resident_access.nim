@@ -528,11 +528,11 @@ when Native and defined(pvmX86Jit):
             if visits == 2: assert ((context.path[0] shr 8) and 255) == (if target ==
                 100: 2'u64 else: 3'u64)
             inc cases
-    assert cases == (59+16)*fusionPatterns.len*Seeds.len*5
+    assert cases == (63+16)*fusionPatterns.len*Seeds.len*5, "fusion scalar/branch coverage: " & $cases
 
 when Native:
-  # Fifty-nine scalar opcodes cover every pattern, resident mask and initial seed.
-  assert scalarCases == 12744, "resident scalar coverage: " & $scalarCases
+  # Sixty-three scalar opcodes cover every pattern, resident mask and initial seed.
+  assert scalarCases == 13608, "resident scalar coverage: " & $scalarCases
   assert branchCases == 3456, "resident branch coverage: " & $branchCases
   when defined(pvmX86Jit):
     assert loopCases == 576, "resident closed-loop coverage: " & $loopCases
