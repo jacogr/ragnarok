@@ -3,6 +3,8 @@
 
 ## Included by the exclusive handler stream. An observed header only ranks a candidate.
 ## The copied block must reproduce original operands, paid extent and positive static edges.
+## Dynamic entry permission comes only from the admitted original jump table; live checked tags
+## and immutable native entries must both agree before an indirect terminal can complete natively.
 ## The primary retains its handlers. Fusion patches only disjoint ordinary headers during
 ## one segment and restores all of them before releasing the auxiliary arena.
 
@@ -93,6 +95,12 @@ when declared(FlatFrame):
           item.targets[0] = args.y
           item.branch = NativeOperation(opcode: 80, slots: payload.args.slots,
             immediate: payload.args.x)
+      elif fact.opcode in [50'u8, 180]:
+        # The exact original dynamic worker/operands are required; execution still guards the live cache.
+        if worker != payload.handler or args != payload.args: return false
+        let immediate = if fact.opcode == 50: args.x
+          else: (args.x and 0xffffffff'u64) or (uint64(args.y) shl 32)
+        item.branch = NativeOperation(opcode: fact.opcode, slots: args.slots, immediate: immediate)
       else:
         let cached = fusionBranchHandler(fact.opcode)
         if cached != nil and worker == cached:
@@ -134,6 +142,31 @@ when declared(FlatFrame):
       dec probe.down
       if probe.down == 0: sampleFlatFusion(probe, header)
 
+  proc markFlatIndirectEntries(f: FlatFrame, blocks: var seq[NativeFusionBlock]) =
+    ## One pass over the already admitted jump table marks source-backed entry permission.
+    ## A fixed half-full PC map avoids multiplying table length by graph size; no guest execution occurs.
+    var map = default(array[NativeFusionSlotLimit, uint64])
+    for index in 0..<blocks.len:
+      let pc = f.plan.facts[int(blocks[index].first)].pc
+      if pc == high(uint32): continue
+      let token = pc+1
+      var at = nativeFusionSlot(token)
+      while map[at] != 0: at = (at+1) and (NativeFusionSlotLimit-1)
+      map[at] = (uint64(token) shl 32) or uint64(index+1)
+    let admitted = flatPlanIdentity(f.plan)
+    for index in 0..<admitted.jumps.len:
+      let target = admitted.jumps[index]
+      if not target.valid or target.pc == high(uint32): continue
+      let token = target.pc+1
+      var at = nativeFusionSlot(token)
+      for probe in 0..<map.len:
+        let value = map[at]
+        if value == 0: break
+        if uint32(value shr 32) == token:
+          blocks[int(uint32(value and 0xffffffff'u64)-1)].indirectEntry = true
+          break
+        at = (at+1) and (NativeFusionSlotLimit-1)
+
   proc offerFlatFusion(f: FlatFrame, probe: FlatFusionProbe) =
     ## Rank at most the fixed sample table. Only candidates with real observed reuse
     ## pay for source reconstruction. Do not allocate by source size.
@@ -153,12 +186,18 @@ when declared(FlatFrame):
     let cap = min(count, NativeFusionBlockLimit)
     var requested = newSeqOfCap[NativeFusionBlock](cap)
     if requested.rawData == nil: return
+    var hasIndirect = false
     for index in 0..<count:
       if requested.len == cap: break
       let token = probe.samples[int(rank[index])].token
       var item = default(NativeFusionBlock)
-      if bindFlatFusion(f, token-1, item): requested.add(item)
+      if bindFlatFusion(f, token-1, item):
+        hasIndirect = hasIndirect or item.indirect
+        requested.add(item)
     if requested.len < 2: return
+    if hasIndirect:
+      # Static-only candidates need neither a temporary target map nor a scan of the original table.
+      markFlatIndirectEntries(f, requested)
     discard offerNativeFusion(f.nativeSession, requested)
 
   proc flatFusionEntry(f: var FlatFrame, off: uint32): uint32 =
@@ -197,7 +236,25 @@ when declared(FlatFrame):
     if uint64(lastToken) > uint64(graph[].len):
       return flatLocal(f, off, oracle.StepError.BackendFailure)
     let last {.cursor.} = graph[][int(lastToken-1)]
-    if receipt.paidHeader == 0 and last.targets[1] != NativeEntryFailure:
+    if receipt.paidHeader == 0 and last.indirect:
+      # Recheck the final cache grant and pre-write address even when a path proof is cached.
+      let address = context[].address
+      let jumps = context[].jumps
+      if jumps == nil or address == 0 or address > 0xffffffff'u64 or
+          address == 0xffff0000'u64 or (address and 1) != 0:
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
+      let tag = jumps[][int(((address shr 1)-1) and 255)]
+      if (tag shr 32) != (address shr 1) or uint32(tag and 0xffffffff'u64) != next+1:
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
+      let branch = last.branch
+      let base = if branch.opcode == 50: branch.slots.aIndex else: branch.slots.bIndex
+      if branch.opcode == 50 or branch.slots.aIndex != branch.slots.bIndex:
+        if ((uint64(f.info.registers[base])+uint64(last.indirectDelta)) and 0xffffffff'u64) != address:
+          return flatLocal(f, off, oracle.StepError.BackendFailure)
+      if branch.opcode == 180 and uint64(f.info.registers[branch.slots.aIndex]) !=
+          last.indirectValue:
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
+    elif receipt.paidHeader == 0 and last.targets[1] != NativeEntryFailure:
       let op = last.branch
       let taken = branchConditionOperands[-1](op.slots, op.immediate, op.opcode, f.info.registers)
       if next != last.targets[int(taken)]: return flatLocal(f, off, oracle.StepError.BackendFailure)

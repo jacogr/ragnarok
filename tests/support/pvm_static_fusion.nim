@@ -89,7 +89,7 @@ proc checkLongFusionReceipts() =
   empty.paid = 1
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
-proc fusionGuest(late: bool = false, wide: bool = false): Program =
+proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -126,24 +126,102 @@ proc fusionGuest(late: bool = false, wide: bool = false): Program =
   else:
     emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
   emit([149'u8, 0x22, 1]) # One completed iteration per pass.
-  let second = code.len+7
-  jump([80'u8, 0x19, 0x80], second) # Write sign-extended -128 to R9 before the linked target.
-  assert code.len == second
+  var second = 0
+  case mode
+  of 50:
+    emit([50'u8, 4]) # Original R4 selects table ordinal zero without writing a guest lane.
+    second = code.len
+  of 180:
+    emit([180'u8, 0x49, 1, 0x80, 0]) # R9 = sign-extended -128; original R4 selects table ordinal zero.
+    second = code.len
+  of 181:
+    # This fixture mode is opcode180 with an aliased destination/base. Each iteration restores the old base.
+    emit([100'u8, 0xa4]) # R4 = original full-width R10, whose low word is4.
+    emit([180'u8, 0x44, 1, 2, 0xfe]) # Old R4-2 selects ordinal zero, then R4 becomes2.
+    second = code.len
+  else:
+    second = code.len+7
+    jump([80'u8, 0x19, 0x80], second) # Write sign-extended -128 to R9 before the linked target.
+    assert code.len == second
   emit([149'u8, 0x99, 1])
   jump([171'u8, 0xc2], first) # Continue while R2 != R12.
   emit([50'u8, 3]) # Dynamic halt sentinel in R3.
-  var wire = @[0'u8, 0]
+  var wire = if mode == 0: @[0'u8, 0] else: @[1'u8, 1]
   let size = encode(JamNatural(uint64(code.len)))
   for index in 0..<size.len: wire.add(size.bytes[index])
+  if mode != 0:
+    # One original table entry grants only the second block, independently of the native graph.
+    assert second < 256
+    wire.add(byte(second))
   for value in code: wire.add(value)
   var mask = newSeq[byte]((code.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for value in mask: wire.add(value)
-  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
+  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(1))
   assert decoded.error == ProgramError.None
   decoded.value
 
 when NativeReadCycleEnabled:
+  proc checkFusionIndirectTargets() =
+    ## Literal lowering records isolate guarded dynamic entry, alias ordering and paid misses on both ISAs.
+    ## They confer no Frame authority; public execution fixtures must independently bind the source graph.
+    for opcode in [50'u8, 180]:
+      for displacement in [0'u32, 0xfffffffe'u32]:
+        let loaded = 0xffffffff80000000'u64
+        let immediate = if opcode == 50: cast[uint64](int64(cast[int32](displacement)))
+          else: (uint64(displacement) shl 32) or 0x80000000'u64
+        let blocks = [
+          NativeFusionBlock(header: 10, terminal: 11, span: 1, price: 3,
+            targets: [NativeEntryFailure, NativeEntryFailure],
+            branch: NativeOperation(opcode: opcode, immediate: immediate)),
+          NativeFusionBlock(header: 20, terminal: 21, span: 1, price: 5,
+            targets: [100'u32, NativeEntryFailure], indirectEntry: true,
+            branch: NativeOperation(opcode: 40))]
+        let image = lowerNativeFusion(blocks)
+        assert image.ready and nativeFusionEntry(image, 0) and nativeFusionEntry(image, 1)
+        for scenario in 0..10:
+          # A true hit, source tag/table misses, nil cache, sentinel/wrap refusals and unpaid budgets.
+          var cache = default(array[256, uint64])
+          cache[0] = (1'u64 shl 32) or 21
+          var registers = default(RegisterFile)
+          for slot in 0..12: registers[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
+          let address = case scenario
+            of 4: 0'u32
+            of 5: 1'u32
+            of 6: 0xffff0000'u32
+            else: 2'u32
+          registers[0] = RegisterValue(0xffffffff00000000'u64 or uint64(address-displacement))
+          let before = registers
+          var context = NativeFusionContext(gas: 100, remaining: 100, jumps: addr cache)
+          if scenario == 1: cache[0] = (2'u64 shl 32) or 21 # Occupied source-cache slot has another ordinal.
+          elif scenario == 2: cache[0] = (1'u64 shl 32) or 31 # Resolved checked target has no native entry.
+          elif scenario == 3: context.jumps = nil
+          elif scenario == 7: context.remaining = 1 # The dynamic edge completes before the successor refuses.
+          elif scenario == 8: context.remaining = 0
+          elif scenario == 9: context.gas = 2
+          elif scenario == 10: context.gas = 3 # The successor's original price is independently enforced.
+          let gas = context.gas
+          let quota = context.remaining
+          let next = enterNativeFusion(image, 0, registers, context)
+          let success = scenario in [0, 7, 10]
+          let idle = scenario in [8, 9]
+          assert next == (if scenario == 0: 100'u32 elif success: 20'u32 elif idle: 10'u32 else: 11'u32)
+          assert context.visits == (if scenario == 0: 2'u64 elif idle: 0'u64 else: 1'u64)
+          assert context.paid == (if success or idle: 0'u64 else: 1'u64)
+          assert context.gas == gas-(if scenario == 0: 8'u64 elif idle: 0'u64 else: 3'u64)
+          assert context.remaining == quota-(if scenario == 0: 2'u64 elif idle: 0'u64 else: 1'u64)
+          for slot in 0..12:
+            # Failed lowering guards preserve even an aliased load; the checked terminal performs its mutation.
+            assert uint64(registers[slot]) == (if success and opcode == 180 and slot == 0:
+              loaded else: uint64(before[slot]))
+          if success: assert context.address == 2 # Captured before the aliased load changes its base.
+          let receipt = nativeFusionExit(blocks, 10, next, gas, quota, context)
+          assert receipt.valid and receipt.attempted == uint32(quota-context.remaining)
+          assert receipt.paidHeader == (if success or idle: 0'u32 else: 11'u32)
+        var malformed = blocks
+        malformed[0].targets[0] = 20
+        assert not lowerNativeFusion(malformed).ready, "dynamic source cannot carry a static target grant"
+
   proc checkFusionGraphTokens() =
     ## A real255-entry image crosses every receipt byte boundary and reaches token255 on both ISAs.
     ## These literal lowering records test image geometry; only the ordinary public fixtures below
@@ -215,12 +293,9 @@ proc assertSameFusionResult(actual, expected: StepResult) =
 proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
 
-proc runStaticFusion*() =
-  ## Exercise natural selection and exact paid/unpaid exits with changed public inputs.
-  checkRepeatedFusionReceipt()
-  checkLongFusionReceipts()
-  when NativeReadCycleEnabled: checkFusionGraphTokens()
-  let program = fusionGuest()
+proc checkPublicFusion(mode: byte) =
+  ## Every source-backed branch form must preserve complete CPU/memory state and paid accounting.
+  let program = fusionGuest(mode = mode)
   let runtime = newNativeRuntime()
   try:
     assert start(runtime)
@@ -234,15 +309,17 @@ proc runStaticFusion*() =
   var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(4000000))
   info.registers[0] = RegisterValue(165)
   info.registers[3] = RegisterValue(0xffff0000'u64)
+  info.registers[4] = RegisterValue(2) # The admitted dynamic table has exactly one original destination.
   info.registers[5] = RegisterValue(65536)
   info.registers[6] = RegisterValue(65536)
+  if mode == 181: info.registers[10] = RegisterValue(0x1122334400000004'u64)
   info.registers[12] = RegisterValue(90000)
   let source = captureMachine(program, memory, info).value
   let limit = ExecutionStepLimit(2000000)
   let expected = execute(source, limit, checked.value)
   assert expected.error == StepError.None and expected.value.exit == StepExit.Halt, "training oracle must halt"
   assert uint64(machineInfo(expected.value.machine).value.registers[9]) ==
-    cast[uint64](-127'i64), "static load-and-jump reaches the next block with the written value"
+    (if mode in [50'u8, 181]: 90000'u64 else: cast[uint64](-127'i64)), "original terminal write precedes its successor"
   for sample in 0..2:
     # Wait only in the witness, outside invocation, to distinguish queued work from use.
     let outcome = execute(source, limit, jit.value)
@@ -252,8 +329,9 @@ proc runStaticFusion*() =
     if sample == 0: assert state.nativeOperations == 0
     if sample == 1: assert state.nativeOperations < 16 and state.nativeFragments == 2, "training publication"
     if sample == 2:
-      # All seven attempts per loop must execute natively, including the load-and-jump terminal.
-      assert state.nativeOperations >= 7'u64*90000, "native load-and-jump coverage"
+      # Every original attempt must execute natively, including the alias-reset move and jump terminal.
+      let span = if mode == 181: 8'u64 else: 7'u64
+      assert state.nativeOperations >= span*90000, "native load-and-jump coverage"
 
   # A small live quota and low gas enter checked workers at the exact boundary.
   for budget in [4096'u64, 4097, 4098, 4099]:
@@ -268,6 +346,29 @@ proc runStaticFusion*() =
   let gasExit = execute(short, limit, jit.value)
   assert gasExit.error == StepError.None and gasExit.value.exit == StepExit.OutOfGas
   assertSameFusionResult(gasExit, execute(short, limit, checked.value))
+
+  if mode != 0:
+    # Published graphs still defer invalid/halt terminals to the original worker, including its load write.
+    info.gas = MachineGas(4000000)
+    for target in [0'u64, 1'u64, 4'u64, 0xffff0000'u64]:
+      if mode == 181:
+        # The copied old base is consumed before the aliased literal write, even on panic/halt.
+        info.registers[10] = RegisterValue(0x1122334400000000'u64 or (target+2))
+      else:
+        info.registers[4] = RegisterValue(target)
+      let badSource = captureMachine(program, memory, info).value
+      let before = preparedInfo(jit.value).value.nativeOperations
+      let stopped = execute(badSource, limit, jit.value)
+      assert stopped.error == StepError.None
+      assert stopped.value.exit == (if target == 0xffff0000'u64: StepExit.Halt else: StepExit.Panic)
+      assertSameFusionResult(stopped, execute(badSource, limit, checked.value))
+      assert preparedInfo(jit.value).value.nativeOperations > before+2, "native body precedes checked dynamic refusal"
+      if mode == 180:
+        assert uint64(machineInfo(stopped.value.machine).value.registers[9]) == cast[uint64](-128'i64)
+      elif mode == 181:
+        assert uint64(machineInfo(stopped.value.machine).value.registers[4]) == 2
+    info.registers[4] = RegisterValue(2)
+    if mode == 181: info.registers[10] = RegisterValue(0x1122334400000004'u64)
 
   # The prefix dirties the page. The linked store must commit before the paid
   # read fault returns with the same reservation and original guest PC.
@@ -292,6 +393,16 @@ proc runStaticFusion*() =
   assertSameFusionResult(execute(resumed.value, limit, jit.value),
     execute(resumed.value, limit, checked.value))
   assert close(runtime)
+
+proc runStaticFusion*() =
+  ## Exercise raw geometry/refusal controls, then ordinary prepared calls through every supported branch form.
+  checkRepeatedFusionReceipt()
+  checkLongFusionReceipts()
+  when NativeReadCycleEnabled:
+    checkFusionGraphTokens()
+    checkFusionIndirectTargets()
+  for mode in [0'u8, 50, 180, 181]:
+    checkPublicFusion(mode)
   checkLateFusionFault(wide = false)
   checkLateFusionFault(wide = true)
 

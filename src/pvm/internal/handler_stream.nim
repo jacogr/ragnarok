@@ -1437,6 +1437,10 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
         # The resolved offset is already valid. A refused optional cache leaves it usable.
         fresh.slots[slot] = tag
         f.dynamicOffsets = fresh
+        when NativeReadCycleEnabled:
+          # This frame owns the stable optional cache before the synchronous native borrow can see it.
+          let context = f.fusionContext
+          if context != nil: context[].jumps = addr fresh.slots
     else:
       cache.slots[slot] = tag
   f.info.blockCharged = false
@@ -3476,6 +3480,8 @@ when NativeReadCycleEnabled:
     if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
     if f.rw.len > 0: context.memory.writable[1].data = addr f.rw[0]
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
+    let dynamicOffsets = f.dynamicOffsets
+    if dynamicOffsets != nil: context.jumps = addr dynamicOffsets.slots
     f.fusionImage = image
     # Source paths may repeat while this image and its graph are exclusively borrowed.
     var receipts = default(NativeFusionReceipts)

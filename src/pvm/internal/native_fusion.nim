@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Source-bound static control flow for a bounded native graph. Up to 255 ranked source
+## Source-bound control flow for a bounded native graph. Up to 255 ranked source
 ## blocks share one optional arena, bounded by 256 KiB of published code and 4 KiB per entry.
 ## The source-header map has 512 slots so even the largest graph stays below half-full.
 ## The block cap bounds copied source IR independently of guest iteration counts. Original block
@@ -11,7 +11,10 @@
 ## bounds every read. Unwritten tail bytes need no clearing and never participate in a receipt key.
 ## The checked bridge verifies this receipt before exposing a successor or resuming a paid
 ## memory operation. A segment may reuse validation of the same immutable source path.
-## Fault handling and dynamic control remain with the checked stream.
+## Dynamic edges require the frame's checked original-table tag and an immutable per-image
+## target entry. No executable pointer escapes the arena. A missed guard leaves the original
+## terminal paid and untouched so the checked stream performs its write, panic or halt.
+## The target table counts toward the same image bound; cache storage remains frame-owned.
 
 import ./[jit_rules, native_ir, native_mixed_loop, native_read_body]
 
@@ -27,6 +30,9 @@ const
   NativeFusionPathOffset* = NativeFusionQuotaOffset+8
   NativeFusionVisitsOffset* = NativeFusionPathOffset+NativeFusionPathWords*8
   NativeFusionPaidOffset* = NativeFusionVisitsOffset+8
+  NativeFusionJumpsOffset* = NativeFusionPaidOffset+8
+  NativeFusionAddressOffset* = NativeFusionJumpsOffset+8
+  NativeFusionTableBytes* = NativeFusionSlotLimit*8
 
 when NativeFusionSlotLimit != 512 or NativeFusionBlockLimit*2 > NativeFusionSlotLimit:
   {.error: "native fusion header hashing requires its fixed half-full 512-slot map".}
@@ -42,20 +48,26 @@ type
     ## Tokens occupy successive low-to-high bytes in the native little-endian context.
   NativeFusionBlock* = object
     ## The source walk copies only verified non-noop body operations. Targets are
-    ## [false, true]; a missing first target leaves the terminal to checked execution.
+    ## [false, true]; dynamic branches carry no static targets and use original-table entry permission.
+    ## Other missing first targets leave the terminal to checked execution.
     header*, terminal*, first*, span*: uint32
     price*: uint64
     targets*: array[2, uint32]
     branch*: NativeOperation
     operations*: array[int(NativeReadFactLimit)-1, NativeOperation]
     guards*: uint32 ## Only these body nodes can be returned as paid refusals.
+    indirectEntry*: bool ## Cold proof that this header belongs to the original admitted jump table.
   NativeFusionContext* = object
     ## Call-local descriptors and ledger precede a fixed byte log and its returned count.
     ## Each native entry overwrites only its used prefix; unused bytes have no receipt authority.
+    ## A paid lookup miss can retain an attempted address; only a completed final indirect edge
+    ## makes address evidence for final live-jump validation.
     memory*: NativeMixedLoopContext
     gas*, remaining*: uint64
     path*: NativeFusionPath
     visits*, paid*: uint64
+    jumps*: nil ptr array[256, uint64] ## Frame-owned checked tags; borrowed only during native entry.
+    address*: uint64 ## Wrapped pre-write address; meaningful only for a completed final indirect edge.
   NativeFusionExit* = object
     ## A successful validation also carries the proved final source token; the bridge need not decode it again.
     valid*, branches*: bool
@@ -75,6 +87,19 @@ func nativeFusionSlot*(token: uint32): int {.inline.} =
   ## Zero can be hashed but never confers source or entry authority.
   int((token*0x9e3779b9'u32) shr 23)
 
+func indirect*(item: NativeFusionBlock): bool {.inline.} =
+  ## Only original dynamic jump terminals use the guarded immutable native target map.
+  item.branch.opcode in [50'u8, 180]
+
+func indirectDelta*(item: NativeFusionBlock): uint32 {.inline.} =
+  ## Dynamic load-and-jump packs its independent32-bit displacement above its loaded value.
+  if item.branch.opcode == 180: uint32(item.branch.immediate shr 32)
+  else: uint32(item.branch.immediate and 0xffffffff'u64)
+
+func indirectValue*(item: NativeFusionBlock): uint64 {.inline.} =
+  ## The original load literal sign-extends its low32 bits before any guest publication.
+  cast[uint64](int64(cast[int32](uint32(item.branch.immediate and 0xffffffff'u64))))
+
 func complete*(item: NativeFusionBlock): bool =
   ## Validate copied scalar geometry and all supported opcode and guard identities.
   if item.header >= item.terminal or item.terminal >= NativeEntryLimit or item.span == 0 or
@@ -93,6 +118,10 @@ func complete*(item: NativeFusionBlock): bool =
   if guards != item.guards: return false
   let no = item.targets[0]
   let yes = item.targets[1]
+  if item.indirect:
+    # Guard misses deliberately leave the original terminal paid and checked, even with an empty body.
+    if no != NativeEntryFailure or yes != NativeEntryFailure: return false
+    return item.branch.opcode == 180 or item.branch.immediate == item.indirectValue
   if no == NativeEntryFailure: return yes == NativeEntryFailure and count != 0
   if no >= NativeEntryLimit: return false
   if yes == NativeEntryFailure: return item.branch.opcode in [1'u8, 40, 80]
@@ -126,7 +155,9 @@ func sameFusionPath(left, right: NativeFusionPath, visits: uint64): bool =
 func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32,
     gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
   ## Consume the exact bounded path backwards, checking every reservation and permitted edge.
-  ## Last-predicate validation uses the committed register file at the frame bridge.
+  ## A valid dynamic receipt proves reservations, the source path and original-table entry permission.
+  ## Before committing state, the caller must validate the final live jump tag, captured pre-write
+  ## address and any load result. Final-predicate validation also belongs to the frame bridge.
   result = default(NativeFusionExit)
   if state.paid > 1 or state.visits > uint64(NativeFusionVisitLimit) or
       state.gas > gas or state.remaining > quota or
@@ -142,6 +173,7 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
   var completePath = false
   var lastToken = 0'u32
   var visits = state.visits
+  var indirectSuccessor = false
   while visits != 0:
     # A zero token anywhere in the logged prefix is invalid. Rank slots are one-based.
     dec visits
@@ -166,9 +198,18 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
           return
       result.paidHeader = item.header+1
     else:
-      if successor notin item.targets: return
+      if item.indirect:
+        if last:
+          # Only a completed final dynamic edge needs a successor lookup; interior tokens already prove it.
+          for candidate in blocks:
+            if candidate.header == next:
+              indirectSuccessor = candidate.indirectEntry
+              break
+        if not indirectSuccessor: return
+      elif successor notin item.targets: return
       completePath = true
     successor = item.header
+    indirectSuccessor = item.indirectEntry
     last = false
   if successor != entry or leftGas != state.gas or leftQuota != state.remaining:
     return default(NativeFusionExit)
@@ -180,7 +221,10 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
 proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[NativeFusionBlock],
     entry, next: uint32, gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
   ## Only full used-prefix equality substitutes the source walk. Every used word participates
-  ## in the bounded hash; live debits, count and exit mode must also match. The frame still
+  ## in the bounded hash; live debits, count and exit mode must also match. A valid cached dynamic
+  ## receipt proves reservations, the source path and original-table entry permission. On every
+  ## completed final indirect edge, the caller must recheck the live jump tag, captured pre-write
+  ## address and any load result before committing state, including on cache hits. The caller also
   ## checks the final predicate and paid source site. Unwritten tail bytes have no authority.
   if state.visits == 0 or state.visits > uint64(NativeFusionVisitLimit) or
       state.paid > 1 or state.gas > gas or state.remaining > quota:
