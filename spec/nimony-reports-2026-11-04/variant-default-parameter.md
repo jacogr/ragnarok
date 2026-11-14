@@ -92,3 +92,11 @@ returned results. Earlier triage distinguished
 [#2234](https://github.com/nim-lang/nimony/issues/2234), a nested-case compiler assertion, and
 [#2218](https://github.com/nim-lang/nimony/pull/2218), union construction changes.
 No compiler modifications were used, and no upstream issue was filed by the agent.
+
+## November 14 retest
+
+The unchanged omitted-argument, explicit-default and factory sources now compile and execute
+with exit code 0 on official nightly `8102b8e3c46bde87b733ecd82e2249cb562e3a8f`, macOS ARM64.
+The previous compiler restriction no longer requires an API workaround; the application retains
+explicit context boundaries and owning factories where they remain appropriate. See the
+[upgrade qualification](../nimony-nightly-2026-11-14.md).

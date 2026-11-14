@@ -757,8 +757,8 @@ proc dynamicTargets(count = 64, full = true) =
         var context = JumpContext(nested: nested, previous: original,
           calls: 0, count: count, expectedHost: 1, terminal: terminal)
         var outcome = default(StepOutcome)
-        template run(selected: untyped) =
-          # Static selection preserves the public overload and distinct failure result types.
+        template run(selected: untyped) {.untyped.} =
+          # Resolve the distinct pricing overload and result type at each concrete invocation.
           if fallible:
             let stopped = executeWithHost(source, context, jumpReplyFallible, ExecutionStepLimit(
                 uint64(count*2)),

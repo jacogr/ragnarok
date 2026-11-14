@@ -258,6 +258,9 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
   if not found:
     transition.response.registers[7] = RegisterValue(high(uint64)-3)
     done() # WHO cannot instantiate a handle retained only by another running instance.
+  if code == nil:
+    # Refuse an incomplete retained module before constructing a non-null instance owner.
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.InvalidContext)
   let entry = CodeAddress(uint64(registers[8]))
   if instructionOpcode(program, entry).error != ProgramError.None:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)

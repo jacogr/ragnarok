@@ -171,7 +171,7 @@ when declared(FlatFrame):
     context.writable[0] = NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len))
     context.writable[1] = NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))
     if f.stack.len > 0: context.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.writable[1].data = addr f.rw[0]
+    if f.rw.len > 0: context.writable[1].data = f.rw.borrowedData(0)
     if f.dirtyPages.len > 0: context.dirty = addr f.dirtyPages[0]
     context.dirtyWords = uint64(f.dirtyPages.len)
     let raw: uint32 = enter(image[], f.info.registers, context)
