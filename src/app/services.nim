@@ -1157,8 +1157,8 @@ proc close*(services: var Services) =
     # All consumers have joined. The idle payload is a point-in-time accumulation
     # sample, and the runtime counters include both bound consumers.
     let native = runtimeInfo(services.nativeRuntime)
-    if native.submitted != 0 or native.primaryCreditRefusals != 0:
-      let payload = residentMemoryPayloadBytes(services.executionContext)
+    let payload = residentMemoryPayloadBytes(services.executionContext)
+    if native.submitted != 0 or native.primaryCreditRefusals != 0 or payload != 0:
       log(services.historyLog, LogTarget.Application, LogLevel.Debug,
         "PVM runtime submitted=" & $native.submitted &
         " primaryCreditRefusals=" & $native.primaryCreditRefusals &
