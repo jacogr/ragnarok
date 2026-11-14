@@ -6,6 +6,8 @@
 ## Prepared execution publishes through the shared asynchronous worker. The direct region,
 ## mixed-memory and macro owners still exercise the former ARM64 ABIs in native tests.
 ## A direct publisher does not grant admission to a prepared frame.
+## Scalar bit counts use baseline integer instructions; zero-word CLZ/CTZ returns the width.
+## Their scratch lane is separate from resident guest registers and the live budget/context lanes.
 
 import std/assertions
 import ../[program, machine]
@@ -286,6 +288,39 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
       of 110: 0xdac00c00'u32 # REV Xd,Xn
       else: 0xaa0003e0'u32   # MOV Xd,Xn (ORR Xd,XZR,Xn)
     fragment.words.add(operation or (source shl (if opcode == 100: 16 else: 5)) or destination)
+    return
+  if opcode in {101'u8..106}:
+    # X1 is scalar scratch. Keep the context, gas/quota and SIMD counter lanes intact.
+    let source = armRead(fragment, slots.aIndex)
+    let destination = armWrite(fragment, slots.destinationIndex)
+    let narrow = opcode in [102'u8, 104, 106]
+    let sf = if narrow: 0'u32 else: 0x80000000'u32
+    if opcode in [103'u8, 104]:
+      fragment.words.add(sf or 0x5ac01000'u32 or (source shl 5) or destination) # CLZ.
+    elif opcode in [105'u8, 106]:
+      fragment.words.add(sf or 0x5ac00000'u32 or (source shl 5) or 1'u32) # RBIT into scratch.
+      fragment.words.add(sf or 0x5ac01020'u32 or destination) # CLZ of the reversed word.
+    else:
+      # Sum disjoint lanes in the selected width using baseline integer instructions.
+      let shift = sf or (if narrow: 0x53007c00'u32 else: 0x5340fc00'u32)
+      let logical = sf or 0x12000000'u32
+      let add = sf or 0x0b000000'u32
+      fragment.words.add(shift or (1'u32 shl 16) or (source shl 5) or 1'u32)
+      fragment.words.add(logical or 0x0000f021'u32) # AND scratch,#0x55...
+      fragment.words.add(sf or 0x4b010000'u32 or (source shl 5) or destination) # SUB.
+      fragment.words.add(logical or 0x0000e400'u32 or (destination shl 5) or 1'u32)
+      fragment.words.add(shift or (2'u32 shl 16) or (destination shl 5) or destination)
+      fragment.words.add(logical or 0x0000e400'u32 or (destination shl 5) or destination)
+      fragment.words.add(add or (1'u32 shl 16) or (destination shl 5) or destination)
+      fragment.words.add(add or (1'u32 shl 22) or (destination shl 16) or (4'u32 shl 10) or
+        (destination shl 5) or destination)
+      fragment.words.add(logical or 0x0000cc00'u32 or (destination shl 5) or destination)
+      for amount in [8'u32, 16, 32]:
+        if narrow and amount == 32: continue
+        fragment.words.add(add or (1'u32 shl 22) or (destination shl 16) or (amount shl 10) or
+          (destination shl 5) or destination)
+      fragment.words.add(logical or (if narrow: 0'u32 else: 1'u32 shl 22) or
+        0x00001800'u32 or (destination shl 5) or destination)
     return
   if opcode in {138'u8..140'u8, 151'u8..153'u8}:
     # Bitfield-immediate shifts use the same masked counts as the variable shifts.
