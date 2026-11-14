@@ -211,6 +211,94 @@ proc closedHandleMoves() =
   assert default(NativeRuntime).close(), "closedHandleMoves.4: default(NativeRuntime).close()"
 
 when defined(pvmSharedAsyncWitness):
+  proc bitCountExpected(value: uint64, opcode: byte): uint64 =
+    ## Independent bit-by-bit oracle includes the selected width's zero case.
+    let bits = if opcode in [102'u8, 104, 106]: 32 else: 64
+    result = 0
+    if opcode in [101'u8, 102]:
+      for bit in 0..<bits:
+        result += (value shr bit) and 1
+    else:
+      for offset in 0..<bits:
+        let bit = if opcode in [103'u8, 104]: bits-1-offset else: offset
+        if ((value shr bit) and 1) != 0: break
+        inc result
+
+  proc nativeBitCounts() =
+    ## Every source/destination alias runs real native code with untouched-register canaries.
+    if not nativePlatformSupported(): return
+    for opcode in [101'u8, 102, 103, 104, 105, 106]:
+      for source in 0..<13:
+        for destination in 0..<13:
+          let wire = @[0'u8, 0, 5, opcode, byte(source*16+destination), 100, 0xcc, 0, 0x15]
+          let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+          assert decoded.error == ProgramError.None
+          let operation = instruction(decoded.value, CodeAddress(0))
+          let identity = instruction(decoded.value, CodeAddress(2))
+          assert operation.error == ProgramError.None and identity.error == ProgramError.None
+          var span = initNativeSpan(1, 0, 1)
+          assert span.add(opcode, instructionRegisters(operation), 0, 0, 2)
+          assert span.add(100, instructionRegisters(identity), 0, 1, 3)
+          let image = lowerNative(span)
+          assert image.ready
+          for pattern in 0..<68:
+            let value = case pattern
+              of 0: 0'u64
+              of 1: high(uint64)
+              of 2: 0xffffffff00000000'u64
+              of 3: 0x0123456789abcdef'u64
+              else: 1'u64 shl (pattern-4)
+            var registers = default(RegisterFile)
+            for index in 0..<13: registers[index] = RegisterValue(0x5555555555555555'u64+uint64(index))
+            registers[source] = RegisterValue(value)
+            let original = registers
+            assert enterNative(image, registers)
+            for index in 0..<13:
+              let expected = if index == destination: RegisterValue(bitCountExpected(value, opcode))
+                else: original[index]
+              assert registers[index] == expected
+
+  proc nativeBitCountLoops() =
+    ## Count instructions retain complete CPU/RAM parity through native loop receipts and checked exits.
+    if not nativePlatformSupported(): return
+    for opcode in [101'u8, 102, 103, 104, 105, 106]:
+      # PC0 count R7,R8; PC2 increment R10; PC5 branch R10<R11 to PC0; PC11 halt.
+      let wire = @[0'u8, 0, 13, opcode, 0x87, 131, 0xaa, 1, 172, 0xba,
+        0xfb, 0xff, 0xff, 0xff, 50, 0, 0x25, 8]
+      let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+      assert decoded.error == ProgramError.None
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      pauseNativeCompiler(runtime, true)
+      let native = prepared(decoded.value, runtime)
+      let checked = newPreparedProgram(decoded.value, defaultPreparedLimits(GasCycleLimit(1000))).value
+      let source = input(decoded.value, 2048)
+      assert execute(source, ExecutionStepLimit(6145), native).error == StepError.None
+      assert runtime.runtimeInfo.submitted == 1
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      for value in [0'u64, high(uint64), 0xffffffff00000000'u64, 0x0123456789abcdef'u64]:
+        for gas in [0'u64, 1, 10000, 1000000]:
+          for budget in [4096'u64, 6144, 6145]:
+            # Each invocation restores independent immutable input, including an irrelevant mapped page.
+            var cpu = machineInfo(source).value
+            cpu.gas = MachineGas(gas)
+            cpu.registers[8] = RegisterValue(value)
+            let captured = captureMachine(decoded.value, memoryOf(source).value, cpu)
+            assert captured.error == MachineError.None
+            let expected = execute(captured.value, ExecutionStepLimit(budget), checked)
+            let actual = execute(captured.value, ExecutionStepLimit(budget), native)
+            assert actual.error == expected.error
+            if expected.error == StepError.None:
+              assert actual.value.exit == expected.value.exit
+              assert machineInfo(actual.value.machine).value == machineInfo(
+                  expected.value.machine).value
+              assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+                pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+            assert machineInfo(captured.value).value == cpu
+      assert preparedInfo(native).value.nativeOperations > 0
+      assert runtime.close()
+
   proc hostReceipts() =
     ## Literal disjoint settled work2+2+0 proves rolling host budgets cannot double-count prior segments.
     let runtime = newNativeRuntime()
@@ -1679,6 +1767,8 @@ proc runSharedAsync*() =
   closedHandleMoves()
   when defined(pvmSharedAsyncWitness):
     witnessRetirementIdentity()
+    nativeBitCounts()
+    nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
     hostReceipts()
     hostedNativeParity()
