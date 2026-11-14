@@ -120,8 +120,8 @@ when declared(ArmBlock):
     ## Reserve checked capacities before reusing the existing mixed memory and scalar emitters.
     const capacity = NativeImageByteLimit div 4
     const operationWords = 64
-    const returnWords = 4
-    const epilogueWords = 25
+    const returnWords = 4 # Two continuation words, one paid-marker word and one branch.
+    const epilogueWords = 25 # Includes the optional pre-write D17 address store.
     const unpaid = 0
     result = default(ArmFusionEncoding)
     if not item.complete or token < 1 or token > NativeFusionBlockLimit: return
