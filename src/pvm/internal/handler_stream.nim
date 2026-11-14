@@ -3462,6 +3462,7 @@ when NativeReadCycleEnabled:
         # A conflict anywhere in the graph prevents all linked entries from acquiring authority.
         flatDispatchSegment(f, entry)
         return
+      if not nativeFusionDispatchEntry(image[], slot): continue
       let token = header+1
       var at = nativeFusionSlot(token)
       while slots[at].token != 0: at = (at+1) and (NativeFusionSlotLimit-1)
