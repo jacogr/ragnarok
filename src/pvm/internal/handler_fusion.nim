@@ -86,6 +86,13 @@ when declared(FlatFrame):
         if worker != payload.handler and flatSourceHeader(f, args.y, payload.args.y):
           item.targets[0] = args.y
           item.branch = NativeOperation(opcode: fact.opcode)
+      elif fact.opcode == 80:
+        # Link the cached edge only if its register and immediate match the original write.
+        if worker == flatCachedJump[80] and flatSourceHeader(f, args.y, payload.args.y):
+          if args.slots != payload.args.slots or args.x != payload.args.x: return false
+          item.targets[0] = args.y
+          item.branch = NativeOperation(opcode: 80, slots: payload.args.slots,
+            immediate: payload.args.x)
       else:
         let cached = fusionBranchHandler(fact.opcode)
         if cached != nil and worker == cached:
@@ -162,7 +169,9 @@ when declared(FlatFrame):
       return flatCharge(f, off)
     let slots = f.fusionSlots
     let context = f.fusionContext
-    if slots == nil or context == nil: return flatLocal(f, off, oracle.StepError.BackendFailure)
+    let receipts = f.fusionReceipts
+    if slots == nil or context == nil or receipts == nil:
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     let token = off+1
     var at = int((token*0x9e3779b9'u32) shr 24)
     var slot = -1
@@ -180,7 +189,7 @@ when declared(FlatFrame):
     context[].remaining = quota
     let next = enterNativeFusion(image[], slot, f.info.registers, context[])
     if next >= uint32(f.handlers.len): return flatLocal(f, off, oracle.StepError.BackendFailure)
-    let receipt = nativeFusionExit(graph[], off, next, gas, quota, context[])
+    let receipt = checkNativeFusionExit(receipts[], graph[], off, next, gas, quota, context[])
     if not receipt.valid: return flatLocal(f, off, oracle.StepError.BackendFailure)
     if context[].path == 0: return flatCharge(f, off)
     let last {.cursor.} = graph[][int(context[].path and 255)-1]

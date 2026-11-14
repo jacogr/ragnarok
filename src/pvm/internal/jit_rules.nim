@@ -29,5 +29,5 @@ func indirectMemoryAccess*(opcode: range[120..130]): IndirectMemoryAccess {.inli
 func supportedScalarOpcode*(opcode: byte): bool {.inline.} =
   ## Both baseline emitters lower this exact non-exiting scalar subset without optional extensions.
   ## Architecture wrappers retain the boundary for later explicit capability differences.
-  opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
+  opcode in {20'u8, 51, 100..110, 131..143, 149..154, 158, 160,
       190..192, 197..202, 207..217, 222..226}

@@ -5,7 +5,8 @@
 ## source attempts remain independent. Lowering can link only positive checked successors.
 ## Each native entry commits at most eight original reservations and returns their order.
 ## The checked bridge verifies this receipt before exposing a successor or resuming a paid
-## memory operation. Fault handling and dynamic control remain with the checked stream.
+## memory operation. A segment may reuse validation of the same immutable source path.
+## Fault handling and dynamic control remain with the checked stream.
 
 import ./[jit_rules, native_ir, native_mixed_loop, native_read_body]
 
@@ -39,6 +40,14 @@ type
     paidHeader*, attempted*: uint32
     branches*: bool
 
+  NativeFusionReceipt = object
+    ## A verified path may be reused only by the same segment and immutable graph.
+    path, gas: uint64
+    entry, next: uint32
+    receipt: NativeFusionExit
+  NativeFusionReceipts* = array[256, NativeFusionReceipt]
+    ## Segment-local cache of successful path proofs for exactly one borrowed graph.
+
 func complete*(item: NativeFusionBlock): bool =
   ## Validate copied scalar geometry and all supported opcode and guard identities.
   if item.header >= item.terminal or item.terminal >= NativeEntryLimit or item.span == 0 or
@@ -59,7 +68,7 @@ func complete*(item: NativeFusionBlock): bool =
   let yes = item.targets[1]
   if no == NativeEntryFailure: return yes == NativeEntryFailure and count != 0
   if no >= NativeEntryLimit: return false
-  if yes == NativeEntryFailure: return item.branch.opcode in [1'u8, 40]
+  if yes == NativeEntryFailure: return item.branch.opcode in [1'u8, 40, 80]
   if yes >= NativeEntryLimit or item.branch.opcode notin {81'u8..90, 170..175}: return false
   if item.branch.opcode <= 90:
     # Immediate predicates use the same full-width sign extension as checked dispatch.
@@ -115,3 +124,24 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
   result.valid = true
   result.attempted = uint32(quota-leftQuota)
   result.branches = completePath
+
+proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[NativeFusionBlock],
+    entry, next: uint32, gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
+  ## The caller starts with an empty cache for each exclusive graph borrow. An exact
+  ## key hit substitutes only the source walk. The live debits and exit mode must
+  ## match, and the bridge still checks the final predicate and paid source site.
+  let path = state.path
+  if path == 0 or state.paid > 1 or state.gas > gas or state.remaining > quota:
+    return nativeFusionExit(blocks, entry, next, gas, quota, state)
+  let index = int(((path xor (uint64(next) shl 25))*0x9e3779b97f4a7c15'u64) shr 56)
+  let candidate {.cursor.} = memo[index]
+  let paid = state.paid != 0
+  if candidate.path == path and candidate.entry == entry and candidate.next == next and
+      (candidate.receipt.paidHeader != 0) == paid and gas-state.gas == candidate.gas and
+      quota-state.remaining == uint64(candidate.receipt.attempted):
+    return candidate.receipt
+  result = nativeFusionExit(blocks, entry, next, gas, quota, state)
+  if result.valid:
+    # The full verifier alone authorizes a new cache entry.
+    memo[index] = NativeFusionReceipt(path: path, gas: gas-state.gas, entry: entry,
+      next: next, receipt: result)

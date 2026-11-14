@@ -91,6 +91,10 @@ when declared(X86Block):
     if item.targets[0] == NativeEntryFailure:
       x86FusionReturn(code, item.terminal, true)
     else:
+      if item.branch.opcode == 80:
+        let branch = item.branch
+        immediate(code, 0xb8, branch.immediate)
+        writeAccess(code, access, branch.slots.aIndex)
       if item.targets[1] != NativeEntryFailure:
         let branch = item.branch
         emitX86BranchAccess(code, access, branch.opcode, branch.slots, branch.immediate, 1, 0)
