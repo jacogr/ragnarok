@@ -1591,7 +1591,7 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
     assert pageImage(memoryOf(source).value, PageIndex(32)).value == before, "late Read input page stays immutable"
     actual.value.backend
 
-  proc lateReadReplacement() =
+  proc lateReadReplacement(corrupt = false) =
     ## One unused call arms observation, two matching later calls retire the prefix, and Read executes.
     let runtime = newNativeRuntime()
     assert launch(runtime), "late Read worker starts"
@@ -1632,33 +1632,42 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
         let incumbent = preparedInfo(native).value
         assert incumbent.nativeFragments == 1 and incumbent.nativeCalls == 0, "late path leaves incumbent unused"
 
-      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
-      assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
-          "later observation stays checked until publication"
-      assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
-          NativeState.Pending, "two observations submit Read"
-      let lowered = waitNativeCompilerGate(runtime)
-      assert lowered.hasImage and lowered.kind == NativeKind.CheckedReadBody, "worker lowers the Read image"
-      releaseNativeCompilerGate(runtime)
-      waitNativeCompiler(runtime)
-      assert runtime.runtimeInfo.completed == 2 and runtime.runtimeInfo.registered == 1, "replacement completion owns the only credit"
-      assert verifyLateReadCall(later, native, checked) == PvmBackend.Jit, "replacement executes natively"
-      let installed = preparedInfo(native).value
-      assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
-      assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
-          NativeState.Ready, "installed Read settles three original operations per call"
-      cpu.pc = CodeAddress(51)
-      let otherRead = captureMachine(owner, memory, cpu).value
-      for unused in 0..<3:
-        # Bypass the replacement enough times to arm and complete another streak without the limit.
-        assert verifyLateReadCall(otherRead, native, checked) == PvmBackend.Interpreted,
-          "second disjoint Read stays checked"
+      if corrupt:
+        corruptNextReadRetirementKey(runtime)
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted
+        assert preparedNativeState(native).value == NativeState.Unavailable
+        assert verifyLateReadCall(prefix, native, checked) == PvmBackend.Interpreted
+        assert preparedInfo(native).value.nativeCalls == 0
+        assert runtime.runtimeInfo.submitted == 1 and runtime.runtimeInfo.registered == 1
+      else:
+        armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
+            "later observation stays checked until publication"
         assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
-            NativeState.Ready,
-          "one replacement is allowed per stream epoch"
-      assert preparedInfo(native).value.nativeCalls == installed.nativeCalls,
-        "the second disjoint Read leaves the replacement unused"
-    assert runtime.runtimeInfo.registered == 0 and runtime.close(), "late Read retirement returns the credit"
+            NativeState.Pending, "two observations submit Read"
+        let lowered = waitNativeCompilerGate(runtime)
+        assert lowered.hasImage and lowered.kind == NativeKind.CheckedReadBody, "worker lowers the Read image"
+        releaseNativeCompilerGate(runtime)
+        waitNativeCompiler(runtime)
+        assert runtime.runtimeInfo.completed == 2 and runtime.runtimeInfo.registered == 1, "replacement completion owns the only credit"
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Jit, "replacement executes natively"
+        let installed = preparedInfo(native).value
+        assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
+        assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
+            NativeState.Ready, "installed Read settles three original operations per call"
+        cpu.pc = CodeAddress(51)
+        let otherRead = captureMachine(owner, memory, cpu).value
+        for unused in 0..<3:
+          # Bypass the replacement enough times to arm and complete another streak without the limit.
+          assert verifyLateReadCall(otherRead, native, checked) == PvmBackend.Interpreted,
+            "second disjoint Read stays checked"
+          assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
+              NativeState.Ready,
+            "one replacement is allowed per stream epoch"
+        assert preparedInfo(native).value.nativeCalls == installed.nativeCalls,
+          "the second disjoint Read leaves the replacement unused"
+    assert runtime.runtimeInfo.registered == (if corrupt: 1 else: 0)
+    assert runtime.close(), "late Read runtime closes after its prepared owner drops"
 
 proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
@@ -1714,6 +1723,7 @@ proc runSharedAsync*() =
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")
       lateReadReplacement()
+      lateReadReplacement(true)
     diagnosticPhase("doneFinalDrop")
     doneFinalDrop()
   echo "PVM shared async passed"

@@ -150,6 +150,7 @@ type
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
       rejectQueuedRequest: bool
+      rejectReadRetirement: bool
       gate, followingGate: NativeCompilerPoint
       observation: NativeCompilerObservation
   NativeRuntimeData = ref object ## The named field has a supported stable address, unlike a ref payload cast.
@@ -160,6 +161,7 @@ type
     runtime: nil NativeRuntimeData
     slot: int
     generation, epoch, ticket: uint64
+    retirementKey: JobKey                ## Host receipt survives collection, repricing and final drop.
     state: NativeState
     span: NativeSpan
     when NativeCheckedReadEnabled:
@@ -282,18 +284,6 @@ func requestMatches(request: NativeRequest, key: JobKey): bool =
     else:
       false
 
-func acceptedKind(data: NativeSessionData): NativeKind =
-  ## A nonzero ticket binds one immutable caller-side certificate until collection.
-  assert data.ticket != 0
-  when NativeReadCycleEnabled:
-    if data.bitmap.epoch == data.epoch: return NativeKind.BitmapLoop
-    if data.readRouteValid and readCertificate(data.readProof).complete:
-      return NativeKind.ConnectedReadCycle
-  when NativeCheckedReadEnabled:
-    if readCertificate(data.readProof).complete: return NativeKind.CheckedReadBody
-    if data.ringEpoch == data.epoch: return NativeKind.RegisterRing
-  data.span.kind
-
 func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   ## Caller holds the mutex; a live job keeps this generation occupied until physical cleanup.
   if key.slot < 0 or key.slot >= runtime.slots.len: return false
@@ -360,18 +350,25 @@ when NativeReadCycleEnabled:
       discard
     broadcast(runtime.changed)
 
-proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint64,
-    finalDrop: bool, image: var NativeImage): Retirement =
+proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
+    image: var NativeImage): Retirement =
   ## One canonical cancellation/detach path; its caller keeps the stable runtime anchor alive.
+  let slot = key.slot
   if slot < 0 or slot >= runtime.slots.len: return NoWork
   acquire(runtime.lock)
-  if runtime.slots[slot].generation != generation or runtime.slots[slot].state != Live:
+  if runtime.slots[slot].generation != key.generation or runtime.slots[slot].state != Live:
     release(runtime.lock)
     return RetirementRefused
-  let key = runtime.slots[slot].key
-  if runtime.slots[slot].location != CompletionLocation.Empty and
-      (key.slot != slot or key.generation != generation or key.ticket == 0 or key.epoch == 0):
-    # A malformed row cannot transfer the identity of a different mapping.
+  if runtime.slots[slot].location == CompletionLocation.Empty:
+    # Shutdown can already have retired the mapping. The closed empty row still
+    # belongs to the exact generation until its surviving session drops it.
+    if runtime.started or image.ready or runtime.slots[slot].completion.ready:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Free
+    release(runtime.lock)
+    return NoWork
+  if key.ticket == 0 or key.epoch == 0 or not matchesRow(runtime, key):
     release(runtime.lock)
     return RetirementRefused
   when NativeReadCycleEnabled:
@@ -381,7 +378,7 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint6
         release(runtime.lock)
         return RetirementRefused
       retireMixedLoopLocked(runtime)
-  if finalDrop: runtime.slots[slot].state = Retiring
+  runtime.slots[slot].state = Retiring
   case runtime.slots[slot].location
   of CompletionLocation.Queued, CompletionLocation.Running:
     # Session.ticket may already be zero after invalidation; the row still owns the old obligation.
@@ -390,13 +387,9 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint6
     release(runtime.lock)
     return RetirementPending
   of CompletionLocation.Empty:
-    # No image or outstanding key exists, so final drop can return this credit immediately.
-    if image.ready or runtime.slots[slot].completion.ready:
-      release(runtime.lock)
-      return RetirementRefused
-    if finalDrop: runtime.slots[slot].state = Free
+    # An auxiliary release may have unlocked; do not infer ownership after the transition.
     release(runtime.lock)
-    return NoWork
+    return RetirementRefused
   of CompletionLocation.Complete, CompletionLocation.Installed:
     # Complete detaches the row image; Installed already belongs exclusively to this caller.
     if runtime.slots[slot].location == CompletionLocation.Complete:
@@ -440,7 +433,9 @@ when defined(pvmSharedAsyncWitness):
     dec stale.ticket
     assert not finishRetirement(addr runtime, stale)
     assert matchesRow(addr runtime, key) and runtime.slots[0].state == Live
-    assert retireOwner(addr runtime, 0, key.generation, true, empty) == RetirementPending
+    assert retireOwner(addr runtime, stale, empty) == RetirementRefused
+    assert runtime.slots[0].state == Live
+    assert retireOwner(addr runtime, key, empty) == RetirementPending
     assert runtime.slots[0].state == Retiring and runtime.slots[0].cancelled
     assert runtime.slots[0].location == CompletionLocation.Reclaiming
     assert finishRetirement(addr runtime, key)
@@ -467,7 +462,7 @@ proc `=destroy`(session: NativeSessionStorage) =
   if anchor != nil:
     # Installed storage was released above, before the canonical helper returns its credit.
     var detached = default(NativeImage)
-    discard retireOwner(addr anchor.storage, session.slot, session.generation, true, detached)
+    discard retireOwner(addr anchor.storage, session.retirementKey, detached)
   `=destroy`(session.runtime)
 
 proc newNativeRuntime*(): NativeRuntime =
@@ -687,6 +682,7 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
     # A restarted empty namespace cannot inherit a prior test gate or paused worker.
     data.paused = false
     data.rejectQueuedRequest = false
+    data.rejectReadRetirement = false
     data.gate = NativeCompilerPoint.None
     data.followingGate = NativeCompilerPoint.None
     data.gateReached = false
@@ -797,7 +793,7 @@ proc newNativeSession*(runtime: NativeRuntime): NativeSession =
   let anchor {.cursor.} = runtime.data
   if anchor == nil: return default(NativeSession)
   NativeSession(data: NativeSessionData(runtime: anchor, slot: -1, epoch: 1,
-    state: NativeState.Deferred, image: default(NativeImage)))
+    retirementKey: JobKey(slot: -1), state: NativeState.Deferred, image: default(NativeImage)))
 
 proc collectNative(session: NativeSession)
   ## Exact nonblocking collection is legal only at an exclusive invocation boundary.
@@ -1432,11 +1428,12 @@ proc releaseNativeCredit(data: NativeSessionData): bool =
   ## Detach the host's credit; cancelled worker-owned images keep their row until physical retirement.
   let anchor {.cursor.} = data.runtime
   if anchor != nil:
-    if retireOwner(addr anchor.storage, data.slot, data.generation, true, data.image) == RetirementRefused:
+    if retireOwner(addr anchor.storage, data.retirementKey, data.image) == RetirementRefused:
       return false
   data.slot = -1
   data.generation = 0
   data.ticket = 0
+  data.retirementKey = JobKey(slot: -1)
   data.imageKey = default(NativeImageKey)
   true
 
@@ -1460,14 +1457,21 @@ when NativeCheckedReadEnabled:
     let job = JobKey(slot: key.slot, generation: key.generation, ticket: key.ticket,
       epoch: key.epoch, kind: key.kind)
     acquire(runtime.lock)
+    when defined(pvmSharedAsyncWitness):
+      if runtime.rejectReadRetirement and matchesRow(runtime, job):
+        runtime.rejectReadRetirement = false
+        inc runtime.slots[job.slot].key.ticket
     let installed = runtime.started and not runtime.stopping and runtime.active > 0 and
       matchesRow(runtime, job) and runtime.slots[key.slot].state == Live and
       runtime.slots[key.slot].location == CompletionLocation.Installed
     release(runtime.lock)
-    if not installed: return false
+    if not installed or not sameKey(data.retirementKey, job):
+      data.allowed = false
+      data.state = NativeState.Unavailable
+      return false
     # No worker can mutate an Installed row. Serialized host use and the still-active lease
     # preserve this exact key through retireOwner's unlocked physical-unmapping window.
-    let retired = retireOwner(runtime, data.slot, data.generation, true, data.image)
+    let retired = retireOwner(runtime, job, data.image)
     if retired != Detached or data.image.ready:
       # Disable the affected owner's native route. Its remaining image or credit
       # still belongs to the original lifecycle, including any in-flight retirement.
@@ -1476,6 +1480,7 @@ when NativeCheckedReadEnabled:
     data.slot = -1
     data.generation = 0
     data.ticket = 0
+    data.retirementKey = JobKey(slot: -1)
     data.imageKey = default(NativeImageKey)
     data.readProof = data.laterRead.proof
     when NativeReadCycleEnabled:
@@ -1488,6 +1493,15 @@ when NativeCheckedReadEnabled:
     data.laterRead = default(NativeReadCandidate)
     data.state = NativeState.Deferred
     true
+
+when defined(pvmSharedAsyncWitness):
+  proc corruptNextReadRetirementKey*(runtime: NativeRuntime) =
+    ## Break only the installed row's ticket at the actual replacement boundary.
+    let anchor {.cursor.} = runtime.data
+    assert anchor != nil
+    acquire(anchor.storage.lock)
+    anchor.storage.rejectReadRetirement = true
+    release(anchor.storage.lock)
 
 proc invalidateNativeStream*(session: NativeSession) =
   ## Destructive same-plan repricing/rebuild invalidates a pending image without waiting for its worker.
@@ -1542,8 +1556,7 @@ proc collectNative(session: NativeSession) =
   if anchor == nil: return
   let runtime = addr anchor.storage
   if not tryAcquire(runtime.lock): return
-  let key = JobKey(slot: data.slot, generation: data.generation, ticket: data.ticket,
-    epoch: data.epoch, kind: acceptedKind(data))
+  let key = data.retirementKey
   if not matchesRow(runtime, key) or runtime.slots[data.slot].state != Live or
       runtime.slots[data.slot].location != CompletionLocation.Complete or
       runtime.slots[data.slot].cancelled:
@@ -1715,6 +1728,7 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     runtime.slots[data.slot].location = CompletionLocation.Queued
     runtime.work = WorkPhase.Queued
     data.ticket = key.ticket
+    data.retirementKey = key
     data.state = NativeState.Pending
     submitted = true
     if runtime.submitted < high(uint64): inc runtime.submitted
