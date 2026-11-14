@@ -277,6 +277,21 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     let destination = armWrite(fragment, slots.destinationIndex)
     armOperandImmediate(fragment, destination, immediate)
     return
+  if opcode in [147'u8, 148, 218, 219]:
+    # A false predicate reads the old destination too; record every live-in before its write.
+    let previous = armRead(fragment, slots.destinationIndex)
+    let predicate = armRead(fragment, slots.bIndex)
+    let source = if opcode < 190:
+      armOperandImmediate(fragment, 1, immediate)
+      1'u32
+    else:
+      armRead(fragment, slots.aIndex)
+    let destination = armWrite(fragment, slots.destinationIndex)
+    let condition = if opcode in [147'u8, 218]: 0'u32 else: 1'u32
+    fragment.words.add(0xf100001f'u32 or (predicate shl 5)) # CMP Xpredicate,#0.
+    fragment.words.add(0x9a800000'u32 or (previous shl 16) or (condition shl 12) or
+      (source shl 5) or destination) # CSEL preserves all64 bits on either branch, including aliases.
+    return
   if opcode == 100 or opcode in {107'u8..110'u8}:
     # Unary operations read the genuine A slot; every result is full-width, including signed extension.
     let source = armRead(fragment, slots.aIndex)

@@ -80,13 +80,13 @@ def qualify(checks, compiler, rows=None):
         if name.startswith('x86-'):
             # Source cohorts stay checked; raw backend cohorts retain real native/refusal execution.
             expected = (
-                ('X86_REGISTER_CASES', 2360), ('X86_PREFIX_CASES', 2984),
+                ('X86_REGISTER_CASES', 2520), ('X86_PREFIX_CASES', 2984),
                 ('X86_HIGH_LITERAL_CASES', 2070), ('X86_BRANCH_LITERAL_CASES', 1296),
                 ('X86_BRANCH_PREFIX_CASES', 540), ('X86_REGION_PREFIX_CASES', 1440),
                 ('X86_CHECKED_THREE_SOURCE_CASES', 3546), ('X86_EXISTING_ROOT_SOURCE_CASES', 6),
                 ('X86_RESIDENT_CONTEXT_CASES', 0 if refused else 1440),
                 ('X86_COMPACT_IMMEDIATE_CASES', 0 if refused else 3168),
-                ('X86_REGION_ARITHMETIC_CASES', 0 if refused else 2360))
+                ('X86_REGION_ARITHMETIC_CASES', 0 if refused else 2520))
             lines = run['output'].splitlines()
             for marker, count in expected:
                 records = [line for line in lines if line.partition(',')[0] == marker]

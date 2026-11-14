@@ -242,6 +242,18 @@ template emitX86OperationAccess(fragment: var X86Block, access: untyped, opcode:
   assert supportedX86Opcode(opcode)
   if opcode in [20'u8, 51]:
     immediate(fragment, 0xb8, value)
+  elif opcode in [147'u8, 148, 218, 219]:
+    # RDX preserves the chosen value while the old destination and predicate load into RAX/RCX.
+    if opcode < 190:
+      immediate(fragment, 0xba, value)
+    else:
+      readAccess(fragment, access, slots.aIndex, false)
+      put(fragment, [0x48'u8, 0x89, 0xc2]) # MOV RDX,RAX snapshots even a destination alias.
+    readAccess(fragment, access, slots.destinationIndex, false)
+    readAccess(fragment, access, slots.bIndex, true)
+    put(fragment, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX observes the complete predicate.
+    put(fragment, [0x48'u8, 0x0f, (if opcode in [147'u8, 218]: 0x44'u8 else: 0x45'u8),
+      0xc2]) # CMOVZ/CMOVNZ RAX,RDX leaves the old destination when false.
   elif opcode in {101'u8..106}:
     readAccess(fragment, access, slots.aIndex, false)
     let narrow = opcode in [102'u8, 104, 106]
