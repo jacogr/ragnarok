@@ -474,6 +474,18 @@ The supported `make pvm-perf-latest` resolver downloads and validates the newest
 on both architectures without building or executing a benchmark. Selective retries retain each
 CPU's actual PVM attempt; unrelated job failures are shown separately from valid measurements.
 It does not conceal a newer pending or failed cohort behind old successful reports.
+
+For causal JIT comparisons, dispatch `ci.yml` with `suite=bench-pvm`,
+`pvm_architecture=all` and `pvm_baseline_revision=<full immutable commit SHA>`.
+Each native job builds both revisions at the same detached source path, with the same pinned
+compiler, checked flags, measuring drivers and fixtures, using separate clean compiler caches.
+Both revisions repeat the full-result/refusal controls before eleven sequential process pairs
+alternate their order. `paired-results.json` retains all thirteen full public invocations per
+process; `paired-summary.md` reports cold sample zero and reused medians from samples three
+through twelve, with median pair ratios and pair ranges. Native image/code occupancy accompanies
+timings. These direct candidate/baseline ratios are separate from the canonical reference matrix;
+timings from different CI machines or operating systems do not establish a runtime improvement.
+
 Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.
 
