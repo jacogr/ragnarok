@@ -60,12 +60,14 @@ type
   NativeFusionContext* = object
     ## Call-local descriptors and ledger precede a fixed byte log and its returned count.
     ## Each native entry overwrites only its used prefix; unused bytes have no receipt authority.
+    ## A paid lookup miss can retain an attempted address; only a completed final indirect edge
+    ## makes address evidence for final live-jump validation.
     memory*: NativeMixedLoopContext
     gas*, remaining*: uint64
     path*: NativeFusionPath
     visits*, paid*: uint64
     jumps*: nil ptr array[256, uint64] ## Frame-owned checked tags; borrowed only during native entry.
-    address*: uint64 ## Last successful indirect terminal's original wrapped address, before its write.
+    address*: uint64 ## Wrapped pre-write address; meaningful only for a completed final indirect edge.
   NativeFusionExit* = object
     ## A successful validation also carries the proved final source token; the bridge need not decode it again.
     valid*, branches*: bool
@@ -153,7 +155,9 @@ func sameFusionPath(left, right: NativeFusionPath, visits: uint64): bool =
 func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32,
     gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
   ## Consume the exact bounded path backwards, checking every reservation and permitted edge.
-  ## Last-predicate validation uses the committed register file at the frame bridge.
+  ## A valid dynamic receipt proves reservations, the source path and original-table entry permission.
+  ## Before committing state, the caller must validate the final live jump tag, captured pre-write
+  ## address and any load result. Final-predicate validation also belongs to the frame bridge.
   result = default(NativeFusionExit)
   if state.paid > 1 or state.visits > uint64(NativeFusionVisitLimit) or
       state.gas > gas or state.remaining > quota or
@@ -217,7 +221,10 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
 proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[NativeFusionBlock],
     entry, next: uint32, gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
   ## Only full used-prefix equality substitutes the source walk. Every used word participates
-  ## in the bounded hash; live debits, count and exit mode must also match. The frame still
+  ## in the bounded hash; live debits, count and exit mode must also match. A valid cached dynamic
+  ## receipt proves reservations, the source path and original-table entry permission. On every
+  ## completed final indirect edge, the caller must recheck the live jump tag, captured pre-write
+  ## address and any load result before committing state, including on cache hits. The caller also
   ## checks the final predicate and paid source site. Unwritten tail bytes have no authority.
   if state.visits == 0 or state.visits > uint64(NativeFusionVisitLimit) or
       state.paid > 1 or state.gas > gas or state.remaining > quota:
