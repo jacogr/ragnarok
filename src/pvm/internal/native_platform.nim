@@ -55,7 +55,7 @@ elif defined(pvmArm64Jit):
 proc abortNativeReceipt*() {.cdecl, importc: "abort", header: "<stdlib.h>", noreturn.}
   ## Internal ABI/receipt failure cannot unwind into guest replay or publish a partial snapshot.
 
-type NativeImage* = object     ## Exclusive published image with its exact call ABI.
+type NativeImage* = object          ## Exclusive published image with its exact call ABI.
   handle: nil pointer
   offset: uint32
   bytesValue: uint64
@@ -63,7 +63,8 @@ type NativeImage* = object     ## Exclusive published image with its exact call 
   when NativeReadCycleEnabled:
     mixedOffsets, mixedLengths: array[NativeMixedLoopEntryLimit, uint32]
     mixedEntries: uint8
-    fusionOffsets: seq[uint32] # One-based offsets, kept only by a fully published fusion image.
+    fusionOffsets: seq[uint32]      # One-based offsets, kept only by a fully published fusion image.
+    fusionEntries: array[2, uint64] # Slots eligible to enter from checked dispatch.
   when NativeCheckedReadEnabled:
     ringValue: NativeRegisterRing
 
@@ -84,6 +85,7 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
     image.mixedLengths = default(array[NativeMixedLoopEntryLimit, uint32])
     image.mixedEntries = 0
     `=wasMoved`(image.fusionOffsets)
+    image.fusionEntries = default(array[2, uint64])
   when NativeCheckedReadEnabled:
     image.ringValue = default(NativeRegisterRing)
 
@@ -547,6 +549,7 @@ when NativeReadCycleEnabled:
       offsets[index] = uint32(offset+1)
       used = offset+extent
     if used == 0: return
+    var linkedTargets = default(array[NativeFusionBlockLimit, array[2, uint8]])
     var linked = false
     for index in 0..<blocks.len:
       if offsets[index] == 0: continue
@@ -557,9 +560,23 @@ when NativeReadCycleEnabled:
           if offsets[other] == 0 or blocks[other].header != target: continue
           let delta = int(offsets[other])-int(offsets[index])+code[other].inner-fixAt(index, edge)
           if not patchFusionEdge(code[index], edge, delta): return
+          linkedTargets[index][edge] = uint8(other+1)
           linked = true
           break
     if not linked: return
+
+    # Long paths can profit from a native leaf even when reached directly.
+    # A graph of only one-edge paths keeps its leaves available to native
+    # predecessors but pays no entry and receipt costs for standalone leaves.
+    var hasChain = false
+    for targets in linkedTargets:
+      for target in targets:
+        if target != 0 and linkedTargets[int(target)-1] != [0'u8, 0]:
+          hasChain = true
+    var entries = default(array[2, uint64])
+    for slot in 0..<offsets.len:
+      if offsets[slot] != 0 and (hasChain or linkedTargets[slot] != [0'u8, 0]):
+        entries[slot div 64] = entries[slot div 64] or (1'u64 shl (slot mod 64))
 
     let handle = createNativeArena()
     if handle == nil: return
@@ -572,12 +589,17 @@ when NativeReadCycleEnabled:
         return
     result = NativeImage(handle: handle, bytesValue: uint64(used),
         kindValue: NativeKind.StaticFusion,
-      fusionOffsets: move(offsets))
+      fusionOffsets: move(offsets), fusionEntries: entries)
 
   func nativeFusionEntry*(image: NativeImage, slot: int): bool =
     ## An absent slot never grants entry to arena offset zero.
     image.ready and image.kind == NativeKind.StaticFusion and slot >= 0 and
       slot < image.fusionOffsets.len and image.fusionOffsets[slot] != 0
+
+  func nativeFusionDispatchEntry*(image: NativeImage, slot: int): bool =
+    ## Only approved native entries replace a checked charge handler.
+    slot >= 0 and slot < NativeFusionBlockLimit and
+      (image.fusionEntries[slot div 64] and (1'u64 shl (slot mod 64))) != 0
 
   proc enterNativeFusion*(image: NativeImage, slot: int, registers: var RegisterFile,
       state: var NativeFusionContext): uint32 =

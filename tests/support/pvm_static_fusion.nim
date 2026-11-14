@@ -7,7 +7,7 @@
 import std/assertions
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
-import ../../src/pvm/internal/[native_pipeline, native_fusion]
+import ../../src/pvm/internal/[native_pipeline, native_fusion, native_platform, native_ir]
 
 proc fusionGuest(): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
@@ -64,6 +64,33 @@ proc assertSameFusionResult(actual, expected: StepResult) =
     assert observedPages == referencePages
     for page in referencePages:
       assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
+
+proc checkShortFusionEntries() =
+  ## A static predecessor can enter from checked dispatch. Its terminal leaf
+  ## stays checked on a direct visit, but must still execute inside the chain.
+  var blocks = [
+    NativeFusionBlock(header: 4, terminal: 5, span: 1, price: 3,
+      targets: [10'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+    NativeFusionBlock(header: 10, terminal: 12, first: 1, span: 2, price: 7,
+      targets: [NativeEntryFailure, NativeEntryFailure])]
+  blocks[1].operations[0] = NativeOperation(opcode: 51, immediate: 247)
+  let shortImage = lowerNativeFusion(blocks)
+  assert nativeFusionEntry(shortImage, 0) and nativeFusionEntry(shortImage, 1)
+  assert nativeFusionDispatchEntry(shortImage, 0)
+  assert not nativeFusionDispatchEntry(shortImage, 1)
+  var registers = default(RegisterFile)
+  var context = NativeFusionContext(gas: 100, remaining: 16)
+  let next = enterNativeFusion(shortImage, 0, registers, context)
+  let receipt = nativeFusionExit(blocks, 4, next, 100, 16, context)
+  assert receipt.valid and receipt.paidHeader == 11 and receipt.attempted == 3
+  assert next == 12 and context.path == 0x0102 and context.gas == 90 and context.remaining == 13
+  assert uint64(registers[0]) == 247
+
+  # The same two blocks can form a cycle with repeated native links.
+  blocks[1].targets[0] = 4
+  blocks[1].branch = NativeOperation(opcode: 40)
+  let cyclicImage = lowerNativeFusion(blocks)
+  assert nativeFusionDispatchEntry(cyclicImage, 0) and nativeFusionDispatchEntry(cyclicImage, 1)
 
 proc runStaticFusion*() =
   ## Exercise natural selection and exact paid/unpaid exits with changed public inputs.
@@ -135,3 +162,4 @@ proc runStaticFusion*() =
   assertSameFusionResult(execute(resumed.value, limit, jit.value),
     execute(resumed.value, limit, checked.value))
   assert close(runtime)
+  checkShortFusionEntries()
