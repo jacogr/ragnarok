@@ -31,8 +31,9 @@
 ## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
 ## revalidation, and acquire a credit only when eligible work can queue.
 ## Bare prefixes additionally need two entries of their exact emitted checked header
-## in one settled eligible call. Ordinary and adjacent-pair headers use original body
-## nodes during at most two observations; other charged workers keep their dispatch.
+## in settled segments of one eligible call. Unsettled segment visits buy no evidence,
+## even when an earlier host segment contributed work. Ordinary and adjacent-pair headers
+## use original body nodes during at most two observations; other charged workers keep their dispatch.
 ## The temporary observer is restored before any stream handback.
 ## A prefix without this evidence can still seed fusion once a call reaches its
 ## existing training floor. Recurrence is evidence of reuse, not measured profitability.
@@ -172,7 +173,8 @@ type
     state: NativeState
     span: NativeSpan
     prefixRepeated: bool                 ## Two selected header entries in one settled eligible call.
-    prefixVisits: uint8                  ## Saturates at two; never accumulated across public calls.
+    prefixVisits: uint8                  ## Pending current-segment visits, bounded with settled visits by two.
+    prefixSettledVisits: uint8           ## Only settled segments contribute; reset at each public call.
     prefixHeader: uint32                 ## Exact emitted header; overlapping suffixes stay distinct.
     when NativeCheckedReadEnabled:
       readProof: NativeReadStorage
@@ -1208,6 +1210,7 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     data.invocationImageKey = default(NativeImageKey)
     data.invocationWork = 0
     data.prefixVisits = 0
+    data.prefixSettledVisits = 0
     data.invocationBudget = budget
     data.workValid = true
     when NativeCheckedReadEnabled:
@@ -1249,7 +1252,7 @@ func nativePrefixObservation*(session: NativeSession): bool {.inline.} =
   let data {.cursor.} = session.data
   if data == nil: return false
   data.invocation and data.state == NativeState.Deferred and not data.prefixRepeated and
-    data.prefixVisits < 2 and data.span.len >= NativeMinimumOperations and
+    data.prefixVisits+data.prefixSettledVisits < 2 and data.span.len >= NativeMinimumOperations and
     data.prefixHeader < NativeEntryLimit and data.span.epoch == data.epoch and
     data.span.kind == NativeKind.PurePrefix
 
@@ -1261,12 +1264,12 @@ func nativePrefixHeader*(session: NativeSession): uint32 =
 
 proc observeNativePrefix*(session: NativeSession): bool =
   ## The frame invokes this after the original checked header returns without a local error.
-  ## Final settled work qualifies the observation; a partial or failed call buys no eligibility.
+  ## recordNativeWork settles or discards this segment's observations before call-level eligibility.
   ## Return true when the caller must remove its observer, including a closed observation window.
   let data {.cursor.} = session.data
   if data == nil or not nativePrefixObservation(session): return true
   inc data.prefixVisits
-  data.prefixVisits == 2
+  data.prefixVisits+data.prefixSettledVisits == 2
 
 proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
   ## The checked stream verified this certificate against the already selected prefix.
@@ -1555,6 +1558,7 @@ proc invalidateNativeStream*(session: NativeSession) =
   data.span = default(NativeSpan)
   data.prefixRepeated = false
   data.prefixVisits = 0
+  data.prefixSettledVisits = 0
   data.prefixHeader = NativeEntryFailure
   when NativeReadCycleEnabled:
     data.bitmap = default(NativeBitmapLoop)
@@ -1628,13 +1632,21 @@ proc collectNative(session: NativeSession) =
 
 proc recordNativeWork*(session: NativeSession, completed: uint64) =
   ## Add disjoint settled checked segment receipts, never the public initial budget at every host resume.
+  ## Prefix visits remain pending until their own segment settles; zero receipts discard them.
   let data {.cursor.} = session.data
-  if data == nil or not data.invocation or not data.workValid: return
+  if data == nil or not data.invocation: return
+  let visits = data.prefixVisits
+  data.prefixVisits = 0
+  if not data.workValid: return
   if data.invocationWork > data.invocationBudget or completed >
       data.invocationBudget-data.invocationWork:
     data.workValid = false
     data.invocationWork = 0
-  else: data.invocationWork += completed
+  else:
+    data.invocationWork += completed
+    if completed != 0:
+      # Observation stops once the pending plus settled count reaches two.
+      data.prefixSettledVisits += visits
 
 func observedNativeWork*(session: NativeSession): uint64 =
   ## Invalid/local/unsupported receipt paths never manufacture an admission credit.
@@ -1669,7 +1681,7 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Keep a source/epoch-bound maximum of ONE call, not the immediately prior input or a lifetime sum.
   # Short inputs neither manufacture eligibility nor revoke a genuinely long same-source observation.
   data.provenWork = max(data.provenWork, completedWork)
-  if completedWork >= NativeInvocationFloor and data.prefixVisits == 2:
+  if completedWork >= NativeInvocationFloor and data.prefixSettledVisits == 2:
     data.prefixRepeated = true
   when NativeReadCycleEnabled:
     let nativeWork = addNativeCount(data.operations, data.mixedOperations)

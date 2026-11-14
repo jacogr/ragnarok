@@ -314,6 +314,69 @@ when defined(pvmSharedAsyncWitness):
     assert preparedInfo(native).value.nativeOperations == 4096
     assert runtime.close()
 
+  type PrefixResume = object
+    ## Callback-local gas override distinguishes a later fault from an unpaid second reservation.
+    calls: int
+    replaceGas: bool
+    gas: MachineGas
+
+  proc continuePrefix(context: var PrefixResume, stopped: StepOutcome): HostResponse =
+    ## Preserve CPU/RAM and optionally leave exactly one resumed-block reservation affordable.
+    assert stopped.exit == StepExit.Host
+    inc context.calls
+    let cpu = machineInfo(stopped.machine).value
+    HostResponse(action: HostAction.Continue,
+      gas: (if context.replaceGas: context.gas else: cpu.gas), registers: cpu.registers,
+      memory: memoryOf(stopped.machine).value)
+
+  proc unsettledPrefixAdmission() =
+    ## An earlier host receipt cannot qualify entries in a later fault or out-of-gas segment.
+    ## PC16 stores, PC19/22 form the prefix, PC25 advances to the next page, PC29 repeats.
+    let wire = [0'u8, 0, 36, 131, 0xaa, 1, 172, 0xba, 0xfd, 0xff, 0xff, 0xff,
+      10, 7, 40, 5, 0, 0, 0, 120, 0x50, 0, 149, 0x77, 1, 149, 0x88, 1,
+      149, 0x55, 0, 0x10, 40, 0xf3, 0xff, 0xff, 0xff, 50, 0, 9, 10, 73, 34, 4]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    if not nativePlatformSupported(): return
+    let owner = decoded.value
+    let price = blockGas(owner, CodeAddress(16), GasCycleLimit(1000))
+    assert price.error == GasError.None
+    for iterations in [1'u64, 2048]:
+      for outOfGas in [false, true]:
+        # The large first segment meets the floor; changing only it must not change admission.
+        let seed = input(owner, iterations)
+        var cpu = machineInfo(seed).value
+        cpu.registers[5] = RegisterValue(32*4096)
+        let captured = captureMachine(owner, memoryOf(seed).value, cpu)
+        assert captured.error == MachineError.None
+        let source = captured.value
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        pauseNativeCompiler(runtime, true)
+        let native = prepared(owner, runtime)
+        let checked = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000))).value
+        var left = PrefixResume(replaceGas: outOfGas, gas: MachineGas(uint64(price.value)))
+        var right = left
+        let expected = executeWithHost(source, left, continuePrefix, ExecutionStepLimit(10000),
+          HostCallLimit(1), checked)
+        let actual = executeWithHost(source, right, continuePrefix, ExecutionStepLimit(10000),
+          HostCallLimit(1), native)
+        assert expected.error == StepError.None and actual.error == StepError.None
+        assert actual.value.exit == (if outOfGas: StepExit.OutOfGas else: StepExit.Fault)
+        assert actual.value.exit == expected.value.exit
+        assert machineInfo(actual.value.machine).value == machineInfo(expected.value.machine).value
+        if not outOfGas: assert actual.value.faultPage == expected.value.faultPage
+        assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+          pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+        let finished = machineInfo(actual.value.machine).value
+        assert uint64(finished.registers[7]) == 1 and uint64(finished.registers[8]) == 889
+        assert uint64(finished.registers[5]) == 33'u64*4096
+        assert left.calls == 1 and right.calls == 1
+        assert machineInfo(source).value == cpu
+        assert pageImage(memoryOf(source).value, PageIndex(32)).value.bytes[0] == 29
+        assert runtime.runtimeInfo.submitted == 0 and runtime.runtimeInfo.registered == 0
+        assert runtime.close()
+
   proc bitCountExpected(value: uint64, opcode: byte): uint64 =
     ## Independent bit-by-bit oracle includes the selected width's zero case.
     let bits = if opcode in [102'u8, 104, 106]: 32 else: 64
@@ -1880,6 +1943,8 @@ proc runSharedAsync*() =
     prefixAdmission()
     diagnosticPhase("recurringPrefixAdmission")
     recurringPrefixAdmission()
+    diagnosticPhase("unsettledPrefixAdmission")
+    unsettledPrefixAdmission()
     nativeBitCounts()
     nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
