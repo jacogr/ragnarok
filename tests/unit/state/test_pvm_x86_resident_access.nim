@@ -3,6 +3,7 @@
 
 ## Private literal scalar/branch residency, canonical bytes and actual six-register SysV controls.
 ## Full-width relative reads prove both register transactions and late-refusal atomicity.
+## Closed loops check mixed resident/spilled lanes, paid-first guards, complete receipts and SysV saves.
 
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/natural
@@ -75,6 +76,7 @@ var jit = newX86Jit()
 var next = 0'u32
 var scalarCases = 0
 var branchCases = 0
+var loopCases = 0
 for numeric in 0..255:
   let opcode = byte(numeric)
   if not supportedX86Opcode(opcode): continue
@@ -373,9 +375,75 @@ when Native and defined(pvmX86Jit):
             assert enterNativeReadBodyAbiProof(image, actual, context) and actual == expected
             assert firstData == changedFirst and lastData == changedLast
 
+when Native and defined(pvmX86Jit):
+  proc loopIncrement(slot: range[0..12]): RegisterSlots =
+    ## Literal ADD64 rN,rN,1 yields genuine decoded aliased source/destination coordinates.
+    let wire = [0'u8, 0, 5, 149, byte(int(slot) or (int(slot) shl 4)), 1, 50, 0, 9]
+    let owner = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert owner.error == ProgramError.None
+    let decoded = instruction(owner.value, CodeAddress(0))
+    assert decoded.error == ProgramError.None and decoded.value.opcode == 149
+    instructionRegisters(decoded)
+
+  block closedLoopResidency:
+    # A thirteen-lane body must spill while its selected bank still saves all six SysV GPRs.
+    for width in [2, 6, 7, 12, 13]:
+      for immediate in [false, true]:
+        # A separate register bound stays read-only; the thirteen-writer case uses an immediate.
+        if width == 13 and not immediate: continue
+        let counter = width-1
+        let branchOwner = literalOwner((if immediate: 82'u8 else: 172'u8),
+          byte(counter or (if immediate: 0 else: 12 shl 4)))
+        let branch = instruction(branchOwner, CodeAddress(0))
+        assert branch.error == ProgramError.None
+        for price in [3'u64, 0x100000001'u64]:
+          # Both compact and full-width context debits share one resident publication epilogue.
+          var span = initNativeSpan(41, 0, 1)
+          for slot in 0..12:
+            # The fixed guest-file extent proves the decoded lane before selecting the body width.
+            if slot >= width: break
+            assert span.add(149, loopIncrement(slot), 1, uint32(slot), uint32(42+slot))
+          let sourceSpan = uint32(width+1)
+          span.promote(NativeLoopInfo(header: 40, exitHeader: 80, sourceSpan: sourceSpan,
+            price: price, slots: instructionRegisters(branch),
+            rightKind: (if immediate: NativeLoopRightKind.Immediate else: NativeLoopRightKind.Register),
+            rightImmediate: 8))
+          let image = lowerNative(span)
+          assert image.ready and image.kind == NativeKind.ClosedRegisterLoop
+          for seed in [0'u64, high(uint64)-3]:
+            for gas in [0'u64, price-1, price, price*16]:
+              for remaining in [0'u64, uint64(sourceSpan)-1, uint64(sourceSpan), uint64(
+                  sourceSpan)*16]:
+                # A plain scalar oracle applies the paid body before either next-visit guard.
+                var expected = initial(seed)
+                expected[counter] = RegisterValue(0)
+                if not immediate: expected[12] = RegisterValue(8)
+                var actual = expected
+                var ledger = NativeLoopContext(gas: gas, remaining: remaining, visits: 0)
+                var context = ledger
+                var next = 40'u32
+                while true:
+                  # Every admitted scalar writes exactly once, including canonical spilled lanes.
+                  for slot in 0..<width:
+                    expected[slot] = RegisterValue(uint64(expected[slot])+1)
+                  inc ledger.visits
+                  if uint64(expected[counter]) >= 8:
+                    next = 80
+                    break
+                  if ledger.gas < price or ledger.remaining < uint64(sourceSpan): break
+                  ledger.gas -= price
+                  ledger.remaining -= uint64(sourceSpan)
+                assert enterNativeLoop(image, actual, context) == next
+                assert actual == expected
+                assert context.gas == ledger.gas and context.remaining == ledger.remaining and
+                  context.visits == ledger.visits
+                inc loopCases
+
 when Native:
   # Fifty-nine scalar opcodes cover every pattern, resident mask and initial seed.
   assert scalarCases == 12744, "resident scalar coverage: " & $scalarCases
   assert branchCases == 3456, "resident branch coverage: " & $branchCases
+  when defined(pvmX86Jit):
+    assert loopCases == 576, "resident closed-loop coverage: " & $loopCases
 assert next < 4096
 stdout.writeLine("X86_RESIDENT_ACCESS_OK")
