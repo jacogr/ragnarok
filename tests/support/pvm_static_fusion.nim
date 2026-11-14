@@ -17,7 +17,8 @@ proc checkRepeatedFusionReceipt() =
     NativeFusionBlock(header: 20, terminal: 23, span: 3, price: 7,
       targets: [high(uint32), high(uint32)], guards: 1)]
   var memo = default(NativeFusionReceipts)
-  var state = NativeFusionContext(gas: 90, remaining: 95, path: 0x0102, paid: 1)
+  var state = NativeFusionContext(gas: 90, remaining: 95, visits: 2, paid: 1)
+  state.path[0] = 0x0201 # Forward byte order records block one, then block two.
   let proven = checkNativeFusionExit(memo, blocks, 10, 21, 100, 100, state)
   assert proven.valid and proven.paidHeader == 21 and proven.attempted == 5 and proven.branches
 
@@ -36,7 +37,59 @@ proc checkRepeatedFusionReceipt() =
   state.paid = 1
   assert checkNativeFusionExit(memo, blocks, 10, 21, 15, 5, state) == proven
 
-proc fusionGuest(): Program =
+proc checkLongFusionReceipts() =
+  ## Word-boundary paths keep complete identity, exact debits and paid/unpaid exit modes.
+  let blocks = [
+    NativeFusionBlock(header: 10, terminal: 12, span: 2, price: 3,
+      targets: [20'u32, 20], guards: 1),
+    NativeFusionBlock(header: 20, terminal: 23, span: 3, price: 7,
+      targets: [10'u32, 10], guards: 1)]
+  var memo = default(NativeFusionReceipts)
+  for count in [1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64]:
+    # Only supported lengths are constructed; the same controls run for each trial horizon.
+    if count > NativeFusionVisitLimit: continue
+    let debit = uint64((count div 2)*10+(if (count and 1) != 0: 3 else: 0))
+    let attempts = uint64((count div 2)*5+(if (count and 1) != 0: 2 else: 0))
+    let last = if (count and 1) != 0: 10'u32 else: 20'u32
+    let next = if (count and 1) != 0: 20'u32 else: 10'u32
+    var state = NativeFusionContext(gas: 1000-debit, remaining: 1000-attempts,
+      visits: uint64(count), paid: 0)
+    for index in 0..<count:
+      # Forward tokens alternate two independently priced source blocks, including repeated visits.
+      state.path[index div 8] = state.path[index div 8] or
+        (uint64(1+(index and 1)) shl ((index and 7)*8))
+    let proven = checkNativeFusionExit(memo, blocks, 10, next, 1000, 1000, state)
+    assert proven.valid and proven.paidHeader == 0 and proven.attempted == uint32(attempts)
+    assert proven.branches and proven.lastToken == (if (count and 1) != 0: 1'u32 else: 2'u32)
+    if (count and 7) != 0:
+      # A producer need not clear unwritten bytes from a previous longer entry.
+      let word = count div 8
+      state.path[word] = state.path[word] or (0xff'u64 shl ((count and 7)*8))
+      assert checkNativeFusionExit(memo, blocks, 10, next, 1000, 1000, state) == proven
+    let original = state.path
+    let middle = count div 2
+    state.path[middle div 8] = state.path[middle div 8] and
+      not (255'u64 shl ((middle and 7)*8))
+    assert not checkNativeFusionExit(memo, blocks, 10, next, 1000, 1000, state).valid
+    state.path = original
+    dec state.visits
+    assert not checkNativeFusionExit(memo, blocks, 10, next, 1000, 1000, state).valid
+    state.visits = uint64(count)
+    state.paid = 1
+    let paid = checkNativeFusionExit(memo, blocks, 10, last+1, 1000, 1000, state)
+    assert paid.valid and paid.paidHeader == last+1 and paid.attempted == uint32(attempts)
+    state.paid = 0
+    assert not checkNativeFusionExit(memo, blocks, 10, last+1, 1000, 1000, state).valid
+    state.visits = uint64(NativeFusionVisitLimit)+1
+    assert not checkNativeFusionExit(memo, blocks, 10, next, 1000, 1000, state).valid
+  var empty = NativeFusionContext(gas: 1000, remaining: 1000)
+  empty.path[0] = high(uint64)
+  let idle = checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty)
+  assert idle.valid and idle.lastToken == 0
+  empty.paid = 1
+  assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
+
+proc fusionGuest(late: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -57,7 +110,13 @@ proc fusionGuest(): Program =
   assert code.len == first
   emit([2'u8]) # Folded no-op still consumes an original attempt.
   emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
-  emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
+  if late:
+    # A wrapping in-page offset trains with one page but permits a late cross-page fault.
+    emit([132'u8, 0x24, 0xff, 0x0f]) # R4 = R2 & 4095.
+    emit([200'u8, 0x64, 4]) # R4 = R4 + R6.
+    emit([124'u8, 0x41, 0]) # Read byte R1,[R4].
+  else:
+    emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
   emit([149'u8, 0x22, 1]) # One completed iteration per pass.
   let second = code.len+7
   jump([80'u8, 0x19, 0x80], second) # Write sign-extended -128 to R9 before the linked target.
@@ -92,9 +151,13 @@ proc assertSameFusionResult(actual, expected: StepResult) =
     for page in referencePages:
       assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
 
+proc checkLateFusionFault()
+  ## The late paid-memory fixture is defined below the main supported fusion witness.
+
 proc runStaticFusion*() =
   ## Exercise natural selection and exact paid/unpaid exits with changed public inputs.
   checkRepeatedFusionReceipt()
+  checkLongFusionReceipts()
   let program = fusionGuest()
   let runtime = newNativeRuntime()
   try:
@@ -166,4 +229,56 @@ proc runStaticFusion*() =
   assert resumed.error == MachineError.None
   assertSameFusionResult(execute(resumed.value, limit, jit.value),
     execute(resumed.value, limit, checked.value))
+  assert close(runtime)
+  checkLateFusionFault()
+
+proc checkLateFusionFault() =
+  ## A paid read in the 49th linked block must retain all earlier stores and exact accounting.
+  let program = fusionGuest(late = true)
+  let runtime = newNativeRuntime()
+  try:
+    assert start(runtime)
+  except:
+    assert false, "late fusion runtime failed to start"
+  let jit = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Jit, runtime)
+  let checked = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Interpreted)
+  assert jit.error == PreparationError.None and checked.error == PreparationError.None
+  let capturedMemory = captureMemory([PageImage(index: PageIndex(16),
+      access: PageAccess.ReadWrite)],
+    PageLimit(2))
+  assert capturedMemory.error == MachineError.None
+  let memory = capturedMemory.value
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(8000000))
+  info.registers[0] = RegisterValue(165)
+  info.registers[3] = RegisterValue(0xffff0000'u64)
+  info.registers[5] = RegisterValue(65536)
+  info.registers[6] = RegisterValue(65536)
+  info.registers[12] = RegisterValue(90000)
+  let captured = captureMachine(program, memory, info)
+  assert captured.error == MachineError.None
+  let source = captured.value
+  let limit = ExecutionStepLimit(2000000)
+  let expected = execute(source, limit, checked.value)
+  assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+  for sample in 0..2:
+    # Publish the ordinary seed, then train and collect the same two-block fusion graph.
+    assertSameFusionResult(execute(source, limit, jit.value), expected)
+    waitNativeCompiler(runtime)
+  assert preparedInfo(jit.value).value.nativeFragments == 2
+  info.registers[6] = RegisterValue(65536+4096-24)
+  let late = captureMachine(program, memory, info)
+  assert late.error == MachineError.None
+  let before = preparedInfo(jit.value).value.nativeOperations
+  let fault = execute(late.value, limit, jit.value)
+  assertSameFusionResult(fault, execute(late.value, limit, checked.value))
+  assert fault.error == StepError.None and fault.value.exit == StepExit.Fault
+  assert preparedInfo(jit.value).value.nativeOperations == before+222,
+    "late native progress: " & $(preparedInfo(jit.value).value.nativeOperations-before)
+  let cpu = machineInfo(fault.value.machine).value
+  assert uint64(cpu.registers[2]) == 24 and cpu.blockCharged, "late counter/paid state"
+  assert uint64(fault.value.faultPage) == 17'u64*4096, "late fault page address"
+  assert load(memoryOf(fault.value.machine).value, MemoryAddress(65536), AccessWidth(1)).value ==
+    RegisterValue(165)
+  assert pageImage(memory, PageIndex(16)).value.bytes[0] == 0
+  assert machineInfo(late.value).value == info
   assert close(runtime)

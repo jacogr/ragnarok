@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Included by the ARM64 emitter. Retain the complete guest bank and exact path
-## across source-checked edges. Standalone source audits import an empty fragment.
+## across source-checked edges. X23 bounds visits and X24 appends one token to call-local
+## history after a successful reservation. Standalone source audits import an empty fragment.
 
 when declared(ArmBlock):
   type ArmFusionEncoding* = object
@@ -28,7 +29,9 @@ when declared(ArmBlock):
       cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
     cycleStore(words, 21, 20, uint32(NativeFusionGasOffset))
     cycleStore(words, 22, 20, uint32(NativeFusionQuotaOffset))
-    cycleStore(words, 24, 20, uint32(NativeFusionPathOffset))
+    armCompactImmediate(words, 1, uint64(NativeFusionVisitLimit))
+    cycleAddRegister(words, 1, 1, 23, true)
+    cycleStore(words, 1, 20, uint32(NativeFusionVisitsOffset))
     armCompactImmediate(words, 1, uint64(ord(paid)))
     cycleStore(words, 1, 20, uint32(NativeFusionPaidOffset))
     armCompactImmediate(words, 0, uint64(next))
@@ -67,8 +70,8 @@ when declared(ArmBlock):
     cycleMove(words, 20, 1)
     cycleLoad(words, 21, 20, uint32(NativeFusionGasOffset))
     cycleLoad(words, 22, 20, uint32(NativeFusionQuotaOffset))
-    words.add(0xd2800117'u32) # MOV X23,#8.
-    words.add(0xd2800018'u32) # MOV X24,#0.
+    words.add(0xd2800017'u32 or (uint32(NativeFusionVisitLimit) shl 5)) # MOV X23,bounded horizon.
+    cycleAddImmediate(words, 24, 20, uint32(NativeFusionPathOffset))
     for slot in 0..12:
       cycleLoad(words, uint32(slot+4), 19, uint32(slot*8))
     let inner = words.len
@@ -80,8 +83,8 @@ when declared(ArmBlock):
     cyclePriceChange(words, item.price)
     cycleAddImmediate(words, 22, 22, item.span, true)
     cycleAddImmediate(words, 23, 23, 1, true)
-    words.add(0xd378df18'u32) # LSL X24,X24,#8.
-    cycleAddImmediate(words, 24, 24, uint32(token))
+    armCompactImmediate(words, 1, uint64(token))
+    words.add(0x38001701'u32) # STRB W1,[X24],#1 appends only after the visit guard and debit.
     for index in 0..<count:
       if words.len > capacity-operationWords: return
       let op = item.operations[index]

@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Included by the x86 emitter beside the existing exact guarded memory operations.
-## A linked edge preserves the same register-file borrow, context and path registers.
+## A linked edge preserves the register-file borrow, context, bounded R13 counter and R12
+## byte-log pointer. Each token store follows the remaining-visit and reservation guards.
 
 when declared(X86Block):
   type X86FusionEncoding* = object
@@ -24,7 +25,10 @@ when declared(X86Block):
 
   proc x86FusionReturn(code: var X86Block, next: uint32, paid: bool) =
     ## Original gas and quota already live in the call context.
-    readCycleContextOp(code, [0x4d'u8, 0x89, 0xa2], NativeFusionPathOffset)
+    put(code, [0xba'u8]) # MOV EDX,horizon.
+    cycleWord(code, uint32(NativeFusionVisitLimit))
+    put(code, [0x4c'u8, 0x29, 0xea]) # SUB RDX,R13 yields the exact logged visit count.
+    readCycleContextOp(code, [0x49'u8, 0x89, 0x92], NativeFusionVisitsOffset)
     readCycleContextOp(code, [0x49'u8, 0xc7, 0x82], NativeFusionPaidOffset)
     cycleWord(code, uint32(ord(paid)))
     put(code, [0xb8'u8]) # MOV EAX,checked continuation.
@@ -36,7 +40,7 @@ when declared(X86Block):
     const
       operationBytes = 224
       operationFixes = 15
-      returnBytes = 32
+      returnBytes = 40
       unpaid = 0'u8
       noEdge = 1'u8
       yesEdge = 2'u8
@@ -55,7 +59,8 @@ when declared(X86Block):
     let access = X86CanonicalAccess()
 
     put(code, [0x41'u8, 0x54, 0x41, 0x55]) # PUSH R12; PUSH R13.
-    put(code, [0x49'u8, 0x89, 0xf2, 0x45, 0x31, 0xe4]) # MOV R10,RSI; XOR R12D,R12D.
+    put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI retains the call-local context.
+    readCycleContextOp(code, [0x4d'u8, 0x8d, 0xa2], NativeFusionPathOffset) # LEA R12,[R10+path].
     put(code, [0x41'u8, 0xbd]) # MOV R13D,visit limit.
     cycleWord(code, uint32(NativeFusionVisitLimit))
     let inner = code.bytes.len
@@ -70,9 +75,9 @@ when declared(X86Block):
     readCycleContextOp(code, [0x49'u8, 0x29, 0x82], NativeFusionGasOffset)
     readCycleContextOp(code, [0x49'u8, 0x83, 0xaa], NativeFusionQuotaOffset)
     put(code, [byte(item.span)]) # SUB [R10+quota],span.
-    put(code, [0x41'u8, 0xff, 0xcd, 0x49, 0xc1, 0xe4, 0x08]) # DEC R13D; SHL R12,8.
-    put(code, [0x49'u8, 0x81, 0xcc]) # OR R12,token.
-    cycleWord(code, uint32(token))
+    put(code, [0x41'u8, 0xff, 0xcd]) # DEC R13D after the complete reservation.
+    put(code, [0x41'u8, 0xc6, 0x04, 0x24, byte(token),
+      0x49, 0xff, 0xc4]) # MOV BYTE [R12],token; INC R12 appends within the guarded horizon.
     for index in 0..<count:
       if code.bytes.len > NativeImageByteLimit-operationBytes: return
       let op = item.operations[index]
