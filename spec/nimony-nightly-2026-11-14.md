@@ -131,3 +131,8 @@ The repaired full ARM witness passes all 31 backend, 13,524 frame and 709 clippe
 refusals, opcode/host/ownership controls, shared native execution, mixed arena/allocation refusals,
 read-width checks and checked-policy controls. This local gate is macOS ARM64 evidence; the failed
 Linux jobs still require exact-head CI requalification after publication.
+
+That complete local gate precedes reconciliation with master `f93d5093` (standalone leaf admission).
+After merging it, `pvm_shared_async_arm` passes again with its updated static-fusion witnesses,
+covering the changed admission policy and native/checked handoffs. Earlier unrelated passing
+results are retained rather than repeated. Fresh selected full CI must qualify the published head.
