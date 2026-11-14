@@ -463,17 +463,43 @@ proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
   flatStop
 
 proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
-  ## Only a partial block installs this synthetic barrier; folded no-ops still select their exact source boundary.
+  ## A partial reservation may stop on a folded no-op's original source fact.
+  if uint64(f.barrierFact) >= uint64(f.plan.facts.len):
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
+proc installFlatBudget(f: var FlatFrame, first, limit, fact: uint32): bool =
+  ## Patch the first materialized node at or past the selected source attempt.
+  ## Refuse inconsistent geometry before reading or changing the handler table.
+  if f.barrier != flatStop or fact >= limit or uint64(limit) > uint64(f.plan.facts.len):
+    return false
+  var boundary = uint64(first)
+  let extent = uint64(min(f.sites.len, f.handlers.len))
+  while boundary < extent and f.sites[int(boundary)] < fact:
+    inc boundary
+  if boundary >= extent or f.sites[int(boundary)] >= limit: return false
+  f.barrier = uint32(boundary)
+  f.barrierFact = fact
+  f.savedHandler = f.handlers[int(boundary)]
+  f.handlers[int(boundary)] = flatBudget
+  true
+
 proc restoreFlatTemporaryHandler(f: var FlatFrame, node: uint32, temporary, original: FlatHandler) =
-  ## A quota barrier saves the worker it replaced. Restore that saved worker before clearing its owner.
+  ## A temporary owner can restore only the exact handler or saved quota predecessor.
+  if uint64(node) >= uint64(f.handlers.len):
+    f.reason = oracle.StepError.BackendFailure
+    return
   if f.barrier == node:
-    assert f.handlers[int(node)] == flatBudget and f.savedHandler == temporary
+    if f.handlers[int(node)] != flatBudget or f.savedHandler != temporary:
+      f.reason = oracle.StepError.BackendFailure
+      return
     f.savedHandler = original
   else:
-    assert f.handlers[int(node)] == temporary
+    if f.handlers[int(node)] != temporary:
+      f.reason = oracle.StepError.BackendFailure
+      return
     f.handlers[int(node)] = original
 
 template flatReserveImpl(f: var FlatFrame, off: uint32,
@@ -501,20 +527,14 @@ template flatReserveImpl(f: var FlatFrame, off: uint32,
         if f.readProbe.protectedCountable and f.remaining <= f.readProbe.protectedRemainingLimit:
           inc f.readProbe.candidates[ReadProbeSlots].eligible
   else:
-    let reserved = f.remaining
+    # The paid source quota may land on a folded instruction inside this block.
+    let start = f.sites[int(off)]
+    if uint64(start)+uint64(a.y) > uint64(f.plan.facts.len) or
+        not installFlatBudget(f, off+1, start+a.y, start+uint32(f.remaining)):
+      f.reason = oracle.StepError.BackendFailure
+      return flatStop
     f.remaining = 0
-    f.reservation = f.sites[int(off)]+uint32(reserved)
-    f.barrierFact = f.reservation
-    # Multiple cached suffixes can represent this same source PC. Patch only the active stream,
-    # whose sites are ordered; a folded no-op stops at the next real node but reports its own PC.
-    var boundary = off+1
-    while int(boundary) < f.sites.len and f.sites[int(boundary)] < f.barrierFact:
-      inc boundary
-    assert int(boundary) < f.handlers.len
-    assert uint64(f.sites[int(boundary)]) < uint64(f.sites[int(off)])+uint64(a.y)
-    f.barrier = boundary
-    f.savedHandler = f.handlers[int(f.barrier)]
-    f.handlers[int(f.barrier)] = flatBudget
+    f.reservation = f.barrierFact
 
 template flatReserve(f: var FlatFrame, off: uint32) =
   ## Ordinary headers reserve without read observation.
@@ -3258,28 +3278,26 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     default(array[2, uint64])
 
 proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
-  ## Only an actual paid execution entry reserves its cached body; target prelinking never calls this helper.
-  assert f.info.blockCharged and f.remaining > 0 and f.barrier == flatStop
-  assert start >= 0 and start < f.plan.facts.len
-  assert int(body) < f.handlers.len and int(body) < f.sites.len
+  ## A real paid resume reserves only its original suffix. Refuse a stale cached
+  ## coordinate before using it as either a handler or a source fact.
+  if not f.info.blockCharged or f.remaining == 0 or f.barrier != flatStop or
+      start < 0 or start >= f.plan.facts.len or
+      uint64(body) >= uint64(min(f.handlers.len, f.sites.len)):
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   let count = f.plan.facts[start].sourceCount
-  assert count > 0 and uint64(start)+uint64(count) <= uint64(f.plan.facts.len)
-  assert uint64(f.sites[int(body)]) >= uint64(start) and
-    uint64(f.sites[int(body)]) < uint64(start)+uint64(count)
+  let past = uint64(start)+uint64(count)
+  let site = uint64(f.sites[int(body)])
+  if count == 0 or past > uint64(f.plan.facts.len) or site < uint64(start) or site >= past:
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   let reserved = min(f.remaining, uint64(count))
+  let stop = uint32(start)+uint32(reserved)
+  if reserved < uint64(count) and not installFlatBudget(f, body, uint32(past), stop):
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   f.remaining-=reserved
-  f.reservation = uint32(start)+uint32(reserved)
-  if reserved < uint64(count):
-    # Folded noops may precede this body: stop at their exact source fact, not the next physical node's PC.
-    f.barrierFact = f.reservation
-    var boundary = body
-    while int(boundary) < f.sites.len and f.sites[int(boundary)] < f.barrierFact:
-      inc boundary
-    assert int(boundary) < f.handlers.len
-    assert uint64(f.sites[int(boundary)]) < uint64(start)+uint64(count)
-    f.barrier = boundary
-    f.savedHandler = f.handlers[int(boundary)]
-    f.handlers[int(boundary)] = flatBudget
+  f.reservation = stop
   body
 
 template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[bool],
@@ -3608,6 +3626,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
         # The original admitted body has every source operation already; neither emission nor pricing is needed.
         let start = int(f.plan.factAt[int(pc)]) - 1
         offset = flatResumePaid(f, target, start)
+        if offset == flatStop: return
   if offset == flatStop:
     # Unpaid, missing and invalid entries retain their existing admission, pricing and refusal order.
     offset = flatResolve(f, pc)
@@ -3620,10 +3639,15 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     flatDispatchSegment(f, offset)
   if f.barrier != flatStop:
     let saved = f.savedHandler
-    assert saved != nil
-    if saved != nil: f.handlers[int(f.barrier)] = saved
+    if saved == nil or uint64(f.barrier) >= uint64(f.handlers.len) or
+        f.handlers[int(f.barrier)] != flatBudget:
+      f.reason = oracle.StepError.BackendFailure
+    else:
+      f.handlers[int(f.barrier)] = saved
     f.barrier = flatStop
     f.savedHandler = nil
+  # A damaged stream cannot be scanned for promotion or returned to the owner.
+  if f.reason == oracle.StepError.BackendFailure: return
   if f.reason == oracle.StepError.None and f.attemptedExit:
     let sourceFact = f.sites[int(f.stoppedAt)]
     var reservedEnd = f.reservation
@@ -3633,7 +3657,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
     if reservedEnd > sourceFact+1:
       f.remaining+=uint64(reservedEnd-sourceFact-1)
-  if f.reason == oracle.StepError.BackendFailure: return
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)
@@ -4493,6 +4516,21 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
       assert flatWalkCompleteSource(frame[], header, source, walk)
       terminal = walk.terminal
       assert flatUnresolvedBranch[171](frame[], terminal) == terminal
+    # Stale coordinates must not patch a neighboring worker or replay a paid suffix.
+    let charge = observed.handlers[int(header)]
+    let terminalSite = observed.sites[int(terminal)]
+    assert not installFlatBudget(observed, uint32(observed.handlers.len),
+      terminalSite+1, terminalSite)
+    assert not installFlatBudget(observed, header, terminalSite, terminalSite)
+    assert observed.barrier == flatStop and observed.savedHandler == nil
+    assert observed.handlers[int(header)] == charge
+    observed.info.blockCharged = true
+    observed.remaining = 1
+    assert flatResumePaid(observed, uint32(observed.handlers.len), int(terminalSite)) == flatStop
+    assert observed.reason == oracle.StepError.BackendFailure
+    assert observed.remaining == 1 and observed.barrier == flatStop
+    observed.info.blockCharged = false
+    observed.reason = oracle.StepError.None
     let proof = buildFlatMixedLoop(observed, pc, 1)
     assert proof.complete
     observed.mixedSource.epoch = 1
