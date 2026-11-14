@@ -798,6 +798,37 @@ when defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).submitted == 1
     assert close(runtime)
 
+  when NativeCheckedReadEnabled:
+    proc unexpectedQuotaHost(calls: var int, suspension: StepOutcome): HostResponse =
+      inc calls
+      default(HostResponse)
+
+    proc invalidQuotaPredecessor() =
+      ## Both public owners must discard a damaged stream with an active observer.
+      let owner = loopOwner()
+      let source = input(owner, 2048)
+      let initial = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let quota = ExecutionStepLimit(6145)
+      for hosted in [false, true]:
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        let code = prepared(owner, runtime)
+        loseNextQuotaProbePredecessor()
+        if hosted:
+          var calls = 0
+          let failed = executeWithHost(source, calls, unexpectedQuotaHost, ExecutionStepLimit(2),
+            HostCallLimit(1), code)
+          assert failed.error == StepError.BackendFailure and calls == 0
+        else:
+          assert execute(source, ExecutionStepLimit(2), code).error == StepError.BackendFailure
+        assert preparedInfo(code).value.streamNodes == 0
+        assert preparedNativeState(code).value == NativeState.Unavailable
+        assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+        assert machineInfo(source).value == initial and memoryOf(source).value == memory
+        verify(execute(source, quota, code), source, 2048)
+        assert runtimeInfo(runtime).submitted == 0 and close(runtime)
+
   proc purePrefixControl() =
     ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
     if not nativePlatformSupported(): return
@@ -1576,6 +1607,8 @@ proc runSharedAsync*() =
     diagnosticPhase("immediateLoops")
     immediateLoops()
     invalidNativeReceipt()
+    when NativeCheckedReadEnabled:
+      invalidQuotaPredecessor()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
     adjacentNativePrefix()

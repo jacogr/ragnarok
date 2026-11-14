@@ -3581,6 +3581,13 @@ when NativeReadCycleEnabled:
     else:
       selected()
 
+when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+  var loseQuotaPredecessor {.threadvar.}: bool
+
+  proc loseNextQuotaProbePredecessor*() =
+    ## Inject a missing quota predecessor at a terminal still owned by the Read observer.
+    loseQuotaPredecessor = true
+
 proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   ## A zero budget returns StepLimitExceeded before the frame's preparation failure
@@ -3638,6 +3645,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   else:
     flatDispatchSegment(f, offset)
   if f.barrier != flatStop:
+    when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+      if loseQuotaPredecessor:
+        loseQuotaPredecessor = false
+        f.readProbe.observing = true
+        f.readProbe.count = 1
+        f.readProbe.candidates[0].terminal = f.barrier
+        f.savedHandler = nil
     let saved = f.savedHandler
     if saved == nil or uint64(f.barrier) >= uint64(f.handlers.len) or
         f.handlers[int(f.barrier)] != flatBudget:

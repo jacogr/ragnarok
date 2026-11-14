@@ -631,6 +631,10 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
     if nativeReplacementObservation(frame.nativeSession): beginReadProbe(frame, uint64(limit))
   let nativeBaseline = nativeOperations(frame)
   runFlat(frame, uint64(limit))
+  if frame.reason == StepError.BackendFailure:
+    # Segment borrows have returned. Probe cleanup would inspect the damaged handler table.
+    retireFailedNativeInvocation(data.native)
+    return StepResult(status: StepError.BackendFailure)
   when NativeCheckedReadEnabled:
     endReadProbeSegment(frame)
   recordNativeWork(data.native, settledNativeWork(frame, uint64(limit)))
@@ -643,12 +647,8 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == StepError.None)
     finishNativeReadObservation(frame, answer.error == StepError.None)
-  if frame.reason == StepError.BackendFailure:
-    # Native effects may include writes without matching dirty bits. Drop the whole frame.
-    retireFailedNativeInvocation(data.native)
-  else:
-    data.stream = takeFlatStream(frame)
-    data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  data.stream = takeFlatStream(frame)
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
@@ -911,6 +911,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
     when NativeCheckedReadEnabled:
       resumeReadProbeSegment(frame, segmentBudget)
     runFlat(frame, segmentBudget)
+    if frame.reason == StepError.BackendFailure:
+      return executionResult[Reason](StepResult(status: StepError.BackendFailure))
     when NativeCheckedReadEnabled:
       endReadProbeSegment(frame)
     recordNativeWork(frame.nativeSession, settledNativeWork(frame, segmentBudget))
@@ -1069,15 +1071,14 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
     beginReadProbe(frame, uint64(steps))
   let answer = driveHostFrame[Context, Reason, Fallible, ScalarCapable, Callbacks](frame, owner,
       context, callbacks, steps, calls, data.limits.resources.pages)
+  if frame.reason == StepError.BackendFailure:
+    retireFailedNativeInvocation(data.native)
+    return answer
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
-  if frame.reason == StepError.BackendFailure:
-    # Native effects may include writes without matching dirty bits. Drop the whole frame.
-    retireFailedNativeInvocation(data.native)
-  else:
-    data.stream = takeFlatStream(frame)
-    data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  data.stream = takeFlatStream(frame)
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,
