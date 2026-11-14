@@ -519,12 +519,14 @@ when NativeReadCycleEnabled:
     ## x86-64 can retain different subsets under these limits. Link only staged
     ## headers, leaving all other continuations checked. Return an empty image
     ## if no edge links or publication fails. An append failure releases the
-    ## entire arena before any entry becomes callable.
+    ## entire arena before any entry becomes callable. x86 uses one graph-wide GPR/SSE2
+    ## allocation so external entries and linked continuations agree on every used guest lane.
     result = default(NativeImage)
     if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
     when defined(pvmX86Jit):
       const unit = 1
       const alignment = 16
+      let access = x86FusionAccess(blocks)
       var code = default(array[NativeFusionBlockLimit, X86FusionEncoding])
       template data(index: int): untyped = code[index].bytes
       template fixAt(index, edge: int): untyped = code[index].edges[edge]
@@ -543,7 +545,7 @@ when NativeReadCycleEnabled:
     var used = 0
     for index in 0..<blocks.len:
       let item {.cursor.} = blocks[index]
-      when defined(pvmX86Jit): code[index] = encodeX86Fusion(item, index+1)
+      when defined(pvmX86Jit): code[index] = encodeX86Fusion(item, index+1, access)
       else: code[index] = encodeArmFusion(item, index+1)
       let extent = data(index).len*unit
       let offset = (used+alignment-1) and not (alignment-1)
@@ -592,7 +594,13 @@ when NativeReadCycleEnabled:
     if not nativeFusionEntry(image, slot): return NativeEntryFailure
     let offset = image.fusionOffsets[slot]-1
     if uint64(offset) >= image.codeBytes: return NativeEntryFailure
-    arenaRegion(image.handle, offset, addr registers[0], addr state)
+    when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+      # The literal fusion qualification checks all saved SysV lanes and the exact stack pointer.
+      let tagged = ringAbiNative(image.handle, offset, addr registers[0], addr state)
+      if tagged shr 32 != 1: return NativeEntryFailure
+      uint32(tagged and 0xffffffff'u64)
+    else:
+      arenaRegion(image.handle, offset, addr registers[0], addr state)
 
   proc lowerNativeReadCycle*(cycle: NativeReadCycle): NativeImage =
     ## Publish one complete region under its own ABI and image size limit.
