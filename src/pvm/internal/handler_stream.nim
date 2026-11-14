@@ -255,6 +255,7 @@ type
       mixedSource: FlatMixedLoopSource
       fusionImage: nil ptr NativeImage
       fusionBlocks: nil ptr seq[NativeFusionBlock]
+      fusionReceipts: nil ptr NativeFusionReceipts
       fusionContext: nil ptr NativeFusionContext
       fusionSlots: nil ptr array[256, FlatFusionSlot]
       mixedProbe: nil ptr FlatMixedLoopProbe
@@ -3367,7 +3368,10 @@ when NativeReadCycleEnabled:
     if f.rw.len > 0: context.memory.writable[1].data = addr f.rw[0]
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
     f.fusionImage = image
+    # Source paths may repeat while this image and its graph are exclusively borrowed.
+    var receipts = default(NativeFusionReceipts)
     f.fusionBlocks = blocks
+    f.fusionReceipts = addr receipts
     f.fusionContext = addr context
     f.fusionSlots = addr slots
     for index in 0..<count: f.handlers[int(patches[index])] = flatFusionEntry
@@ -3376,6 +3380,7 @@ when NativeReadCycleEnabled:
       f.fusionContext = nil
       f.fusionSlots = nil
       f.fusionBlocks = nil
+      f.fusionReceipts = nil
       f.fusionImage = nil
     flatDispatchSegment(f, entry)
 
