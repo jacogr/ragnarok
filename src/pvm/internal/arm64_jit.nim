@@ -6,7 +6,7 @@
 ## Prepared execution publishes through the shared asynchronous worker. The direct region,
 ## mixed-memory and macro owners still exercise the former ARM64 ABIs in native tests.
 ## A direct publisher does not grant admission to a prepared frame.
-## Scalar bit counts use baseline integer instructions and return 32/64 for a zero word.
+## Scalar bit counts use baseline integer instructions; zero-word CLZ/CTZ returns the width.
 ## Their scratch lane is separate from resident guest registers and the live budget/context lanes.
 
 import std/assertions
