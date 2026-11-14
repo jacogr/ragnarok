@@ -16,7 +16,7 @@
 ## terminal paid and untouched so the checked stream performs its write, panic or halt.
 ## The target table counts toward the same image bound; cache storage remains frame-owned.
 
-import ./[jit_rules, native_ir, native_mixed_loop, native_read_body]
+import ./[dynamic_jump_cache, jit_rules, native_ir, native_mixed_loop, native_read_body]
 
 const
   NativeFusionTrainingFloor* = 524288'u64                   ## Prior settled attempts before a sampling segment.
@@ -66,7 +66,7 @@ type
     gas*, remaining*: uint64
     path*: NativeFusionPath
     visits*, paid*: uint64
-    jumps*: nil ptr array[256, uint64] ## Frame-owned checked tags; borrowed only during native entry.
+    jumps*: nil ptr DynamicJumpTags ## Frame-owned checked tags; borrowed only during native entry.
     address*: uint64 ## Wrapped pre-write address; meaningful only for a completed final indirect edge.
   NativeFusionExit* = object
     ## A successful validation also carries the proved final source token; the bridge need not decode it again.

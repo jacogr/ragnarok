@@ -21,7 +21,7 @@ import std/assertions
 import ../[program, machine]
 import ./native_register_ring
 import ./jit_rules
-import ./[native_control, native_ir]
+import ./[dynamic_jump_cache, native_control, native_ir]
 import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
   from std/bitops import countSetBits

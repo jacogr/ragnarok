@@ -7,7 +7,7 @@
 import std/assertions
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
-import ../../src/pvm/internal/[native_pipeline, native_fusion, native_platform]
+import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform]
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -179,9 +179,9 @@ when NativeReadCycleEnabled:
             branch: NativeOperation(opcode: 40))]
         let image = lowerNativeFusion(blocks)
         assert image.ready and nativeFusionEntry(image, 0) and nativeFusionEntry(image, 1)
-        for scenario in 0..10:
+        for scenario in 0..13:
           # A true hit, source tag/table misses, nil cache, sentinel/wrap refusals and unpaid budgets.
-          var cache = default(array[256, uint64])
+          var cache = default(DynamicJumpTags)
           cache[0] = (1'u64 shl 32) or 21
           var registers = default(RegisterFile)
           for slot in 0..12: registers[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
@@ -189,6 +189,7 @@ when NativeReadCycleEnabled:
             of 4: 0'u32
             of 5: 1'u32
             of 6: 0xffff0000'u32
+            of 11, 12: 514'u32 # A valid ordinal whose bucket lies in the expanded upper bank.
             else: 2'u32
           registers[0] = RegisterValue(0xffffffff00000000'u64 or uint64(address-displacement))
           let before = registers
@@ -200,21 +201,31 @@ when NativeReadCycleEnabled:
           elif scenario == 8: context.remaining = 0
           elif scenario == 9: context.gas = 2
           elif scenario == 10: context.gas = 3 # The successor's original price is independently enforced.
+          if scenario in [11, 12]:
+            # Upper-bank hits still require the complete original table tag.
+            cache[256] = (uint64(if scenario == 11: 257 else: 1) shl 32) or 21
+          elif scenario == 13:
+            # A matching tag in another bucket grants no associative fallback authority.
+            cache[0] = (1'u64 shl 32) or 31
+            cache[256] = (1'u64 shl 32) or 21
           let gas = context.gas
           let quota = context.remaining
           let next = enterNativeFusion(image, 0, registers, context)
-          let success = scenario in [0, 7, 10]
+          let completed = scenario in [0, 11]
+          let success = completed or scenario in [7, 10]
           let idle = scenario in [8, 9]
-          assert next == (if scenario == 0: 100'u32 elif success: 20'u32 elif idle: 10'u32 else: 11'u32)
-          assert context.visits == (if scenario == 0: 2'u64 elif idle: 0'u64 else: 1'u64)
+          assert next == (if completed: 100'u32 elif success: 20'u32 elif idle: 10'u32 else: 11'u32)
+          assert context.visits == (if completed: 2'u64 elif idle: 0'u64 else: 1'u64)
           assert context.paid == (if success or idle: 0'u64 else: 1'u64)
-          assert context.gas == gas-(if scenario == 0: 8'u64 elif idle: 0'u64 else: 3'u64)
-          assert context.remaining == quota-(if scenario == 0: 2'u64 elif idle: 0'u64 else: 1'u64)
+          assert context.gas == gas-(if completed: 8'u64 elif idle: 0'u64 else: 3'u64)
+          assert context.remaining == quota-(if completed: 2'u64 elif idle: 0'u64 else: 1'u64)
           for slot in 0..12:
             # Failed lowering guards preserve even an aliased load; the checked terminal performs its mutation.
             assert uint64(registers[slot]) == (if success and opcode == 180 and slot == 0:
               loaded else: uint64(before[slot]))
-          if success: assert context.address == 2 # Captured before the aliased load changes its base.
+          if success:
+            # Captured before the aliased load changes its base.
+            assert context.address == uint64(address)
           let receipt = nativeFusionExit(blocks, 10, next, gas, quota, context)
           assert receipt.valid and receipt.attempted == uint32(quota-context.remaining)
           assert receipt.paidHeader == (if success or idle: 0'u32 else: 11'u32)
@@ -333,7 +344,7 @@ when NativeReadCycleEnabled:
       blocks[1].indirectEntry = true
       let dynamicImage = lowerNativeFusion(blocks)
       assert nativeFusionDispatchEntry(dynamicImage, 0) and nativeFusionDispatchEntry(dynamicImage, 1)
-      var cache = default(array[256, uint64])
+      var cache = default(DynamicJumpTags)
       cache[0] = (1'u64 shl 32) or 11
       var dynamicRegisters = default(RegisterFile)
       dynamicRegisters[0] = RegisterValue(2)

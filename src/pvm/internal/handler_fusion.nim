@@ -243,7 +243,7 @@ when declared(FlatFrame):
       if jumps == nil or address == 0 or address > 0xffffffff'u64 or
           address == 0xffff0000'u64 or (address and 1) != 0:
         return flatLocal(f, off, oracle.StepError.BackendFailure)
-      let tag = jumps[][int(((address shr 1)-1) and 255)]
+      let tag = jumps[][dynamicJumpSlot((address shr 1)-1)]
       if (tag shr 32) != (address shr 1) or uint32(tag and 0xffffffff'u64) != next+1:
         return flatLocal(f, off, oracle.StepError.BackendFailure)
       let branch = last.branch
