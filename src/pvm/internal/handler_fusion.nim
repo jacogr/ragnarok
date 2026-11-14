@@ -173,7 +173,7 @@ when declared(FlatFrame):
     if slots == nil or context == nil or receipts == nil:
       return flatLocal(f, off, oracle.StepError.BackendFailure)
     let token = off+1
-    var at = int((token*0x9e3779b9'u32) shr 24)
+    var at = nativeFusionSlot(token)
     var slot = -1
     for probe in 0..<slots[].len:
       let value = slots[][at]
@@ -181,7 +181,7 @@ when declared(FlatFrame):
         slot = int(value.index)
         break
       if value.token == 0: break
-      at = (at+1) and 255
+      at = (at+1) and (NativeFusionSlotLimit-1)
     if slot < 0: return flatLocal(f, off, oracle.StepError.BackendFailure)
     let gas = uint64(f.info.gas)
     let quota = f.remaining

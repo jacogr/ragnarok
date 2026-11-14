@@ -1,8 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Source-bound static control flow for a bounded native graph. Original block prices and
-## source attempts remain independent. Lowering can link only positive checked successors.
+## Source-bound static control flow for a bounded native graph. Up to 255 ranked source
+## blocks share one optional arena, bounded by 256 KiB of published code and 4 KiB per entry.
+## The source-header map has 512 slots so even the largest graph stays below half-full.
+## The block cap bounds copied source IR independently of guest iteration counts. Original block
+## prices and source attempts remain independent. Lowering can link only positive checked successors.
 ## Each native entry commits a bounded number of original reservations and returns their order.
 ## A byte per visit is appended to fixed call-local word storage; the returned visit count
 ## bounds every read. Unwritten tail bytes need no clearing and never participate in a receipt key.
@@ -14,15 +17,22 @@ import ./[jit_rules, native_ir, native_mixed_loop, native_read_body]
 
 const
   NativeFusionTrainingFloor* = 524288'u64                   ## Prior settled attempts before a sampling segment.
-  NativeFusionBlockLimit* = 128                             ## One ranked, runtime-owned graph.
+  NativeFusionBlockLimit* = 255 ## One ranked graph; one-based byte tokens exclude zero.
+  NativeFusionSlotLimit* = 512 ## Keep the largest byte-token graph below half-full in the checked map.
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
-  NativeFusionImageLimit* = 128*1024                        ## Total executable bytes in the optional arena.
+  NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
   NativeFusionGasOffset* = NativeMixedLoopContextBytes
   NativeFusionQuotaOffset* = NativeFusionGasOffset+8
   NativeFusionPathOffset* = NativeFusionQuotaOffset+8
   NativeFusionVisitsOffset* = NativeFusionPathOffset+NativeFusionPathWords*8
   NativeFusionPaidOffset* = NativeFusionVisitsOffset+8
+
+when NativeFusionSlotLimit != 512 or NativeFusionBlockLimit*2 > NativeFusionSlotLimit:
+  {.error: "native fusion header hashing requires its fixed half-full 512-slot map".}
+
+when NativeFusionBlockLimit < 1 or NativeFusionBlockLimit > 255:
+  {.error: "native fusion graph tokens must fit a nonzero byte".}
 
 when NativeFusionVisitLimit < 1 or NativeFusionVisitLimit > 64:
   {.error: "native fusion entry history must stay within its checked 1..64 visit bound".}
@@ -59,6 +69,11 @@ type
     receipt: NativeFusionExit
   NativeFusionReceipts* = array[256, NativeFusionReceipt]
     ## Segment-local cache of successful path proofs for exactly one borrowed graph.
+
+func nativeFusionSlot*(token: uint32): int {.inline.} =
+  ## A one-based source-header token hashes into the fixed 512-slot, at-most-half-full map.
+  ## Zero can be hashed but never confers source or entry authority.
+  int((token*0x9e3779b9'u32) shr 23)
 
 func complete*(item: NativeFusionBlock): bool =
   ## Validate copied scalar geometry and all supported opcode and guard identities.
