@@ -57,7 +57,7 @@ import ../state/accumulation/residency
 import ../codec/composite
 import ../codec/work/digest
 from ../pvm/step import PvmBackend, PreparationResult, PreparedCacheInfo, NativeRuntime,
-    newNativeRuntime, start, close
+    newNativeRuntime, start, close, runtimeInfo
 import ../lib/logging
 
 import std/[syncio, strutils, base64, assertions, monotimes, times]
@@ -1153,6 +1153,16 @@ proc close*(services: var Services) =
   services.workReportInfo = default(ComputedReportInfo)
   services.workContributionInfo = default(WorkEligibilityInfo)
   services.workHead = default(BlockHash)
+  if services.started and services.historyLog.enabled(LogTarget.Application, LogLevel.Debug):
+    # All consumers have joined. The idle payload is a point-in-time accumulation
+    # sample, and the runtime counters include both bound consumers.
+    let native = runtimeInfo(services.nativeRuntime)
+    if native.submitted != 0 or native.primaryCreditRefusals != 0:
+      let payload = residentMemoryPayloadBytes(services.executionContext)
+      log(services.historyLog, LogTarget.Application, LogLevel.Debug,
+        "PVM runtime submitted=" & $native.submitted &
+        " primaryCreditRefusals=" & $native.primaryCreditRefusals &
+        " registered=" & $native.registered & " idleAccumulationPayloadBytes=" & $payload)
   services.executionContext = default(ServiceExecutionContext) # Full Services close retires code; stopPreparation alone preserves it.
   assert services.nativeRuntime.close() # No active invocation survives joined preparation/context retirement.
   services.nativeRuntime = default(NativeRuntime)

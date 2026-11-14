@@ -86,6 +86,16 @@ func residentServices*(context: ServiceExecutionContext): int {.requires: not co
     if slot.ready:
       inc result
 
+proc residentMemoryPayloadBytes*(context: ServiceExecutionContext): uint64 {.requires:
+    not context.busy.} =
+  ## Sum observed idle baseline and private payload across the bounded resident workers.
+  result = 0
+  for index in 0..<context.slots.len:
+    if context.slots[index].ready:
+      let info = workerInfo(context.slots[index].worker)
+      if info.error == PreparationError.None:
+        result += info.value.prepared.retainedMemoryPayloadBytes
+
 proc residentServiceInfo*(context: ServiceExecutionContext, service: ServiceIndex,
     version: CodeHash, backend: PvmBackend): PreparationResult[PreparedCacheInfo]
     {.requires: not context.busy.} =
