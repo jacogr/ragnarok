@@ -4,7 +4,7 @@
 ## Platform lowering and OS mechanics; native_pipeline owns scheduling and admission.
 ## Auxiliary images hold bounded self-loops or static graphs in immutable arenas.
 ## Mixed self-loops share a 4 KiB image budget. Static fusion has a separate
-## 4 KiB per-entry limit and 128 KiB graph budget. Failed publication releases the entire arena.
+## 4 KiB per-entry limit and 256 KiB graph budget. Failed publication releases the entire arena.
 
 import std/assertions
 import ../machine
@@ -514,17 +514,25 @@ when NativeReadCycleEnabled:
     enterNativeMixedLoopAt(image, 0, registers, context)
 
   proc lowerNativeFusion*(blocks: openArray[NativeFusionBlock]): NativeImage =
-    ## Stage up to 128 source-certified blocks, each with at most 4 KiB of code.
-    ## The 128 KiB published extent includes entry alignment padding. ARM64 and
+    ## Stage up to 255 source-certified blocks, each with at most 4 KiB of code.
+    ## The 256 KiB published extent includes entry alignment padding. ARM64 and
     ## x86-64 can retain different subsets under these limits. Link only staged
     ## headers, leaving all other continuations checked. Return an empty image
     ## if no edge links or publication fails. An append failure releases the
-    ## entire arena before any entry becomes callable.
+    ## entire arena before any entry becomes callable. x86 uses one graph-wide GPR/SSE2
+    ## allocation so external entries and linked continuations agree on every used guest lane.
     result = default(NativeImage)
     if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
+    var hasIndirect = false
+    var hasEntry = false
+    for item in blocks:
+      hasIndirect = hasIndirect or item.indirect
+      hasEntry = hasEntry or item.indirectEntry
+    let useIndirect = hasIndirect and hasEntry
     when defined(pvmX86Jit):
       const unit = 1
       const alignment = 16
+      let access = x86FusionAccess(blocks)
       var code = default(array[NativeFusionBlockLimit, X86FusionEncoding])
       template data(index: int): untyped = code[index].bytes
       template fixAt(index, edge: int): untyped = code[index].edges[edge]
@@ -540,14 +548,16 @@ when NativeReadCycleEnabled:
     for index in 0..<blocks.len:
       for earlier in 0..<index:
         if blocks[earlier].header == blocks[index].header: return
+    let reserve = if useIndirect: NativeFusionTableBytes+alignment-1 else: 0
     var used = 0
     for index in 0..<blocks.len:
       let item {.cursor.} = blocks[index]
-      when defined(pvmX86Jit): code[index] = encodeX86Fusion(item, index+1)
-      else: code[index] = encodeArmFusion(item, index+1)
+      when defined(pvmX86Jit): code[index] = encodeX86Fusion(item, index+1, access, useIndirect)
+      else: code[index] = encodeArmFusion(item, index+1, useIndirect)
       let extent = data(index).len*unit
       let offset = (used+alignment-1) and not (alignment-1)
-      if extent == 0 or extent > NativeImageByteLimit or offset > NativeFusionImageLimit-extent:
+      if extent == 0 or extent > NativeImageByteLimit or offset >
+          NativeFusionImageLimit-reserve-extent:
         continue
       offsets[index] = uint32(offset+1)
       used = offset+extent
@@ -564,6 +574,19 @@ when NativeReadCycleEnabled:
           if not patchFusionEdge(code[index], edge, delta): return
           linked = true
           break
+    if useIndirect:
+      # Source permission and successful staging are both required before an indirect entry is published.
+      let tableOffset = (used+alignment-1) and not (alignment-1)
+      var targets = false
+      for index in 0..<blocks.len:
+        if offsets[index] != 0 and blocks[index].indirectEntry:
+          targets = true
+          break
+      for index in 0..<blocks.len:
+        if offsets[index] == 0 or code[index].table < 0: continue
+        let delta = tableOffset-int(offsets[index]-1)-code[index].table
+        if not patchFusionTable(code[index], delta): return
+        linked = linked or targets
     if not linked: return
 
     let handle = createNativeArena()
@@ -575,6 +598,25 @@ when NativeReadCycleEnabled:
         # No code is reachable through an image owner until all appends complete.
         arenaRelease(handle)
         return
+    if useIndirect:
+      # Static-only images never initialize this table. The arena remains private until every entry is ready.
+      let tableOffset = (used+alignment-1) and not (alignment-1)
+      var table = default(array[NativeFusionSlotLimit, uint64])
+      for index in 0..<blocks.len:
+        if offsets[index] == 0 or not blocks[index].indirectEntry: continue
+        let delta = int(offsets[index]-1)+code[index].inner-tableOffset
+        if delta < -NativeFusionImageLimit or delta > NativeFusionImageLimit:
+          arenaRelease(handle)
+          return
+        let token = blocks[index].header+1
+        var at = nativeFusionSlot(token)
+        while table[at] != 0: at = (at+1) and (NativeFusionSlotLimit-1)
+        table[at] = (uint64(cast[uint32](int32(delta))) shl 32) or uint64(token)
+      let published = arenaPublish(handle, addr table[0], uint32(NativeFusionTableBytes div unit))
+      if published < 0 or uint32(published) != uint32(tableOffset):
+        arenaRelease(handle)
+        return
+      used = tableOffset+NativeFusionTableBytes
     result = NativeImage(handle: handle, bytesValue: uint64(used),
         kindValue: NativeKind.StaticFusion,
       fusionOffsets: move(offsets))
@@ -587,12 +629,18 @@ when NativeReadCycleEnabled:
   proc enterNativeFusion*(image: NativeImage, slot: int, registers: var RegisterFile,
       state: var NativeFusionContext): uint32 =
     ## The arena borrow is synchronous. The context contains only this frame's private extents.
-    when sizeof(RegisterFile) != 104 or sizeof(NativeFusionContext) != NativeFusionPaidOffset+8:
+    when sizeof(RegisterFile) != 104 or sizeof(NativeFusionContext) != NativeFusionAddressOffset+8:
       return NativeEntryFailure
     if not nativeFusionEntry(image, slot): return NativeEntryFailure
     let offset = image.fusionOffsets[slot]-1
     if uint64(offset) >= image.codeBytes: return NativeEntryFailure
-    arenaRegion(image.handle, offset, addr registers[0], addr state)
+    when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+      # The literal fusion qualification checks all saved SysV lanes and the exact stack pointer.
+      let tagged = ringAbiNative(image.handle, offset, addr registers[0], addr state)
+      if tagged shr 32 != 1: return NativeEntryFailure
+      uint32(tagged and 0xffffffff'u64)
+    else:
+      arenaRegion(image.handle, offset, addr registers[0], addr state)
 
   proc lowerNativeReadCycle*(cycle: NativeReadCycle): NativeImage =
     ## Publish one complete region under its own ABI and image size limit.

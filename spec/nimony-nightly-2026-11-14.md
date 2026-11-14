@@ -23,7 +23,7 @@ Make builds jorogumo from those unmodified sources using the official compiler.
 
 The archive includes the [contract repair](https://github.com/nim-lang/nimony/pull/2989)
 and [two-file regression test](https://github.com/nim-lang/nimony/pull/3002).
-The unchanged NIM-010 imported-accessor reproducer and single-file control pass semantic
+The unchanged NIM-011 imported-accessor reproducer and single-file control pass semantic
 checking. Storage history compiles without changing its accessors or weakening their contracts.
 NIM-006's omitted variant-default argument, explicit-default control and factory control all
 compile and execute successfully. The issue register and portable reports retain historical failures.
@@ -41,19 +41,19 @@ non-null instance. Missing-handle and invalid-entry protocol outcomes retain the
 The module lifecycle suite exercises the valid retained-code path and refusal behavior.
 
 Keep concrete integer-formatting overloads (NIM-002 is expected behavior), the NIM-005 test-only
-counter observer, ownership exclusions and runtime checks. NIM-007's cross-target CLI observation
-was not retested; native Linux qualification remains CI work.
+counter observer, ownership exclusions and runtime checks. NIM-007's cross-target CLI observation and master's new NIM-010 conditional-handler observation
+were not reduced or retested; native Linux qualification remains CI work.
 
 ## Local verification
 
-- `make check-smoke`: all 631 production modules and the peer entry point pass; pinned formatting
+- `make check-smoke`: all 632 production modules and the peer entry point pass; pinned formatting
   and the real UI JavaScript build pass as prerequisites.
 - `python3 tools/build_ui.py --rpc-test`: the matching backend compiles the browser RPC fixture.
   This is compilation evidence, not a real-browser execution claim.
 - `make unit SUITE=...`: `pvm_resident_bytes`, `nimony_noninline_var_write`,
   `nimony_pointer_refinement`, `nimony_sequence_ownership`, `pvm_inner_lifecycle`,
   `history_transition`, `jamnp_work_recovery`, `pvm_read_cycle_execution_arm`,
-  and `pvm_fresh_resident` pass through the pinned native runner.
+  `pvm_fresh_resident`, and `pvm_shared_async_arm` pass through the pinned native runner.
 - Fresh 1,000-cycle ARC receipts retain identical before/after occupancy for resident bytes,
   inner lifecycle, recovery and resident frames. The ARM read-cycle suite exercises the native ABI.
 - Actual lowering rejects all four retained scalar/sequence/stream-array ownership-copy guards
@@ -72,24 +72,27 @@ intentional assertion control. Each successful legacy planned-price process vali
 source immutability and memory bytes, then emits all eleven cases with three warmups and ten samples.
 Use the existing strict output parser and alternating process order; no build overlaps timing.
 
-The first eight-process batch has variable sparse-memory results. An independent twelve-process
-confirmation batch reverses the starting order. Median-of-process-medians in that batch:
+Initial eight- and twelve-process batches on the `5a59922e` source show variable small-case
+results. Master advanced during PR publication; merge `1b27842c` and requalify all production
+modules, the shared ARM native fusion suite and resident frames. Rebuild both benchmark binaries
+from the resulting identical source in fresh caches. A final twelve-process alternating-order
+batch produces these median-of-process-medians:
 
 | Case | November 9 ns | November 14 ns | Change |
 | --- | ---: | ---: | ---: |
-| Arithmetic 10,000 | 91,864 | 91,990 | +0.14% |
-| Aligned memory | 12,114 | 12,052 | -0.51% |
-| Crossing memory | 12,479 | 12,469 | -0.08% |
-| Aligned host calls | 345,896 | 349,125 | +0.93% |
-| Crossing host calls | 473,520 | 474,896 | +0.29% |
+| Arithmetic 10,000 | 92,438 | 93,438 | +1.08% |
+| Aligned memory | 12,032 | 12,531 | +4.15% |
+| Crossing memory | 12,468 | 12,917 | +3.60% |
+| Aligned host calls | 346,917 | 348,542 | +0.47% |
+| Crossing host calls | 480,479 | 485,042 | +0.95% |
 | Arithmetic 1 | 667 | 666 | -0.07% |
-| Arithmetic 16 | 823 | 802 | -2.49% |
-| Mixed bit operations | 16,282 | 16,354 | +0.45% |
-| Sparse aligned | 13,375 | 13,302 | -0.54% |
-| Sparse crossing | 13,792 | 13,781 | -0.08% |
-| Alternating blocks | 12,708 | 12,927 | +1.72% |
-
-There is no demonstrated overall production speedup. These are short local synthetic timings,
+| Arithmetic 16 | 792 | 823 | +3.88% |
+| Mixed bit operations | 16,260 | 16,552 | +1.79% |
+| Sparse aligned | 13,510 | 14,240 | +5.40% |
+| Sparse crossing | 13,844 | 13,990 | +1.05% |
+| Alternating blocks | 13,219 | 12,979 | -1.81% |
+There is no demonstrated overall production speedup; the final batch has several 3–5% slower
+cases as well as faster/near-baseline cases. These are short local synthetic timings,
 not a full benchmark gate. Correctly configured full-invocation interpreted runs fail on **both**
 compilers when the arithmetic-one reused sample measures zero process-CPU nanoseconds on this
 host. Preserve that failure and the positivity guard; legacy wall-only results do not substitute

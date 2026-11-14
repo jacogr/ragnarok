@@ -261,7 +261,7 @@ type
       fusionBlocks: nil ptr seq[NativeFusionBlock]
       fusionReceipts: nil ptr NativeFusionReceipts
       fusionContext: nil ptr NativeFusionContext
-      fusionSlots: nil ptr array[256, FlatFusionSlot]
+      fusionSlots: nil ptr array[NativeFusionSlotLimit, FlatFusionSlot]
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
@@ -1437,6 +1437,10 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
         # The resolved offset is already valid. A refused optional cache leaves it usable.
         fresh.slots[slot] = tag
         f.dynamicOffsets = fresh
+        when NativeReadCycleEnabled:
+          # This frame owns the stable optional cache before the synchronous native borrow can see it.
+          let context = f.fusionContext
+          if context != nil: context[].jumps = addr fresh.slots
     else:
       cache.slots[slot] = tag
   f.info.blockCharged = false
@@ -3449,7 +3453,7 @@ when NativeReadCycleEnabled:
       flatDispatchSegment(f, entry)
       return
     var patches = default(array[NativeFusionBlockLimit, uint32])
-    var slots = default(array[256, FlatFusionSlot])
+    var slots = default(array[NativeFusionSlotLimit, FlatFusionSlot])
     var count = 0
     for slot in 0..<blocks[].len:
       if not nativeFusionEntry(image[], slot): continue
@@ -3459,8 +3463,8 @@ when NativeReadCycleEnabled:
         flatDispatchSegment(f, entry)
         return
       let token = header+1
-      var at = int((token*0x9e3779b9'u32) shr 24)
-      while slots[at].token != 0: at = (at+1) and 255
+      var at = nativeFusionSlot(token)
+      while slots[at].token != 0: at = (at+1) and (NativeFusionSlotLimit-1)
       slots[at] = FlatFusionSlot(token: token, index: uint32(slot))
       patches[count] = header
       inc count
@@ -3476,6 +3480,8 @@ when NativeReadCycleEnabled:
     if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
     if f.rw.len > 0: context.memory.writable[1].data = f.rw.borrowedData(0)
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
+    let dynamicOffsets = f.dynamicOffsets
+    if dynamicOffsets != nil: context.jumps = addr dynamicOffsets.slots
     f.fusionImage = image
     # Source paths may repeat while this image and its graph are exclusively borrowed.
     var receipts = default(NativeFusionReceipts)
