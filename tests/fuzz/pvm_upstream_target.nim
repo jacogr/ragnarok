@@ -17,7 +17,50 @@ func word(data: openArray[byte], at, width: int): uint64 =
     # Explicit byte expansion keeps the test format independent of production codecs.
     result = result or (uint64(data[at+index]) shl (index*8))
 
-proc exerciseUpstreamFrame*(data: openArray[byte], preparedMode: bool = false): bool {.raises: [].} =
+proc validateUpstreamResult(data: openArray[byte], source: Machine, initial: MachineInfo,
+    pages: array[2, PageImage], answer: StepResult): MachineInfo =
+  ## Compare the complete observation and immutable input after each execution.
+  assert answer.error == StepError.None, "local execution budget or API failure"
+  let outcome = answer.value
+  assert ord(outcome.exit) == int(data[20]), "upstream exit mismatch"
+  let observed = machineInfo(outcome.machine)
+  assert observed.error == MachineError.None
+  let actual = observed.value
+  if uint64(actual.gas) != word(data, 21, 8):
+    # Retained logs distinguish pricing disagreements from instruction/register defects.
+    echo "Gas actual=", uint64(actual.gas), " expected=", word(data, 21, 8)
+  assert uint64(actual.gas) == word(data, 21, 8), "upstream gas mismatch"
+  assert uint64(actual.gasDeficit) == 0
+  let expectedPc = if outcome.exit in {StepExit.Panic, StepExit.Halt}: 0'u64 else: word(data, 29, 8)
+  assert uint64(actual.pc) == expectedPc, "upstream PC mismatch"
+  if outcome.exit == StepExit.Fault:
+    # Compare the physical fault page; terminal Panic/Halt alone normalize PC to zero.
+    assert uint64(uint32(outcome.faultPage)) == word(data, 37, 4), "upstream fault mismatch"
+  else:
+    assert word(data, 37, 4) == 0
+  let originalCpu = machineInfo(source).value
+  for index in 0..<13:
+    # Compare each posterior register to the pinned reference observation.
+    assert uint64(actual.registers[index]) == word(data, 145+index*8, 8), "upstream register mismatch"
+  assert originalCpu == initial
+  let count = int(word(data, 8, 4))
+  let posteriorMemory = memoryOf(outcome.machine)
+  let sourceMemory = memoryOf(source)
+  assert posteriorMemory.error == MachineError.None and sourceMemory.error == MachineError.None
+  for page in 0..<2:
+    # A write must neither change permissions nor mutate the original immutable memory owner.
+    let posterior = pageImage(posteriorMemory.value, PageIndex(uint32(16+page)))
+    let original = pageImage(sourceMemory.value, PageIndex(uint32(16+page)))
+    assert posterior.error == MachineError.None and original.error == MachineError.None
+    assert posterior.value.access == PageAccess.ReadWrite
+    assert original.value.bytes == pages[page].bytes and original.value.access ==
+        PageAccess.ReadWrite
+    for offset in 0..<4096:
+      # Compare both complete mapped pages even when the guest faults or runs out of gas.
+      assert posterior.value.bytes[offset] == data[249+count+8192+page*4096+offset], "upstream memory mismatch"
+  actual
+
+proc exerciseUpstreamFrame*(data: openArray[byte]): bool {.raises: [].} =
   ## False means malformed replay framing; admitted cases must satisfy every differential assertion.
   if data.len < 249+16384 or data.len > UpstreamFrameBytes: return false
   for index, value in [80'u8, 86, 77, 70, 85, 90, 48, 49]:
@@ -49,48 +92,19 @@ proc exerciseUpstreamFrame*(data: openArray[byte], preparedMode: bool = false): 
     initial.registers[index] = RegisterValue(word(data, 41+index*8, 8))
   let source = captureMachine(decoded.value, captured.value, initial)
   assert source.error == MachineError.None
-  let answer = if preparedMode:
-      # Optional prepared execution consumes the exact same decoder owner, inputs and frozen reference observations.
-      let created = newPreparedProgram(decoded.value, defaultPreparedLimits(GasCycleLimit(100000)))
-      assert created.error == PreparationError.None
-      execute(source.value, ExecutionStepLimit(100000), created.value)
-    else: execute(source.value, ExecutionStepLimit(100000), GasCycleLimit(100000))
-  assert answer.error == StepError.None, "local execution budget or API failure"
-  let outcome = answer.value
-  assert ord(outcome.exit) == int(data[20]), "upstream exit mismatch"
-  let observed = machineInfo(outcome.machine)
-  assert observed.error == MachineError.None
-  let actual = observed.value
-  if uint64(actual.gas) != word(data, 21, 8):
-    # Retained logs distinguish pricing disagreements from instruction/register defects.
-    echo "Gas actual=", uint64(actual.gas), " expected=", word(data, 21, 8)
-  assert uint64(actual.gas) == word(data, 21, 8), "upstream gas mismatch"
-  assert uint64(actual.gasDeficit) == 0
-  let expectedPc = if outcome.exit in {StepExit.Panic, StepExit.Halt}: 0'u64 else: word(data, 29, 8)
-  assert uint64(actual.pc) == expectedPc, "upstream PC mismatch"
-  if outcome.exit == StepExit.Fault:
-    # Compare the physical fault page; terminal Panic/Halt alone normalize PC to zero.
-    assert uint64(uint32(outcome.faultPage)) == word(data, 37, 4), "upstream fault mismatch"
-  else:
-    assert word(data, 37, 4) == 0
-  for index in 0..<13:
-    # Every posterior register and every source register are independently inspected.
-    assert uint64(actual.registers[index]) == word(data, 145+index*8, 8), "upstream register mismatch"
-    assert uint64(machineInfo(source.value).value.registers[index]) == uint64(initial.registers[index])
-  assert uint64(machineInfo(source.value).value.pc) == 0
-  assert uint64(machineInfo(source.value).value.gas) == 512
-  let posteriorMemory = memoryOf(outcome.machine)
-  let sourceMemory = memoryOf(source.value)
-  assert posteriorMemory.error == MachineError.None and sourceMemory.error == MachineError.None
-  for page in 0..<2:
-    # A write must neither change permissions nor mutate the original immutable memory owner.
-    let posterior = pageImage(posteriorMemory.value, PageIndex(uint32(16+page)))
-    let original = pageImage(sourceMemory.value, PageIndex(uint32(16+page)))
-    assert posterior.error == MachineError.None and original.error == MachineError.None
-    assert posterior.value.access == PageAccess.ReadWrite
-    assert original.value.bytes == pages[page].bytes and original.value.access ==
-        PageAccess.ReadWrite
-    for offset in 0..<4096:
-      # Compare both complete mapped pages even when the guest faults or runs out of gas.
-      assert posterior.value.bytes[offset] == data[249+count+8192+page*4096+offset], "upstream memory mismatch"
+  let steps = ExecutionStepLimit(100000)
+  let cycles = GasCycleLimit(100000)
+  let cold = validateUpstreamResult(data, source.value, initial, pages,
+    execute(source.value, steps, cycles))
+  let created = newPreparedProgram(decoded.value, defaultPreparedLimits(cycles))
+  assert created.error == PreparationError.None
+  let prepared = created.value
+  for invocation in 0..<2:
+    let state = validateUpstreamResult(data, source.value, initial, pages,
+      execute(source.value, steps, prepared))
+    # PolkaVM exposes no paid-block flag. Compare our own cold and prepared flags.
+    assert state.blockCharged == cold.blockCharged, "prepared charged-block mismatch"
+  let stats = preparedInfo(prepared)
+  assert stats.error == PreparationError.None and stats.value.memoryReuses == 1,
+    "second prepared execution must restore the retained memory"
   true

@@ -216,6 +216,7 @@ def run():
         if nontrivial < 8 or len(opcodes) < 8:
             raise ValueError('Trivial bridge coverage cannot pass')
         report['bridge'] = dict(status='running', profile='JamV1 Sync Full L2Hit', backend='interpreter', gas=512,
+                                executions_per_frame=['one-shot', 'prepared-first', 'prepared-reused'],
                                 input_provenance=provenance, accounting=dict(statuses),
                                 nontrivial_programs=nontrivial, upstream_mutated_programs=len(mutant_names), serialized_opcodes=opcodes,
                                 reference_source_sha256=digest(ROOT/'tests/fuzz/pvm_upstream_bridge.rs.inc'))
@@ -256,7 +257,7 @@ def run():
         report['status'] = 'passed' if len(supported) == len(report['inventory']['targets']) else 'partial-platform'
         text = ('| Check | Result |\n|---|---|\n'+''.join(f'| {r["target"]} | {r["status"]}'+(f' ({r["runs"]:,} runs)' if 'runs' in r else '')+' |\n' for r in report['upstream'])
                 +f'| JAM → Ragnarök | {len(cases)} frames; {nontrivial} nontrivial programs; {len(opcodes)} serialized opcodes |\n'
-                +f'\nBackend: interpreted. Upstream nightly: {NIGHTLY}. Sanitizer: {sanitizer}.\n'
+                +f'\nBackend: interpreted, with one-shot and repeated prepared execution. Upstream nightly: {NIGHTLY}. Sanitizer: {sanitizer}.\n'
                 +f'\nBridge accounting: `{dict(statuses)}`. Local status: **{report["status"]}**.\n')
         summary.write_text(text)
         print(text)
@@ -307,7 +308,9 @@ def replay_raw(path, minimize=False):
             if result['timed_out']:
                 raise ValueError('Local replay timeout; not a guest exit')
             if result['exit_code'] != 0:
-                signature = re.search(r'upstream (?:exit|gas|PC|fault|register|memory) mismatch', result['output'])
+                signature = re.search(
+                    r'upstream (?:exit|gas|PC|fault|register|memory) mismatch|prepared charged-block mismatch',
+                    result['output'])
                 if signature is None:
                     raise ValueError('Nonsemantic native failure; inspect '+result['log'])
                 return frame.stem[-1], signature.group(), frame
