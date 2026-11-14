@@ -7,7 +7,8 @@
 import std/assertions
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
-import ../../src/pvm/internal/[native_pipeline, native_fusion, native_platform]
+import ../../src/pvm/internal/[native_pipeline, native_fusion, native_platform,
+  native_mixed_loop, native_read_cycle]
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -90,7 +91,7 @@ proc checkLongFusionReceipts() =
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
 proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
-    conditional: bool = false): Program =
+    conditional: bool = false, stores: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -111,6 +112,13 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   assert code.len == first
   emit([2'u8]) # Folded no-op still consumes an original attempt.
   emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
+  if stores:
+    # All widths of both source immediate-store forms precede the possible paid read fault.
+    for width in 0..3:
+      let address = 65568'u32+uint32(width*8)
+      emit([byte(30+width), 4, byte(address and 255), byte((address shr 8) and 255),
+        byte((address shr 16) and 255), 0, 0x80])
+      emit([byte(70+width), 0x15, byte(32+width*8), 0x7f])
   if late:
     # A wrapping in-page offset trains with one page but permits a late cross-page fault.
     emit([132'u8, 0x24, 0xff, 0x0f]) # R4 = R2 & 4095.
@@ -164,7 +172,7 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   var mask = newSeq[byte]((code.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for value in mask: wire.add(value)
-  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(1))
+  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(256), JumpCountLimit(1))
   assert decoded.error == ProgramError.None
   decoded.value
 
@@ -176,13 +184,102 @@ when NativeReadCycleEnabled:
     for index in 0..<length.len: wire.add(length.bytes[index])
     for value in bytes: wire.add(value)
     wire.add(0) # A final panic terminates this small independently marked owner.
-    wire.add(byte(1 or (1 shl bytes.len)))
+    var mask = newSeq[byte]((bytes.len+8) div 8)
+    mask[0] = 1
+    mask[bytes.len div 8] = mask[bytes.len div 8] or (1'u8 shl (bytes.len mod 8))
+    for value in mask: wire.add(value)
     let owner = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
     assert owner.error == ProgramError.None
     let decoded = instruction(owner.value, CodeAddress(0))
     assert decoded.error == ProgramError.None
+    let immediate = if decoded.value.opcode in {30'u8..33, 70..73}:
+        (uint64(decoded.value.x) and 0xffffffff'u64) or
+          ((uint64(decoded.value.y) and 0xffffffff'u64) shl 32)
+      else: uint64(decoded.value.x)
     NativeOperation(opcode: decoded.value.opcode, slots: instructionRegisters(decoded),
-      immediate: uint64(decoded.value.x))
+      immediate: immediate)
+
+  proc checkFusionImmediateStores() =
+    ## Independent literal bytes check all widths, wrapped A bases and exact precommit guard refusals.
+    ## A scalar prefix survives refusal; the suffix and store must remain untouched until retry.
+    let prefix = fusionLiteralOperation([149'u8, 0xcc, 1])
+    let suffix = fusionLiteralOperation([149'u8, 0xbb, 1])
+    for relative in [false, true]:
+      for widthIndex in 0..3:
+        let width = 1 shl widthIndex
+        for base in 0..12:
+          if not relative and base != 0: continue # Absolute stores consume no address lane.
+          for literal in [0'u32, 0x7fffffff'u32, 0x80000000'u32, high(uint32)]:
+            for scenario in 0..9:
+              # The normal unaligned case, page split, clean bits, short extent and missing borrows.
+              let address = if scenario == 0: 65539'u32
+                elif scenario == 7: 65535'u32
+                elif scenario == 8: 0xfffffffe'u32
+                else: 69631'u32
+              let displacement = if relative: 0xffffffff'u32 else: address
+              var bytes = @[(if relative: byte(70+widthIndex) else: byte(30+widthIndex)),
+                (if relative: byte(0x40+base) else: 4'u8)]
+              for index in 0..<4: bytes.add(byte((displacement shr (index*8)) and 255))
+              for index in 0..<4: bytes.add(byte((literal shr (index*8)) and 255))
+              let store = fusionLiteralOperation(bytes)
+              var blocks = [
+                NativeFusionBlock(header: 10, terminal: 14, span: 4, price: 3,
+                  targets: [20'u32, NativeEntryFailure], guards: 2,
+                  branch: NativeOperation(opcode: 40)),
+                NativeFusionBlock(header: 20, terminal: 21, span: 1, price: 5,
+                  targets: [100'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+              blocks[0].operations[0] = prefix
+              blocks[0].operations[1] = store
+              blocks[0].operations[2] = suffix
+              let image = lowerNativeFusion(blocks)
+              assert image.ready, "immediate store image must publish"
+              var data = default(array[8192, byte])
+              for index in 0..<data.len: data[index] = 0xa5
+              var expected = data
+              var dirty = [(1'u64 shl 16) or (1'u64 shl 17)]
+              if scenario == 2: dirty[0] = dirty[0] and not (1'u64 shl 16)
+              if scenario == 3: dirty[0] = dirty[0] and not (1'u64 shl 17)
+              var context = NativeFusionContext(gas: 100, remaining: 100)
+              context.memory.writable[0] = NativeCycleWritable(first: 0xfffe0000'u64)
+              context.memory.writable[1] = NativeCycleWritable(first: 65536, length: uint64(
+                  data.len),
+                data: addr data[0])
+              context.memory.dirty = addr dirty[0]
+              context.memory.dirtyWords = 1
+              if scenario == 4: context.memory.writable[1].length = 4095
+              if scenario == 5: context.memory.writable[1].data = nil
+              if scenario == 6: context.memory.dirty = nil
+              if scenario == 9: context.memory.dirtyWords = 0
+              var registers = default(RegisterFile)
+              for lane in 0..12: registers[lane] = RegisterValue(0x1234567800000000'u64+uint64(lane))
+              if relative:
+                # R12 is advanced by the prefix before address formation, including low-word wrap.
+                registers[base] = RegisterValue(0x100000000'u64+uint64(address)+1 -
+                  (if base == 12: 1'u64 else: 0'u64))
+              var expectedRegisters = registers
+              expectedRegisters[12] = RegisterValue(uint64(registers[12])+1)
+              let success = scenario in [0, 1] or (scenario == 3 and width == 1)
+              if success:
+                # Expected bytes use the independent signed32-bit literal equation.
+                let value = if literal >= 0x80000000'u32: uint64(literal) or 0xffffffff00000000'u64
+                  else: uint64(literal)
+                for index in 0..<width: expected[int(address-65536)+index] = byte((value shr (
+                    index*8)) and 255)
+                expectedRegisters[11] = RegisterValue(uint64(registers[11])+1)
+              let next = enterNativeFusion(image, 0, registers, context)
+              let diagnostic = "store " & $relative & "/" & $width & "/" & $base &
+                "/" & $literal & "/" & $scenario
+              assert next == (if success: 100'u32 else: 12'u32), diagnostic & " continuation"
+              assert registers == expectedRegisters, diagnostic & " registers"
+              assert data == expected, diagnostic & " bytes"
+              assert context.gas == (if success: 92'u64 else: 97'u64)
+              assert context.remaining == (if success: 95'u64 else: 96'u64)
+              assert context.visits == (if success: 2'u64 else: 1'u64)
+              assert context.paid == (if success: 0'u64 else: 1'u64)
+              let receipt = nativeFusionExit(blocks, 10, next, 100, 100, context)
+              # paidHeader identifies the charged block; next identifies its actual failing store.
+              assert receipt.valid and receipt.paidHeader == (if success: 0'u32 else: 11'u32),
+                diagnostic & " receipt"
 
   proc checkFusionConditionalMoves() =
     ## Exhaust every register alias, both predicates and full-width nonzero conditions on both ISAs.
@@ -423,9 +520,9 @@ proc checkShortFusionEntries() =
 proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
 
-proc checkPublicFusion(mode: byte, conditional: bool = false) =
+proc checkPublicFusion(mode: byte, conditional: bool = false, stores: bool = false) =
   ## Every source-backed branch form must preserve complete CPU/memory state and paid accounting.
-  let program = fusionGuest(mode = mode, conditional = conditional)
+  let program = fusionGuest(mode = mode, conditional = conditional, stores = stores)
   let runtime = newNativeRuntime()
   try:
     assert start(runtime)
@@ -436,7 +533,9 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
   assert jit.error == PreparationError.None and checked.error == PreparationError.None
   let page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
   let memory = captureMemory([page], PageLimit(2)).value
-  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(4000000))
+  # The store variant pays eight additional source stores per iteration at the original GP price.
+  let fullGas = if stores: 32000000'u64 else: 4000000'u64
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(fullGas))
   info.registers[0] = RegisterValue(165)
   info.registers[3] = RegisterValue(0xffff0000'u64)
   info.registers[4] = RegisterValue(2) # The admitted dynamic table has exactly one original destination.
@@ -460,7 +559,8 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
     if sample == 1: assert state.nativeOperations < 16 and state.nativeFragments == 2, "training publication"
     if sample == 2:
       # Every original attempt must execute natively, including the alias-reset move and jump terminal.
-      let span = (if mode == 181: 8'u64 else: 7'u64)+(if conditional: 4'u64 else: 0'u64)
+      let span = (if mode == 181: 8'u64 else: 7'u64)+(if conditional: 4'u64 else: 0'u64) +
+        (if stores: 8'u64 else: 0'u64)
       assert state.nativeOperations >= span*90000, "native load-and-jump coverage"
 
   # A small live quota and low gas enter checked workers at the exact boundary.
@@ -479,7 +579,7 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
 
   if mode != 0:
     # Published graphs still defer invalid/halt terminals to the original worker, including its load write.
-    info.gas = MachineGas(4000000)
+    info.gas = MachineGas(fullGas)
     for target in [0'u64, 1'u64, 4'u64, 0xffff0000'u64]:
       if mode == 181:
         # The copied old base is consumed before the aliased literal write, even on panic/halt.
@@ -502,12 +602,13 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
 
   # The prefix dirties the page. The linked store must commit before the paid
   # read fault returns with the same reservation and original guest PC.
-  info.gas = MachineGas(4000000)
+  info.gas = MachineGas(fullGas)
   info.registers[6] = RegisterValue(69632)
   let missing = captureMachine(program, memory, info).value
   let beforeFault = preparedInfo(jit.value).value.nativeOperations
   let fault = execute(missing, limit, jit.value)
-  assert preparedInfo(jit.value).value.nativeOperations == beforeFault+4, "native paid prefix"
+  assert preparedInfo(jit.value).value.nativeOperations == beforeFault+4 +
+    (if stores: 8'u64 else: 0'u64), "native paid prefix"
   assert fault.error == StepError.None and fault.value.exit == StepExit.Fault
   assertSameFusionResult(fault, execute(missing, limit, checked.value))
   assert machineInfo(fault.value.machine).value.blockCharged
@@ -530,12 +631,14 @@ proc runStaticFusion*() =
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
     checkFusionConditionalMoves()
+    checkFusionImmediateStores()
     checkFusionGraphTokens()
     checkFusionIndirectTargets()
     checkShortFusionEntries()
   for mode in [0'u8, 50, 180, 181]:
     checkPublicFusion(mode)
   checkPublicFusion(0, conditional = true)
+  checkPublicFusion(0, stores = true)
   checkLateFusionFault(wide = false)
   checkLateFusionFault(wide = true)
 

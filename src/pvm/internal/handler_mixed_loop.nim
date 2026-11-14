@@ -57,9 +57,12 @@ when declared(FlatFrame):
             let nextFact = f.plan.facts[int(ordinal+1)]
             let fused = flatFusedRegisterHandler(fact.opcode, nextFact.opcode)
             if fused == nil or worker != fused or nextFact.priceIndex != priceIndex: return
+      let immediate = if node == walk.terminal: 0'u64
+        elif nativeImmediateStoreOpcode(fact.opcode):
+          nativeStoreImmediate(original.args.x, uint64(original.args.y))
+        else: original.args.x
       proof.operations[int(node-header-1)] = NativeOperation(opcode: fact.opcode,
-        slots: original.args.slots, immediate: (if node ==
-            walk.terminal: 0'u64 else: original.args.x))
+        slots: original.args.slots, immediate: immediate)
       inc node
     if allowPaid: proof.paidGuards = nativeMixedLoopPaidGuards(proof)
     if not proof.complete: return

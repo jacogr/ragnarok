@@ -59,10 +59,11 @@ when declared(X86Block):
     ## Prove the selected writable extent and every touched dirty page before the Store.
     const stackOffset = byte(NativeCycleWritableOffset)
     const rwOffset = stackOffset+24
-    if op.opcode < 120:
+    if op.opcode < 70:
       put(code, [0xba'u8]) # MOV EDX,absolute32.
     else:
-      readBodyBase(code, access, op.slots.bIndex)
+      readBodyBase(code, access, (if nativeImmediateStoreOpcode(op.opcode): op.slots.aIndex
+        else: op.slots.bIndex))
       put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps the current base modulo 2^32.
     cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
     put(code, [0x81'u8, 0xfa]) # CMP EDX,65536 protects the low pages.
@@ -90,7 +91,10 @@ when declared(X86Block):
     if width > 1:
       # A split access needs the last byte's page as well as the first page.
       readCycleDirtyPage(code, fixes, refusal, width-1)
-    readAccess(code, access, op.slots.aIndex, false)
+    if nativeImmediateStoreOpcode(op.opcode):
+      immediate(code, 0xb8, nativeStoreLiteral(op))
+    else:
+      readAccess(code, access, op.slots.aIndex, false)
     case width
     of 1: put(code, [0x41'u8, 0x88, 0x00]) # MOV [R8],AL.
     of 2: put(code, [0x66'u8, 0x41, 0x89, 0x00]) # MOV [R8],AX.

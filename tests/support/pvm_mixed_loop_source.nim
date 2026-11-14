@@ -104,7 +104,7 @@ proc paidAbsolute(opcode, register: byte, address: uint64): array[6, byte] =
   [opcode, register, byte(address and 255), byte((address shr 8) and 255),
     byte((address shr 16) and 255), byte((address shr 24) and 255)]
 
-proc paidPattern(width: byte = 4, relative = false): Program =
+proc paidPattern(width: byte = 4, relative = false, literalStore = false): Program =
   ## Bind folded facts, earlier aliasing writes and a word Store crossing a bitmap boundary.
   var code: seq[byte] = @[]
   var starts: seq[int] = @[]
@@ -122,7 +122,19 @@ proc paidPattern(width: byte = 4, relative = false): Program =
     of 2: 60'u8
     of 4: 61'u8
     else: 62'u8
-  if relative:
+  if literalStore:
+    # The independent negative literal must sign-extend for width8 and truncate for smaller stores.
+    var store = @[(if relative: codeByWidth+11 else: codeByWidth-29)]
+    if relative:
+      store.add(0x14) # One-byte negative displacement uses original A=R4, not B.
+      store.add(0xff)
+    else:
+      store.add(4) # X is the four-byte absolute address; remaining bytes are Y.
+      let address = PaidMixedWordAddress+2-uint64(width div 2)
+      for index in 0..<4: store.add(byte((address shr (index*8)) and 255))
+    for value in [0x21'u8, 0x43, 0x65, 0x87]: store.add(value)
+    emit(store)
+  elif relative:
     # The negative displacement moves from R4 to the first byte of the crossing.
     emit([codeByWidth+61, 0x43'u8, 0xff])
   else:
@@ -156,6 +168,10 @@ proc runPaidMixedLoopSource*(report: bool = false) =
           PaidMixedReadBase, false, width, true)
       witnessFlatPaidMixedLoop(paidPattern(width, true), 0, PaidMixedBase, crossing,
         PaidMixedReadBase, false, width, true)
+      for relative in [false, true]:
+        # The same source-backed paid guards cover immediate stores in both address families.
+        witnessFlatPaidMixedLoop(paidPattern(width, relative, true), 0, PaidMixedBase, crossing,
+          PaidMixedReadBase, false, width, true, literalStore = true)
 
 proc runMixedLoopSource*() =
   ## Validate the two-borrow layout and compare original source authority with the linked stream.

@@ -3389,8 +3389,9 @@ when NativeReadCycleEnabled:
     ## X4..X16 hold the live guest bank and X17 holds the checked byte pointer.
     let width = nativeMixedLoopStoreWidth(operation.opcode)
     let displacement = uint32(operation.immediate and 0xffffffff'u64)
-    if operation.opcode >= 120:
-      let base = uint32(operation.slots.bIndex)+4
+    if operation.opcode in {70'u8..73, 120..123}:
+      let base = uint32(if nativeImmediateStoreOpcode(operation.opcode): operation.slots.aIndex
+        else: operation.slots.bIndex)+4
       if not armSmallIndirectAddress(words, base, displacement, false):
         armCompactImmediate(words, 2, uint64(displacement))
         words.add(0x0b020003'u32 or (base shl 5)) # ADD W3,Wbase,W2.
@@ -3428,7 +3429,11 @@ when NativeReadCycleEnabled:
       of 2: 0x79000000'u32 # STRH Wvalue.
       of 4: 0xb9000000'u32 # STR Wvalue.
       else: 0xf9000000'u32 # STR Xvalue.
-    words.add(encoding or (17'u32 shl 5) or (uint32(operation.slots.aIndex)+4))
+    let value = if nativeImmediateStoreOpcode(operation.opcode):
+      armCompactImmediate(words, 1, nativeStoreLiteral(operation))
+      1'u32
+    else: uint32(operation.slots.aIndex)+4
+    words.add(encoding or (17'u32 shl 5) or value)
 
   include ./arm64_fusion
 

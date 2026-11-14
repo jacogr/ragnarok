@@ -80,7 +80,9 @@ when declared(FlatFrame):
         if nativeMixedLoopStoreWidth(op) != 0 or nativeReadOpcode(nativeReadEncodingOpcode(op)):
           item.guards = item.guards or (1'u32 shl slot)
         elif not supportedScalarOpcode(op): return false
-        item.operations[slot] = NativeOperation(opcode: op, slots: args.slots, immediate: args.x)
+        let immediate = if nativeImmediateStoreOpcode(op): nativeStoreImmediate(args.x, uint64(args.y))
+          else: args.x
+        item.operations[slot] = NativeOperation(opcode: op, slots: args.slots, immediate: immediate)
       elif fact.opcode in [1'u8, 40]:
         # The sealed original destination proves the edge once the cached operand
         # is a positive node for that exact original source. Unresolved workers

@@ -24,7 +24,8 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       assert a.value.access == b.value.access and a.value.bytes == b.value.bytes
 
   proc witnessFlatPaidMixedLoop*(program: Program, pc: uint32, base, wordAddress,
-      readBase: uint64, report: bool = true, width: byte = 4, storesOnly = false) =
+      readBase: uint64, report: bool = true, width: byte = 4, storesOnly = false,
+      literalStore = false) =
     ## Compare true native entries to original checked workers before and after repairing a fault.
     let cycles = GasCycleLimit(100000)
     var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
@@ -151,7 +152,8 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         assert uint64(native.info.registers[3]) == expected
         let finalWord = load(flatMemorySnapshot(native), MemoryAddress(wordAddress),
           AccessWidth(width))
-        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (expected and storeMask)
+        let stored = if literalStore: 0xffffffff87654321'u64 else: expected
+        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (stored and storeMask)
       if scenario in [4, 5, 7]:
         assert native.exit == oracle.StepExit.Fault and native.info.blockCharged
         assert uint64(native.info.pc) == uint64(observed.lastGuardPc)
