@@ -106,3 +106,28 @@ For 25 million non-inlined calls, median child CPU over six observations per var
 (old), 64.87 ms (new existing spelling), and 54.83 ms (new location intrinsic). This isolated probe
 supports the code-generation opportunity, not a production gain. Production still uses `nimony c`;
 keep the existing unaligned-safe PVM memory copies rather than adding a slower unproven rewrite.
+
+## Full-CI ARM qualification follow-up
+
+The initial full CI finds a test-only physical-counter observation failure in the ARM macro
+backend witness. Fresh macOS reproduction and generated C show the new optimizer caching the
+fragment count across successful publications. The unchanged November 9 witness passes. Reuse
+its existing non-inlined fragment observer at the arena-fill loop and final ledger assertion;
+all 8,192-publication, capacity refusal and immutable-child checks remain. See
+[NIM-005 evidence and remaining reduction work](nimony-reports-2026-11-03/counter-field-cse.md).
+No production source, compiler, runtime check or native-capacity contract is changed by this repair.
+
+The same full run also exposes `isTrivial: (untyped)` / `bug in isTrival computation` while
+checking the local pricing-dispatch template in `pvm_execution_cache`. Declare that template
+`{.untyped.}` explicitly: the pinned language manual's feature table defines this as checking
+templates at their concrete instantiations. All three pricing overloads and both callback result
+types remain exercised, with the original assertions and 1,000-cycle ARC check passing
+(238,752 bytes before and after). This is a supported template declaration rather than a global
+compatibility switch. No upstream bug submission is prepared for a source fixed by the documented
+opt-in. The original diagnostic is retained in the CI repair evidence.
+
+The repaired full ARM witness passes all 31 backend, 13,524 frame and 709 clipped-read cases.
+`make check-pvm-native` then passes the complete native-host correctness gate, including forced
+refusals, opcode/host/ownership controls, shared native execution, mixed arena/allocation refusals,
+read-width checks and checked-policy controls. This local gate is macOS ARM64 evidence; the failed
+Linux jobs still require exact-head CI requalification after publication.

@@ -334,6 +334,10 @@ when defined(pvmArm64JitRefuse):
     assert denied.fragments == 0 and denied.codeBytes == 0
     result = 2
 
+proc observedFragments(jit: ArmJit): uint64 {.noinline.} =
+  ## Observe the live count across appends, matching the existing NIM-005 code-byte observer.
+  jit.fragments
+
 proc armMacroBackendControls*(): int =
   ## One receipt is emitted by the caller after all applicable literal controls pass.
   result = checkEmpty()
@@ -459,13 +463,14 @@ proc armMacroBackendControls*(): int =
       let pure = armMacroChildRecord(capped, 51)
       let read = armMacroChildRecord(capped, 71)
       var offset = 100'u32
-      while capped.fragments < 8192:
+      # NIM-005: observe the actual ledger across appends, rather than a hoisted field snapshot.
+      while observedFragments(capped) < 8192:
         var words: seq[uint32] = @[0xd503201f'u32]
         assert publishArmEntry(capped, offset, offset+1, 1, words, true)
         inc offset
       let codeBytes = capped.codeBytes
       assert not publishArmMacro(capped, macroShape())
-      assert capped.fragments == 8192 and capped.codeBytes == codeBytes
+      assert observedFragments(capped) == 8192 and capped.codeBytes == codeBytes
       checkChildAfterRefusal(capped, root, pure, read)
     inc result, 1
 
@@ -495,10 +500,6 @@ proc armMacroBackendControls*(): int =
       assert observedCodeBytes(baseline) == codeBytes and baseline.fragments == fragments
       checkChildAfterRefusal(baseline, root, pure, read)
     inc result, 1
-
-proc observedFragments(jit: ArmJit): uint64 {.noinline.} =
-  ## Observe the live count across appends, matching the existing NIM-005 code-byte observer.
-  jit.fragments
 
 proc capacityRequire(ok: bool, stage: string) =
   ## Optimized witnesses retain a stable failure location even when compiler assertion text is minimal.
