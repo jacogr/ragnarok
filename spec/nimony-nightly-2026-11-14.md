@@ -135,4 +135,35 @@ Linux jobs still require exact-head CI requalification after publication.
 That complete local gate precedes reconciliation with master `f93d5093` (standalone leaf admission).
 After merging it, `pvm_shared_async_arm` passes again with its updated static-fusion witnesses,
 covering the changed admission policy and native/checked handoffs. Earlier unrelated passing
-results are retained rather than repeated. Fresh selected full CI must qualify the published head.
+results are retained rather than repeated. Fresh selected full CI was requested at that stage; the final maintainer-directed merge gate is recorded below.
+
+## Inherited unsupported-profile helper guard
+
+The next full run reaches an inherited master helper failure in `pvm_runtime_policy_refused`:
+Linux AMD64 deliberately selects `pvmArm64Jit`, `pvmArm64JitRefuse` and `pvmSharedAsyncWitness`,
+so `NativeReadCycleEnabled` is false. Import discovery still loads `pvm_static_fusion`; its new
+`checkShortFusionEntries` definition referenced APIs that exist only in enabled native profiles.
+Guard that helper at its owner with the same `NativeReadCycleEnabled` condition already used at
+its call and neighboring native helper definitions. All supported-native assertions remain.
+
+The exact Linux AMD64 semantic profile fails before this guard and passes afterward using fresh
+project and stdlib caches. Native runtime evidence is separately qualified on macOS ARM64;
+a semantic cross-check is not a claim of Linux runtime execution. The reviewer independently
+reproduced the inherited failure with both old and new compilers, so this is a test feature-scope
+correction, not a new toolchain bug or a reason to remove production checks.
+
+## Combined master repair and final merge gate
+
+The maintainer directs carrying this inherited helper fix in the compiler-upgrade PR, rather
+than waiting for a separate master repair and another merge. Final guard-source checks pass:
+Linux AMD64's registered ARM-forced-refusal semantic profile and the supported macOS ARM64
+shared profile, each with fresh project/stdlib caches; the actual native `pvm_runtime_policy_refused`
+and `pvm_shared_async_arm` suites; pinned formatting and diff checks. Every original receipt,
+ledger and runtime refusal assertion remains. The long ledger assertion is split into equivalent
+shorter checks to avoid a pinned formatter token-joining error exposed by the added indentation.
+
+The preceding full run already passes Linux ARM64 PVM performance qualification on `75b9dd5d`;
+its remaining reported unit failure is the inherited helper fixed here. At the maintainer's
+explicit request, no further full PR run is started. Source re-review and automatic Smoke /
+Provenance gate this combined repair; full master CI follows the merge. That authorization does
+not turn incomplete or cancelled old-head full runs into passing exact-head evidence.
