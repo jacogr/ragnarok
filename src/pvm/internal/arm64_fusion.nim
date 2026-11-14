@@ -3,7 +3,10 @@
 
 ## Included by the ARM64 emitter. Retain the complete guest bank and exact path
 ## across source-checked edges. X23 bounds visits and X24 appends one token to call-local
-## history after a successful reservation. Standalone source audits import an empty fragment.
+## history after a successful reservation. All exits set their original continuation and paid
+## marker before one block-local restoration tail. Sharing this tail keeps guard-heavy entries
+## within the existing 4 KiB code ceiling without changing their source or reservation limits.
+## Standalone source audits import an empty fragment.
 
 when declared(ArmBlock):
   type ArmFusionEncoding* = object
@@ -33,7 +36,7 @@ when declared(ArmBlock):
     true
 
   proc armFusionIndirect(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
-      labels: var array[int(NativeReadFactLimit)+3, int], item: NativeFusionBlock,
+      labels: var array[int(NativeReadFactLimit)+4, int], item: NativeFusionBlock,
       refusal, probe, found: int): int =
     ## Guard a checked cache tag before probing immutable source-authorized native entries.
     ## X0..X3/X17 are scratch; D17 retains the pre-write address across later bodies.
@@ -86,8 +89,17 @@ when declared(ArmBlock):
       armCompactImmediate(words, uint32(branch.slots.aIndex)+4, item.indirectValue)
     words.add(0xd61f0060'u32) # BR X3 preserves the resident bank, budgets and original host return.
 
-  proc armFusionReturn(words: var seq[uint32], next: uint32, paid, useIndirect: bool) =
-    ## The common exit commits original lanes and restores the host's saved registers.
+  proc armFusionReturn(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      next: uint32, paid: bool, finish: int) =
+    ## Set the original continuation and paid marker before one block-local restoration tail.
+    ## X0 and X2 are reserved host scratch; the resident guest bank is still untouched.
+    armCompactImmediate(words, 0, uint64(next))
+    armCompactImmediate(words, 2, uint64(ord(paid)))
+    cycleEdge(words, fixes, finish, 16)
+
+  proc armFusionFinish(words: var seq[uint32], useIndirect: bool) =
+    ## Commit the original guest bank, debits, path length and pre-write address exactly once.
+    ## X0 carries the original continuation and X2 the paid marker from every return stub.
     for slot in 0..12:
       cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
     cycleStore(words, 21, 20, uint32(NativeFusionGasOffset))
@@ -95,11 +107,9 @@ when declared(ArmBlock):
     armCompactImmediate(words, 1, uint64(NativeFusionVisitLimit))
     cycleAddRegister(words, 1, 1, 23, true)
     cycleStore(words, 1, 20, uint32(NativeFusionVisitsOffset))
-    armCompactImmediate(words, 1, uint64(ord(paid)))
-    cycleStore(words, 1, 20, uint32(NativeFusionPaidOffset))
+    cycleStore(words, 2, 20, uint32(NativeFusionPaidOffset))
     if useIndirect:
       words.add(0xfd000291'u32 or ((uint32(NativeFusionAddressOffset) div 8) shl 10)) # STR D17,[X20,address].
-    armCompactImmediate(words, 0, uint64(next))
     words.add(0xa94053f3'u32) # LDP X19,X20,[SP].
     words.add(0xa9415bf5'u32) # LDP X21,X22,[SP,#16].
     words.add(0xa94263f7'u32) # LDP X23,X24,[SP,#32].
@@ -110,17 +120,21 @@ when declared(ArmBlock):
     ## Reserve checked capacities before reusing the existing mixed memory and scalar emitters.
     const capacity = NativeImageByteLimit div 4
     const operationWords = 64
-    let returnWords = if useIndirect: 29 else: 28
+    const returnWords = 4 # Two continuation words, one paid-marker word and one branch.
+    const epilogueWords = 25 # Includes the optional pre-write D17 address store.
     const unpaid = 0
     result = default(ArmFusionEncoding)
     if not item.complete or token < 1 or token > NativeFusionBlockLimit: return
     if item.indirect and not useIndirect and item.terminal == item.header+1: return
     let count = int(item.terminal-item.header)-1
+    let finish = count+4
     var words = newSeqOfCap[uint32](capacity)
     if words.rawData == nil: return
-    var fixes = newSeqOfCap[ArmMemoryCycleFixup](count*11+(if useIndirect: 24 else: 8))
+    # Each memory guard retains its body edges and one return-stub edge to the common tail.
+    var fixes = newSeqOfCap[ArmMemoryCycleFixup](count*12+(if useIndirect: 28 else: 12))
     if fixes.rawData == nil: return
-    var labels = default(array[int(NativeReadFactLimit)+3, int])
+    # Unpaid/body/indirect labels precede one disjoint finish label after the dynamic probe.
+    var labels = default(array[int(NativeReadFactLimit)+4, int])
     var table = -1
     var scratch = default(ArmReadSpan)
     scratch.body = newArmRegionBody()
@@ -173,16 +187,16 @@ when declared(ArmBlock):
         else:
           emitArmOperation(scratch.body, op.opcode, op.slots, op.immediate)
           for word in scratch.body.words: words.add(word)
-    if words.len > capacity-returnWords*(3+countSetBits(item.guards))-8: return
+    if words.len > capacity-returnWords*(3+countSetBits(item.guards))-epilogueWords-8: return
 
     var edges = [-1, -1]
     if item.indirect and useIndirect:
-      if words.len > capacity-64-returnWords*(2+countSetBits(item.guards)): return
+      if words.len > capacity-64-returnWords*(2+countSetBits(item.guards))-epilogueWords: return
       table = armFusionIndirect(words, fixes, labels, item, count+1, count+2, count+3)
       labels[count+1] = words.len
-      armFusionReturn(words, item.terminal, true, useIndirect)
+      armFusionReturn(words, fixes, item.terminal, true, finish)
     elif item.targets[0] == NativeEntryFailure:
-      armFusionReturn(words, item.terminal, true, useIndirect)
+      armFusionReturn(words, fixes, item.terminal, true, finish)
     else:
       if item.branch.opcode == 80:
         let branch = item.branch
@@ -200,13 +214,15 @@ when declared(ArmBlock):
       for edge in 0..1:
         if edges[edge] >= 0:
           if not armFusionBranchWord(words, edges[edge], words.len-edges[edge]): return
-          armFusionReturn(words, item.targets[edge], false, useIndirect)
+          armFusionReturn(words, fixes, item.targets[edge], false, finish)
 
     labels[unpaid] = words.len
-    armFusionReturn(words, item.header, false, useIndirect)
+    armFusionReturn(words, fixes, item.header, false, finish)
     for index in 0..<count:
       if (item.guards and (1'u32 shl index)) != 0:
         labels[index+1] = words.len
-        armFusionReturn(words, item.header+uint32(index)+1, true, useIndirect)
+        armFusionReturn(words, fixes, item.header+uint32(index)+1, true, finish)
+    labels[finish] = words.len
+    armFusionFinish(words, useIndirect)
     if words.len <= capacity and armMacroPatch(words, fixes, labels):
       result = ArmFusionEncoding(words: move(words), inner: inner*4, edges: edges, table: table)
