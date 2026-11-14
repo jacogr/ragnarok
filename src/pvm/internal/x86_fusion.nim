@@ -53,7 +53,9 @@ when declared(X86Block):
     var code = default(X86Block)
     code.bytes = newSeqOfCap[byte](NativeImageByteLimit)
     if code.bytes.rawData == nil: return
-    var fixes = newSeqOfCap[X86CycleFixup](count*operationFixes+8)
+    # Three reservation guards, three conditional/static edges and three return stubs
+    # need nine fixed slots even for a predicate-only block; body guards include their own stubs.
+    var fixes = newSeqOfCap[X86CycleFixup](count*operationFixes+10)
     if fixes.rawData == nil: return
     var labels = default(X86MixedLoopLabels)
     var nextLabel = firstGuard+byte(count)
