@@ -17,7 +17,8 @@ and inspected for matching compiler metadata. Native execution below is macOS AR
 | macos_arm64 | `aa1310cf8f272ae1884034dab126b68cb0a80f3d1e85f753d21c8c6dace6bb49` |
 
 Matching browser source hashes are recorded in [web-toolchain.json](web-toolchain.json).
-Make builds jorogumo from those unmodified sources using the official compiler.
+Make bootstraps jorogumo from those unmodified sources using Nim 2.4.1 from the verified
+formatter archive. Official Nimony then uses that backend to compile application JavaScript.
 
 ## Fixes and adaptation
 
