@@ -4398,28 +4398,32 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     frame.extra = move(held.extra)
     frame.dirtyPages = move(held.dirtyPages)
     frame.dirtyIndices = move(held.dirty)
-    for index in 0..<frame.dirtyIndices.len:
-      # Check the bit before flatClearDirty uses the same physical coordinate.
-      let physical = frame.dirtyIndices[index]
-      let page = flatScratchSlot(frame.sourcePages, physical)
-      let word = uint64(physical shr 6)
-      if page < 0 or frame.sourcePages[page].access != PageAccess.ReadWrite or
-          word >= uint64(frame.dirtyPages.len) or
-          (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0 or
-          not flatRestoreScratchPage(frame, page):
-        break restore
     for index in 0..<changes.len:
       let slot = uint64(uint32(changes[index]))
       if slot >= uint64(frame.sourcePages.len): break restore
       let page = int(slot)
       let physical = uint64(uint32(frame.sourcePages[page].index))
       let word = physical shr 6
-      # Only a bounded set physical bit proves the first loop already restored incoming bytes.
+      # A marked page is restored by the dirty-list pass below. Leftover bits reject reuse.
       if (word >= uint64(frame.dirtyPages.len) or
           (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0) and
           not flatRestoreScratchPage(frame, page):
         break restore
-    flatClearDirty(frame)
+    for index in 0..<frame.dirtyIndices.len:
+      # A restored page consumes its bit. A duplicate ordinal cannot claim it twice.
+      let physical = frame.dirtyIndices[index]
+      let page = flatScratchSlot(frame.sourcePages, physical)
+      let word = uint64(physical shr 6)
+      let mask = 1'u64 shl int(physical and 63)
+      if page < 0 or frame.sourcePages[page].access != PageAccess.ReadWrite or
+          word >= uint64(frame.dirtyPages.len) or
+          (frame.dirtyPages[int(word)] and mask) == 0 or
+          not flatRestoreScratchPage(frame, page):
+        break restore
+      frame.dirtyPages[int(word)] = frame.dirtyPages[int(word)] and not mask
+    for index in 0..<frame.dirtyPages.len:
+      if frame.dirtyPages[index] != 0: break restore
+    frame.dirtyIndices.setLen(0)
     reused = true
     return FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
   # The private frame retired when the restore block exited. Re-admit from the immutable input.
@@ -4455,10 +4459,16 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   scratch
 
 when defined(pvmResidentWitness):
-  proc invalidateLastScratchDirtyPage*(scratch: FlatMemoryScratch) =
-    ## Inject an unmapped retained ordinal after the earlier dirty pages can be restored.
+  type ScratchDirtyDamage* {.pure.} = enum
+    Unmapped, Duplicate, Omitted
+
+  proc invalidateLastScratchDirtyPage*(scratch: FlatMemoryScratch, damage: ScratchDirtyDamage) =
+    ## Damage the list while preserving the original bitmap.
     assert scratch.dirty.len > 1
-    scratch.dirty[scratch.dirty.len-1] = high(uint32)
+    case damage
+    of Unmapped: scratch.dirty[scratch.dirty.len-1] = high(uint32)
+    of Duplicate: scratch.dirty[scratch.dirty.len-1] = scratch.dirty[0]
+    of Omitted: scratch.dirty.setLen(scratch.dirty.len-1)
 
   func residentFrameRWInfo*(frame: FlatFrame): array[3, uint64] =
     ## Test-only lengths distinguish a retired view from storage still owned by an active or idle lease.

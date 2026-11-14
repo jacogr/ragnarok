@@ -146,14 +146,14 @@ proc reuseRefusal(plan: FlatPlan, memory: Memory, info: MachineInfo) =
     assert after.logicalBytes+LogicalBytes == before.logicalBytes
     assert after.mappedBytes < before.mappedBytes
 
-proc damagedScratch(plan: FlatPlan, memory: Memory, info: MachineInfo) =
-  ## The last dirty ordinal fails after the first half of a cross-page write is privately restored.
+proc damagedScratch(plan: FlatPlan, memory: Memory, info: MachineInfo, damage: ScratchDirtyDamage) =
+  ## The invalid list fails after the first half of a cross-page write is privately restored.
   var frame = freshFrame(plan, memory, info)
   runFlat(frame, 3)
   checkFlatReference(frame, literalBytes(true), 0)
   var scratch = takeFlatMemoryScratch(frame, RetainedBytes)
   assert scratch != nil
-  invalidateLastScratchDirtyPage(scratch)
+  invalidateLastScratchDirtyPage(scratch, damage)
   let before = residentWitnessSnapshot()
   var reused = true
   var created = prepareReusedFlatMemoryFrame(plan, memory, info, scratch, reused)
@@ -217,7 +217,9 @@ let plan = handler_stream.takeValue(admitted)
 completeRestores(plan, memory, info)
 refusalRollback(plan, owner, memory, info)
 reuseRefusal(plan, memory, info)
-damagedScratch(plan, memory, info)
+for damage in [ScratchDirtyDamage.Unmapped, ScratchDirtyDamage.Duplicate,
+    ScratchDirtyDamage.Omitted]:
+  damagedScratch(plan, memory, info, damage)
 lifecycle(plan, memory, info)
 let countersBefore = residentWitnessSnapshot()
 let occupiedBefore = getOccupiedMem()
