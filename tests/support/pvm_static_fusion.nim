@@ -89,7 +89,8 @@ proc checkLongFusionReceipts() =
   empty.paid = 1
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
-proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0): Program =
+proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
+    conditional: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -125,6 +126,12 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0): Progra
     emit([124'u8, 0x41, 0]) # Read byte R1,[R4].
   else:
     emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
+  if conditional:
+    # The portable public call independently checks all four conditional forms in a native body.
+    emit([147'u8, 0x1a, 0x80])
+    emit([148'u8, 0x1b, 0x7f])
+    emit([218'u8, 0x1a, 10])
+    emit([219'u8, 0x1b, 10])
   emit([149'u8, 0x22, 1]) # One completed iteration per pass.
   var second = 0
   case mode
@@ -162,6 +169,76 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0): Progra
   decoded.value
 
 when NativeReadCycleEnabled:
+  proc fusionLiteralOperation(bytes: openArray[byte]): NativeOperation =
+    ## Genuine literal instructions bind private register coordinates independently of either emitter.
+    var wire = @[0'u8, 0]
+    let length = encode(JamNatural(uint64(bytes.len+1)))
+    for index in 0..<length.len: wire.add(length.bytes[index])
+    for value in bytes: wire.add(value)
+    wire.add(0) # A final panic terminates this small independently marked owner.
+    wire.add(byte(1 or (1 shl bytes.len)))
+    let owner = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+    assert owner.error == ProgramError.None
+    let decoded = instruction(owner.value, CodeAddress(0))
+    assert decoded.error == ProgramError.None
+    NativeOperation(opcode: decoded.value.opcode, slots: instructionRegisters(decoded),
+      immediate: uint64(decoded.value.x))
+
+  proc checkFusionConditionalMoves() =
+    ## Exhaust every register alias, both predicates and full-width nonzero conditions on both ISAs.
+    ## Pure leaves expose read-before-write live-ins; linked graphs also exercise x86 SIMD storage.
+    for opcode in [147'u8, 148, 218, 219]:
+      for destination in 0..12:
+        for predicate in 0..12:
+          for source in 0..12:
+            # Immediate forms encode their destination in A and have no independent value lane.
+            if opcode < 190 and source != destination: continue
+            let op = if opcode < 190:
+                fusionLiteralOperation([opcode, byte(predicate*16+destination), 0x80])
+              else: fusionLiteralOperation([opcode, byte(predicate*16+source), byte(destination)])
+            assert op.slots.destinationIndex == destination and op.slots.bIndex == predicate
+            var span = initNativeSpan(10, 0, 1)
+            assert span.add(opcode, op.slots, op.immediate, 0, 12)
+            let leaf = lowerNative(span)
+            assert leaf.ready
+            var blocks = [
+              NativeFusionBlock(header: 10, terminal: 12, span: 2, price: 3,
+                targets: [20'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+              NativeFusionBlock(header: 20, terminal: 21, span: 1, price: 5,
+                targets: [100'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+            blocks[0].operations[0] = op
+            var count = 0
+            for lane in 0..12:
+              # Higher scores for other lanes put the conditional operands in x86 SIMD registers.
+              if lane in [destination, predicate, source]: continue
+              for repeat in 0..1:
+                blocks[1].operations[count] = fusionLiteralOperation([100'u8, byte(lane*17)])
+                inc count
+            blocks[1].terminal = 21+uint32(count)
+            blocks[1].span = 1+uint32(count)
+            let image = lowerNativeFusion(blocks)
+            assert image.ready and nativeFusionEntry(image, 0)
+            for condition in [0'u64, 1, 0x100000000'u64, high(uint64)]:
+              # Independent scalar equations use original values, including every overlapping operand.
+              var registers = default(RegisterFile)
+              for lane in 0..12:
+                registers[lane] = RegisterValue(0x123456789abcdef0'u64+uint64(lane))
+              registers[predicate] = RegisterValue(condition)
+              let before = registers
+              var expected = before
+              let chosen = if opcode < 190: op.immediate else: uint64(before[source])
+              let take = if opcode in [147'u8, 218]: condition == 0 else: condition != 0
+              if take: expected[destination] = RegisterValue(chosen)
+              assert enterNative(leaf, registers) and registers == expected
+              registers = before
+              var context = NativeFusionContext(gas: 100, remaining: 100)
+              let next = enterNativeFusion(image, 0, registers, context)
+              assert next == 100 and registers == expected and context.visits == 2
+              assert context.gas == 92 and context.remaining == 97-uint64(count)
+              assert context.paid == 0 and context.path[0] == 0x0201
+              let receipt = nativeFusionExit(blocks, 10, next, 100, 100, context)
+              assert receipt.valid and receipt.attempted == uint32(count+3)
+
   proc checkFusionIndirectTargets() =
     ## Literal lowering records isolate guarded dynamic entry, alias ordering and paid misses on both ISAs.
     ## They confer no Frame authority; public execution fixtures must independently bind the source graph.
@@ -346,9 +423,9 @@ proc checkShortFusionEntries() =
 proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
 
-proc checkPublicFusion(mode: byte) =
+proc checkPublicFusion(mode: byte, conditional: bool = false) =
   ## Every source-backed branch form must preserve complete CPU/memory state and paid accounting.
-  let program = fusionGuest(mode = mode)
+  let program = fusionGuest(mode = mode, conditional = conditional)
   let runtime = newNativeRuntime()
   try:
     assert start(runtime)
@@ -383,7 +460,7 @@ proc checkPublicFusion(mode: byte) =
     if sample == 1: assert state.nativeOperations < 16 and state.nativeFragments == 2, "training publication"
     if sample == 2:
       # Every original attempt must execute natively, including the alias-reset move and jump terminal.
-      let span = if mode == 181: 8'u64 else: 7'u64
+      let span = (if mode == 181: 8'u64 else: 7'u64)+(if conditional: 4'u64 else: 0'u64)
       assert state.nativeOperations >= span*90000, "native load-and-jump coverage"
 
   # A small live quota and low gas enter checked workers at the exact boundary.
@@ -452,11 +529,13 @@ proc runStaticFusion*() =
   checkRepeatedFusionReceipt()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
+    checkFusionConditionalMoves()
     checkFusionGraphTokens()
     checkFusionIndirectTargets()
     checkShortFusionEntries()
   for mode in [0'u8, 50, 180, 181]:
     checkPublicFusion(mode)
+  checkPublicFusion(0, conditional = true)
   checkLateFusionFault(wide = false)
   checkLateFusionFault(wide = true)
 
