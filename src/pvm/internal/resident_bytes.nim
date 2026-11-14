@@ -240,8 +240,8 @@ func mappedBytes*(storage: RWStorage): uint64 =
   of RWStorageKind.Resident: uint64(storage.resident.backing)
   of RWStorageKind.Managed, RWStorageKind.Empty: 0'u64 # Managed telemetry remains separate.
 
-func `[]`*(view: RWView, index: int): var byte =
-  ## One checked location accessor matches seq/openArray indexing without ambiguous read overloads.
+func `[]`*(view: RWView, index: int): byte =
+  ## Read one checked byte; mutations go through the separate checked setter.
   assert index >= 0 and index < view.length and view.data != nil
   view.data[index]
 
@@ -259,6 +259,10 @@ func toOpenArray*(view: RWView, first, last: int): openArray[byte] {.inline.} =
   ## Nonempty scoped slice; callers guard empty descriptors before requesting an array view.
   assert first >= 0 and first <= last and last < view.length and view.data != nil
   toOpenArray(view.data, first, last)
+
+proc borrowedData*(view: RWView, index: int): ptr byte =
+  ## Borrow one checked location for synchronous native descriptors or copies inside the active Frame.
+  unsafeAddr view.toOpenArray(index, index)[0]
 
 when defined(pvmResidentWitness):
   proc residentWitnessLayout*(): array[7, int] =

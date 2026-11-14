@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "version": "0.6.3",
-  "commit": "fd9742bf1939a1b754144506e89a8acb0e7b747a",
-  "date": "2026-11-09",
+  "commit": "8102b8e3c46bde87b733ecd82e2249cb562e3a8f",
+  "date": "2026-11-14",
   "formatter_version": "2.4.1",
   "formatter_banner": "0.2",
   "platforms": {
@@ -13,9 +13,9 @@
         "AMD64"
       ],
       "download": {
-        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-fd9742bf1/nimony-0.6.3-fd9742bf1-linux_amd64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/728539607",
-        "sha256": "f30b4f42903f2c6c4e2cff8388bc825443295988ec3b233cf79f5f4f9fc63814"
+        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-8102b8e3c/nimony-0.6.3-8102b8e3c-linux_amd64.tar.xz",
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/747840595",
+        "sha256": "f47e7ab928c5a0f624ab9e538856951cc636c10e0b49a30d4b183f2b6f333b3a"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-linux_x64.tar.xz",
@@ -30,9 +30,9 @@
         "arm64"
       ],
       "download": {
-        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-fd9742bf1/nimony-0.6.3-fd9742bf1-linux_arm64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/728537231",
-        "sha256": "99a136e2d4770cff050a9bab9fb3b7b91fa54c702968016f76ca1135f8dc4799"
+        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-8102b8e3c/nimony-0.6.3-8102b8e3c-linux_arm64.tar.xz",
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/747831182",
+        "sha256": "1db739c9f12e198ac5ef503ceaab8c9c02c49e00f008e7fdb32ebfd528654eba"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-linux_arm64.tar.xz",
@@ -47,9 +47,9 @@
         "aarch64"
       ],
       "download": {
-        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-fd9742bf1/nimony-0.6.3-fd9742bf1-macos_arm64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/728530259",
-        "sha256": "a294c27dca0414ea262fd5e7d84bbdac785373dfd6f6736916bb4a48082dc9e1"
+        "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-8102b8e3c/nimony-0.6.3-8102b8e3c-macos_arm64.tar.xz",
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/748078045",
+        "sha256": "aa1310cf8f272ae1884034dab126b68cb0a80f3d1e85f753d21c8c6dace6bb49"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-macosx_arm64.tar.xz",

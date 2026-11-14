@@ -25,7 +25,12 @@ validated tuple copies. Keep runtime checks and supported concrete integer overl
 The November 8 candidate `ad334fb80` fixes module-qualified `declared()` and the non-inlined
 var-write miscompile. Explicit same-domain equality covers native verification consumers; qualified
 performance-driver guards can be restored. See the [November 8 qualification](../spec/nimony-nightly-2026-11-08.md).
-The omitted variant-default and HTTP-retirement alternatives remain necessary.
+Those November 8 limitations are historical: the November 9 compiler fixes HTTP retirement,
+and November 14 `8102b8e3c` accepts the omitted variant default and fixes the imported contracted
+accessor crash. Keep useful explicit-context APIs and owning factories. A `func` must not return a
+mutable pointee location: the PVM byte reader returns a scalar and native consumers explicitly
+borrow checked addresses through `RWView.borrowedData(index)`. See the
+[November 14 qualification](../spec/nimony-nightly-2026-11-14.md).
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
@@ -33,6 +38,7 @@ These observations describe exercised APIs and targets, rather than compiler-wid
 | Assertions | `doAssert` was undeclared after importing `std/assertions`. | Use Nimony's release-enabled `assert` with the project runner. See the assertion notes in the trial and `tests/unit/crypto/test_rpc.nim`. |
 | Integer overloads | Declaring both `int` and `int64` overloads, or both `uint` and `uint64`, produced ambiguous calls on this 64-bit target. | Use the fixed-width overloads in [`src/lib/json/writer.nim`](../src/lib/json/writer.nim); machine integers resolve through their matching width. |
 | Generic checking | A `proc encode[T: SomeInteger](value: T): string = $value`-shaped body failed overload resolution during generic checking in the attempted writer. | Concrete integer overloads compiled and passed the RPC suite. Upstream classified [#2808](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445) as not a bug: `SomeInteger` does not guarantee a `$` operator. Keep the concrete overloads; this is not an outstanding compiler fix. |
+| Template overload dispatch | Definition-time checking of a local `selected: untyped` pricing template reaches an internal type-triviality error on the November 14 pin. | Mark that template `{.untyped.}` so each invocation resolves its concrete pricing overload and result type. This is the documented instantiation-time template mode; do not enable the feature globally. The unchanged execution-cache cases and 1,000-cycle ARC checks pass. |
 | Tuple arguments | An array literal of unnamed `(string, JsonValue)` tuples did not match the attempted `openArray[tuple[key: string, value: JsonValue]]` parameter. | `openArray[(string, JsonValue)]` with indexed tuple access compiled in `jsonObject`. Probe named conversions before relying on them elsewhere. |
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | [`src/lib/json/writer.nim`](../src/lib/json/writer.nim) preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
 | Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | Fixed in the October 28 pin; an inferred local now retains the guard across var-pointee calls. The explicit non-null local remains a working alternative on older pins. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |

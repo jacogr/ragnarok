@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "nimony": {
-    "commit": "fd9742bf1939a1b754144506e89a8acb0e7b747a",
-    "url": "https://codeload.github.com/nim-lang/nimony/tar.gz/fd9742bf1939a1b754144506e89a8acb0e7b747a",
-    "sha256": "b8d68c04b97ac69b6465ae5388439386caf9193fd0901be4e9173e745d94dd08"
+    "commit": "8102b8e3c46bde87b733ecd82e2249cb562e3a8f",
+    "url": "https://codeload.github.com/nim-lang/nimony/tar.gz/8102b8e3c46bde87b733ecd82e2249cb562e3a8f",
+    "sha256": "5f2d74399153d121425717339ae53d1d7877d6c20be7050fdf8320813eac7499"
   },
   "nativenif": {
-    "commit": "a6ff8e5a883ef0476bd123c5fd18cbc52fec03a0",
-    "url": "https://codeload.github.com/nim-lang/nativenif/tar.gz/a6ff8e5a883ef0476bd123c5fd18cbc52fec03a0",
-    "sha256": "90ecd8538a3d1b37d24277687a95dfa16e03d77af5c9a01b705718e161d8ce98"
+    "commit": "d8a9c96e1062939dddd1b1a43159eb55917ca7bc",
+    "url": "https://codeload.github.com/nim-lang/nativenif/tar.gz/d8a9c96e1062939dddd1b1a43159eb55917ca7bc",
+    "sha256": "593e453b15cbefa6bb9368cd5efddd284ae7eb169ae6454ad577a2d6bc5fb14a"
   }
 }
