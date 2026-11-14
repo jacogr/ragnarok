@@ -32,6 +32,12 @@ name: CI
         default: all
         required: false
 
+      pvm_baseline_revision:
+        description: "Optional immutable baseline SHA for same-runner paired PVM timing"
+        required: false
+        type: string
+        default: ""
+
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
         required: false
@@ -861,6 +867,7 @@ jobs:
       PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_CI_JOB_NAME: *pvm-performance-name
       PVM_PERF_SCOPE: ${{ inputs.suite == 'bench-doom' && 'doom' || 'all' }}
+      PVM_BASELINE_REVISION: ${{ inputs.pvm_baseline_revision }}
     steps:
       - *checkout
       - *python
@@ -881,6 +888,9 @@ jobs:
         run: |
           if test -f build/tests/pvm-performance/summary.md; then
             cat build/tests/pvm-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+            if test -f build/tests/pvm-performance/paired-summary.md; then
+              cat build/tests/pvm-performance/paired-summary.md >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo 'PVM comparison did not complete; inspect the native qualification and build logs.' >> "$GITHUB_STEP_SUMMARY"
           fi

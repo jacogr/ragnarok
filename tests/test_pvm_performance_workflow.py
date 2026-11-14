@@ -12,6 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 class PvmPerformanceWorkflowTests(unittest.TestCase):
     """One complete native path owns PVM samples; unrelated requests cannot start it."""
 
+    def test_paired_baseline_reaches_each_selected_native_job(self):
+        """An immutable manual baseline reaches both architectures without selecting a different cohort."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        context = event_context('workflow_dispatch', suite='bench-pvm')
+        context['inputs'].update(pvm_architecture='all', pvm_baseline_revision='a'*40)
+        families = selected_families(text, 'pvm-comparison', context)
+        self.assertEqual({family['group'] for family in families}, {'arm64', 'x86_64'})
+        for family in families:
+            section = family_section(text, 'pvm-comparison', family['group'], context=context)
+            request = dict(context, matrix=dict(family=family))
+            self.assertEqual(expression(section['env']['PVM_BASELINE_REVISION'], request), 'a'*40)
+
     def test_regular_requests_compare_both_architectures_once(self):
         """Merge and full/performance requests schedule one qualified comparison on each real CPU."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()

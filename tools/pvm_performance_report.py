@@ -196,7 +196,7 @@ def _command(record, files, positive=True):
     return command[0]
 
 
-def _policy(parsed, role):
+def validate_policy(parsed, role):
     """Validate actual policy and per-cell eligibility without demanding native work from every micro."""
     native, policy = parsed.get('native'), parsed.get('policy')
     if role == 'reference':
@@ -330,7 +330,7 @@ def validate_report(report):
                     sample[clock] for sample in parsed['invocation']['samples']):
                 raise ValueError('Owner diagnostic does not encompass its full calls')
 
-        _policy(parsed, key[1])
+        validate_policy(parsed, key[1])
         binary = _command(row.get('run'), files)
         image_key = (case['family'], 'reference' if key[1] == 'reference' else 'production')
         if image_key in images and images[image_key] != binary:
