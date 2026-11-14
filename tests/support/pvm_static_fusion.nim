@@ -7,7 +7,7 @@
 import std/assertions
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
-import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform]
+import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform, native_read_body]
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -232,6 +232,88 @@ when NativeReadCycleEnabled:
         var malformed = blocks
         malformed[0].targets[0] = 20
         assert not lowerNativeFusion(malformed).ready, "dynamic source cannot carry a static target grant"
+
+  proc checkDenseFusionGuards() =
+    ## Dense guarded bodies must fit without duplicating restoration for every paid site.
+    ## Literal source operands grant no Frame authority. Each native return is checked before replay.
+    let source = decodeProgram([0'u8, 0, 10, 124, 0x41, 0, 149, 0x77, 1, 149, 0x88, 1,
+      0, 0x49, 2], CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+    assert source.error == ProgramError.None
+    let read = instruction(source.value, CodeAddress(0))
+    let increment = instruction(source.value, CodeAddress(3))
+    let successor = instruction(source.value, CodeAddress(6))
+    assert read.error == ProgramError.None and increment.error == ProgramError.None and
+      successor.error == ProgramError.None
+    var bytes = default(array[15, byte])
+    for index in 0..<bytes.len: bytes[index] = byte(index+1)
+    for indirect in [false, true]:
+      # Static and original-table-linked paths exercise both restoration layouts.
+      var blocks = [
+        NativeFusionBlock(header: 10, terminal: 27, span: 17, price: 19, guards: 0x7fff,
+          targets: [40'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+        NativeFusionBlock(header: 40, terminal: 42, first: 17, span: 2, price: 5,
+          targets: [100'u32, NativeEntryFailure], indirectEntry: indirect,
+          branch: NativeOperation(opcode: 40))]
+      for index in 0..<bytes.len:
+        blocks[0].operations[index] = NativeOperation(opcode: 124,
+          slots: instructionRegisters(read), immediate: uint64(index))
+      blocks[0].operations[15] = NativeOperation(opcode: 149,
+        slots: instructionRegisters(increment), immediate: 1)
+      blocks[1].operations[0] = NativeOperation(opcode: 149,
+        slots: instructionRegisters(successor), immediate: 1)
+      if indirect:
+        # The copied dynamic terminal consumes original R0 before any target work.
+        blocks[0].targets = [NativeEntryFailure, NativeEntryFailure]
+        blocks[0].branch = NativeOperation(opcode: 50)
+      let image = lowerNativeFusion(blocks)
+      assert image.ready and nativeFusionEntry(image, 0) and nativeFusionEntry(image, 1)
+      var tags = default(DynamicJumpTags)
+      tags[0] = (1'u64 shl 32) or 41
+      var initial = default(RegisterFile)
+      for slot in 0..12: initial[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
+      initial[0] = RegisterValue(0x1234567800000002'u64)
+      initial[4] = RegisterValue(0x1234567800010000'u64)
+      for accessible in 0..bytes.len:
+        # Clip the same original extent at each guard; earlier writes survive the first failed load.
+        var registers = initial
+        var expected = initial
+        var context = NativeFusionContext(gas: 100, remaining: 100, jumps: addr tags)
+        if accessible != 0:
+          context.memory.read[0] = initNativeReadRegion(65536, bytes.toOpenArray(0, accessible-1))
+          expected[1] = RegisterValue(uint64(accessible))
+        let completed = accessible == bytes.len
+        if completed:
+          expected[7] = RegisterValue(uint64(initial[7])+1)
+          expected[8] = RegisterValue(uint64(initial[8])+1)
+        let next = enterNativeFusion(image, 0, registers, context)
+        assert registers == expected
+        assert next == (if completed: 100'u32 else: 11'u32+uint32(accessible))
+        assert context.visits == (if completed: 2'u64 else: 1'u64)
+        assert context.paid == (if completed: 0'u64 else: 1'u64)
+        assert context.gas == (if completed: 76'u64 else: 81'u64)
+        assert context.remaining == (if completed: 81'u64 else: 83'u64)
+        let receipt = nativeFusionExit(blocks, 10, next, 100, 100, context)
+        assert receipt.valid and receipt.paidHeader == (if completed: 0'u32 else: 11'u32)
+        assert receipt.attempted == (if completed: 19'u32 else: 17'u32)
+      for budget in 0..3:
+        # Refusal before either reservation restores every host lane and exact unpaid ledger.
+        let gas = if budget == 0: 18'u64 elif budget == 2: 19'u64 else: 100'u64
+        let quota = if budget == 1: 16'u64 elif budget == 3: 17'u64 else: 100'u64
+        var registers = initial
+        var expected = initial
+        var context = NativeFusionContext(gas: gas, remaining: quota, jumps: addr tags)
+        context.memory.read[0] = initNativeReadRegion(65536, bytes)
+        let completed = budget >= 2
+        if completed:
+          expected[1] = RegisterValue(15)
+          expected[7] = RegisterValue(uint64(initial[7])+1)
+        let next = enterNativeFusion(image, 0, registers, context)
+        assert registers == expected and next == (if completed: 40'u32 else: 10'u32)
+        assert context.visits == uint64(ord(completed)) and context.paid == 0
+        assert context.gas == gas-(if completed: 19'u64 else: 0'u64)
+        assert context.remaining == quota-(if completed: 17'u64 else: 0'u64)
+        assert nativeFusionExit(blocks, 10, next, gas, quota, context).valid
+      for index in 0..<bytes.len: assert bytes[index] == byte(index+1)
 
   proc checkFusionGraphTokens() =
     ## A real255-entry image crosses every receipt byte boundary and reaches token255 on both ISAs.
@@ -468,6 +550,7 @@ proc runStaticFusion*() =
   when NativeReadCycleEnabled:
     checkFusionGraphTokens()
     checkFusionIndirectTargets()
+    checkDenseFusionGuards()
     checkShortFusionEntries()
   for mode in [0'u8, 50, 180, 181]:
     checkPublicFusion(mode)
