@@ -293,55 +293,58 @@ proc assertSameFusionResult(actual, expected: StepResult) =
     for page in referencePages:
       assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
 
-proc checkShortFusionEntries() =
-  ## A static predecessor can enter from checked dispatch. Its terminal leaf
-  ## stays checked on a direct visit, but must still execute inside the chain.
-  var blocks = [
-    NativeFusionBlock(header: 4, terminal: 5, span: 1, price: 3,
-      targets: [10'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
-    NativeFusionBlock(header: 10, terminal: 12, first: 1, span: 2, price: 7,
-      targets: [NativeEntryFailure, NativeEntryFailure])]
-  blocks[1].operations[0] = NativeOperation(opcode: 51, immediate: 247)
-  let shortImage = lowerNativeFusion(blocks)
-  assert nativeFusionEntry(shortImage, 0) and nativeFusionEntry(shortImage, 1)
-  assert nativeFusionDispatchEntry(shortImage, 0)
-  assert not nativeFusionDispatchEntry(shortImage, 1)
-  var registers = default(RegisterFile)
-  var context = NativeFusionContext(gas: 100, remaining: 16)
-  let next = enterNativeFusion(shortImage, 0, registers, context)
-  let receipt = nativeFusionExit(blocks, 4, next, 100, 16, context)
-  assert receipt.valid and receipt.paidHeader == 11 and receipt.attempted == 3
-  assert next == 12 and context.path[0] == 0x0201 and context.visits == 2 and context.gas == 90 and
-      context.remaining == 13
-  assert uint64(registers[0]) == 247
+when NativeReadCycleEnabled:
+  # Keep native-only API references out of unsupported and checked-only module profiles.
+  proc checkShortFusionEntries() =
+    ## A static predecessor can enter from checked dispatch. Its terminal leaf
+    ## stays checked on a direct visit, but must still execute inside the chain.
+    var blocks = [
+      NativeFusionBlock(header: 4, terminal: 5, span: 1, price: 3,
+        targets: [10'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+      NativeFusionBlock(header: 10, terminal: 12, first: 1, span: 2, price: 7,
+        targets: [NativeEntryFailure, NativeEntryFailure])]
+    blocks[1].operations[0] = NativeOperation(opcode: 51, immediate: 247)
+    let shortImage = lowerNativeFusion(blocks)
+    assert nativeFusionEntry(shortImage, 0) and nativeFusionEntry(shortImage, 1)
+    assert nativeFusionDispatchEntry(shortImage, 0)
+    assert not nativeFusionDispatchEntry(shortImage, 1)
+    var registers = default(RegisterFile)
+    var context = NativeFusionContext(gas: 100, remaining: 16)
+    let next = enterNativeFusion(shortImage, 0, registers, context)
+    let receipt = nativeFusionExit(blocks, 4, next, 100, 16, context)
+    assert receipt.valid and receipt.paidHeader == 11 and receipt.attempted == 3
+    assert next == 12 and context.path[0] == 0x0201 and context.visits == 2
+    assert context.gas == 90 and context.remaining == 13
+    assert uint64(registers[0]) == 247
 
-  # The same two blocks can form a cycle with repeated native links.
-  blocks[1].targets[0] = 4
-  blocks[1].branch = NativeOperation(opcode: 40)
-  let cyclicImage = lowerNativeFusion(blocks)
-  assert nativeFusionDispatchEntry(cyclicImage, 0) and nativeFusionDispatchEntry(cyclicImage, 1)
+    # The same two blocks can form a cycle with repeated native links.
+    blocks[1].targets[0] = 4
+    blocks[1].branch = NativeOperation(opcode: 40)
+    let cyclicImage = lowerNativeFusion(blocks)
+    assert nativeFusionDispatchEntry(cyclicImage, 0) and nativeFusionDispatchEntry(cyclicImage, 1)
 
-  # Static link counts do not describe runtime-selected indirect paths. Preserve the existing
-  # dispatch eligibility of dynamic sources and their staged original-table targets.
-  for opcode in [50'u8, 180]:
-    blocks[0].targets = [NativeEntryFailure, NativeEntryFailure]
-    blocks[0].branch = NativeOperation(opcode: opcode)
-    blocks[1].targets = [NativeEntryFailure, NativeEntryFailure]
-    blocks[1].branch = default(NativeOperation)
-    blocks[1].indirectEntry = true
-    let dynamicImage = lowerNativeFusion(blocks)
-    assert nativeFusionDispatchEntry(dynamicImage, 0) and nativeFusionDispatchEntry(dynamicImage, 1)
-    var cache = default(array[256, uint64])
-    cache[0] = (1'u64 shl 32) or 11
-    var dynamicRegisters = default(RegisterFile)
-    dynamicRegisters[0] = RegisterValue(2)
-    var dynamicContext = NativeFusionContext(gas: 100, remaining: 16, jumps: addr cache)
-    let dynamicNext = enterNativeFusion(dynamicImage, 0, dynamicRegisters, dynamicContext)
-    let dynamicReceipt = nativeFusionExit(blocks, 4, dynamicNext, 100, 16, dynamicContext)
-    assert dynamicReceipt.valid and dynamicReceipt.paidHeader == 11 and dynamicReceipt.attempted == 3
-    assert dynamicNext == 12 and dynamicContext.path[0] == 0x0201 and dynamicContext.visits == 2
-    assert dynamicContext.gas == 90 and dynamicContext.remaining == 13
-    assert uint64(dynamicRegisters[0]) == 247
+    # Static link counts do not describe runtime-selected indirect paths. Preserve the existing
+    # dispatch eligibility of dynamic sources and their staged original-table targets.
+    for opcode in [50'u8, 180]:
+      blocks[0].targets = [NativeEntryFailure, NativeEntryFailure]
+      blocks[0].branch = NativeOperation(opcode: opcode)
+      blocks[1].targets = [NativeEntryFailure, NativeEntryFailure]
+      blocks[1].branch = default(NativeOperation)
+      blocks[1].indirectEntry = true
+      let dynamicImage = lowerNativeFusion(blocks)
+      assert nativeFusionDispatchEntry(dynamicImage, 0) and nativeFusionDispatchEntry(dynamicImage, 1)
+      var cache = default(array[256, uint64])
+      cache[0] = (1'u64 shl 32) or 11
+      var dynamicRegisters = default(RegisterFile)
+      dynamicRegisters[0] = RegisterValue(2)
+      var dynamicContext = NativeFusionContext(gas: 100, remaining: 16, jumps: addr cache)
+      let dynamicNext = enterNativeFusion(dynamicImage, 0, dynamicRegisters, dynamicContext)
+      let dynamicReceipt = nativeFusionExit(blocks, 4, dynamicNext, 100, 16, dynamicContext)
+      assert dynamicReceipt.valid and dynamicReceipt.paidHeader == 11 and
+          dynamicReceipt.attempted == 3
+      assert dynamicNext == 12 and dynamicContext.path[0] == 0x0201 and dynamicContext.visits == 2
+      assert dynamicContext.gas == 90 and dynamicContext.remaining == 13
+      assert uint64(dynamicRegisters[0]) == 247
 
 proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
