@@ -43,6 +43,12 @@ proc checkManaged() =
       assert view[index] == byte(index mod 251)
     view[0] = 91
     view[1030] = 173
+    # Native locations alias the owner rather than an indexed byte-value temporary.
+    let last = view.borrowedData(1030)
+    last[] = 174
+    assert view[1030] == 174
+    view[1030] = 173
+    assert last[] == 173
     fillWindow(view.toOpenArray(512, 515))
     assert view[0] == 91 and view[1030] == 173
     assert view[511] == byte(511 mod 251) and view[516] == byte(516 mod 251)
@@ -88,6 +94,12 @@ proc foreignCycle(bytes: int) =
       assert view[index] == 0
     view[0] = 7
     view[4095] = 149
+    view[bytes-1] = 239
+    # The final byte of a resident mapping has the same scoped pointer contract.
+    let last = view.borrowedData(bytes-1)
+    assert last[] == 239
+    last[] = 238
+    assert view[bytes-1] == 238
     view[bytes-1] = 239
   var storage = takeResident(owner)
   assert borrowRW(owner).len == 0

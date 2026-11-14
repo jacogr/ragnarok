@@ -3474,7 +3474,7 @@ when NativeReadCycleEnabled:
         NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))],
       dirtyWords: uint64(f.dirtyPages.len)))
     if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.memory.writable[1].data = addr f.rw[0]
+    if f.rw.len > 0: context.memory.writable[1].data = f.rw.borrowedData(0)
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
     f.fusionImage = image
     # Source paths may repeat while this image and its graph are exclusively borrowed.
@@ -4016,7 +4016,7 @@ proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimi
       if physical >= f.stackBase and physical-f.stackBase+uint64(count) <= uint64(f.stack.len):
         copyMem(addr bytes[copied], unsafeAddr f.stack[int(physical-f.stackBase)], count)
       elif physical >= f.rwBase and physical-f.rwBase+uint64(count) <= uint64(f.rw.len):
-        copyMem(addr bytes[copied], unsafeAddr f.rw[int(physical-f.rwBase)], count)
+        copyMem(addr bytes[copied], f.rw.borrowedData(int(physical-f.rwBase)), count)
       else:
         var resident = false
         for slot in 0..<f.extra.len:

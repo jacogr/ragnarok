@@ -25,7 +25,12 @@ validated tuple copies. Keep runtime checks and supported concrete integer overl
 The November 8 candidate `ad334fb80` fixes module-qualified `declared()` and the non-inlined
 var-write miscompile. Explicit same-domain equality covers native verification consumers; qualified
 performance-driver guards can be restored. See the [November 8 qualification](../spec/nimony-nightly-2026-11-08.md).
-The omitted variant-default and HTTP-retirement alternatives remain necessary.
+Those November 8 limitations are historical: the November 9 compiler fixes HTTP retirement,
+and November 14 `8102b8e3c` accepts the omitted variant default and fixes the imported contracted
+accessor crash. Keep useful explicit-context APIs and owning factories. A `func` must not return a
+mutable pointee location: the PVM byte reader returns a scalar and native consumers explicitly
+borrow checked addresses through `RWView.borrowedData(index)`. See the
+[November 14 qualification](../spec/nimony-nightly-2026-11-14.md).
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
