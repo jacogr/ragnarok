@@ -59,7 +59,7 @@ func complete*(item: NativeFusionBlock): bool =
   let yes = item.targets[1]
   if no == NativeEntryFailure: return yes == NativeEntryFailure and count != 0
   if no >= NativeEntryLimit: return false
-  if yes == NativeEntryFailure: return item.branch.opcode in [1'u8, 40]
+  if yes == NativeEntryFailure: return item.branch.opcode in [1'u8, 40, 80]
   if yes >= NativeEntryLimit or item.branch.opcode notin {81'u8..90, 170..175}: return false
   if item.branch.opcode <= 90:
     # Immediate predicates use the same full-width sign extension as checked dispatch.

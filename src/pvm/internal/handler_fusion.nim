@@ -86,6 +86,13 @@ when declared(FlatFrame):
         if worker != payload.handler and flatSourceHeader(f, args.y, payload.args.y):
           item.targets[0] = args.y
           item.branch = NativeOperation(opcode: fact.opcode)
+      elif fact.opcode == 80:
+        # Link the cached edge only if its register and immediate match the original write.
+        if worker == flatCachedJump[80] and flatSourceHeader(f, args.y, payload.args.y):
+          if args.slots != payload.args.slots or args.x != payload.args.x: return false
+          item.targets[0] = args.y
+          item.branch = NativeOperation(opcode: 80, slots: payload.args.slots,
+            immediate: payload.args.x)
       else:
         let cached = fusionBranchHandler(fact.opcode)
         if cached != nil and worker == cached:

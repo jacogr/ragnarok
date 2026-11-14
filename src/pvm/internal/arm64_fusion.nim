@@ -107,6 +107,9 @@ when declared(ArmBlock):
     if item.targets[0] == NativeEntryFailure:
       armFusionReturn(words, item.terminal, true)
     else:
+      if item.branch.opcode == 80:
+        let branch = item.branch
+        armCompactImmediate(words, uint32(branch.slots.aIndex)+4, branch.immediate)
       if item.targets[1] != NativeEntryFailure:
         let branch = item.branch
         let condition = armBranchCompare(scratch.body, branch.opcode,
