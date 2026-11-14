@@ -30,6 +30,14 @@
 ## evidence that the selected candidate is profitable. Ready entry also needs the current
 ## call's 4096-step horizon. Deferred read nominations survive busy-slot retry after source
 ## revalidation, and acquire a credit only when eligible work can queue.
+## Bare prefixes additionally need two executions of their exact emitted scalar entry
+## in settled segments of one eligible call. Unsettled segment visits buy no evidence,
+## even when an earlier host segment contributed work. Ordinary and adjacent-pair headers
+## use original body nodes while sampling; a host before the prefix buys no visit.
+## Other charged workers keep their dispatch.
+## The temporary observer is restored before any stream handback.
+## A prefix without this evidence can still seed fusion once a call reaches its
+## existing training floor. Recurrence is evidence of reuse, not measured profitability.
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
@@ -165,6 +173,10 @@ type
     retirementKey: JobKey                ## Host receipt survives collection, repricing and final drop.
     state: NativeState
     span: NativeSpan
+    prefixRepeated: bool                 ## Two selected scalar entries in one settled eligible call.
+    prefixVisits: uint8                  ## Pending current-segment visits, bounded with settled visits by two.
+    prefixSettledVisits: uint8           ## Only settled segments contribute; reset at each public call.
+    prefixHeader: uint32                 ## Exact emitted header; overlapping suffixes stay distinct.
     when NativeCheckedReadEnabled:
       readProof: NativeReadStorage
       readNominated, readValidated: bool # Validation belongs to this invocation's restored stream.
@@ -1198,6 +1210,8 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     data.invocationQualified = false
     data.invocationImageKey = default(NativeImageKey)
     data.invocationWork = 0
+    data.prefixVisits = 0
+    data.prefixSettledVisits = 0
     data.invocationBudget = budget
     data.workValid = true
     when NativeCheckedReadEnabled:
@@ -1218,12 +1232,13 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     collectNative(session)
     if data.allowed: data.invocationImageKey = nativeInstalledKey(session)
 
-proc considerNativeSpan*(session: NativeSession, span: NativeSpan) =
+proc considerNativeSpan*(session: NativeSession, span: NativeSpan, header: uint32) =
   ## Keep one structural pure candidate per source epoch; profit deferral does not buy emission work.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation or data.state != NativeState.Deferred: return
   if data.span.len == 0 and span.len >= NativeMinimumOperations and span.epoch == data.epoch:
     data.span = span
+    data.prefixHeader = header
 
 func nativePromotionOpen*(session: NativeSession): bool =
   ## Deferred zero-ticket storage is caller-owned. Queued and completed requests remain immutable.
@@ -1232,6 +1247,30 @@ func nativePromotionOpen*(session: NativeSession): bool =
   data.invocation and data.state == NativeState.Deferred and data.ticket == 0 and
     not data.image.ready and data.span.len >= NativeMinimumOperations and
     data.span.epoch == data.epoch and data.span.kind == NativeKind.PurePrefix
+
+func nativePrefixObservation*(session: NativeSession): bool {.inline.} =
+  ## Only a deferred unproved prefix samples checked entries, at most twice per call.
+  let data {.cursor.} = session.data
+  if data == nil: return false
+  data.invocation and data.state == NativeState.Deferred and not data.prefixRepeated and
+    data.prefixVisits+data.prefixSettledVisits < 2 and data.span.len >= NativeMinimumOperations and
+    data.prefixHeader < NativeEntryLimit and data.span.epoch == data.epoch and
+    data.span.kind == NativeKind.PurePrefix
+
+func nativePrefixHeader*(session: NativeSession): uint32 =
+  ## Only an open observation names the selected prefix's own emitted header.
+  let data {.cursor.} = session.data
+  if data == nil or not nativePrefixObservation(session): return NativeEntryFailure
+  data.prefixHeader
+
+proc observeNativePrefix*(session: NativeSession): bool =
+  ## The frame invokes this after the selected scalar entry executes without a local error.
+  ## recordNativeWork settles or discards this segment's observations before call-level eligibility.
+  ## Return true when the caller must remove its observer, including a closed observation window.
+  let data {.cursor.} = session.data
+  if data == nil or not nativePrefixObservation(session): return true
+  inc data.prefixVisits
+  data.prefixVisits+data.prefixSettledVisits == 2
 
 proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
   ## The checked stream verified this certificate against the already selected prefix.
@@ -1518,6 +1557,10 @@ proc invalidateNativeStream*(session: NativeSession) =
     data.state = NativeState.Unavailable
     return
   data.span = default(NativeSpan)
+  data.prefixRepeated = false
+  data.prefixVisits = 0
+  data.prefixSettledVisits = 0
+  data.prefixHeader = NativeEntryFailure
   when NativeReadCycleEnabled:
     data.bitmap = default(NativeBitmapLoop)
   when NativeCheckedReadEnabled:
@@ -1590,13 +1633,21 @@ proc collectNative(session: NativeSession) =
 
 proc recordNativeWork*(session: NativeSession, completed: uint64) =
   ## Add disjoint settled checked segment receipts, never the public initial budget at every host resume.
+  ## Prefix visits remain pending until their own segment settles; zero receipts discard them.
   let data {.cursor.} = session.data
-  if data == nil or not data.invocation or not data.workValid: return
+  if data == nil or not data.invocation: return
+  let visits = data.prefixVisits
+  data.prefixVisits = 0
+  if not data.workValid: return
   if data.invocationWork > data.invocationBudget or completed >
       data.invocationBudget-data.invocationWork:
     data.workValid = false
     data.invocationWork = 0
-  else: data.invocationWork += completed
+  else:
+    data.invocationWork += completed
+    if completed != 0:
+      # Observation stops once the pending plus settled count reaches two.
+      data.prefixSettledVisits += visits
 
 func observedNativeWork*(session: NativeSession): uint64 =
   ## Invalid/local/unsupported receipt paths never manufacture an admission credit.
@@ -1631,6 +1682,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Keep a source/epoch-bound maximum of ONE call, not the immediately prior input or a lifetime sum.
   # Short inputs neither manufacture eligibility nor revoke a genuinely long same-source observation.
   data.provenWork = max(data.provenWork, completedWork)
+  if completedWork >= NativeInvocationFloor and data.prefixSettledVisits == 2:
+    data.prefixRepeated = true
   when NativeReadCycleEnabled:
     let nativeWork = addNativeCount(data.operations, data.mixedOperations)
     data.lastNativeWork = nativeWork-data.invocationNativeStart
@@ -1670,10 +1723,14 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     not waitingRead and data.span.kind == NativeKind.PurePrefix and data.ringEpoch == data.epoch
   else:
     false
+  # Unmeasured one-time prefixes wait until the source can use fusion's existing training route.
+  let pureEligible = data.prefixRepeated or (when NativeReadCycleEnabled:
+    data.provenWork >= NativeFusionTrainingFloor else: false)
   # The complete bitmap route supersedes a prefix. Other read, loop and ring precedence stays intact.
   let candidate = if selectBitmap: true
     elif waitingRead: selectRead
-    else: selectRing or data.span.len >= NativeMinimumOperations
+    else: selectRing or (data.span.len >= NativeMinimumOperations and
+      (data.span.kind == NativeKind.ClosedRegisterLoop or pureEligible))
   # Check admission under the mutex already required to release this invocation's lease.
   var submitted = false
   acquire(runtime.lock)

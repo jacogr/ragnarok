@@ -12,7 +12,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import random
 import re
+import statistics
 import shutil
 import subprocess
 import sys
@@ -29,12 +31,12 @@ from pvm_guest_compare import unchanged
 from pvm_guest_inputs import prepare_inputs
 from pvm_jit_platform import native_defines
 from pvm_native_ci import host_identity
-from pvm_performance_report import SCHEMA, case_inventory, publish_report
+from pvm_performance_report import SCHEMA, case_inventory, publish_report, validate_policy
 from pvm_performance_synthetic import parse_synthetic
 from pvm_invocation_scope import (PRESTARTED, invocation_scope, scope_diagnostics, full_parsed,
                                   measurement_identity)
 from pvm_reference_lifetime import CODE_LIFETIME, reference_instances, invocation_reference_instances
-from setup_nimony import installed
+from setup_nimony import cache_directory, installed
 
 BUILD = ROOT/'build/tests/pvm-performance'
 ROLES = ('interpreted', 'jit', 'reference')
@@ -585,13 +587,284 @@ class PerformanceRunner:
         return self.report
 
 
+class PairedRunner(PerformanceRunner):
+    """Compare pinned baseline and current JIT images sequentially on the same qualified runner.
+
+    Reuse canonical inputs, parsers and compiler/flags. Both newly built revisions repeat
+    the same refusal controls before timing. A separate report never changes the
+    canonical interpreted/JIT/reference matrix or presents cross-run normalization as an A/B.
+    """
+
+    def __init__(self, current, baseline):
+        """Borrow already prepared immutable fixtures; isolate reports, binaries and baseline source."""
+        super().__init__(current.folder, current.scope, current.expected_revision)
+        self.baseline = baseline
+        self.source = self.folder/'paired-source'
+        self.created = False
+        self.seals = dict(current.seals)
+        self.checks = current.checks
+        self.candidate_images = dict(current.images)
+        self.control_sequence = current.control_sequence
+        for name in ('compiler', 'defines', 'cases', 'inputs', 'references', 'doom_folder',
+                     'rom', 'doom_blob', 'synthetic_fixture'):
+            if hasattr(current, name):
+                setattr(self, name, getattr(current, name))
+        self.report = dict(schema='pvm-paired-v1', status='incomplete', baseline=baseline,
+            candidate=current.report['revision'], architecture=current.report['architecture'],
+            identity=current.report['identity'], pairs=11, seed=1729, backend='jit',
+            controls=[], builds=[], runs=[], summary=[],
+            source_manifests={})
+        error = ('Paired baseline must be an immutable 40-character commit SHA'
+                 if re.fullmatch(r'[0-9a-f]{40}', baseline) is None else
+                 'Paired sampling requires passed current native performance controls'
+                 if current.report.get('status') != 'passed' else None)
+        if error is not None:
+            # A malformed new request must not leave an older successful paired artifact readable.
+            self.report.update(status='failed', error=error)
+            self.checkpoint()
+            (self.folder/'paired-summary.md').write_text('Same-runner PVM comparison failed; no accepted ratios.\n')
+            raise ValueError(error)
+
+    def checkpoint(self):
+        """Keep partial/failure evidence separate from the already accepted canonical report."""
+        temporary = self.folder/'paired-results.json.tmp'
+        temporary.write_text(json.dumps(self.report, indent=2)+'\n')
+        temporary.replace(self.folder/'paired-results.json')
+
+    def comparison_images(self):
+        """Build both immutable revisions at one source path, using the same checked profile and fresh caches."""
+        if self.source.exists():
+            raise ValueError('Paired baseline directory already exists; refusing to replace it')
+        self.command(['git', 'fetch', '--no-tags', '--depth=1', 'origin', self.baseline], 'paired-fetch')
+        try:
+            self.command(['git', 'worktree', 'add', '--detach', str(self.source), self.baseline],
+                         'paired-checkout')
+        finally:
+            # Capture successful creation even if a post-command immutable-source check fails.
+            self.created = (self.source/'.git').is_file()
+        self.report['identity'] = dict(self.report['identity'], paired_method=dict(
+            processes='sequential-alternating', warmup_samples=3, samples=13,
+            compiler_shared=True, fixture_bytes_shared=True, source_path_shared=True,
+            cpu_affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else None))
+        images = {}
+        drivers = dict(synthetic='pvm_workload', guest='pvm_sieve', doom='pvm_doom')
+        for version, revision in [('baseline', self.baseline), ('candidate', self.report['candidate'])]:
+            if version == 'candidate':
+                # Switch the owned checkout only after baseline source and executable bytes were sealed.
+                self.command(['git', '-C', str(self.source), 'checkout', '--detach', revision],
+                             'paired-candidate-checkout')
+            for name in ('toolchain.json', 'polkavm-pins.json', 'pins.json'):
+                if json.loads((self.source/'spec'/name).read_text()) != json.loads((ROOT/'spec'/name).read_text()):
+                    raise ValueError('Paired revision pin differs: '+name)
+            tracked = subprocess.check_output(['git', 'ls-files', '-z', 'src', 'native/pvm_jit',
+                'tests/performance', 'spec', 'nim.cfg', 'config.nims'], cwd=self.source)
+            sources = [self.source/path.decode() for path in tracked.split(b'\0') if path]
+            if any(path.is_symlink() or not path.is_file() for path in sources):
+                raise ValueError('Missing or redirected paired source')
+            source_seals = {path: digest(path) for path in sources}
+            for path, value in source_seals.items():
+                if path.is_relative_to(self.source/'tests/performance') and value != digest(ROOT/path.relative_to(self.source)):
+                    # Changing the measuring driver or its oracles prevents direct attribution to the runtime.
+                    raise ValueError('Paired performance driver differs: '+str(path.relative_to(self.source)))
+            self.report['source_manifests'][version] = {
+                str(path.relative_to(self.source)): value for path, value in source_seals.items()}
+            images[version] = {}
+            for family in sorted({case['family'] for case in self.cases}):
+                defines = self.defines+([] if family == 'synthetic' else ['pvmArm64JitOwnerReceipt'])
+                cache = cache_directory(self.compiler, self.folder, version+'-'+family)
+                if cache.is_symlink():
+                    raise ValueError('Redirected paired compiler cache')
+                if cache.exists():
+                    # A repeated request must rebuild both versions rather than reuse stale imported bodies.
+                    shutil.rmtree(cache)
+                unchanged(source_seals)
+                built, binary = self.checks.build(self.compiler,
+                    self.source/'tests/performance'/(drivers[family]+'.nim'), version+'-'+family,
+                    defines=defines, cflags=['-I'+str(self.source/'tests/performance'),
+                        '-I'+str(self.source/'native/pvm_jit')], environment=execution_environment())
+                unchanged(source_seals)
+                self.verify()
+                if built['exit_code'] or 'Error:' in built['output'] or 'FAILURE' in built['output']:
+                    raise RuntimeError('Paired revision image failed: '+built['log'])
+                images[version][family] = binary
+                self.seal([binary])
+                self.report['builds'].append(dict(version=version, revision=revision, family=family,
+                    defines=defines, binary=str(binary), binary_sha256=digest(binary), run=command_record(built)))
+                self.checkpoint()
+        # Candidate sources remain immutable during timing. Baseline source identities were captured
+        # before switching the common path; its retained executable is independently sealed throughout.
+        self.seal(sources)
+        return images['baseline'], images['candidate']
+
+    def parse(self, output, case, role):
+        """Apply the canonical full-call and actual native-policy checks to each revision equally."""
+        parsed = super().parse(output, case, role)
+        for cell in parsed.values():
+            validate_policy(cell, role)
+        return parsed
+
+    def collect(self):
+        """Build, control and sample the complete paired cohort without publishing accepted artifacts."""
+        baseline_images, self.candidate_images = self.comparison_images()
+        processes = [case for case in self.cases if case['family'] != 'synthetic']
+        synthetic = next((case for case in self.cases if case['family'] == 'synthetic'), None)
+        if synthetic is not None:
+            processes.insert(0, synthetic)
+        for version, images in [('baseline', baseline_images), ('candidate', self.candidate_images)]:
+            self.images = images
+            for case in processes:
+                start = len(self.report['controls'])
+                self.controls(case, 'jit')
+                for control in self.report['controls'][start:]:
+                    control['version'] = version
+            self.checkpoint()
+        rng = random.Random(self.report['seed'])
+        for case in processes:
+            first = rng.randrange(2)
+            for pair in range(self.report['pairs']):
+                # Each case gets both process orders, balanced to within one pair; never run concurrently.
+                order = ('baseline', 'candidate') if (first+pair) % 2 == 0 else ('candidate', 'baseline')
+                for version in order:
+                    self.images = baseline_images if version == 'baseline' else self.candidate_images
+                    args, env, _ = self.invocation(case, 'jit')
+                    observed = self.command(args, f'paired-{case["case_id"]}-{pair}-{version}', env)
+                    parsed = self.parse(observed['output'], case, 'jit')
+                    for identity, values in parsed.items():
+                        self.report['runs'].append(dict(case_id=identity, pair=pair, version=version,
+                            order=list(order), parsed=values, run=command_record(observed)))
+                    self.checkpoint()
+        self.verify()
+        self.report['summary'] = paired_summary(self.report['runs'], self.cases, self.report['pairs'])
+        self.report['identity']['files'] = {str(path): value for path, value in self.seals.items()}
+
+    def execute(self):
+        """Accept a complete paired matrix only after owned source cleanup has finished successfully."""
+        summary = self.folder/'paired-summary.md'
+        summary.write_text('Same-runner PVM comparison incomplete; no accepted ratios.\n')
+        self.checkpoint()
+        try:
+            try:
+                self.collect()
+            finally:
+                # Cleanup is inside the failure boundary; even an interruption cannot leave accepted artifacts.
+                if self.created:
+                    primary = sys.exc_info()[1]
+                    try:
+                        removed = subprocess.run(['git', 'worktree', 'remove', str(self.source)], cwd=ROOT,
+                                                 capture_output=True, text=True)
+                        (self.folder/'paired-cleanup.log').write_text(removed.stdout+removed.stderr)
+                        if removed.returncode:
+                            raise RuntimeError('Owned worktree cleanup failed; inspect paired-cleanup.log')
+                        self.created = False
+                    except BaseException as error:
+                        self.report['cleanup_error'] = str(error) or type(error).__name__
+                        if primary is None:
+                            raise
+                        # Preserve an earlier build/process failure while recording the additional cleanup fault.
+            rendered = render_paired(self.report)
+            self.report['status'] = 'passed'
+            self.checkpoint()
+            summary.write_text(rendered)
+        except BaseException as error:
+            reason = str(error) or type(error).__name__
+            self.report.update(status='failed', error=reason)
+            self.checkpoint()
+            summary.write_text('Same-runner PVM comparison failed; no accepted ratios.\n'
+                               +reason.replace('\n', ' ')+'\n')
+            raise
+        return self.report
+
+
+def paired_summary(runs, cases, pairs):
+    """Derive direct CPU/wall candidate/baseline ratios only from complete same-pair observations."""
+    if type(pairs) is not int or not 1 <= pairs <= 64:
+        raise ValueError('Invalid paired process count')
+    expected = {(case['case_id'], pair, version) for case in cases for pair in range(pairs)
+                for version in ('baseline', 'candidate')}
+    cells = {}
+    for run in runs:
+        key = (run['case_id'], run['pair'], run['version'])
+        parsed = run['parsed']
+        validate_policy(parsed, 'jit')
+        if parsed.get('invocation', {}).get('measurement') != measurement_identity():
+            raise ValueError('Paired timing requires the complete public-invocation boundary')
+        samples = parsed['invocation']['samples']
+        if type(run['pair']) is not int or key not in expected or key in cells or len(samples) != 13:
+            raise ValueError('Invalid or duplicate paired timing cell')
+        if (any(type(sample['sample']) is not int for sample in samples)
+                or [sample['sample'] for sample in samples] != list(range(13))):
+            raise ValueError('Unordered paired timing samples')
+        for sample in samples:
+            for clock in ('cpu_ns', 'wall_ns'):
+                if type(sample[clock]) is not int or sample[clock] < 0:
+                    raise ValueError('Invalid paired timing duration')
+        cells[key] = samples
+    if set(cells) != expected:
+        raise ValueError('Incomplete same-runner comparison')
+    result = []
+    for case in cases:
+        identity = case['case_id']
+        for phase in ('cold', 'reuse'):
+            for clock in ('cpu_ns', 'wall_ns'):
+                values = {version: [statistics.median([sample[clock] for sample in cells[identity, pair, version]
+                    if (sample['sample'] == 0 if phase == 'cold' else sample['sample'] >= 3)])
+                    for pair in range(pairs)] for version in ('baseline', 'candidate')}
+                ratios = [candidate/base for candidate, base in zip(values['candidate'], values['baseline'])
+                          if base > 0]
+                result.append(dict(case_id=identity, phase=phase, clock=clock,
+                    baseline_ns=statistics.median(values['baseline']), candidate_ns=statistics.median(values['candidate']),
+                    ratio=statistics.median(ratios) if len(ratios) == pairs else None,
+                    range=[min(ratios), max(ratios)] if len(ratios) == pairs else None))
+    return result
+
+
+def render_paired(report):
+    """Keep paired source/host identity and footprint-aware absolute timings beside each direct ratio."""
+    lines = ['# Same-runner PVM A/B', '', 'Baseline: `'+report['baseline']+'`.',
+             'Candidate: `'+report['candidate']+'`.', '',
+             'Both revisions use the same native CI job, compiler, flags, fixtures and full-state checks.',
+             'JIT processes alternate in 11 pairs; reused medians use samples 3–12. Lower ratios are better.', '',
+             '| Case | Phase | Clock | Baseline ms | Candidate ms | Candidate / baseline | Pair range |',
+             '| --- | --- | --- | ---: | ---: | ---: | --- |']
+    for row in report['summary']:
+        ratio = 'below timer resolution' if row['ratio'] is None else f'{row["ratio"]:.4f}'
+        spread = '' if row['range'] is None else f'{row["range"][0]:.4f}–{row["range"][1]:.4f}'
+        lines.append(f'| {row["case_id"]} | {row["phase"]} | {row["clock"]} | '
+            f'{row["baseline_ns"]/1e6:.6f} | {row["candidate_ns"]/1e6:.6f} | {ratio} | {spread} |')
+    lines += ['', 'Native owner medians across the paired processes:', '',
+              '| Case | Revision | Images | Native calls | Native operations | Retained code bytes |',
+              '| --- | --- | ---: | ---: | ---: | ---: |']
+    for identity in sorted({run['case_id'] for run in report['runs']}):
+        for version in ('baseline', 'candidate'):
+            native = [run['parsed']['native'] for run in report['runs']
+                      if run['case_id'] == identity and run['version'] == version]
+            values = [statistics.median(cell.get(key, 0) for cell in native)
+                      for key in ('fragments', 'calls', 'operations', 'code_bytes')]
+            lines.append('| '+identity+' | '+version+' | '+' | '.join(str(value) for value in values)+' |')
+    return '\n'.join(lines)+'\n'
+
+
 def main():
     """Make owns provisioning and native qualification; CLI selects exactly one maintained subset."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scope', choices=('all', 'micro', 'doom'), default='all')
     parser.add_argument('--revision', help='Exact immutable trigger SHA; otherwise GITHUB_SHA')
+    parser.add_argument('--baseline', default=os.environ.get('PVM_BASELINE_REVISION', ''),
+                        help='Immutable baseline SHA for a same-runner paired JIT comparison')
     arguments = parser.parse_args()
-    report = PerformanceRunner(BUILD, arguments.scope, arguments.revision).execute()
+    # Every request retires previous paired evidence, including a run that no longer asks for pairing.
+    for name in ('paired-summary.md', 'paired-results.json'):
+        (BUILD/name).unlink(missing_ok=True)
+    if arguments.baseline:
+        # Canonical qualification can fail before the paired runner exists; retire earlier success first.
+        BUILD.mkdir(parents=True, exist_ok=True)
+        (BUILD/'paired-results.json').write_text(json.dumps(dict(schema='pvm-paired-v1',
+            status='incomplete', baseline=arguments.baseline))+'\n')
+        (BUILD/'paired-summary.md').write_text('Same-runner PVM comparison incomplete; no accepted ratios.\n')
+    runner = PerformanceRunner(BUILD, arguments.scope, arguments.revision)
+    report = runner.execute()
+    if arguments.baseline:
+        PairedRunner(runner, arguments.baseline).execute()
     print('PVM performance passed: '+report['architecture']+', '+str(len(case_inventory(report['scope'])))
           +' cases; CPU/wall raw samples and ratios in '+str(BUILD/'summary.md'), flush=True)
 

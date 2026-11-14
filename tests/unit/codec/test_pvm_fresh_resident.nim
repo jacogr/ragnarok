@@ -146,6 +146,26 @@ proc reuseRefusal(plan: FlatPlan, memory: Memory, info: MachineInfo) =
     assert after.logicalBytes+LogicalBytes == before.logicalBytes
     assert after.mappedBytes < before.mappedBytes
 
+proc damagedScratch(plan: FlatPlan, memory: Memory, info: MachineInfo, damage: ScratchDirtyDamage) =
+  ## The invalid list fails after the first half of a cross-page write is privately restored.
+  var frame = freshFrame(plan, memory, info)
+  runFlat(frame, 3)
+  checkFlatReference(frame, literalBytes(true), 0)
+  var scratch = takeFlatMemoryScratch(frame, RetainedBytes)
+  assert scratch != nil
+  invalidateLastScratchDirtyPage(scratch, damage)
+  let before = residentWitnessSnapshot()
+  var reused = true
+  var created = prepareReusedFlatMemoryFrame(plan, memory, info, scratch, reused)
+  assert created.error == FlatError.None and not reused and scratch == nil
+  var restored = handler_stream.takeValue(created)
+  assert restored.info == info
+  checkFlatReference(restored, literalBytes(false), 0)
+  when FreshRWProfileEnabled:
+    let after = residentWitnessSnapshot()
+    assert after.releases == before.releases+1 and after.acquisitions == before.acquisitions+1
+    assert after.logicalBytes == before.logicalBytes and after.mappedBytes == before.mappedBytes
+
 proc unexpectedHost(calls: var int, suspension: StepOutcome): HostResponse =
   ## Fresh construction refusal must return before invoking this callback at all.
   inc calls
@@ -197,6 +217,9 @@ let plan = handler_stream.takeValue(admitted)
 completeRestores(plan, memory, info)
 refusalRollback(plan, owner, memory, info)
 reuseRefusal(plan, memory, info)
+for damage in [ScratchDirtyDamage.Unmapped, ScratchDirtyDamage.Duplicate,
+    ScratchDirtyDamage.Omitted]:
+  damagedScratch(plan, memory, info, damage)
 lifecycle(plan, memory, info)
 let countersBefore = residentWitnessSnapshot()
 let occupiedBefore = getOccupiedMem()

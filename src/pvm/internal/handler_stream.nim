@@ -238,6 +238,10 @@ type
     nativeSession*: NativeSession             # Prepared identity only; never passed to the compiler thread.
     nativeInstallation: FlatNativeInstallation
     nativeOriginal: nil FlatHandler
+    prefixProbeOriginal: nil FlatHandler      # Invocation-local observer, restored before stream handback.
+    prefixProbeHeader: uint32
+    prefixProbeBodyOriginal: nil FlatHandler  # Exact scalar entry; headers alone do not prove it was reached.
+    prefixProbeBody: uint32
     when NativeCheckedReadEnabled:
       nativeRingInstalled: bool               # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
@@ -257,7 +261,7 @@ type
       fusionBlocks: nil ptr seq[NativeFusionBlock]
       fusionReceipts: nil ptr NativeFusionReceipts
       fusionContext: nil ptr NativeFusionContext
-      fusionSlots: nil ptr array[256, FlatFusionSlot]
+      fusionSlots: nil ptr array[NativeFusionSlotLimit, FlatFusionSlot]
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
@@ -295,6 +299,10 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.pricingPlan)
   `=wasMoved`(frame.pricingMemo)
   `=wasMoved`(frame.nativeSession)
+  frame.prefixProbeOriginal = nil
+  frame.prefixProbeHeader = 0
+  frame.prefixProbeBodyOriginal = nil
+  frame.prefixProbeBody = 0
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
   when NativeCheckedReadEnabled:
@@ -439,6 +447,12 @@ proc flatInstallNativePatch(f: var FlatFrame, offset: uint32, selected: FlatHand
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
 
+proc installFlatPrefixProbe(f: var FlatFrame)
+  ## Bind the selected scalar entry and preserve its header's ordinary handoff after full emission.
+
+proc restoreFlatPrefixProbe(f: var FlatFrame)
+  ## Remove both invocation-local patches through the exact quota-predecessor rule.
+
 func flatPlanIdentity(plan: FlatPlan): FlatPlan
   ## Dynamic targets use the admission owner's immutable table.
 
@@ -554,6 +568,23 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   let next = off+1
   let selected = f.handlers[int(next)]
   selected(f, next)
+
+proc flatPrefixProbe(f: var FlatFrame, off: uint32): uint32 =
+  ## Keep adjacent specializations on original body nodes so they cannot bypass the scalar observer.
+  let original = f.prefixProbeOriginal
+  if original == nil or off != f.prefixProbeHeader:
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
+  flatCharge(f, off)
+
+proc flatPrefixBodyProbe(f: var FlatFrame, off: uint32): uint32 =
+  ## Count only reaching and executing the candidate's exact scalar entry, after any earlier host.
+  ## Segment settlement still discards work when a later instruction faults or otherwise refuses.
+  let original = f.prefixProbeBodyOriginal
+  if original == nil or off != f.prefixProbeBody:
+    return flatLocal(f, off, oracle.StepError.BackendFailure)
+  result = original(f, off)
+  if f.reason == oracle.StepError.None and observeNativePrefix(f.nativeSession):
+    restoreFlatPrefixProbe(f)
 
 proc flatChargeFailure[Error: static[oracle.StepError]](f: var FlatFrame, off: uint32): uint32 =
   ## Preserve attempt-limit precedence and allow already-paid blocks past unused price failures.
@@ -1406,6 +1437,10 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
         # The resolved offset is already valid. A refused optional cache leaves it usable.
         fresh.slots[slot] = tag
         f.dynamicOffsets = fresh
+        when NativeReadCycleEnabled:
+          # This frame owns the stable optional cache before the synchronous native borrow can see it.
+          let context = f.fusionContext
+          if context != nil: context[].jumps = addr fresh.slots
     else:
       cache.slots[slot] = tag
   f.info.blockCharged = false
@@ -2152,6 +2187,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
         f.plan.facts[start].sourceCount in 4'u32..NativeReadFactLimit and
         f.plan.facts[index].opcode == 1:
       discoverReadProbe(f, origin, pc)
+  if f.prefixProbeOriginal == nil and nativePrefixObservation(f.nativeSession):
+    installFlatPrefixProbe(f)
   origin
 
 proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
@@ -2357,12 +2394,70 @@ proc installNative(f: var FlatFrame) =
     f.nativeInstalledEpoch = span.epoch
     flatInstallNativePatch(f, span.entry, flatNativePure)
 
+proc installFlatPrefixProbe(f: var FlatFrame) =
+  ## Ordinary and adjacent-pair headers share the same reservation/body fallback.
+  ## Defer their private specialization until two actual scalar entries; a host before the prefix buys no visit.
+  ## The containing block must be fully materialized. No operand decode, admission or allocation is needed.
+  if f.prefixProbeOriginal != nil or f.pricingKind != 0 or
+      not nativePrefixObservation(f.nativeSession) or f.plan == nil: return
+  let span = nativeSpanInfo(f.nativeSession)
+  if uint64(span.first) >= uint64(f.plan.facts.len): return
+  let header = nativePrefixHeader(f.nativeSession)
+  if header >= span.entry or uint64(header) >= uint64(f.handlers.len) or
+      uint64(header) >= uint64(f.sites.len) or uint64(header) >= uint64(f.arguments.len) or
+      uint64(span.entry) >= uint64(f.handlers.len) or uint64(span.entry) >= uint64(f.sites.len) or
+      uint64(span.entry) >= uint64(f.arguments.len) or f.sites[int(span.entry)] != span.first or
+          f.barrier == span.entry: return
+  let original = f.handlers[int(header)]
+  if original != flatCharge:
+    # Only these specialized workers promise the same original-body fallback as an ordinary header.
+    let adjacentFirstCold: FlatHandler = flatChargedShapeCold[149, 200, 170]
+    let adjacentSecondCold: FlatHandler = flatChargedShapeCold[132, -1, 81]
+    let adjacentFirst: FlatHandler = flatChargedAdjacent[true]
+    let adjacentSecond: FlatHandler = flatChargedAdjacent[false]
+    if original != adjacentFirstCold and original != adjacentSecondCold and
+        original != adjacentFirst and original != adjacentSecond: return
+  let first = f.sites[int(header)]
+  if first > span.first or uint64(first) >= uint64(f.plan.facts.len): return
+  let fact = f.plan.facts[int(first)]
+  if fact.priceIndex != f.plan.facts[int(span.first)].priceIndex or
+      f.arguments[int(header)].y != fact.sourceCount or
+      uint64(fact.pc) >= uint64(f.compiledForPc.len) or
+      f.compiledForPc[int(fact.pc)] != (header or flatReservationHeaderFlag)+1: return
+  f.prefixProbeHeader = header
+  f.prefixProbeOriginal = original
+  f.prefixProbeBody = span.entry
+  f.prefixProbeBodyOriginal = f.handlers[int(span.entry)]
+  f.handlers[int(header)] = flatPrefixProbe
+  f.handlers[int(span.entry)] = flatPrefixBodyProbe
+
+proc restoreFlatPrefixProbe(f: var FlatFrame) =
+  ## Restore both exact predecessors before handback, including either slot's saved quota predecessor.
+  let original = f.prefixProbeOriginal
+  let body = f.prefixProbeBodyOriginal
+  if original == nil and body == nil: return
+  f.prefixProbeOriginal = nil
+  f.prefixProbeBodyOriginal = nil
+  if body != nil:
+    restoreFlatTemporaryHandler(f, f.prefixProbeBody, flatPrefixBodyProbe, body)
+  if original != nil:
+    restoreFlatTemporaryHandler(f, f.prefixProbeHeader, flatPrefixProbe, original)
+
 proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
   ## Shared structural classification precedes any native cache/byte allocation and all ISA decisions.
   let epoch = nativeEpoch(f.nativeSession)
   if epoch == 0 or f.pricingKind != 0 or nativeSpanInfo(f.nativeSession).len != 0: return
   var index = max(origin, nativeScanStart(f.nativeSession))
+  var header = NativeEntryFailure
   while int(index) < f.handlers.len and index < NativeEntryLimit:
+    # Each retained emission has its own header, even when another suffix shares source facts.
+    if uint64(index) >= uint64(f.sites.len): return
+    let site = f.sites[int(index)]
+    if uint64(site) >= uint64(f.plan.facts.len): return
+    let pc = f.plan.facts[int(site)].pc
+    if uint64(pc) < uint64(f.compiledForPc.len) and
+        f.compiledForPc[int(pc)] == (index or flatReservationHeaderFlag)+1:
+      header = index
     # Synthetic charge headers duplicate the next source site and never belong to a pure body.
     if int(index)+1 < f.sites.len and f.sites[int(index)] == f.sites[int(index)+1]:
       inc index
@@ -2377,7 +2472,7 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
       if not span.add(fact.opcode, payload.args.slots, payload.args.x, f.sites[int(at)], at+1): break
       inc at
     if span.len >= NativeMinimumOperations and int(span.past) < f.handlers.len:
-      considerNativeSpan(f.nativeSession, span)
+      considerNativeSpan(f.nativeSession, span, header)
       return
     index = if at > index: at else: index+1
   completeNativeScan(f.nativeSession, index)
@@ -3358,7 +3453,7 @@ when NativeReadCycleEnabled:
       flatDispatchSegment(f, entry)
       return
     var patches = default(array[NativeFusionBlockLimit, uint32])
-    var slots = default(array[256, FlatFusionSlot])
+    var slots = default(array[NativeFusionSlotLimit, FlatFusionSlot])
     var count = 0
     for slot in 0..<blocks[].len:
       if not nativeFusionEntry(image[], slot): continue
@@ -3369,8 +3464,8 @@ when NativeReadCycleEnabled:
         return
       if not nativeFusionDispatchEntry(image[], slot): continue
       let token = header+1
-      var at = int((token*0x9e3779b9'u32) shr 24)
-      while slots[at].token != 0: at = (at+1) and 255
+      var at = nativeFusionSlot(token)
+      while slots[at].token != 0: at = (at+1) and (NativeFusionSlotLimit-1)
       slots[at] = FlatFusionSlot(token: token, index: uint32(slot))
       patches[count] = header
       inc count
@@ -3386,6 +3481,8 @@ when NativeReadCycleEnabled:
     if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
     if f.rw.len > 0: context.memory.writable[1].data = addr f.rw[0]
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
+    let dynamicOffsets = f.dynamicOffsets
+    if dynamicOffsets != nil: context.jumps = addr dynamicOffsets.slots
     f.fusionImage = image
     # Source paths may repeat while this image and its graph are exclusively borrowed.
     var receipts = default(NativeFusionReceipts)
@@ -3595,6 +3692,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
   ## A cold bitmap backedge stays with the exclusive cached stream across short calls.
   ## The first segment with enough settled work consumes it for a source proof.
+  defer: restoreFlatPrefixProbe(f)
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -3641,10 +3739,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if offset == flatStop:
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
+  if f.prefixProbeOriginal == nil and nativePrefixObservation(f.nativeSession):
+    installFlatPrefixProbe(f)
   when NativeReadCycleEnabled:
     dispatchPreparedMixed(f, offset)
   else:
     flatDispatchSegment(f, offset)
+  restoreFlatPrefixProbe(f)
   if f.barrier != flatStop:
     when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
       if loseQuotaPredecessor:
@@ -4363,44 +4464,39 @@ func materializedFacts*(stream: FlatStream): uint64 =
   if catalogue == nil: 0'u64 else: uint64(catalogue.materialized)
 
 func flatScratchSlot(pages: seq[PageDescription], physical: uint32): int =
-  ## Same-map validation proves every retained dirty ordinal still belongs to this sorted mapping.
+  ## Resolve a retained dirty page against the sorted mapping.
   var low = 0
   var high = pages.len
   while low < high:
     let middle = low+(high-low) div 2
     if uint32(pages[middle].index) < physical: low = middle+1
     else: high = middle
-  assert low < pages.len and uint32(pages[low].index) == physical
-  low
+  if low < pages.len and uint32(pages[low].index) == physical: low else: -1
 
-proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
-  ## Complete mapping equality preceded any write; copy one genuine source page into its private allocation.
+proc flatRestoreScratchPage(f: var FlatFrame, page: int): bool =
+  ## Copy a genuine source page to its private backing, or refuse an inconsistent retained span.
   let description = f.sourcePages[page]
-  if description.access == PageAccess.Inaccessible: return
+  if description.access == PageAccess.Inaccessible: return true
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
-  elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
+  if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
-  elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
+  if address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
     let offset = int(address-f.roBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
-  else:
-    var found = false
-    for index in 0..<f.extra.len:
-      let region {.cursor.} = f.extra[index]
-      if address >= region.first and address-region.first+4096 <= uint64(region.size):
-        if region.bytes.len != 0:
-          # Lazy extras use the already installed incoming baseline; materialized bytes need restoration.
-          assert region.bytes.len == region.size
-          let offset = int(address-region.first)
-          flatCopySourcePage(f.sourceMemory, page, description,
-            f.extra[index].bytes.toOpenArray(offset, offset+4095))
-        found = true
-        break
-    assert found
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
+  for index in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[index]
+    if address >= region.first and address-region.first+4096 <= uint64(region.size):
+      # Lazy extras already use the incoming baseline.
+      if region.bytes.len == 0: return true
+      if region.bytes.len != region.size: return false
+      let offset = int(address-region.first)
+      return flatTryCopySourcePage(f.sourceMemory, page, description,
+        f.extra[index].bytes.toOpenArray(offset, offset+4095))
+  false
 
 proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo,
     scratch: var nil FlatMemoryScratch, reused: var bool): FlatResult[FlatFrame] =
@@ -4417,40 +4513,61 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   if delta.error == MachineError.AllocationRefused:
     scratch = move(held)
     return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
-  if delta.error != MachineError.None:
+  if delta.error != MachineError.None or uint64(held.pages.len) != uint64(uint32(count.value)) or
+      held.dirty.len > held.pages.len:
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)
-  var changes = machine.takeValue(delta)
-  var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
-  frame.sourcePages = move(held.pages)
-  frame.roBase = held.roBase
-  frame.rwBase = held.rwBase
-  frame.stackBase = held.stackBase
-  frame.ro = move(held.ro)
-  frame.rwStorage = move(held.rwStorage)
-  frame.rw = borrowRW(frame.rwStorage)
-  held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
-  frame.stack = move(held.stack)
-  frame.extra = move(held.extra)
-  frame.dirtyPages = move(held.dirtyPages)
-  frame.dirtyIndices = move(held.dirty)
-  for index in 0..<frame.dirtyIndices.len:
-    let physical = frame.dirtyIndices[index]
-    # Reset guest writes even when the incoming source reuses its exact original owner.
-    flatRestoreScratchPage(frame, flatScratchSlot(frame.sourcePages, physical))
-  for index in 0..<changes.len:
-    let page = int(uint32(changes[index]))
-    assert page >= 0 and page < frame.sourcePages.len
-    let physical = uint64(uint32(frame.sourcePages[page].index))
-    let word = physical shr 6
-    # Only a bounded set physical bit proves the first loop already restored incoming bytes.
-    # Unknown/short bitmap metadata and clean changed pages retain their complete source copy.
-    if word >= uint64(frame.dirtyPages.len) or
-        (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0:
-      flatRestoreScratchPage(frame, page)
-  flatClearDirty(frame)
-  reused = true
-  FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+  let words = if held.pages.len == 0: 0'u64
+    else: (uint64(uint32(held.pages[held.pages.len-1].index)) shr 6)+1
+  if uint64(held.dirtyPages.len) != words:
+    held = nil
+    return prepareFlatMemoryFrame(plan, memory, info)
+  block restore:
+    let changes = machine.takeValue(delta)
+    var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
+    frame.sourcePages = move(held.pages)
+    frame.roBase = held.roBase
+    frame.rwBase = held.rwBase
+    frame.stackBase = held.stackBase
+    frame.ro = move(held.ro)
+    frame.rwStorage = move(held.rwStorage)
+    frame.rw = borrowRW(frame.rwStorage)
+    held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
+    frame.stack = move(held.stack)
+    frame.extra = move(held.extra)
+    frame.dirtyPages = move(held.dirtyPages)
+    frame.dirtyIndices = move(held.dirty)
+    for index in 0..<changes.len:
+      let slot = uint64(uint32(changes[index]))
+      if slot >= uint64(frame.sourcePages.len): break restore
+      let page = int(slot)
+      let physical = uint64(uint32(frame.sourcePages[page].index))
+      let word = physical shr 6
+      # A marked page is restored by the dirty-list pass below. Leftover bits reject reuse.
+      if (word >= uint64(frame.dirtyPages.len) or
+          (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0) and
+          not flatRestoreScratchPage(frame, page):
+        break restore
+    for index in 0..<frame.dirtyIndices.len:
+      # A restored page consumes its bit. A duplicate ordinal cannot claim it twice.
+      let physical = frame.dirtyIndices[index]
+      let page = flatScratchSlot(frame.sourcePages, physical)
+      let word = uint64(physical shr 6)
+      let mask = 1'u64 shl int(physical and 63)
+      if page < 0 or frame.sourcePages[page].access != PageAccess.ReadWrite or
+          word >= uint64(frame.dirtyPages.len) or
+          (frame.dirtyPages[int(word)] and mask) == 0 or
+          not flatRestoreScratchPage(frame, page):
+        break restore
+      frame.dirtyPages[int(word)] = frame.dirtyPages[int(word)] and not mask
+    for index in 0..<frame.dirtyPages.len:
+      if frame.dirtyPages[index] != 0: break restore
+    frame.dirtyIndices.setLen(0)
+    reused = true
+    return FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+  # The private frame retired when the restore block exited. Re-admit from the immutable input.
+  held = nil
+  prepareFlatMemoryFrame(plan, memory, info)
 
 proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMemoryScratch =
   ## Retain only bounded private payload plus one immutable baseline; zero disables retention.
@@ -4481,6 +4598,17 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   scratch
 
 when defined(pvmResidentWitness):
+  type ScratchDirtyDamage* {.pure.} = enum
+    Unmapped, Duplicate, Omitted
+
+  proc invalidateLastScratchDirtyPage*(scratch: FlatMemoryScratch, damage: ScratchDirtyDamage) =
+    ## Damage the list while preserving the original bitmap.
+    assert scratch.dirty.len > 1
+    case damage
+    of Unmapped: scratch.dirty[scratch.dirty.len-1] = high(uint32)
+    of Duplicate: scratch.dirty[scratch.dirty.len-1] = scratch.dirty[0]
+    of Omitted: scratch.dirty.setLen(scratch.dirty.len-1)
+
   func residentFrameRWInfo*(frame: FlatFrame): array[3, uint64] =
     ## Test-only lengths distinguish a retired view from storage still owned by an active or idle lease.
     [uint64(frame.rw.len), logicalBytes(frame.rwStorage), mappedBytes(frame.rwStorage)]
