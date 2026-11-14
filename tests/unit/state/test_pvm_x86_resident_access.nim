@@ -374,6 +374,8 @@ when Native and defined(pvmX86Jit):
             assert firstData == changedFirst and lastData == changedLast
 
 when Native:
-  assert scalarCases == 11448 and branchCases == 3456
+  # Fifty-nine scalar opcodes cover every pattern, resident mask and initial seed.
+  assert scalarCases == 12744, "resident scalar coverage: " & $scalarCases
+  assert branchCases == 3456, "resident branch coverage: " & $branchCases
 assert next < 4096
 stdout.writeLine("X86_RESIDENT_ACCESS_OK")

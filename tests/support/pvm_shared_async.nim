@@ -211,6 +211,94 @@ proc closedHandleMoves() =
   assert default(NativeRuntime).close(), "closedHandleMoves.4: default(NativeRuntime).close()"
 
 when defined(pvmSharedAsyncWitness):
+  proc bitCountExpected(value: uint64, opcode: byte): uint64 =
+    ## Independent bit-by-bit oracle includes the selected width's zero case.
+    let bits = if opcode in [102'u8, 104, 106]: 32 else: 64
+    result = 0
+    if opcode in [101'u8, 102]:
+      for bit in 0..<bits:
+        result += (value shr bit) and 1
+    else:
+      for offset in 0..<bits:
+        let bit = if opcode in [103'u8, 104]: bits-1-offset else: offset
+        if ((value shr bit) and 1) != 0: break
+        inc result
+
+  proc nativeBitCounts() =
+    ## Every source/destination alias runs real native code with untouched-register canaries.
+    if not nativePlatformSupported(): return
+    for opcode in [101'u8, 102, 103, 104, 105, 106]:
+      for source in 0..<13:
+        for destination in 0..<13:
+          let wire = @[0'u8, 0, 5, opcode, byte(source*16+destination), 100, 0xcc, 0, 0x15]
+          let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+          assert decoded.error == ProgramError.None
+          let operation = instruction(decoded.value, CodeAddress(0))
+          let identity = instruction(decoded.value, CodeAddress(2))
+          assert operation.error == ProgramError.None and identity.error == ProgramError.None
+          var span = initNativeSpan(1, 0, 1)
+          assert span.add(opcode, instructionRegisters(operation), 0, 0, 2)
+          assert span.add(100, instructionRegisters(identity), 0, 1, 3)
+          let image = lowerNative(span)
+          assert image.ready
+          for pattern in 0..<68:
+            let value = case pattern
+              of 0: 0'u64
+              of 1: high(uint64)
+              of 2: 0xffffffff00000000'u64
+              of 3: 0x0123456789abcdef'u64
+              else: 1'u64 shl (pattern-4)
+            var registers = default(RegisterFile)
+            for index in 0..<13: registers[index] = RegisterValue(0x5555555555555555'u64+uint64(index))
+            registers[source] = RegisterValue(value)
+            let original = registers
+            assert enterNative(image, registers)
+            for index in 0..<13:
+              let expected = if index == destination: RegisterValue(bitCountExpected(value, opcode))
+                else: original[index]
+              assert registers[index] == expected
+
+  proc nativeBitCountLoops() =
+    ## Count instructions retain complete CPU/RAM parity through native loop receipts and checked exits.
+    if not nativePlatformSupported(): return
+    for opcode in [101'u8, 102, 103, 104, 105, 106]:
+      # PC0 count R7,R8; PC2 increment R10; PC5 branch R10<R11 to PC0; PC11 halt.
+      let wire = @[0'u8, 0, 13, opcode, 0x87, 131, 0xaa, 1, 172, 0xba,
+        0xfb, 0xff, 0xff, 0xff, 50, 0, 0x25, 8]
+      let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+      assert decoded.error == ProgramError.None
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      pauseNativeCompiler(runtime, true)
+      let native = prepared(decoded.value, runtime)
+      let checked = newPreparedProgram(decoded.value, defaultPreparedLimits(GasCycleLimit(1000))).value
+      let source = input(decoded.value, 2048)
+      assert execute(source, ExecutionStepLimit(6145), native).error == StepError.None
+      assert runtime.runtimeInfo.submitted == 1
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      for value in [0'u64, high(uint64), 0xffffffff00000000'u64, 0x0123456789abcdef'u64]:
+        for gas in [0'u64, 1, 10000, 1000000]:
+          for budget in [4096'u64, 6144, 6145]:
+            # Each invocation restores independent immutable input, including an irrelevant mapped page.
+            var cpu = machineInfo(source).value
+            cpu.gas = MachineGas(gas)
+            cpu.registers[8] = RegisterValue(value)
+            let captured = captureMachine(decoded.value, memoryOf(source).value, cpu)
+            assert captured.error == MachineError.None
+            let expected = execute(captured.value, ExecutionStepLimit(budget), checked)
+            let actual = execute(captured.value, ExecutionStepLimit(budget), native)
+            assert actual.error == expected.error
+            if expected.error == StepError.None:
+              assert actual.value.exit == expected.value.exit
+              assert machineInfo(actual.value.machine).value == machineInfo(
+                  expected.value.machine).value
+              assert pageImage(memoryOf(actual.value.machine).value, PageIndex(32)).value ==
+                pageImage(memoryOf(expected.value.machine).value, PageIndex(32)).value
+            assert machineInfo(captured.value).value == cpu
+      assert preparedInfo(native).value.nativeOperations > 0
+      assert runtime.close()
+
   proc hostReceipts() =
     ## Literal disjoint settled work2+2+0 proves rolling host budgets cannot double-count prior segments.
     let runtime = newNativeRuntime()
@@ -253,6 +341,93 @@ when defined(pvmSharedAsyncWitness):
     assert uint64(cpu.registers[7]) == 6 and uint64(cpu.registers[10]) == 2, "hostReceipts.9: uint64(cpu.registers[7]) == 6 and uint64(cpu.registers[10]) == 2"
     assert runtime.runtimeInfo.submitted == 0, "hostReceipts.10: runtime.runtimeInfo.submitted == 0"
     assert runtime.close(), "hostReceipts.11: runtime.close()"
+
+  type
+    HostParityTrace = object ## Retain immutable callback machines and their order across the host reply.
+      calls: int
+      ids: array[2, HostCallId]
+      state: array[2, Machine]
+
+  proc hostedNativeOwner(): Program =
+    ## The checked loop exit reaches two hosts in one paid block before the terminal jump.
+    let wire = @[0'u8, 0, 21, 131, 0x77, 3, 131, 0xaa, 1, 172, 0xba,
+      0xfa, 0xff, 0xff, 0xff, 10, 7, 131, 0x88, 1, 10, 8, 50, 0, 0x49, 0x50, 0x0a]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    decoded.value
+
+  proc replyNativeParity(trace: var HostParityTrace, stopped: StepOutcome): HostResponse =
+    ## Each reply changes a register and a mapped byte while keeping the block paid.
+    assert stopped.exit == StepExit.Host and trace.calls < trace.state.len
+    let old = machineInfo(stopped.machine).value
+    assert old.blockCharged and uint64(stopped.hostCall) == uint64(7+trace.calls)
+    let memory = memoryOf(stopped.machine).value
+    let page = pageImage(memory, PageIndex(32)).value
+    # The second host must observe the first reply before it overwrites the same byte.
+    assert page.bytes[0] == (if trace.calls == 0: 29'u8 else: 71'u8)
+    trace.ids[trace.calls] = stopped.hostCall
+    trace.state[trace.calls] = stopped.machine
+    inc trace.calls
+    var registers = old.registers
+    registers[8] = RegisterValue(uint64(registers[8])+100)
+    let changed = store(memory, MemoryAddress(32'u64*4096),
+      AccessWidth(1), RegisterValue(uint64(trace.calls+70)))
+    assert changed.error == MachineError.None
+    HostResponse(action: HostAction.Continue, gas: old.gas, registers: registers,
+      memory: changed.value)
+
+  proc compareHostedNative(source: Machine, checked, native: PreparedProgram,
+      quota: uint64, hosts: uint64, error: StepError, calls: int) =
+    ## Both routes see identical host observations even when the paid suffix exhausts a limit.
+    var interpreted = default(HostParityTrace)
+    var compiled = default(HostParityTrace)
+    let before = preparedInfo(native).value.nativeOperations
+    let baseline = executeWithHost(source, interpreted, replyNativeParity, ExecutionStepLimit(quota),
+      HostCallLimit(hosts), checked)
+    let answer = executeWithHost(source, compiled, replyNativeParity, ExecutionStepLimit(quota),
+      HostCallLimit(hosts), native)
+    assert baseline.error == error and answer.error == error
+    assert interpreted.calls == calls and compiled.calls == calls and interpreted.ids == compiled.ids
+    assert preparedInfo(native).value.nativeOperations-before == 6144
+    for index in 0..<calls:
+      let left = interpreted.state[index]
+      let right = compiled.state[index]
+      assert machineInfo(left).value == machineInfo(right).value
+      assert pageImage(memoryOf(left).value, PageIndex(32)).value ==
+        pageImage(memoryOf(right).value, PageIndex(32)).value
+    if error == StepError.None:
+      assert answer.value.backend == PvmBackend.Jit and answer.value.exit == StepExit.Halt
+      assert baseline.value.exit == StepExit.Halt
+      let cpu = machineInfo(answer.value.machine).value
+      assert cpu == machineInfo(baseline.value.machine).value and cpu.blockCharged
+      assert uint64(cpu.registers[8]) == 1089
+      let final = pageImage(memoryOf(answer.value.machine).value, PageIndex(32)).value
+      assert final == pageImage(memoryOf(baseline.value.machine).value, PageIndex(32)).value
+      assert final.bytes[0] == 72
+    let original = pageImage(memoryOf(source).value, PageIndex(32)).value
+    assert original.bytes[0] == 29 and uint64(machineInfo(source).value.registers[8]) == 888
+
+  proc hostedNativeParity() =
+    ## Freeze compiler readiness outside the call, then exercise actual native work and host reentry.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let owner = hostedNativeOwner()
+    let source = input(owner, 2048)
+    var native = prepared(owner, runtime)
+    let checked = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000))).value
+    var warm = default(HostParityTrace)
+    let first = executeWithHost(source, warm, replyNativeParity, ExecutionStepLimit(6148),
+      HostCallLimit(2), native)
+    assert first.error == StepError.None and warm.calls == 2
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).completions == 1
+    compareHostedNative(source, checked, native, 6148, 2, StepError.None, 2)
+    compareHostedNative(source, checked, native, 6147, 2, StepError.StepLimitExceeded, 2)
+    compareHostedNative(source, checked, native, 6148, 1, StepError.HostCallLimitExceeded, 1)
+    compareHostedNative(source, checked, native, 6148, 2, StepError.None, 2)
+    native = default(PreparedProgram)
+    assert runtimeInfo(runtime).registered == 0 and close(runtime)
 
   proc staleStreamEpoch() =
     ## Same live source registration must reject an old queued image after a destructive stream epoch reset.
@@ -798,6 +973,37 @@ when defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).submitted == 1
     assert close(runtime)
 
+  when NativeCheckedReadEnabled:
+    proc unexpectedQuotaHost(calls: var int, suspension: StepOutcome): HostResponse =
+      inc calls
+      default(HostResponse)
+
+    proc invalidQuotaPredecessor() =
+      ## Both public owners must discard a damaged stream with an active observer.
+      let owner = loopOwner()
+      let source = input(owner, 2048)
+      let initial = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let quota = ExecutionStepLimit(6145)
+      for hosted in [false, true]:
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        let code = prepared(owner, runtime)
+        loseNextQuotaProbePredecessor()
+        if hosted:
+          var calls = 0
+          let failed = executeWithHost(source, calls, unexpectedQuotaHost, ExecutionStepLimit(2),
+            HostCallLimit(1), code)
+          assert failed.error == StepError.BackendFailure and calls == 0
+        else:
+          assert execute(source, ExecutionStepLimit(2), code).error == StepError.BackendFailure
+        assert preparedInfo(code).value.streamNodes == 0
+        assert preparedNativeState(code).value == NativeState.Unavailable
+        assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+        assert machineInfo(source).value == initial and memoryOf(source).value == memory
+        verify(execute(source, quota, code), source, 2048)
+        assert runtimeInfo(runtime).submitted == 0 and close(runtime)
+
   proc purePrefixControl() =
     ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
     if not nativePlatformSupported(): return
@@ -1155,6 +1361,7 @@ when defined(pvmSharedAsyncWitness):
     assert histories[4].value.backend == PvmBackend.Interpreted, "parkedCompletionCapacity.5"
     let full = runtime.runtimeInfo
     assert full.registered == 4 and full.completions == 4 and full.submitted == 4, "parkedCompletionCapacity.6"
+    assert full.primaryCreditRefusals == 1
     assert preparedNativeState(codes[4]).value == NativeState.Deferred, "parkedCompletionCapacity.7"
     codes[0] = default(PreparedProgram) # Synchronous completed-image retirement returns exactly one credit.
     assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.completions == 3, "parkedCompletionCapacity.8"
@@ -1169,6 +1376,7 @@ when defined(pvmSharedAsyncWitness):
     releaseNativeCompilerGate(runtime)
     assert runtime.runtimeInfo.registered == 4 and runtime.runtimeInfo.completions == 4, "parkedCompletionCapacity.12"
     assert runtime.runtimeInfo.submitted == 5 and runtime.runtimeInfo.completed == 5, "parkedCompletionCapacity.13"
+    assert runtime.runtimeInfo.primaryCreditRefusals == 1
     for index in 1..<5:
       # +5 in the replacement slot must never execute the physically retired +3 image.
       let ready = execute(sources[index], ExecutionStepLimit(6145), codes[index])
@@ -1473,7 +1681,7 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
     assert pageImage(memoryOf(source).value, PageIndex(32)).value == before, "late Read input page stays immutable"
     actual.value.backend
 
-  proc lateReadReplacement() =
+  proc lateReadReplacement(corrupt = false) =
     ## One unused call arms observation, two matching later calls retire the prefix, and Read executes.
     let runtime = newNativeRuntime()
     assert launch(runtime), "late Read worker starts"
@@ -1514,33 +1722,42 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
         let incumbent = preparedInfo(native).value
         assert incumbent.nativeFragments == 1 and incumbent.nativeCalls == 0, "late path leaves incumbent unused"
 
-      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
-      assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
-          "later observation stays checked until publication"
-      assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
-          NativeState.Pending, "two observations submit Read"
-      let lowered = waitNativeCompilerGate(runtime)
-      assert lowered.hasImage and lowered.kind == NativeKind.CheckedReadBody, "worker lowers the Read image"
-      releaseNativeCompilerGate(runtime)
-      waitNativeCompiler(runtime)
-      assert runtime.runtimeInfo.completed == 2 and runtime.runtimeInfo.registered == 1, "replacement completion owns the only credit"
-      assert verifyLateReadCall(later, native, checked) == PvmBackend.Jit, "replacement executes natively"
-      let installed = preparedInfo(native).value
-      assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
-      assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
-          NativeState.Ready, "installed Read settles three original operations per call"
-      cpu.pc = CodeAddress(51)
-      let otherRead = captureMachine(owner, memory, cpu).value
-      for unused in 0..<3:
-        # Bypass the replacement enough times to arm and complete another streak without the limit.
-        assert verifyLateReadCall(otherRead, native, checked) == PvmBackend.Interpreted,
-          "second disjoint Read stays checked"
+      if corrupt:
+        corruptNextReadRetirementKey(runtime)
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted
+        assert preparedNativeState(native).value == NativeState.Unavailable
+        assert verifyLateReadCall(prefix, native, checked) == PvmBackend.Interpreted
+        assert preparedInfo(native).value.nativeCalls == 0
+        assert runtime.runtimeInfo.submitted == 1 and runtime.runtimeInfo.registered == 1
+      else:
+        armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Interpreted,
+            "later observation stays checked until publication"
         assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
-            NativeState.Ready,
-          "one replacement is allowed per stream epoch"
-      assert preparedInfo(native).value.nativeCalls == installed.nativeCalls,
-        "the second disjoint Read leaves the replacement unused"
-    assert runtime.runtimeInfo.registered == 0 and runtime.close(), "late Read retirement returns the credit"
+            NativeState.Pending, "two observations submit Read"
+        let lowered = waitNativeCompilerGate(runtime)
+        assert lowered.hasImage and lowered.kind == NativeKind.CheckedReadBody, "worker lowers the Read image"
+        releaseNativeCompilerGate(runtime)
+        waitNativeCompiler(runtime)
+        assert runtime.runtimeInfo.completed == 2 and runtime.runtimeInfo.registered == 1, "replacement completion owns the only credit"
+        assert verifyLateReadCall(later, native, checked) == PvmBackend.Jit, "replacement executes natively"
+        let installed = preparedInfo(native).value
+        assert installed.nativeFragments == 2 and installed.nativeCalls == 40000, "replacement publishes once and runs every Read"
+        assert installed.nativeOperations == 120000 and preparedNativeState(native).value ==
+            NativeState.Ready, "installed Read settles three original operations per call"
+        cpu.pc = CodeAddress(51)
+        let otherRead = captureMachine(owner, memory, cpu).value
+        for unused in 0..<3:
+          # Bypass the replacement enough times to arm and complete another streak without the limit.
+          assert verifyLateReadCall(otherRead, native, checked) == PvmBackend.Interpreted,
+            "second disjoint Read stays checked"
+          assert runtime.runtimeInfo.submitted == 2 and preparedNativeState(native).value ==
+              NativeState.Ready,
+            "one replacement is allowed per stream epoch"
+        assert preparedInfo(native).value.nativeCalls == installed.nativeCalls,
+          "the second disjoint Read leaves the replacement unused"
+    assert runtime.runtimeInfo.registered == (if corrupt: 1 else: 0)
+    assert runtime.close(), "late Read runtime closes after its prepared owner drops"
 
 proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
@@ -1549,8 +1766,12 @@ proc runSharedAsync*() =
   diagnosticPhase("closedHandleMoves")
   closedHandleMoves()
   when defined(pvmSharedAsyncWitness):
+    witnessRetirementIdentity()
+    nativeBitCounts()
+    nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
     hostReceipts()
+    hostedNativeParity()
     diagnosticPhase("staleStreamEpoch")
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
@@ -1576,6 +1797,8 @@ proc runSharedAsync*() =
     diagnosticPhase("immediateLoops")
     immediateLoops()
     invalidNativeReceipt()
+    when NativeCheckedReadEnabled:
+      invalidQuotaPredecessor()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
     adjacentNativePrefix()
@@ -1592,6 +1815,7 @@ proc runSharedAsync*() =
     when NativeCheckedReadEnabled:
       diagnosticPhase("lateReadReplacement")
       lateReadReplacement()
+      lateReadReplacement(true)
     diagnosticPhase("doneFinalDrop")
     doneFinalDrop()
   echo "PVM shared async passed"

@@ -10,6 +10,8 @@
 ## Prepared execution publishes through the shared asynchronous worker. The direct
 ## region and wide-cycle owners still exercise the former SysV ABIs in native tests.
 ## A direct publisher does not grant admission to a prepared frame.
+## Scalar bit counts use the baseline ISA without POPCNT, LZCNT or TZCNT requirements.
+## Zero-word scans select the explicit 32/64 result before their otherwise undefined value is used.
 
 import std/assertions
 import ../[program, machine]
@@ -236,6 +238,36 @@ template emitX86OperationAccess(fragment: var X86Block, access: untyped, opcode:
   assert supportedX86Opcode(opcode)
   if opcode in [20'u8, 51]:
     immediate(fragment, 0xb8, value)
+  elif opcode in {101'u8..106}:
+    readAccess(fragment, access, slots.aIndex, false)
+    let narrow = opcode in [102'u8, 104, 106]
+    if narrow: put(fragment, [0x89'u8, 0xc0]) # MOV EAX,EAX discards the upper input word.
+    if opcode in [101'u8, 102]:
+      # Fixed disjoint-lane sum uses the baseline ISA, including on CPUs without POPCNT.
+      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xd1, 0xe9]) # MOV RCX,RAX; SHR RCX,1.
+      immediate(fragment, 0xba, 0x5555555555555555'u64)
+      put(fragment, [0x48'u8, 0x21, 0xd1, 0x48, 0x29, 0xc8]) # AND RCX,RDX; SUB RAX,RCX.
+      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 2])
+      immediate(fragment, 0xba, 0x3333333333333333'u64)
+      put(fragment, [0x48'u8, 0x21, 0xd0, 0x48, 0x21, 0xd1, 0x48, 0x01, 0xc8])
+      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 4, 0x48, 0x01, 0xc8])
+      immediate(fragment, 0xba, 0x0f0f0f0f0f0f0f0f'u64)
+      put(fragment, [0x48'u8, 0x21, 0xd0])
+      for amount in [8'u8, 16, 32]:
+        put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, amount, 0x48, 0x01, 0xc8])
+      put(fragment, [0x83'u8, 0xe0, 127]) # AND EAX,127 retains the complete 0..64 count.
+    else:
+      # BSR/BSF leave their destination undefined at zero, but set ZF.
+      # MOV preserves ZF so CMOVZ selects the GP's explicit width result.
+      if not narrow: put(fragment, [0x48'u8])
+      put(fragment, [0x0f'u8, (if opcode in [103'u8, 104]: 0xbd'u8 else: 0xbc'u8), 0xc0])
+      put(fragment, [0xb9'u8, (if opcode in [103'u8, 104]:
+        (if narrow: 63'u8 else: 127'u8) else: (if narrow: 32'u8 else: 64'u8)), 0, 0, 0])
+      if not narrow: put(fragment, [0x48'u8])
+      put(fragment, [0x0f'u8, 0x44, 0xc1])
+      if opcode in [103'u8, 104]:
+        if not narrow: put(fragment, [0x48'u8])
+        put(fragment, [0x83'u8, 0xf0, (if narrow: 31'u8 else: 63'u8)])
   elif opcode == 100 or opcode in {107'u8..110}:
     readAccess(fragment, access, slots.aIndex, false)
     case opcode

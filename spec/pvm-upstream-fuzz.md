@@ -85,6 +85,9 @@ registers, unsigned gas, PC, fault page, every mapped byte and retained writable
 permissions. Panic/Halt PC is normalized to zero under our existing terminal
 snapshot contract; the raw reference PC remains in the frame. Source registers,
 PC, gas, page permissions and bytes must remain unchanged after execution.
+Each frame runs through one-shot execution and twice through the same prepared
+owner. The second prepared run must reuse resident memory. Both prepared runs
+also compare the charged-block flag with the one-shot result.
 The native 100,000-step/cycle ceilings are local failures, never guest exits.
 The comparison does not infer a public reference equivalent for `blockCharged`,
 and does not claim host-call, arbitrary permission-map or full ISA coverage.
