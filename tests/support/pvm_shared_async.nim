@@ -273,12 +273,16 @@ when defined(pvmSharedAsyncWitness):
     assert stopped.exit == StepExit.Host and trace.calls < trace.state.len
     let old = machineInfo(stopped.machine).value
     assert old.blockCharged and uint64(stopped.hostCall) == uint64(7+trace.calls)
+    let memory = memoryOf(stopped.machine).value
+    let page = pageImage(memory, PageIndex(32)).value
+    # The second host must observe the first reply before it overwrites the same byte.
+    assert page.bytes[0] == (if trace.calls == 0: 29'u8 else: 71'u8)
     trace.ids[trace.calls] = stopped.hostCall
     trace.state[trace.calls] = stopped.machine
     inc trace.calls
     var registers = old.registers
     registers[8] = RegisterValue(uint64(registers[8])+100)
-    let changed = store(memoryOf(stopped.machine).value, MemoryAddress(32'u64*4096),
+    let changed = store(memory, MemoryAddress(32'u64*4096),
       AccessWidth(1), RegisterValue(uint64(trace.calls+70)))
     assert changed.error == MachineError.None
     HostResponse(action: HostAction.Continue, gas: old.gas, registers: registers,
