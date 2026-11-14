@@ -141,6 +141,7 @@ type
     key: JobKey
     request: NativeRequest
     submitted, completed: uint64
+    primaryCreditRefusals: uint64
     when NativeReadCycleEnabled:
       mixedKey, mixedOwner: JobKey ## One auxiliary arena and its exact installed primary ticket.
       mixedSet: NativeMixedLoopSet
@@ -199,6 +200,7 @@ type
     active*: int     ## Whole public invocation leases, including calls with no image credit.
     completions*: int ## Uncollected Complete rows, including empty failed images; independent of work phase.
     submitted*, completed*: uint64 ## Cumulative requests queued and completions parked across both work kinds.
+    primaryCreditRefusals*: uint64 ## Eligible primary submissions refused when registration has no usable credit.
   NativeControlStatistics* = object ## Cumulative physical calls with branch or backedge activity.
     branchCalls*, headerCalls*: uint64
 
@@ -767,7 +769,8 @@ proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
     elif auxiliary == CompletionLocation.Running: NativePhase.Running
     elif completions > 0: NativePhase.Done else: NativePhase.Idle
   result = NativeRuntimeInfo(phase: phase, registered: count, active: data.active,
-    completions: completions, submitted: data.submitted, completed: data.completed)
+    completions: completions, submitted: data.submitted, completed: data.completed,
+    primaryCreditRefusals: data.primaryCreditRefusals)
   release(data.lock)
 
 proc registerSession(runtime: ptr NativeRuntimeStorage, data: NativeSessionData): bool =
@@ -1733,6 +1736,10 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     submitted = true
     if runtime.submitted < high(uint64): inc runtime.submitted
     signal(runtime.changed)
+  elif primaryCanQueue() and runtime.primaryCreditRefusals < high(uint64):
+    # The worker is idle and the source otherwise qualified. Optional eviction
+    # has already had its chance to release a credit.
+    inc runtime.primaryCreditRefusals
   when NativeCheckedReadEnabled:
     if data.readNominated and submitted:
       # Submission fixes the selected ABI; occupied work slots retain the qualified copied nomination.

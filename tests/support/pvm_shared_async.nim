@@ -1273,6 +1273,7 @@ when defined(pvmSharedAsyncWitness):
     assert histories[4].value.backend == PvmBackend.Interpreted, "parkedCompletionCapacity.5"
     let full = runtime.runtimeInfo
     assert full.registered == 4 and full.completions == 4 and full.submitted == 4, "parkedCompletionCapacity.6"
+    assert full.primaryCreditRefusals == 1
     assert preparedNativeState(codes[4]).value == NativeState.Deferred, "parkedCompletionCapacity.7"
     codes[0] = default(PreparedProgram) # Synchronous completed-image retirement returns exactly one credit.
     assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.completions == 3, "parkedCompletionCapacity.8"
@@ -1287,6 +1288,7 @@ when defined(pvmSharedAsyncWitness):
     releaseNativeCompilerGate(runtime)
     assert runtime.runtimeInfo.registered == 4 and runtime.runtimeInfo.completions == 4, "parkedCompletionCapacity.12"
     assert runtime.runtimeInfo.submitted == 5 and runtime.runtimeInfo.completed == 5, "parkedCompletionCapacity.13"
+    assert runtime.runtimeInfo.primaryCreditRefusals == 1
     for index in 1..<5:
       # +5 in the replacement slot must never execute the physically retired +3 image.
       let ready = execute(sources[index], ExecutionStepLimit(6145), codes[index])
