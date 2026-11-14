@@ -32,8 +32,8 @@ proc fusionGuest(): Program =
   emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
   emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
   emit([149'u8, 0x22, 1]) # One completed iteration per pass.
-  let second = code.len+5
-  jump([40'u8], second)
+  let second = code.len+7
+  jump([80'u8, 0x19, 0x80], second) # Write sign-extended -128 to R9 before the linked target.
   assert code.len == second
   emit([149'u8, 0x99, 1])
   jump([171'u8, 0xc2], first) # Continue while R2 != R12.
@@ -88,6 +88,8 @@ proc runStaticFusion*() =
   let limit = ExecutionStepLimit(2000000)
   let expected = execute(source, limit, checked.value)
   assert expected.error == StepError.None and expected.value.exit == StepExit.Halt, "training oracle must halt"
+  assert uint64(machineInfo(expected.value.machine).value.registers[9]) ==
+    cast[uint64](-127'i64), "static load-and-jump reaches the next block with the written value"
   for sample in 0..2:
     # Wait only in the witness, outside invocation, to distinguish queued work from use.
     let outcome = execute(source, limit, jit.value)
@@ -96,7 +98,9 @@ proc runStaticFusion*() =
     let state = preparedInfo(jit.value).value
     if sample == 0: assert state.nativeOperations == 0
     if sample == 1: assert state.nativeOperations < 16 and state.nativeFragments == 2, "training publication"
-    if sample == 2: assert state.nativeOperations > NativeFusionTrainingFloor, "native fused reuse"
+    if sample == 2:
+      # All seven attempts per loop must execute natively, including the load-and-jump terminal.
+      assert state.nativeOperations >= 7'u64*90000, "native load-and-jump coverage"
 
   # A small live quota and low gas enter checked workers at the exact boundary.
   for budget in [4096'u64, 4097, 4098, 4099]:
