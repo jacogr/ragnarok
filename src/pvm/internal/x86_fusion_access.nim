@@ -51,6 +51,15 @@ when declared(X86Block):
       if not item.complete: continue
       for index in 0..<int(item.terminal-item.header)-1:
         scoreX86FusionOperation(uses, result.written, item.operations[index])
+      if item.indirect:
+        let branch = item.branch
+        if branch.opcode == 50:
+          inc uses[branch.slots.aIndex]
+        else:
+          inc uses[branch.slots.bIndex]
+          inc uses[branch.slots.aIndex]
+          result.written = result.written or (1'u32 shl int(branch.slots.aIndex))
+        continue
       if item.targets[0] == NativeEntryFailure: continue
       let branch = item.branch
       if branch.opcode == 80:
