@@ -8,6 +8,7 @@
 ## validates exact receipts and resumes the original continuation or fallback.
 ## Resident guest banks are bounded to one entry; no invocation pointer survives return.
 ## Closed scalar loops retain up to six statically most-used guest lanes in saved SysV GPRs.
+## General fusion retains every used guest lane across linked edges, using GPRs and baseline SSE2.
 ## Other lanes keep canonical array access. Every exit commits mapped writes once, then restores
 ## the caller's registers; the shared LoopControl still owns reservations and continuation order.
 ## Prepared execution publishes through the shared asynchronous worker. The direct
@@ -1498,6 +1499,7 @@ when defined(pvmX86Jit):
         put(code, [0x48'u8, 0x0f, 0xa3, 0x06]) # BT [RSI],RAX.
         cycleEdge(code, fixes, 0x83, unpaid) # JNC when the page is not already dirty.
 
+      include ./x86_fusion_access
       include ./x86_mixed_loop
       include ./x86_fusion
 

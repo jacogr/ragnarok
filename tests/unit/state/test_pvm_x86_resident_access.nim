@@ -20,7 +20,7 @@ const
   Seeds = [0'u64, 31, 64, 0x80000000'u64, 0x8000000000000000'u64, high(uint64)]
 
 when Native and defined(pvmX86Jit):
-  import ../../../src/pvm/internal/[native_ir, native_platform, native_read_body]
+  import ../../../src/pvm/internal/[native_ir, native_platform, native_read_body, native_fusion]
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Only container framing uses the natural encoder; each original instruction is a literal byte row.
@@ -438,6 +438,97 @@ when Native and defined(pvmX86Jit):
                 assert context.gas == ledger.gas and context.remaining == ledger.remaining and
                   context.visits == ledger.visits
                 inc loopCases
+
+when Native and defined(pvmX86Jit):
+  proc fusionPressure(excluded: uint32, header: uint32): NativeFusionBlock =
+    ## Six unrelated lanes dominate allocation while all13 benign self-moves link to a checked exit.
+    ## Tested operands therefore exercise the SIMD bank; no scalar implementation is duplicated.
+    result = NativeFusionBlock(header: header, first: header, price: 5,
+      targets: [1000'u32+header, NativeEntryFailure], branch: NativeOperation(opcode: 40))
+    var hot = 0
+    var count = 0
+    for slot in 0..12:
+      let pressure = (excluded and (1'u32 shl slot)) == 0 and hot < 6
+      if pressure: inc hot
+      let copies = if pressure: 3 else: 1
+      let owner = literalOwner(100, byte(slot*17))
+      let decoded = instruction(owner, CodeAddress(0))
+      assert decoded.error == ProgramError.None
+      for repetition in 0..<copies:
+        result.operations[count] = NativeOperation(opcode: 100, slots: instructionRegisters(decoded))
+        inc count
+    assert hot == 6 and count == 25
+    result.terminal = header+uint32(count)+1
+    result.span = uint32(count)+1
+
+  block fusionSimdOperands:
+    # Exercise scalar aliases and every predicate with full-width SIMD inputs through real linked
+    # images. The original GP register evaluator/canonical predicate supplies the independent oracle.
+    const fusionPatterns = [0'u8, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204,
+      128, 255, 0x38, 0xc5]
+    var cases = 0
+    for numeric in 0..255:
+      let opcode = byte(numeric)
+      let scalar = supportedX86Opcode(opcode)
+      let predicate = opcode in {81'u8..90, 170..175}
+      if not scalar and not predicate: continue
+      for pattern in fusionPatterns:
+        let owner = literalOwner(opcode, pattern)
+        let decoded = instruction(owner, CodeAddress(0))
+        assert decoded.error == ProgramError.None
+        let slots = instructionRegisters(decoded)
+        let value = uint64(decoded.value.x)
+        let excluded = (1'u32 shl int(slots.aIndex)) or (1'u32 shl int(slots.bIndex)) or
+          (1'u32 shl int(slots.destinationIndex))
+        var first = NativeFusionBlock(header: 10, first: 10, terminal: (
+            if scalar: 12'u32 else: 11'u32),
+          span: (if scalar: 2'u32 else: 1'u32), price: 3, targets: [100'u32, NativeEntryFailure],
+          branch: NativeOperation(opcode: 40))
+        var plain = 0'u32
+        if scalar:
+          first.operations[0] = NativeOperation(opcode: opcode, slots: slots, immediate: value)
+        else:
+          first.targets[1] = 200
+          first.branch = NativeOperation(opcode: opcode, slots: slots, immediate: value)
+          var body = default(X86Block)
+          emitX86Branch(body, opcode, slots, value, 200, 100)
+          plain = publish(jit, next, body)
+        var blocks = @[first, fusionPressure(excluded, 100)]
+        if predicate: blocks.add(fusionPressure(excluded, 200))
+        let image = lowerNativeFusion(blocks)
+        assert image.ready and nativeFusionEntry(image, 0) and nativeFusionEntry(image, 1)
+        for seed in Seeds:
+          for refusal in 0..4:
+            # Both reservation guards are exercised before any block and after the tested operation.
+            let gas = if refusal == 1: 2'u64 elif refusal == 3: 7'u64 else: high(uint64)
+            let quota = if refusal == 2: 0'u64 elif refusal == 4: uint64(first.span) else: 1000'u64
+            var actual = initial(seed)
+            var expected = actual
+            var target = 100'u32
+            if scalar:
+              let evaluated = evaluateRegisters(owner, CodeAddress(0), expected)
+              assert evaluated.error == RegisterError.None
+              expected = evaluated.value
+            else:
+              # The frozen canonical predicate runs independently of the new operand policy.
+              target = uint32(callX86ResidentAbiProof(jit, plain, expected) and 0xffffffff'u64)
+              assert target in [100'u32, 200] and expected == actual
+            let idle = refusal in [1, 2]
+            if idle: expected = actual
+            var context = NativeFusionContext(gas: gas, remaining: quota)
+            let observed = enterNativeFusion(image, 0, actual, context)
+            let visits = if idle: 0'u64 elif refusal in [3, 4]: 1'u64 else: 2'u64
+            let expectedNext = if idle: 10'u32 elif visits == 1: target else: target+1000
+            assert observed == expectedNext and actual == expected
+            assert context.visits == visits and context.paid == 0
+            assert context.gas == gas-(if visits == 0: 0'u64 elif visits == 1: 3'u64 else: 8'u64)
+            assert context.remaining == quota-(if visits == 0: 0'u64 elif visits == 1:
+              uint64(first.span) else: uint64(first.span)+26)
+            if visits > 0: assert (context.path[0] and 255) == 1
+            if visits == 2: assert ((context.path[0] shr 8) and 255) == (if target ==
+                100: 2'u64 else: 3'u64)
+            inc cases
+    assert cases == (59+16)*fusionPatterns.len*Seeds.len*5
 
 when Native:
   # Fifty-nine scalar opcodes cover every pattern, resident mask and initial seed.

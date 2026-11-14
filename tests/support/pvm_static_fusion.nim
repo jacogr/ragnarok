@@ -89,7 +89,7 @@ proc checkLongFusionReceipts() =
   empty.paid = 1
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
-proc fusionGuest(late: bool = false): Program =
+proc fusionGuest(late: bool = false, wide: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -114,6 +114,14 @@ proc fusionGuest(late: bool = false): Program =
     # A wrapping in-page offset trains with one page but permits a late cross-page fault.
     emit([132'u8, 0x24, 0xff, 0x0f]) # R4 = R2 & 4095.
     emit([200'u8, 0x64, 4]) # R4 = R4 + R6.
+    if wide:
+      # All13 lanes participate across linked blocks, including full-width aliased writes
+      # before the possible paid refusal and a read-only halt sentinel copied into R10.
+      emit([149'u8, 0x77, 1])
+      emit([149'u8, 0x88, 1])
+      emit([100'u8, 0x3a]) # R10 = R3.
+      emit([133'u8, 0xbb, 0x80]) # R11 = R11 xor sign-extended -128.
+      emit([100'u8, 0xc9]) # R9 = R12 before the later load-and-jump replaces it.
     emit([124'u8, 0x41, 0]) # Read byte R1,[R4].
   else:
     emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
@@ -151,7 +159,7 @@ proc assertSameFusionResult(actual, expected: StepResult) =
     for page in referencePages:
       assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
 
-proc checkLateFusionFault()
+proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
 
 proc runStaticFusion*() =
@@ -230,11 +238,12 @@ proc runStaticFusion*() =
   assertSameFusionResult(execute(resumed.value, limit, jit.value),
     execute(resumed.value, limit, checked.value))
   assert close(runtime)
-  checkLateFusionFault()
+  checkLateFusionFault(wide = false)
+  checkLateFusionFault(wide = true)
 
-proc checkLateFusionFault() =
+proc checkLateFusionFault(wide: bool) =
   ## A paid read in the 49th linked block must retain all earlier stores and exact accounting.
-  let program = fusionGuest(late = true)
+  let program = fusionGuest(late = true, wide = wide)
   let runtime = newNativeRuntime()
   try:
     assert start(runtime)
@@ -250,6 +259,11 @@ proc checkLateFusionFault() =
   let memory = capturedMemory.value
   var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(8000000))
   info.registers[0] = RegisterValue(165)
+  if wide:
+    # Nonzero high words expose accidental MOVD truncation of ordinary guest values.
+    info.registers[0] = RegisterValue(0xdeadbeef000000a5'u64)
+    for slot in [7, 8, 10, 11]:
+      info.registers[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
   info.registers[3] = RegisterValue(0xffff0000'u64)
   info.registers[5] = RegisterValue(65536)
   info.registers[6] = RegisterValue(65536)
@@ -272,7 +286,8 @@ proc checkLateFusionFault() =
   let fault = execute(late.value, limit, jit.value)
   assertSameFusionResult(fault, execute(late.value, limit, checked.value))
   assert fault.error == StepError.None and fault.value.exit == StepExit.Fault
-  assert preparedInfo(jit.value).value.nativeOperations == before+222,
+  assert preparedInfo(jit.value).value.nativeOperations == before+uint64(2+24*(
+      if wide: 14 else: 9)+(if wide: 9 else: 4)),
     "late native progress: " & $(preparedInfo(jit.value).value.nativeOperations-before)
   let cpu = machineInfo(fault.value.machine).value
   assert uint64(cpu.registers[2]) == 24 and cpu.blockCharged, "late counter/paid state"

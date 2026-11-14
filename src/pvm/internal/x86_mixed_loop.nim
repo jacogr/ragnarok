@@ -5,8 +5,9 @@
 ## Included beside the checked Read-cycle emitter so it can share its memory guards.
 
 when declared(X86Block):
-  type X86MixedLoopLabels = array[3+5*(int(NativeReadFactLimit)-1), int]
-    ## The paid loop has three fixed targets and at most five targets per body operation.
+  type X86MixedLoopLabels = array[5+5*(int(NativeReadFactLimit)-1), int]
+    ## Fusion needs five fixed targets and at most five targets per body operation;
+    ## the paid-loop emitters use the same table with fewer fixed targets.
 
   proc mixedLoopReadPointer(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, width, refusal: byte, nextLabel: var byte) =
@@ -34,11 +35,10 @@ when declared(X86Block):
     put(code, [0x48'u8, 0x8d, 0x04, 0x01]) # LEA RAX,[RCX+RAX] keeps the proved address.
     put(code, [0x48'u8, 0x89, 0x44, 0x24, slot]) # MOV [RSP+slot],RAX.
 
-  proc mixedLoopLoad(code: var X86Block, fixes: var seq[X86CycleFixup],
+  template mixedLoopLoadAccess(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, encoding, refusal: byte,
-      nextLabel: var byte) =
+      nextLabel: var byte, access: untyped) =
     ## Resolve the original absolute or wrapped relative address at its source position.
-    let access = X86CanonicalAccess()
     if encoding == op.opcode:
       # The staged base may also be this read's destination.
       readBodyBase(code, access, op.slots.bIndex)
@@ -53,13 +53,12 @@ when declared(X86Block):
     emitCheckedReadValue(code, encoding)
     writeAccess(code, access, op.slots.aIndex)
 
-  proc mixedLoopStore(code: var X86Block, fixes: var seq[X86CycleFixup],
+  template mixedLoopStoreAccess(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, width, refusal: byte,
-      nextLabel: var byte) =
+      nextLabel: var byte, access: untyped) =
     ## Prove the selected writable extent and every touched dirty page before the Store.
     const stackOffset = byte(NativeCycleWritableOffset)
     const rwOffset = stackOffset+24
-    let access = X86CanonicalAccess()
     if op.opcode < 120:
       put(code, [0xba'u8]) # MOV EDX,absolute32.
     else:
@@ -97,6 +96,18 @@ when declared(X86Block):
     of 2: put(code, [0x66'u8, 0x41, 0x89, 0x00]) # MOV [R8],AX.
     of 4: put(code, [0x41'u8, 0x89, 0x00]) # MOV [R8],EAX.
     else: put(code, [0x49'u8, 0x89, 0x00]) # MOV [R8],RAX.
+
+  proc mixedLoopLoad(code: var X86Block, fixes: var seq[X86CycleFixup],
+      labels: var X86MixedLoopLabels, op: NativeOperation, encoding, refusal: byte,
+      nextLabel: var byte) =
+    ## Existing mixed-loop callers retain canonical operands and unchanged memory guards.
+    mixedLoopLoadAccess(code, fixes, labels, op, encoding, refusal, nextLabel, X86CanonicalAccess())
+
+  proc mixedLoopStore(code: var X86Block, fixes: var seq[X86CycleFixup],
+      labels: var X86MixedLoopLabels, op: NativeOperation, width, refusal: byte,
+      nextLabel: var byte) =
+    ## Existing mixed-loop callers publish each successful store through the same canonical policy.
+    mixedLoopStoreAccess(code, fixes, labels, op, width, refusal, nextLabel, X86CanonicalAccess())
 
   template mixedLoopByteStore(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, refusal: byte, nextLabel: var byte) =
