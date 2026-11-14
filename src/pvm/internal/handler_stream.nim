@@ -4325,44 +4325,39 @@ func materializedFacts*(stream: FlatStream): uint64 =
   if catalogue == nil: 0'u64 else: uint64(catalogue.materialized)
 
 func flatScratchSlot(pages: seq[PageDescription], physical: uint32): int =
-  ## Same-map validation proves every retained dirty ordinal still belongs to this sorted mapping.
+  ## Resolve a retained dirty page against the sorted mapping.
   var low = 0
   var high = pages.len
   while low < high:
     let middle = low+(high-low) div 2
     if uint32(pages[middle].index) < physical: low = middle+1
     else: high = middle
-  assert low < pages.len and uint32(pages[low].index) == physical
-  low
+  if low < pages.len and uint32(pages[low].index) == physical: low else: -1
 
-proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
-  ## Complete mapping equality preceded any write; copy one genuine source page into its private allocation.
+proc flatRestoreScratchPage(f: var FlatFrame, page: int): bool =
+  ## Copy a genuine source page to its private backing, or refuse an inconsistent retained span.
   let description = f.sourcePages[page]
-  if description.access == PageAccess.Inaccessible: return
+  if description.access == PageAccess.Inaccessible: return true
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
-  elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
+  if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
-  elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
+  if address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
     let offset = int(address-f.roBase)
-    flatCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
-  else:
-    var found = false
-    for index in 0..<f.extra.len:
-      let region {.cursor.} = f.extra[index]
-      if address >= region.first and address-region.first+4096 <= uint64(region.size):
-        if region.bytes.len != 0:
-          # Lazy extras use the already installed incoming baseline; materialized bytes need restoration.
-          assert region.bytes.len == region.size
-          let offset = int(address-region.first)
-          flatCopySourcePage(f.sourceMemory, page, description,
-            f.extra[index].bytes.toOpenArray(offset, offset+4095))
-        found = true
-        break
-    assert found
+    return flatTryCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
+  for index in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[index]
+    if address >= region.first and address-region.first+4096 <= uint64(region.size):
+      # Lazy extras already use the incoming baseline.
+      if region.bytes.len == 0: return true
+      if region.bytes.len != region.size: return false
+      let offset = int(address-region.first)
+      return flatTryCopySourcePage(f.sourceMemory, page, description,
+        f.extra[index].bytes.toOpenArray(offset, offset+4095))
+  false
 
 proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo,
     scratch: var nil FlatMemoryScratch, reused: var bool): FlatResult[FlatFrame] =
@@ -4379,40 +4374,57 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   if delta.error == MachineError.AllocationRefused:
     scratch = move(held)
     return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
-  if delta.error != MachineError.None:
+  if delta.error != MachineError.None or uint64(held.pages.len) != uint64(uint32(count.value)) or
+      held.dirty.len > held.pages.len:
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)
-  var changes = machine.takeValue(delta)
-  var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
-  frame.sourcePages = move(held.pages)
-  frame.roBase = held.roBase
-  frame.rwBase = held.rwBase
-  frame.stackBase = held.stackBase
-  frame.ro = move(held.ro)
-  frame.rwStorage = move(held.rwStorage)
-  frame.rw = borrowRW(frame.rwStorage)
-  held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
-  frame.stack = move(held.stack)
-  frame.extra = move(held.extra)
-  frame.dirtyPages = move(held.dirtyPages)
-  frame.dirtyIndices = move(held.dirty)
-  for index in 0..<frame.dirtyIndices.len:
-    let physical = frame.dirtyIndices[index]
-    # Reset guest writes even when the incoming source reuses its exact original owner.
-    flatRestoreScratchPage(frame, flatScratchSlot(frame.sourcePages, physical))
-  for index in 0..<changes.len:
-    let page = int(uint32(changes[index]))
-    assert page >= 0 and page < frame.sourcePages.len
-    let physical = uint64(uint32(frame.sourcePages[page].index))
-    let word = physical shr 6
-    # Only a bounded set physical bit proves the first loop already restored incoming bytes.
-    # Unknown/short bitmap metadata and clean changed pages retain their complete source copy.
-    if word >= uint64(frame.dirtyPages.len) or
-        (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0:
-      flatRestoreScratchPage(frame, page)
-  flatClearDirty(frame)
-  reused = true
-  FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+  let words = if held.pages.len == 0: 0'u64
+    else: (uint64(uint32(held.pages[held.pages.len-1].index)) shr 6)+1
+  if uint64(held.dirtyPages.len) != words:
+    held = nil
+    return prepareFlatMemoryFrame(plan, memory, info)
+  block restore:
+    let changes = machine.takeValue(delta)
+    var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
+    frame.sourcePages = move(held.pages)
+    frame.roBase = held.roBase
+    frame.rwBase = held.rwBase
+    frame.stackBase = held.stackBase
+    frame.ro = move(held.ro)
+    frame.rwStorage = move(held.rwStorage)
+    frame.rw = borrowRW(frame.rwStorage)
+    held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
+    frame.stack = move(held.stack)
+    frame.extra = move(held.extra)
+    frame.dirtyPages = move(held.dirtyPages)
+    frame.dirtyIndices = move(held.dirty)
+    for index in 0..<frame.dirtyIndices.len:
+      # Check the bit before flatClearDirty uses the same physical coordinate.
+      let physical = frame.dirtyIndices[index]
+      let page = flatScratchSlot(frame.sourcePages, physical)
+      let word = uint64(physical shr 6)
+      if page < 0 or frame.sourcePages[page].access != PageAccess.ReadWrite or
+          word >= uint64(frame.dirtyPages.len) or
+          (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0 or
+          not flatRestoreScratchPage(frame, page):
+        break restore
+    for index in 0..<changes.len:
+      let slot = uint64(uint32(changes[index]))
+      if slot >= uint64(frame.sourcePages.len): break restore
+      let page = int(slot)
+      let physical = uint64(uint32(frame.sourcePages[page].index))
+      let word = physical shr 6
+      # Only a bounded set physical bit proves the first loop already restored incoming bytes.
+      if (word >= uint64(frame.dirtyPages.len) or
+          (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0) and
+          not flatRestoreScratchPage(frame, page):
+        break restore
+    flatClearDirty(frame)
+    reused = true
+    return FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+  # The private frame retired when the restore block exited. Re-admit from the immutable input.
+  held = nil
+  prepareFlatMemoryFrame(plan, memory, info)
 
 proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMemoryScratch =
   ## Retain only bounded private payload plus one immutable baseline; zero disables retention.
@@ -4443,6 +4455,11 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   scratch
 
 when defined(pvmResidentWitness):
+  proc invalidateLastScratchDirtyPage*(scratch: FlatMemoryScratch) =
+    ## Inject an unmapped retained ordinal after the earlier dirty pages can be restored.
+    assert scratch.dirty.len > 1
+    scratch.dirty[scratch.dirty.len-1] = high(uint32)
+
   func residentFrameRWInfo*(frame: FlatFrame): array[3, uint64] =
     ## Test-only lengths distinguish a retired view from storage still owned by an active or idle lease.
     [uint64(frame.rw.len), logicalBytes(frame.rwStorage), mappedBytes(frame.rwStorage)]
