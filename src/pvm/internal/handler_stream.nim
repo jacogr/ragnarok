@@ -32,6 +32,7 @@ import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
 import ./metadata_store
+import ./dynamic_jump_cache
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
@@ -192,7 +193,7 @@ type
     rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
   FlatMemoryScratch* = ref FlatMemoryScratchData
   FlatDynamicOffsets = ref object ## Invocation-owned positive ordinal tags and stable offsets.
-    slots: array[256, uint64]
+    slots: DynamicJumpTags
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
     info*: MachineInfo
@@ -1402,7 +1403,7 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   if address == 0xffff0000'u64: return flatStopExit(f, off, oracle.StepExit.Halt)
   if address == 0 or (address and 1) != 0: return flatStopExit(f, off, oracle.StepExit.Panic)
   let index = address div 2-1
-  let slot = int(index and 255'u64)
+  let slot = dynamicJumpSlot(index)
   when not Single:
     # A one-step frame cannot reuse a cached target.
     let cache {.cursor.} = f.dynamicOffsets
@@ -1432,7 +1433,7 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
     let cache {.cursor.} = f.dynamicOffsets
     let tag = ((index+1) shl 32) or uint64(resolved+1)
     if cache == nil:
-      let fresh: nil FlatDynamicOffsets = FlatDynamicOffsets(slots: default(array[256, uint64]))
+      let fresh: nil FlatDynamicOffsets = FlatDynamicOffsets(slots: default(DynamicJumpTags))
       if fresh != nil:
         # The resolved offset is already valid. A refused optional cache leaves it usable.
         fresh.slots[slot] = tag
@@ -3717,7 +3718,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   let cache {.cursor.} = f.dynamicOffsets
   if cache != nil:
     # A resumed segment starts with empty tags and may reuse its existing private allocation.
-    cache.slots = default(array[256, uint64])
+    cache.slots = default(DynamicJumpTags)
   let pc = uint32(uint64(f.info.pc) and 0xffffffff'u64)
   var offset = flatStop
   if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
