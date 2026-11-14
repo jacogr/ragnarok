@@ -888,7 +888,7 @@ jobs:
         run: |
           if test -f build/tests/pvm-performance/summary.md; then
             cat build/tests/pvm-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
-            if test -f build/tests/pvm-performance/paired-summary.md; then
+            if test -n "$PVM_BASELINE_REVISION" && test -f build/tests/pvm-performance/paired-summary.md; then
               cat build/tests/pvm-performance/paired-summary.md >> "$GITHUB_STEP_SUMMARY"
             fi
           else

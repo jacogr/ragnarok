@@ -105,6 +105,60 @@ class PairedPerformanceTests(unittest.TestCase):
             self.assertEqual(json.loads((folder/'paired-results.json').read_text())['status'], 'incomplete')
             self.assertNotIn('old accepted', (folder/'paired-summary.md').read_text())
 
+    def test_unpaired_request_retires_previous_paired_artifacts(self):
+        """A later unpaired run cannot expose an old accepted paired cohort, even if qualification fails."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            for name in ('paired-results.json', 'paired-summary.md'):
+                (folder/name).write_text('old paired success')
+            with (patch.object(performance, 'BUILD', folder),
+                  patch.object(sys, 'argv', ['pvm_ci_performance.py', '--baseline', '']),
+                  patch.object(performance.PerformanceRunner, 'execute', side_effect=RuntimeError('qualification')),
+                  self.assertRaisesRegex(RuntimeError, 'qualification')):
+                performance.main()
+            self.assertFalse((folder/'paired-results.json').exists())
+            self.assertFalse((folder/'paired-summary.md').exists())
+
+    def test_cleanup_is_required_before_accepting_paired_results(self):
+        """Cleanup success permits publication; a raised interruption or failed exit erases accepted artifacts."""
+        for failure in ('success', 'interrupt', 'os-error', 'exit', 'primary-and-cleanup'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                current = context(folder)
+                current.cases = [dict(case_id='pinky-1')]
+                class Collected(performance.PairedRunner):
+                    """Supply a complete literal cohort while exercising real acceptance and cleanup ordering."""
+                    def collect(self):
+                        """No native execution is claimed; only the source owner's cleanup remains pending."""
+                        self.created = True
+                        self.report['runs'] = cells()
+                        self.report['summary'] = performance.paired_summary(cells(), current.cases, 2)
+                        if failure == 'primary-and-cleanup':
+                            raise RuntimeError('primary process failure')
+                def remove(*args, **kwargs):
+                    """Observe acceptance state at cleanup, then return or raise the selected outcome."""
+                    self.assertNotEqual(json.loads((folder/'paired-results.json').read_text())['status'], 'passed')
+                    self.assertNotIn('| Case |', (folder/'paired-summary.md').read_text())
+                    if failure == 'interrupt': raise KeyboardInterrupt()
+                    if failure == 'os-error': raise OSError('cleanup launch failure')
+                    return subprocess.CompletedProcess(args[0], 0 if failure == 'success' else 1, '', 'cleanup')
+                runner = Collected(current, 'b'*40)
+                with patch.object(performance.subprocess, 'run', side_effect=remove):
+                    if failure == 'success':
+                        self.assertEqual(runner.execute()['status'], 'passed')
+                    else:
+                        error = KeyboardInterrupt if failure == 'interrupt' else OSError if failure == 'os-error' else RuntimeError
+                        with self.assertRaises(error): runner.execute()
+                observed = json.loads((folder/'paired-results.json').read_text())
+                if failure == 'success':
+                    self.assertIn('| Case |', (folder/'paired-summary.md').read_text())
+                else:
+                    self.assertEqual(observed['status'], 'failed')
+                    self.assertIn('cleanup_error', observed)
+                    self.assertNotIn('| Case |', (folder/'paired-summary.md').read_text())
+                    if failure == 'primary-and-cleanup':
+                        self.assertEqual(observed['error'], 'primary process failure')
+
     def test_complete_alternating_cohort_and_interrupted_recheck(self):
         """Publish every paired full-call cell, then invalidate that success on a failed new run."""
         with tempfile.TemporaryDirectory() as temporary:

@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Exercise scheduled native comparisons, focused scopes and evidence without running benchmarks."""
 from pathlib import Path, PurePosixPath
+import os
+import subprocess
+import tempfile
 import unittest
 from harness_fixtures import make_plan
 from workflow_fixtures import artifact_paths, commands, event_context, expression, family_section, selected_families, workflow
@@ -23,6 +26,28 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
             section = family_section(text, 'pvm-comparison', family['group'], context=context)
             request = dict(context, matrix=dict(family=family))
             self.assertEqual(expression(section['env']['PVM_BASELINE_REVISION'], request), 'a'*40)
+
+    def test_unpaired_job_summary_cannot_display_a_stale_paired_table(self):
+        """Execute the summary consumer with stale pair evidence and both requested pairing states."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = family_section(text, 'pvm-comparison', 'arm64',
+                                 context=event_context('workflow_dispatch', suite='bench-pvm'))
+        script = next(step['run'] for step in section['steps']
+                      if 'paired-summary.md' in step.get('run', ''))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            folder = root/'build/tests/pvm-performance'
+            folder.mkdir(parents=True)
+            (folder/'summary.md').write_text('canonical evidence\n')
+            (folder/'paired-summary.md').write_text('paired evidence\n')
+            for baseline in ('', 'a'*40):
+                target = root/'summary'
+                target.unlink(missing_ok=True)
+                env = dict(os.environ, GITHUB_STEP_SUMMARY=str(target), PVM_BASELINE_REVISION=baseline)
+                subprocess.run(['bash', '-eu', '-c', script], env=env, cwd=root,
+                               capture_output=True, text=True, check=True)
+                self.assertIn('canonical evidence', target.read_text())
+                self.assertEqual('paired evidence' in target.read_text(), bool(baseline))
 
     def test_regular_requests_compare_both_architectures_once(self):
         """Merge and full/performance requests schedule one qualified comparison on each real CPU."""

@@ -703,66 +703,75 @@ class PairedRunner(PerformanceRunner):
             validate_policy(cell, role)
         return parsed
 
+    def collect(self):
+        """Build, control and sample the complete paired cohort without publishing accepted artifacts."""
+        baseline_images, self.candidate_images = self.comparison_images()
+        processes = [case for case in self.cases if case['family'] != 'synthetic']
+        synthetic = next((case for case in self.cases if case['family'] == 'synthetic'), None)
+        if synthetic is not None:
+            processes.insert(0, synthetic)
+        for version, images in [('baseline', baseline_images), ('candidate', self.candidate_images)]:
+            self.images = images
+            for case in processes:
+                start = len(self.report['controls'])
+                self.controls(case, 'jit')
+                for control in self.report['controls'][start:]:
+                    control['version'] = version
+            self.checkpoint()
+        rng = random.Random(self.report['seed'])
+        for case in processes:
+            first = rng.randrange(2)
+            for pair in range(self.report['pairs']):
+                # Each case gets both process orders, balanced to within one pair; never run concurrently.
+                order = ('baseline', 'candidate') if (first+pair) % 2 == 0 else ('candidate', 'baseline')
+                for version in order:
+                    self.images = baseline_images if version == 'baseline' else self.candidate_images
+                    args, env, _ = self.invocation(case, 'jit')
+                    observed = self.command(args, f'paired-{case["case_id"]}-{pair}-{version}', env)
+                    parsed = self.parse(observed['output'], case, 'jit')
+                    for identity, values in parsed.items():
+                        self.report['runs'].append(dict(case_id=identity, pair=pair, version=version,
+                            order=list(order), parsed=values, run=command_record(observed)))
+                    self.checkpoint()
+        self.verify()
+        self.report['summary'] = paired_summary(self.report['runs'], self.cases, self.report['pairs'])
+        self.report['identity']['files'] = {str(path): value for path, value in self.seals.items()}
+
     def execute(self):
-        """Run both refusal gates, alternate whole processes, and publish only a complete paired matrix."""
+        """Accept a complete paired matrix only after owned source cleanup has finished successfully."""
         summary = self.folder/'paired-summary.md'
         summary.write_text('Same-runner PVM comparison incomplete; no accepted ratios.\n')
         self.checkpoint()
         try:
-            baseline_images, self.candidate_images = self.comparison_images()
-            processes = [case for case in self.cases if case['family'] != 'synthetic']
-            synthetic = next((case for case in self.cases if case['family'] == 'synthetic'), None)
-            if synthetic is not None:
-                processes.insert(0, synthetic)
-            for version, images in [('baseline', baseline_images), ('candidate', self.candidate_images)]:
-                self.images = images
-                for case in processes:
-                    start = len(self.report['controls'])
-                    self.controls(case, 'jit')
-                    for control in self.report['controls'][start:]:
-                        control['version'] = version
-                self.checkpoint()
-            rng = random.Random(self.report['seed'])
-            for case in processes:
-                first = rng.randrange(2)
-                for pair in range(self.report['pairs']):
-                    # Each case gets both process orders, balanced to within one pair; never run concurrently.
-                    order = ('baseline', 'candidate') if (first+pair) % 2 == 0 else ('candidate', 'baseline')
-                    for version in order:
-                        self.images = baseline_images if version == 'baseline' else self.candidate_images
-                        args, env, _ = self.invocation(case, 'jit')
-                        observed = self.command(args, f'paired-{case["case_id"]}-{pair}-{version}', env)
-                        parsed = self.parse(observed['output'], case, 'jit')
-                        for identity, values in parsed.items():
-                            self.report['runs'].append(dict(case_id=identity, pair=pair, version=version,
-                                order=list(order), parsed=values, run=command_record(observed)))
-                        self.checkpoint()
-            self.verify()
-            self.report['summary'] = paired_summary(self.report['runs'], self.cases, self.report['pairs'])
-            self.report['identity']['files'] = {str(path): value for path, value in self.seals.items()}
+            try:
+                self.collect()
+            finally:
+                # Cleanup is inside the failure boundary; even an interruption cannot leave accepted artifacts.
+                if self.created:
+                    primary = sys.exc_info()[1]
+                    try:
+                        removed = subprocess.run(['git', 'worktree', 'remove', str(self.source)], cwd=ROOT,
+                                                 capture_output=True, text=True)
+                        (self.folder/'paired-cleanup.log').write_text(removed.stdout+removed.stderr)
+                        if removed.returncode:
+                            raise RuntimeError('Owned worktree cleanup failed; inspect paired-cleanup.log')
+                        self.created = False
+                    except BaseException as error:
+                        self.report['cleanup_error'] = str(error) or type(error).__name__
+                        if primary is None:
+                            raise
+                        # Preserve an earlier build/process failure while recording the additional cleanup fault.
+            rendered = render_paired(self.report)
             self.report['status'] = 'passed'
             self.checkpoint()
-            summary.write_text(render_paired(self.report))
+            summary.write_text(rendered)
         except BaseException as error:
-            self.report.update(status='failed', error=str(error))
+            reason = str(error) or type(error).__name__
+            self.report.update(status='failed', error=reason)
             self.checkpoint()
             summary.write_text('Same-runner PVM comparison failed; no accepted ratios.\n'
-                               +str(error).replace('\n', ' ')+'\n')
+                               +reason.replace('\n', ' ')+'\n')
             raise
-        finally:
-            if self.created:
-                # Only this clean detached snapshot is removed; retained inputs/logs/binaries stay in the report folder.
-                removed = subprocess.run(['git', 'worktree', 'remove', str(self.source)], cwd=ROOT,
-                                         capture_output=True, text=True)
-                (self.folder/'paired-cleanup.log').write_text(removed.stdout+removed.stderr)
-                if removed.returncode:
-                    self.report.update(status='failed', cleanup_error='Owned worktree cleanup failed')
-                    self.report.setdefault('error', 'Owned worktree cleanup failed')
-                    self.checkpoint()
-                    summary.write_text('Same-runner PVM comparison failed; no accepted ratios.\n'
-                                       +str(self.report['error'])+'\nSource cleanup also failed; inspect paired-cleanup.log.\n')
-                    if sys.exc_info()[0] is None:
-                        raise RuntimeError('Paired source cleanup failed')
         return self.report
 
 
@@ -843,6 +852,9 @@ def main():
     parser.add_argument('--baseline', default=os.environ.get('PVM_BASELINE_REVISION', ''),
                         help='Immutable baseline SHA for a same-runner paired JIT comparison')
     arguments = parser.parse_args()
+    # Every request retires previous paired evidence, including a run that no longer asks for pairing.
+    for name in ('paired-summary.md', 'paired-results.json'):
+        (BUILD/name).unlink(missing_ok=True)
     if arguments.baseline:
         # Canonical qualification can fail before the paired runner exists; retire earlier success first.
         BUILD.mkdir(parents=True, exist_ok=True)
