@@ -191,8 +191,12 @@ when declared(FlatFrame):
     if next >= uint32(f.handlers.len): return flatLocal(f, off, oracle.StepError.BackendFailure)
     let receipt = checkNativeFusionExit(receipts[], graph[], off, next, gas, quota, context[])
     if not receipt.valid: return flatLocal(f, off, oracle.StepError.BackendFailure)
-    if context[].path == 0: return flatCharge(f, off)
-    let last {.cursor.} = graph[][int(context[].path and 255)-1]
+    # The validated receipt carries the last source identity; zero names only an empty unpaid return.
+    let lastToken = receipt.lastToken
+    if lastToken == 0: return flatCharge(f, off)
+    if uint64(lastToken) > uint64(graph[].len):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
+    let last {.cursor.} = graph[][int(lastToken-1)]
     if receipt.paidHeader == 0 and last.targets[1] != NativeEntryFailure:
       let op = last.branch
       let taken = branchConditionOperands[-1](op.slots, op.immediate, op.opcode, f.info.registers)
