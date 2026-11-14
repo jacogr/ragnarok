@@ -23,6 +23,7 @@ const
   NativeFusionBlockLimit* = 255 ## One ranked graph; one-based byte tokens exclude zero.
   NativeFusionSlotLimit* = 512 ## Keep the largest byte-token graph below half-full in the checked map.
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
+  NativeFusionReceiptBits = 9 ## Fixed one-probe cache geometry; a bucket never grants path authority.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
   NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
   NativeFusionGasOffset* = NativeMixedLoopContextBytes
@@ -79,8 +80,10 @@ type
     visits, gas: uint64
     entry, next: uint32
     receipt: NativeFusionExit
-  NativeFusionReceipts* = array[256, NativeFusionReceipt]
-    ## Segment-local cache of successful path proofs for exactly one borrowed graph.
+  NativeFusionReceipts* = array[1 shl NativeFusionReceiptBits, NativeFusionReceipt]
+    ## One bounded 52 KiB call-local cache of successful proofs for exactly one borrowed graph.
+    ## Its 512 records reduce collisions between different paths while retaining one lookup.
+    ## Only an active graph segment initializes this storage; no invocation borrow escapes it.
 
 func nativeFusionSlot*(token: uint32): int {.inline.} =
   ## A one-based source-header token hashes into the fixed 512-slot, at-most-half-full map.
@@ -236,7 +239,7 @@ proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[Na
     # The ordinary one-word path keeps one scalar hash; longer paths include every later word.
     for index in 1..<int((state.visits+7) div 8):
       hash = (hash xor fusionPathWord(state.path, state.visits, index))*0x9e3779b97f4a7c15'u64
-  let index = int(hash shr 56)
+  let index = int(hash shr (64-NativeFusionReceiptBits))
   # Borrow the fixed cache slot; a value binding would copy the entire wider path on every hit.
   let candidate = addr memo[index]
   let paid = state.paid != 0

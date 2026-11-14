@@ -37,6 +37,38 @@ proc checkRepeatedFusionReceipt() =
   state.paid = 1
   assert checkNativeFusionExit(memo, blocks, 10, 21, 15, 5, state) == proven
 
+proc checkCollidingFusionReceipts() =
+  ## These independent one-visit receipts collide in upper-bank bucket 300 at the current width.
+  ## Alternating them must preserve complete source/debit identity, including after a cache hit.
+  let blocks = [
+    NativeFusionBlock(header: 10, terminal: 11, span: 1, price: 3,
+      targets: [638'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+    NativeFusionBlock(header: 20, terminal: 21, first: 1, span: 1, price: 7,
+      targets: [271'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+  var memo = default(NativeFusionReceipts)
+  for trial in 0..7:
+    # Literal next headers and source tokens exercise the same occupied bucket in both directions.
+    let index = trial and 1
+    let entry = blocks[index].header
+    let next = blocks[index].targets[0]
+    var state = NativeFusionContext(gas: 100-blocks[index].price, remaining: 99, visits: 1)
+    state.path[0] = uint64(index+1)
+    let proven = nativeFusionExit(blocks, entry, next, 100, 100, state)
+    assert proven.valid and proven.branches and proven.paidHeader == 0
+    assert proven.attempted == 1 and proven.lastToken == uint32(index+1)
+    # Check both proof construction and immediate reuse before changing a live key field.
+    for repeat in 0..1:
+      assert checkNativeFusionExit(memo, blocks, entry, next, 100, 100, state) == proven
+    assert not checkNativeFusionExit(memo, blocks, entry+1, next, 100, 100, state).valid
+    assert not checkNativeFusionExit(memo, blocks, entry, next+1, 100, 100, state).valid
+    assert not checkNativeFusionExit(memo, blocks, entry, next, 101, 100, state).valid
+    assert not checkNativeFusionExit(memo, blocks, entry, next, 100, 101, state).valid
+    state.paid = 1
+    assert not checkNativeFusionExit(memo, blocks, entry, next, 100, 100, state).valid
+    state.paid = 0
+    state.path[0] = state.path[0] or 0xff00 # Unwritten tail bytes retain no authority.
+    assert checkNativeFusionExit(memo, blocks, entry, next, 100, 100, state) == proven
+
 proc checkLongFusionReceipts() =
   ## Word-boundary paths keep complete identity, exact debits and paid/unpaid exit modes.
   let blocks = [
@@ -623,6 +655,7 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
 proc runStaticFusion*() =
   ## Exercise raw geometry/refusal controls, then ordinary prepared calls through every supported branch form.
   checkRepeatedFusionReceipt()
+  checkCollidingFusionReceipts()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
     checkFusionConditionalMoves()
