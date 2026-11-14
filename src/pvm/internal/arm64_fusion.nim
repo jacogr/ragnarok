@@ -55,7 +55,7 @@ when declared(ArmBlock):
     cycleEdge(words, fixes, refusal, 0)
     words.add(0x53017c01'u32) # LSR W1,W0,#1 gives the nonzero source jump-table tag.
     words.add(0x51000423'u32) # SUB W3,W1,#1.
-    words.add(0x12001c63'u32) # AND W3,W3,#255.
+    words.add(0x12000063'u32 or (uint32(DynamicJumpCacheBits-1) shl 10)) # AND W3,W3,low ordinal mask.
     words.add(0xf8637843'u32) # LDR X3,[X2,X3,LSL#3].
     words.add(0xd360fc62'u32) # LSR X2,X3,#32.
     cycleCompare(words, 2, 1, true)
