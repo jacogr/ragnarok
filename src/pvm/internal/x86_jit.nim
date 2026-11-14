@@ -7,6 +7,9 @@
 ## Native regions enforce the admitted block reservations. Checked code owns source admission,
 ## validates exact receipts and resumes the original continuation or fallback.
 ## Resident guest banks are bounded to one entry; no invocation pointer survives return.
+## Closed scalar loops retain up to six statically most-used guest lanes in saved SysV GPRs.
+## Other lanes keep canonical array access. Every exit commits mapped writes once, then restores
+## the caller's registers; the shared LoopControl still owns reservations and continuation order.
 ## Prepared execution publishes through the shared asynchronous worker. The direct
 ## region and wide-cycle owners still exercise the former SysV ABIs in native tests.
 ## A direct publisher does not grant admission to a prepared frame.
@@ -503,17 +506,57 @@ proc x86LoopEdge(fragment: var X86Block, fixes: var seq[X86LoopFixup],
   fixes.add(X86LoopFixup(at: fragment.bytes.len, target: target))
   regionWord(fragment, 0) # rel32=0, little-endian from immediately after the displacement.
 
+when declared(X86ResidentAccess):
+  func x86LoopAllocation(span: NativeSpan): tuple[bank: X86ResidentAccess, written: uint32] =
+    ## Rank actual scalar reads/writes and predicate reads; ascending lanes break equal scores.
+    ## Keep at most six lanes. Spilled destinations always update the canonical array, so mapped
+    ## and unmapped aliases share current values without a separate body or opcode implementation.
+    var uses = default(array[13, uint16])
+    var written = 0'u32
+    for index in 0..<span.len:
+      # The common scalar emitter has literal, unary, immediate and two-register input forms.
+      let op = span.operation(index)
+      inc uses[op.slots.destinationIndex]
+      written = written or (1'u32 shl int(op.slots.destinationIndex))
+      if op.opcode in [20'u8, 51]:
+        discard # A literal writer has no guest input.
+      elif op.opcode in {100'u8..110}:
+        inc uses[op.slots.aIndex]
+      elif op.opcode < 190:
+        inc uses[op.slots.bIndex]
+      else:
+        inc uses[op.slots.aIndex]
+        inc uses[op.slots.bIndex]
+    let loop = span.loopInfo
+    inc uses[loop.slots.aIndex]
+    if loop.rightKind == NativeLoopRightKind.Register: inc uses[loop.slots.bIndex]
+    var mask = 0'u32
+    for position in 0..<X86ResidentHardware.len:
+      # At most 64 three-reference operations and two predicate reads fit each uint16 score.
+      var best = -1
+      var score = 0'u16
+      for slot in 0..12:
+        if uses[slot] > score and (mask and (1'u32 shl slot)) == 0:
+          best = slot
+          score = uses[slot]
+      if best < 0: break
+      mask = mask or (1'u32 shl best)
+    (x86ResidentAccess(mask), written)
+
 proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
-  ## Lower the shared actions with canonical scalar loads/stores and SysV caller-saved lanes.
-  # ARM/x86 gap: encodeArmLoop retains guest lanes across loop iterations; this emitter
-  # accesses their array for each operation. Revisit loop residency while preserving the
-  # shared LoopControl guard, debit, continuation and final register-publication ordering.
+  ## Lower the shared reservation/receipt actions with one bounded resident bank when supported.
+  ## The paid body runs before any guard; all exit paths share the mapped publication/restore step.
   let loop = span.loopInfo
   let immediateWord = uint32(loop.rightImmediate and 0xffffffff'u64)
   if loop.rightKind == NativeLoopRightKind.Immediate and
       cast[uint64](int64(cast[int32](immediateWord))) != loop.rightImmediate:
     # CMP RAX,imm32 can represent exactly the sign-extended checked operand.
     return @[]
+  when declared(X86ResidentAccess):
+    let allocation = x86LoopAllocation(span)
+    let access = allocation.bank
+  else:
+    let access = X86CanonicalAccess()
   var fragment = default(X86Block)
   var labels = default(array[LoopLabel, int])
   var fixes: seq[X86LoopFixup] = @[]
@@ -524,25 +567,35 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       put(fragment, [0x4c'u8, 0x8b, 0x0e]) # MOV R9,[RSI]: gas.
       put(fragment, [0x4c'u8, 0x8b, 0x56, 8]) # MOV R10,[RSI+8]: remaining attempts.
       put(fragment, [0x45'u8, 0x31, 0xdb]) # XOR R11D,R11D: zero-extend visits.
-    of LoadGuest, StoreGuest:
-      # Canonical scalar instructions already load and store their own guest operands.
-      discard
+    of LoadGuest:
+      when declared(X86ResidentAccess):
+        for slot in 0..12:
+          # Initialize all mapped lanes before entering the already paid first body.
+          let encoded = access.registers[slot]
+          if encoded != 0:
+            saveX86ResidentRegister(fragment, encoded-1)
+            loadX86ResidentRegister(fragment, access, slot)
+    of StoreGuest:
+      when declared(X86ResidentAccess):
+        # Both the original continuation and unpaid-header return reach this common exit.
+        commitX86ResidentRegisters(fragment, access, allocation.written)
+        restoreX86ResidentRegisters(fragment, access)
     of Label:
       labels[action.target] = fragment.bytes.len
     of ExecuteBody:
       for index in 0..<span.len:
-        # Canonical scalar emission preserves RSI/RDI and the three context lanes.
+        # The shared scalar switch preserves all borrows, ledger lanes and saved guest lanes.
         let op = span.operation(index)
-        emitX86Operation(fragment, op.opcode, op.slots, op.immediate)
+        emitX86OperationAccess(fragment, access, op.opcode, op.slots, op.immediate)
     of CountVisit:
       put(fragment, [0x49'u8, 0xff, 0xc3]) # INC R11: one completed original body and branch.
     of BranchGuestAboveEqual:
-      readSlot(fragment, loop.slots.aIndex, false) # MOV RAX,[RDI+left*8].
+      readAccess(fragment, access, loop.slots.aIndex, false) # Read the current mapped or spilled left lane.
       if loop.rightKind == NativeLoopRightKind.Immediate:
         put(fragment, [0x48'u8, 0x3d]) # CMP RAX,imm32: REX.W sign-extends the immediate to 64 bits.
         regionWord(fragment, immediateWord) # Little-endian imm32, verified above against the certificate.
       else:
-        readSlot(fragment, loop.slots.bIndex, true) # MOV RCX,[RDI+right*8].
+        readAccess(fragment, access, loop.slots.bIndex, true) # Read the current right lane, including aliases.
         put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX: compare original unsigned operands.
       x86LoopEdge(fragment, fixes, action.target, [0x0f'u8, 0x83]) # JAE rel32.
     of BranchLaneBelow, DebitLane:
@@ -570,7 +623,7 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       put(fragment, [0x4c'u8, 0x89, 0x56, 8]) # MOV [RSI+8],R10: quota.
       put(fragment, [0x4c'u8, 0x89, 0x5e, 16]) # MOV [RSI+16],R11: completed visits.
     of Return:
-      put(fragment, [0xc3'u8]) # RET: pop caller RIP with the SysV stack otherwise untouched.
+      put(fragment, [0xc3'u8]) # RET: the common StoreGuest action has restored the SysV stack.
   if fragment.bytes.len > NativeImageByteLimit: return @[]
   for fix in fixes:
     # The image ceiling proves a signed rel32, measured from after its four-byte field.

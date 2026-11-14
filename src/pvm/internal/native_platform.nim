@@ -177,12 +177,23 @@ proc enterNative*(image: NativeImage, registers: var RegisterFile): bool =
   else:
     false
 
+when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+  proc ringAbiNative(handle: nil pointer, offset: uint32,
+      registers, context: pointer): uint64 {.cdecl, importc: "pvm_x86_ring_abi_proof",
+      header: "x86_resident_access_proof.h".}
+    ## The private proof checks actual SysV preservation without changing the loop or Ring receipt.
+
 proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
     context: var NativeLoopContext): uint32 =
   ## The region wrapper borrows two buffers for this call only.
+  ## The private x86 ABI profile checks actual caller preservation on the published loop image.
   assert sizeof(RegisterFile) == 104 and sizeof(NativeLoopContext) == 24
   if not image.ready or image.kind != NativeKind.ClosedRegisterLoop: return NativeEntryFailure
-  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+  when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+    let tagged = ringAbiNative(image.handle, image.offset, addr registers[0], addr context)
+    if tagged shr 32 != 1: return NativeEntryFailure
+    uint32(tagged and 0xffffffff'u64)
+  elif defined(pvmX86Jit) or defined(pvmArm64Jit):
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
   else:
     NativeEntryFailure
@@ -225,12 +236,6 @@ func nativeRegisterRingRotation*(image: NativeImage, header: uint32): uint64 =
       for index in 0..2:
         if image.ringValue.blocks[index].header == header: return uint64(index)
   high(uint64)
-
-when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
-  proc ringAbiNative(handle: nil pointer, offset: uint32,
-      registers, context: pointer): uint64 {.cdecl, importc: "pvm_x86_ring_abi_proof",
-      header: "x86_resident_access_proof.h".}
-    ## The private proof checks actual SysV preservation without changing the Ring receipt.
 
 proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
     context: var NativeRingContext): uint32 =
