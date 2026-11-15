@@ -130,6 +130,7 @@ host-tools:
 	  if [ "$(BINARY_PACKAGE)" = 1 ]; then packages="$$packages patchelf"; fi; \
 	  if [ "$(STORAGE_ABORT_DIAGNOSTICS)" = 1 ]; then packages="$$packages lldb"; fi; \
 	  if [ "$(PVM_ASSET_TOOLS)" = 1 ]; then packages="$$packages zstd"; fi; \
+	  if [ "$(PVM_PROFILE_TOOLS)" = 1 ]; then packages="$$packages valgrind"; fi; \
 	  for package in $$packages; do \
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
@@ -734,6 +735,11 @@ bench-pvm-x86-applications: toolchain sources rust-tools
 .PHONY: profile-pvm-x86-jit
 profile-pvm-x86-jit:
 	$(PYTHON) tools/pvm_x86_jit_profile.py --paired-baseline --include-init --include-minimal
+
+# Profile the original canonical image after timing, on the same qualified Linux x86 runner.
+.PHONY: profile-pvm-current-guest
+profile-pvm-current-guest:
+	$(PYTHON) tools/pvm_current_guest_profile.py --report build/tests/pvm-performance/results.json --revision "$(PVM_PROFILE_REVISION)"
 
 # Consume an explicitly qualified live image; never provision/rebuild a guest to obtain symbols.
 export PVM_COLD_REPORT ?=
