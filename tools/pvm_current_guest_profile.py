@@ -95,6 +95,7 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
     destination = folder/'results.json'
     report = dict(schema='pvm-canonical-guest-profile-v1', status='incomplete',
         clock_policy='discarded', hardware_counters=False, boundary_protocol='symbol-returns-v1',
+        thread_scheduling='fair-required',
         scope='one public execute: private memory construction, native execution and publication; '
               'excludes constructor, runtime startup and complete-state driver oracles',
         image_authority='original-sealed-image', controls=[], builds=[], profiles=[])
@@ -132,6 +133,11 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
         def command(arguments, name, **options):
             """Protect every calibration/tool/guest call against live input changes and process failure."""
             unchanged(seals)
+            # The async compiler must get CPU time: Valgrind's default pipe scheduler is unfair.
+            # Keep all native-activity checks; unavailable fair scheduling is a collection failure.
+            arguments = list(arguments)
+            if arguments[:2] == ['valgrind', '--tool=callgrind']:
+                arguments.insert(1, '--fair-sched=yes')
             options.setdefault('environment', execution_environment())
             result = original(arguments, name, **options)
             unchanged(seals)

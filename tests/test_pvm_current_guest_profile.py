@@ -112,26 +112,33 @@ class CurrentGuestProfile(unittest.TestCase):
         """Keep existing scope-calibration/source-binding helpers inert while exercising real guest parsing."""
         self.path.write_text(json.dumps(self.value))
         def command(arguments, name, **options):
-            """No test executable or process runs; only known tool reports are supplied."""
-            output = 'valgrind-3.22.0\n' if name == 'version' else (
-                '0000 T runPreparedKernel_literal\n' if name == 'guest-symbols' else '')
+            """A worst-case unfair scheduler leaves the compiler idle; fair collection retains native work."""
+            if '--tool=callgrind' in arguments:
+                role = options['environment']['RAGNAROK_PVM_BACKEND']
+                limit = int(name.split('-')[1])
+                target = Path(next(arg.split('=', 1)[1] for arg in arguments
+                                   if str(arg).startswith('--callgrind-out-file=')))
+                # Real collection still checks every part and the empty final dump.
+                for index in range(1, 14):
+                    target.with_name(target.name+'.'+str(index)).write_text(counters(99+index))
+                target.write_text(counters(0).replace('10 1 2 0', '0 0 0 0'))
+                output = wire(limit, role)
+                if role == 'jit' and '--fair-sched=yes' not in arguments:
+                    output = output.replace('jit,1,1,1,jit,1,12,42', 'jit,1,1,1,interpreted,0,0,0')
+                    output = output.replace('sieve,1,12,42,650,0,12,12', 'sieve,0,0,0,0,0,0,0')
+                if self.mutation is not None: self.mutation()
+                output = self.output_change(output)
+            else:
+                # Ordinary metadata/annotation calls cannot execute the inert sealed image.
+                output = 'valgrind-3.22.0\n' if name == 'version' else (
+                    '0000 T runPreparedKernel_literal\n' if name == 'guest-symbols' else '')
             return dict(command=list(map(str, arguments)), exit_code=0, output=output, log=name+'.log')
-        def collect(checks, binary, name, scope, environment, timeout, **options):
-            """Retain all original call parts and allow an independently requested state/input failure."""
-            role = environment['RAGNAROK_PVM_BACKEND']
-            limit = int(name.split('-')[1])
-            for index in range(1, 14):
-                (checks.folder/(name+'.callgrind.'+str(index))).write_text(counters(99+index))
-            if self.mutation is not None: self.mutation()
-            return dict(command=[str(binary)], exit_code=0, log=name+'.log',
-                        output=self.output_change(wire(limit, role))), checks.folder/(name+'.callgrind.13')
         with patch.dict(profile.os.environ, GITHUB_ACTIONS='true'), \
                 patch.object(profile, 'host_identity', return_value=self.host), \
                 patch.object(profile, 'canonical_source_identity', return_value={'revision': REVISION}), \
                 patch.object(profile, 'canonical_tooling_seals', return_value={}), \
                 patch.object(profile, 'calibrate_scope'), \
-                patch.object(profile.NativeChecks, 'command', side_effect=command), \
-                patch.object(profile, 'collect', side_effect=collect):
+                patch.object(profile.NativeChecks, 'command', side_effect=command):
             return profile.profile_current_guest(self.path, REVISION, [100000, 10000000], self.folder)
 
     def test_original_images_keep_complete_calls_and_discard_clocks(self):
@@ -142,7 +149,7 @@ class CurrentGuestProfile(unittest.TestCase):
                          [(100000, 'interpreted'), (100000, 'jit'), (10000000, 'jit')])
         for row in report['profiles']:
             self.assertEqual((row['checked_calls'], row['cold']['Ir'], row['reused']['Ir']), (13, 100, 112))
-            self.assertEqual(len(row['profile_hashes']), 13)
+            self.assertEqual(len(row['profile_hashes']), 14) # Thirteen returns and the empty final dump.
             self.assertNotIn('invocation', row)
 
     def test_changed_native_activity_cannot_pass(self):
