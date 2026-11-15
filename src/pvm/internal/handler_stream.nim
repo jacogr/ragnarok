@@ -762,19 +762,8 @@ proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
   assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
   flatReadSpan[W](bytes.toOpenArray(at, at+W-1), 0)
 
-proc flatRead[W: static[int]](bytes: RWView, at: int): uint64 {.inline.} =
-  ## The cached RW pointer/length supplies a borrow without consulting its backing alternative.
-  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
-  flatReadSpan[W](bytes.toOpenArray(at, at+W-1), 0)
-
 proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.inline.} =
   ## Retain complete preflight before exposing a nonempty managed scalar span.
-  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
-  var span = bytes.toOpenArray(at, at+W-1)
-  flatWriteSpan[W](span, 0, value)
-
-proc flatWrite[W: static[int]](bytes: var RWView, at: int, value: uint64) {.inline.} =
-  ## The complete RW extent, never an allocation tag, authorizes this synchronous store.
   assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
   var span = bytes.toOpenArray(at, at+W-1)
   flatWriteSpan[W](span, 0, value)
@@ -946,13 +935,19 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
 proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool {.inline.} =
   ## Three-region fast selection keeps only address-dependent complete-extent checks on success.
+  ## An eligible but missing RW borrow is a backend fault; ordinary misses retain checked fallback.
   if address >= 65536'u64 and address <= uint64(high(uint32))-uint64(W):
     if address >= f.stackBase:
       let at = int(address-f.stackBase)
       if f.stack.len >= W and at <= f.stack.len-W: value = flatRead[W](f.stack, at); return true
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
-      if f.rw.len >= W and at <= f.rw.len-W: value = flatRead[W](f.rw, at); return true
+      if f.rw.len >= W and at <= f.rw.len-W:
+        if not tryReadScalar[W](f.rw, at, value):
+          # This extent was already eligible; an invalid borrow is a local backend failure.
+          f.reason = oracle.StepError.BackendFailure
+          return false
+        return true
     elif address >= f.roBase:
       let at = int(address-f.roBase)
       if f.ro.len >= W and at <= f.ro.len-W: value = flatRead[W](f.ro, at); return true
@@ -960,8 +955,9 @@ proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
 
 proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool {.inline.} =
-  ## Complete checked fallback remains available to existing source workers.
+  ## Complete checked fallback remains available for ordinary region misses, never local borrow failure.
   if flatLoadFast[W](f, off, address, value): return true
+  if f.reason != oracle.StepError.None: return false
   flatLoadSlow[W](f, off, address, value)
 
 proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
@@ -977,7 +973,9 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
-        flatWrite[W](f.rw, at, value)
+        if not tryWriteScalar[W](f.rw, at, value):
+          f.reason = oracle.StepError.BackendFailure
+          return false
         flatMarkStore[W](f, address)
         return true
   flatStoreSlow[W](f, off, address, value)
@@ -989,6 +987,16 @@ proc flatMemoryCold[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
 proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateStore,
     Fast, Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 =
   ## Shared selected access equation; only the cold load worker preserves state across full preflight.
+  ## Prove current arguments and a paired continuation before publishing registers, bytes or dirty bits.
+  ## Admitted streams bound coordinates below 2^31, so a valid current slot proves off+1 cannot wrap.
+  if int(off) >= f.arguments.len:
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
+  when Pair:
+    # Validate the continuation before a load publishes a register or a store changes bytes.
+    if int(off+1) >= f.handlers.len:
+      f.reason = oracle.StepError.BackendFailure
+      return flatStop
   let a = f.arguments[int(off)]
   var base = 0'u64
   when Indirect:
@@ -1000,6 +1008,7 @@ proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateSt
     when Fast:
       if not flatLoadFast[Width](f, off, address, value):
         # Failed fast preflight has changed no CPU, bytes or attempt state; the complete worker owns every exit.
+        if f.reason != oracle.StepError.None: return flatStop
         return flatMemoryCold[Width, Loading, Signed, Indirect, ImmediateStore, Pair](f, off)
     else:
       if not flatLoad[Width](f, off, address, value): return flatStop
@@ -1357,8 +1366,9 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     let word = uint64(f.info.registers[prefix.slots.aIndex]) and 0xffffffff'u64
     # No host/control exit or quota boundary can occur inside these four proven complete iterations.
     # The original checked store repeats the positive extent proof and owns dirty-page publication.
-    let stored = flatStore[4](f, off+2, address, word)
-    assert stored
+    if not flatStore[4](f, off+2, address, word):
+      # A local borrow failure stops before publishing the combined iteration's CPU/gas projection.
+      return flatStop
     # Only a successful full extent permits the original twenty-attempt and four-block state projection.
     f.remaining-=20
     f.reservation = off or flatReservationHeaderFlag
@@ -1794,6 +1804,62 @@ when defined(pvmSharedAsyncWitness):
     if pair(large, largeOffset) != largeOffset+2 or
         large.reason != oracle.StepError.None or uint64(large.info.registers[0]) != 2:
       return false
+    true
+
+when defined(pvmSharedAsyncWitness):
+  proc probeMemoryDispatchBounds*(): bool =
+    ## Refused current slots and missing paired continuations preserve CPU, bytes and dirty state.
+    ## Positive managed-borrow controls distinguish a useful worker from unconditional refusal.
+    for code in [52'u8, 59'u8]:
+      let single = flatHandler(code, true, true)
+      let pair = flatMemoryPairHandler(code)
+      if single == nil or pair == nil: return false
+      for paired in [false, true]:
+        for off in [0'u32, NativeEntryLimit, high(uint32)]:
+          # No argument table grants authority for these coordinates, regardless of memory opcode.
+          var frame = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None)
+          frame.info.gas = MachineGas(123)
+          frame.info.registers[0] = RegisterValue(0xabcdef0123456789'u64)
+          let before = frame.info
+          let selected = if paired: pair else: single
+          if selected(frame, off) != flatStop or frame.reason != oracle.StepError.BackendFailure or
+              frame.info != before: return false
+      var bytes = @[0xa5'u8, 0x5a'u8]
+      var frame = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None,
+        rwBase: 65536, stackBase: uint64(high(uint32)), arguments: @[FlatArgs(x: 65536)])
+      frame.rwStorage = takeManaged(bytes)
+      frame.rw = borrowRW(frame.rwStorage)
+      frame.info.gas = MachineGas(123)
+      frame.info.registers[0] = RegisterValue(0xabcdef0123456789'u64)
+      frame.dirtyPages = @[1'u64 shl 16]
+      frame.dirtyIndices = @[16'u32]
+      let before = frame.info
+      if pair(frame, 0) != flatStop or frame.reason != oracle.StepError.BackendFailure or
+          frame.info != before or frame.rw[0] != 0xa5 or frame.rw[1] != 0x5a or
+          frame.dirtyPages != @[1'u64 shl 16] or frame.dirtyIndices != @[16'u32]: return false
+      # The same admitted argument remains executable when no continuation is requested.
+      frame.reason = oracle.StepError.None
+      if single(frame, 0) != 1 or frame.reason != oracle.StepError.None: return false
+      if code == 52:
+        if uint64(frame.info.registers[0]) != 0xa5 or frame.rw[0] != 0xa5: return false
+      else:
+        if frame.info != before or frame.rw[0] != 0x89: return false
+      if frame.rw[1] != 0x5a or frame.dirtyPages != @[1'u64 shl 16] or
+          frame.dirtyIndices != @[16'u32]: return false
+      # A damaged eligible borrow must stop locally, never replay immutable source or its continuation.
+      let savedInfo = frame.info
+      let savedByte = frame.rw[0]
+      frame.handlers.add(single)
+      frame.handlers.add(flatNoop)
+      invalidateRWDataForWitness(frame.rw)
+      for paired in [false, true]:
+        frame.reason = oracle.StepError.None
+        let selected = if paired: pair else: single
+        if selected(frame, 0) != flatStop or frame.reason != oracle.StepError.BackendFailure or
+            frame.info != savedInfo: return false
+        let intact = borrowRW(frame.rwStorage)
+        if intact[0] != savedByte or intact[1] != 0x5a or
+            frame.dirtyPages != @[1'u64 shl 16] or frame.dirtyIndices != @[16'u32]: return false
     true
 
 proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
@@ -3843,6 +3909,54 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       f.bitmapCandidate = 0
       observeFlatBitmap(f, root)
   flatPromoteNativeLoop(f)
+
+when defined(pvmSharedAsyncWitness):
+  proc probeWordStoreBorrowRefusal*(): bool =
+    ## A genuine byte-extraction loop exercises the combined word caller on success and lost-borrow failure.
+    ## Refusal must precede its projected four iterations, gas, attempts and dirty-byte publication.
+    let decoded = decodeProgram(@[0'u8, 0, 16, 198, 16, 2, 120, 50, 0, 149, 51, 1,
+      149, 17, 8, 171, 67, 244, 0, 73, 146], CodeAddress(0), ProgramByteLimit(64),
+      JumpCountLimit(1))
+    if decoded.error != ProgramError.None: return false
+    var prepared = prepareFlatPlan(decoded.value, GasCycleLimit(100000), defaultFlatLimits(), false)
+    if prepared.error != FlatError.None: return false
+    let plan = takeValue(prepared)
+    let page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+    for damaged in [false, true]:
+      # Both arms use the same independently decoded source roles, complete writable page and CPU seed.
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000))
+      info.registers[0] = RegisterValue(0x01234567)
+      info.registers[3] = RegisterValue(65536)
+      info.registers[4] = RegisterValue(65540)
+      var frame = newFlatFrame(plan, [page], info)
+      let header = flatResolve(frame, 0)
+      if header == flatStop or flatUnresolvedBranch[171](frame, header+5) != header+5 or
+          not flatWordShape(frame, header): return false
+      frame.remaining = 20
+      frame.reason = oracle.StepError.None
+      if damaged: invalidateRWDataForWitness(frame.rw)
+      let outcome = flatChargedWordLoop(frame, header)
+      let intact = borrowRW(frame.rwStorage)
+      if damaged:
+        # This would reach the old success assertion; now the local refusal leaves the whole batch untouched.
+        if outcome != flatStop or frame.reason != oracle.StepError.BackendFailure or
+            frame.info != info or frame.remaining != 20 or frame.dirtyIndices.len != 0: return false
+        for index in 0..<intact.len:
+          if intact[index] != 0: return false
+        for bits in frame.dirtyPages:
+          if bits != 0: return false
+      else:
+        # Four original low bytes and the exact affordable projection prove this is an executable caller.
+        if outcome != frame.arguments[int(header+5)].y or frame.reason != oracle.StepError.None or
+            frame.remaining != 0 or uint64(frame.info.gas) != 1000000-frame.arguments[int(
+                header)].x*4 or
+            uint64(frame.info.registers[1]) != 32 or uint64(frame.info.registers[2]) != 1 or
+            uint64(frame.info.registers[3]) != 65540 or frame.dirtyIndices != @[
+                16'u32]: return false
+        for index in 0..<intact.len:
+          let expected = if index < 4: byte((0x01234567'u64 shr (index*8)) and 255) else: 0'u8
+          if intact[index] != expected: return false
+    true
 
 when defined(pvmMixedLoopEntryWitness) and NativeReadCycleEnabled:
   proc witnessFlatMixedLoopEntry*(program: Program, pc: uint32) =

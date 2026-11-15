@@ -26,6 +26,40 @@ proc fillWindow(output: var openArray[byte]) =
   for index in 0..<output.len:
     output[index] = byte(201+index)
 
+proc checkScalarTransfers[W: static[int]](view: var RWView) =
+  ## Managed and mapped owners share exact little-endian, unaligned and whole-extent behavior.
+  ## Every successful test store restores its original bytes before the enclosing owner test resumes.
+  assert view.len >= 8
+  var before = newSeq[byte](view.len)
+  for index in 0..<view.len: before[index] = view[index]
+  for at in [0, 1, view.len-W]:
+    # Independent byte accumulation checks zero extension and the final legal access.
+    var expected = 0'u64
+    for index in 0..<W: expected = expected or (uint64(before[at+index]) shl (index*8))
+    var observed = 0xfedcba9876543210'u64
+    assert tryReadScalar[W](view, at, observed) and observed == expected
+  for at in [-1, view.len-W+1, high(int)]:
+    # Neither output nor any byte may change when the complete transfer does not fit.
+    var observed = 0xfedcba9876543210'u64
+    assert not tryReadScalar[W](view, at, observed) and observed == 0xfedcba9876543210'u64
+    assert not tryWriteScalar[W](view, at, 0x0123456789abcdef'u64)
+    for index in 0..<view.len: assert view[index] == before[index]
+  for at in [1, view.len-W, (if view.len > 4103: 4095 else: 1)]:
+    # A disjoint literal exercises truncation, unaligned/page-crossing stores and unchanged neighbors.
+    assert tryWriteScalar[W](view, at, 0x0123456789abcdef'u64)
+    for index in 0..<view.len:
+      assert view[index] == (if index >= at and index < at+W:
+        byte((0x0123456789abcdef'u64 shr ((index-at)*8)) and 255) else: before[index])
+    for index in 0..<view.len: view[index] = before[index]
+
+proc checkEmptyScalarTransfers() =
+  ## Empty and malformed test borrows return failure rather than an assertion or fabricated value.
+  var view = default(RWView)
+  var value = 0xfedcba9876543210'u64
+  assert not tryReadScalar[1](view, 0, value) and value == 0xfedcba9876543210'u64
+  assert not tryWriteScalar[8](view, 0, 0)
+  assert residentWitnessNullScalar()
+
 proc checkManaged() =
   ## The legacy alternative supplies the same indexed/sliced bytes without a foreign charge.
   let before = residentWitnessSnapshot()
@@ -38,6 +72,10 @@ proc checkManaged() =
   block:
     # The borrow ends before storage retirement; writes are observed through independent reads.
     var view = borrowRW(storage)
+    checkScalarTransfers[1](view)
+    checkScalarTransfers[2](view)
+    checkScalarTransfers[4](view)
+    checkScalarTransfers[8](view)
     assert view.len == 1031 and borrowedData(view) != nil
     for index in 0..<view.len:
       assert view[index] == byte(index mod 251)
@@ -59,6 +97,7 @@ proc checkManaged() =
 
 proc checkDefaults() =
   ## Default/empty/invalid values never acquire release authority or fabricate a visible extent.
+  checkEmptyScalarTransfers()
   var storage = default(RWStorage)
   assert storage.len == 0 and storage.logicalBytes == 0 and storage.mappedBytes == 0
   let view = borrowRW(storage)
@@ -90,6 +129,10 @@ proc foreignCycle(bytes: int) =
     # Verify the complete requested span, including its final partial guest/host page.
     var view = borrowRW(owner)
     assert view.len == bytes
+    checkScalarTransfers[1](view)
+    checkScalarTransfers[2](view)
+    checkScalarTransfers[4](view)
+    checkScalarTransfers[8](view)
     for index in 0..<view.len:
       assert view[index] == 0
     view[0] = 7

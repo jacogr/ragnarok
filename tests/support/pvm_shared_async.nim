@@ -1988,6 +1988,8 @@ proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
   when defined(pvmSharedAsyncWitness):
     assert probeRegisterDispatchBounds(), "register dispatch bounds must refuse without mutation"
+    assert probeMemoryDispatchBounds(), "memory dispatch bounds must refuse without mutation"
+    assert probeWordStoreBorrowRefusal(), "combined word stores must propagate lost-borrow refusal"
   diagnosticPhase("checkedReceipts")
   checkedReceipts()
   diagnosticPhase("closedHandleMoves")
