@@ -14,7 +14,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     owner: Program
     second: uint32
 
-  proc compositionGuest(branch: byte, host: bool): CompositionFixture =
+  proc compositionGuest(branch: byte, host: bool, leading: int = 0): CompositionFixture =
     ## Two separately priced source blocks retain a real halt/host successor outside the native graph.
     var code: seq[byte] = @[]
     var starts: seq[int] = @[]
@@ -28,6 +28,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
       starts.add(code.len)
       for value in bytes: code.add(value)
       for index in 0..<4: code.add(byte((delta shr (8*index)) and 255))
+    for index in 0..<leading:
+      # Literal boundary controls count folded noops in the original source span, not the dense body.
+      emit([2'u8])
     if branch == 88:
       # A folded leading source fact keeps the whole header ordinary while the ADD/branch pair combines.
       emit([2'u8])
@@ -61,6 +64,10 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   proc runFusionComposition*() =
     ## Both original arithmetic/branch predicates and both external exits share the actual scoped bridge.
     witnessFlatFusionSampling()
+    for leading in [30, 31]:
+      # ADD plus branch makes exactly 32 or 33 original instructions despite the same dense body.
+      let fixture = compositionGuest(83, false, leading)
+      witnessFlatFusionSourceLimit(fixture.owner, leading == 30)
     let runtime = newNativeRuntime()
     try:
       assert start(runtime)
