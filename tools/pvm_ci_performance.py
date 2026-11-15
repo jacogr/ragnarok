@@ -40,6 +40,7 @@ from setup_nimony import cache_directory, installed
 
 BUILD = ROOT/'build/tests/pvm-performance'
 ROLES = ('interpreted', 'jit', 'reference')
+PAIRED_BACKENDS = ('jit', 'interpreted')
 ORDERS = (ROLES, ROLES[::-1])
 DOOM_WARMUP = 1320
 
@@ -588,14 +589,14 @@ class PerformanceRunner:
 
 
 class PairedRunner(PerformanceRunner):
-    """Compare pinned baseline and current JIT images sequentially on the same qualified runner.
+    """Compare pinned revisions under one selected policy on the same qualified native runner.
 
     Reuse canonical inputs, parsers and compiler/flags. Both newly built revisions repeat
     the same refusal controls before timing. A separate report never changes the
     canonical interpreted/JIT/reference matrix or presents cross-run normalization as an A/B.
     """
 
-    def __init__(self, current, baseline):
+    def __init__(self, current, baseline, backend='jit'):
         """Borrow already prepared immutable fixtures; isolate reports, binaries and baseline source."""
         super().__init__(current.folder, current.scope, current.expected_revision)
         self.baseline = baseline
@@ -611,11 +612,13 @@ class PairedRunner(PerformanceRunner):
                 setattr(self, name, getattr(current, name))
         self.report = dict(schema='pvm-paired-v1', status='incomplete', baseline=baseline,
             candidate=current.report['revision'], architecture=current.report['architecture'],
-            identity=current.report['identity'], pairs=11, seed=1729, backend='jit',
+            identity=current.report['identity'], pairs=11, seed=1729, backend=backend,
             controls=[], builds=[], runs=[], summary=[],
             source_manifests={})
         error = ('Paired baseline must be an immutable 40-character commit SHA'
                  if re.fullmatch(r'[0-9a-f]{40}', baseline) is None else
+                 'Paired backend must be jit or interpreted'
+                 if backend not in PAIRED_BACKENDS else
                  'Paired sampling requires passed current native performance controls'
                  if current.report.get('status') != 'passed' else None)
         if error is not None:
@@ -705,6 +708,7 @@ class PairedRunner(PerformanceRunner):
 
     def collect(self):
         """Build, control and sample the complete paired cohort without publishing accepted artifacts."""
+        backend = self.report['backend']
         baseline_images, self.candidate_images = self.comparison_images()
         processes = [case for case in self.cases if case['family'] != 'synthetic']
         synthetic = next((case for case in self.cases if case['family'] == 'synthetic'), None)
@@ -714,7 +718,7 @@ class PairedRunner(PerformanceRunner):
             self.images = images
             for case in processes:
                 start = len(self.report['controls'])
-                self.controls(case, 'jit')
+                self.controls(case, backend)
                 for control in self.report['controls'][start:]:
                     control['version'] = version
             self.checkpoint()
@@ -726,15 +730,15 @@ class PairedRunner(PerformanceRunner):
                 order = ('baseline', 'candidate') if (first+pair) % 2 == 0 else ('candidate', 'baseline')
                 for version in order:
                     self.images = baseline_images if version == 'baseline' else self.candidate_images
-                    args, env, _ = self.invocation(case, 'jit')
+                    args, env, _ = self.invocation(case, backend)
                     observed = self.command(args, f'paired-{case["case_id"]}-{pair}-{version}', env)
-                    parsed = self.parse(observed['output'], case, 'jit')
+                    parsed = self.parse(observed['output'], case, backend)
                     for identity, values in parsed.items():
                         self.report['runs'].append(dict(case_id=identity, pair=pair, version=version,
                             order=list(order), parsed=values, run=command_record(observed)))
                     self.checkpoint()
         self.verify()
-        self.report['summary'] = paired_summary(self.report['runs'], self.cases, self.report['pairs'])
+        self.report['summary'] = paired_summary(self.report['runs'], self.cases, self.report['pairs'], backend)
         self.report['identity']['files'] = {str(path): value for path, value in self.seals.items()}
 
     def execute(self):
@@ -775,8 +779,10 @@ class PairedRunner(PerformanceRunner):
         return self.report
 
 
-def paired_summary(runs, cases, pairs):
+def paired_summary(runs, cases, pairs, backend='jit'):
     """Derive direct CPU/wall candidate/baseline ratios only from complete same-pair observations."""
+    if backend not in PAIRED_BACKENDS:
+        raise ValueError('Paired backend must be jit or interpreted')
     if type(pairs) is not int or not 1 <= pairs <= 64:
         raise ValueError('Invalid paired process count')
     expected = {(case['case_id'], pair, version) for case in cases for pair in range(pairs)
@@ -785,7 +791,7 @@ def paired_summary(runs, cases, pairs):
     for run in runs:
         key = (run['case_id'], run['pair'], run['version'])
         parsed = run['parsed']
-        validate_policy(parsed, 'jit')
+        validate_policy(parsed, backend)
         if parsed.get('invocation', {}).get('measurement') != measurement_identity():
             raise ValueError('Paired timing requires the complete public-invocation boundary')
         samples = parsed['invocation']['samples']
@@ -820,10 +826,14 @@ def paired_summary(runs, cases, pairs):
 
 def render_paired(report):
     """Keep paired source/host identity and footprint-aware absolute timings beside each direct ratio."""
+    backend = report['backend']
+    if backend not in PAIRED_BACKENDS:
+        raise ValueError('Paired backend must be jit or interpreted')
+    label = 'JIT' if backend == 'jit' else 'Interpreted'
     lines = ['# Same-runner PVM A/B', '', 'Baseline: `'+report['baseline']+'`.',
              'Candidate: `'+report['candidate']+'`.', '',
              'Both revisions use the same native CI job, compiler, flags, fixtures and full-state checks.',
-             'JIT processes alternate in 11 pairs; reused medians use samples 3–12. Lower ratios are better.', '',
+             label+' processes alternate in 11 pairs; reused medians use samples 3–12. Lower ratios are better.', '',
              '| Case | Phase | Clock | Baseline ms | Candidate ms | Candidate / baseline | Pair range |',
              '| --- | --- | --- | ---: | ---: | ---: | --- |']
     for row in report['summary']:
@@ -844,27 +854,41 @@ def render_paired(report):
     return '\n'.join(lines)+'\n'
 
 
+def retire_paired():
+    """Remove only previous paired acceptance artifacts before a new or rejected request."""
+    for name in ('paired-summary.md', 'paired-results.json'):
+        (BUILD/name).unlink(missing_ok=True)
+
+
 def main():
     """Make owns provisioning and native qualification; CLI selects exactly one maintained subset."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scope', choices=('all', 'micro', 'doom'), default='all')
     parser.add_argument('--revision', help='Exact immutable trigger SHA; otherwise GITHUB_SHA')
     parser.add_argument('--baseline', default=os.environ.get('PVM_BASELINE_REVISION', ''),
-                        help='Immutable baseline SHA for a same-runner paired JIT comparison')
-    arguments = parser.parse_args()
-    # Every request retires previous paired evidence, including a run that no longer asks for pairing.
-    for name in ('paired-summary.md', 'paired-results.json'):
-        (BUILD/name).unlink(missing_ok=True)
+                        help='Immutable baseline SHA for a same-runner paired comparison')
+    parser.add_argument('--paired-backend', choices=PAIRED_BACKENDS,
+                        default=os.environ.get('PVM_PAIR_BACKEND', 'jit'),
+                        help='Runtime policy for both paired revisions; canonical qualification is unchanged')
+    try:
+        arguments = parser.parse_args()
+        if arguments.paired_backend not in PAIRED_BACKENDS:
+            parser.error('paired backend must be jit or interpreted')
+    except SystemExit as error:
+        # Help is read-only; an invalid request must retire previous accepted pairing evidence.
+        if error.code != 0: retire_paired()
+        raise
+    retire_paired()
     if arguments.baseline:
         # Canonical qualification can fail before the paired runner exists; retire earlier success first.
         BUILD.mkdir(parents=True, exist_ok=True)
         (BUILD/'paired-results.json').write_text(json.dumps(dict(schema='pvm-paired-v1',
-            status='incomplete', baseline=arguments.baseline))+'\n')
+            status='incomplete', baseline=arguments.baseline, backend=arguments.paired_backend))+'\n')
         (BUILD/'paired-summary.md').write_text('Same-runner PVM comparison incomplete; no accepted ratios.\n')
     runner = PerformanceRunner(BUILD, arguments.scope, arguments.revision)
     report = runner.execute()
     if arguments.baseline:
-        PairedRunner(runner, arguments.baseline).execute()
+        PairedRunner(runner, arguments.baseline, arguments.paired_backend).execute()
     print('PVM performance passed: '+report['architecture']+', '+str(len(case_inventory(report['scope'])))
           +' cases; CPU/wall raw samples and ratios in '+str(BUILD/'summary.md'), flush=True)
 

@@ -18,14 +18,17 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
     def test_paired_baseline_reaches_each_selected_native_job(self):
         """An immutable manual baseline reaches both architectures without selecting a different cohort."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        context = event_context('workflow_dispatch', suite='bench-pvm')
-        context['inputs'].update(pvm_architecture='all', pvm_baseline_revision='a'*40)
-        families = selected_families(text, 'pvm-comparison', context)
-        self.assertEqual({family['group'] for family in families}, {'arm64', 'x86_64'})
-        for family in families:
-            section = family_section(text, 'pvm-comparison', family['group'], context=context)
-            request = dict(context, matrix=dict(family=family))
-            self.assertEqual(expression(section['env']['PVM_BASELINE_REVISION'], request), 'a'*40)
+        for backend in ('jit', 'interpreted'):
+            context = event_context('workflow_dispatch', suite='bench-pvm')
+            context['inputs'].update(pvm_architecture='all', pvm_baseline_revision='a'*40,
+                                     pvm_pair_backend=backend)
+            families = selected_families(text, 'pvm-comparison', context)
+            self.assertEqual({family['group'] for family in families}, {'arm64', 'x86_64'})
+            for family in families:
+                section = family_section(text, 'pvm-comparison', family['group'], context=context)
+                request = dict(context, matrix=dict(family=family))
+                self.assertEqual(expression(section['env']['PVM_BASELINE_REVISION'], request), 'a'*40)
+                self.assertEqual(expression(section['env']['PVM_PAIR_BACKEND'], request), backend)
 
     def test_unpaired_job_summary_cannot_display_a_stale_paired_table(self):
         """Execute the summary consumer with stale pair evidence and both requested pairing states."""
@@ -64,6 +67,7 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
                 self.assertEqual(selected.count('make bench-pvm-performance'), 1)
                 request = dict(context, matrix=dict(family=family))
                 self.assertEqual(expression(section['env']['PVM_PERF_SCOPE'], request), 'all')
+                self.assertEqual(expression(section['env']['PVM_PAIR_BACKEND'], request), 'jit')
                 self.assertEqual(expression(section['env']['PVM_CI_ARCH'], request), family['group'])
                 self.assertEqual(expression(section['env']['PVM_CI_JOB_NAME'], request),
                                  expression(section['name'], request))

@@ -136,6 +136,9 @@ class VerificationUnit(unittest.TestCase):
             self.assertEqual(stopped.exception.code, 2)
             checks.assert_not_called()
 
+    # Model the complete supported Linux x86 plan; host exclusions have separate matrix controls.
+    @patch('native_tests.platform.system', lambda: 'Linux')
+    @patch('native_tests.platform.machine', lambda: 'x86_64')
     def test_separate_scope_inventory_and_verdicts(self):
         """Suite-only shards and the corpus report own disjoint exact inventories; neither masks the other."""
         suites = []
@@ -270,6 +273,9 @@ class VerificationUnit(unittest.TestCase):
                 checks.assert_not_called()
 
     # All suite identities and reference corpora must appear exactly once in the unit-owned evidence.
+    # Model the complete supported Linux x86 plan; host exclusions have separate matrix controls.
+    @patch('native_tests.platform.system', lambda: 'Linux')
+    @patch('native_tests.platform.machine', lambda: 'x86_64')
     def test_unit_complete_inventory(self):
         report = dict(suites=[dict(name=name, passed=True) for name in UNIT_SUITES],
                       **instrumented_report(test_runtime.unit_partition()[0]),

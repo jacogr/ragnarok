@@ -475,8 +475,13 @@ on both architectures without building or executing a benchmark. Selective retri
 CPU's actual PVM attempt; unrelated job failures are shown separately from valid measurements.
 It does not conceal a newer pending or failed cohort behind old successful reports.
 
-For causal JIT comparisons, dispatch `ci.yml` with `suite=bench-pvm`,
+For causal runtime comparisons, dispatch `ci.yml` with `suite=bench-pvm`,
 `pvm_architecture=all` and `pvm_baseline_revision=<full immutable commit SHA>`.
+`pvm_pair_backend=jit` is the default; select `interpreted` to compare the checked interpreter
+explicitly. The CLI equivalent is `--paired-backend`, or `PVM_PAIR_BACKEND` under Make.
+Both revisions must report the selected requested policy; interpreted pairs additionally require
+an interpreted actual policy and no native work. JIT pairs retain their normal fallback checks.
+The canonical interpreted/JIT/reference qualification remains unchanged.
 Each native job builds both revisions at the same detached source path, with the same pinned
 compiler, checked flags, measuring drivers and fixtures, using separate clean compiler caches.
 Both revisions repeat the full-result/refusal controls before eleven sequential process pairs

@@ -81,6 +81,9 @@ class IntegratedSanitizers(unittest.TestCase):
                 del changed['instrumented']
             self.assertFalse(test_runtime.unit_passed(changed), change)
 
+    # Model the complete supported Linux x86 plan; host exclusions have separate matrix controls.
+    @patch('native_tests.platform.system', lambda: 'Linux')
+    @patch('native_tests.platform.machine', lambda: 'x86_64')
     def test_instrumented_exact_once_across_workers(self):
         """Seeded and local schedules preserve all normal tests and each distinct ASan task once."""
         from native_tests import unit_partition, UNIT_SUITES
