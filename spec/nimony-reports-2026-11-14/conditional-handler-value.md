@@ -103,3 +103,8 @@ results, and exercises those ordinary dispatch procedure values. Full native ARM
 pass with that construction, including invalid offsets, missing continuations and valid offsets
 above the optional native image coordinate ceiling. No compiler source or pin was changed.
 Five fresh failing reductions, current upstream testing and a confirmed root cause remain pending.
+
+The [November 15 composition-trial follow-up](../nimony-reports-2026-11-15/fusion-handler-composition.md)
+adds a portable project patch and five independent fresh-cache failures on `8102b8e3`, with
+matching successful parent builds. It is not a standalone reduction and does not establish that
+the observations have the same root cause. The composition implementation remains unshipped.

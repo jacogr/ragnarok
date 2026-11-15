@@ -1,0 +1,50 @@
+--- a/src/pvm/internal/handler_fusion.nim
++++ b/src/pvm/internal/handler_fusion.nim
+@@ -32,0 +33,4 @@
++  func fusionOriginalHeader(handler: FlatHandler): bool =
++    ## Trial only: both headers execute the same original complete reservation/body fallback.
++    handler == flatCharge or handler == flatChargedAdjacent[false]
++
+@@ -36 +40 @@
+-        f.handlers[int(off)] != flatCharge: return false
++        not fusionOriginalHeader(f.handlers[int(off)]): return false
+@@ -73,4 +77,16 @@
+-            if index >= source.last or node+1 >= summary.terminal or
+-                f.sites[int(node+1)] != index+1: return false
+-            let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
+-            if fused == nil or worker != fused: return false
++            var combinedBranch = false
++            if index+1 == source.last and node+1 == summary.terminal and fact.opcode == 131:
++              let branch = f.plan.facts[int(index+1)].opcode
++              if branch == 83:
++                let cold: FlatHandler = flatRegisterBranchCold[131, 83]
++                let warm: FlatHandler = flatFusedRegisterBranch[131, 83]
++                combinedBranch = worker == cold or worker == warm
++              elif branch == 88:
++                let cold: FlatHandler = flatRegisterBranchCold[131, 88]
++                let warm: FlatHandler = flatFusedRegisterBranch[131, 88]
++                combinedBranch = worker == cold or worker == warm
++            if not combinedBranch:
++              if index >= source.last or node+1 >= summary.terminal or
++                  f.sites[int(node+1)] != index+1: return false
++              let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
++              if fused == nil or worker != fused: return false
+--- a/src/pvm/internal/handler_stream.nim
++++ b/src/pvm/internal/handler_stream.nim
+@@ -3589,0 +3590 @@
++    var predecessors = default(array[NativeFusionBlockLimit, nil FlatHandler])
+@@ -3595 +3596 @@
+-      if header >= uint32(f.handlers.len) or f.handlers[int(header)] != flatCharge:
++      if header >= uint32(f.handlers.len) or not fusionOriginalHeader(f.handlers[int(header)]):
+@@ -3604,0 +3606 @@
++      predecessors[count] = f.handlers[int(header)]
+@@ -3629 +3631,8 @@
+-      for index in 0..<count: f.handlers[int(patches[index])] = flatCharge
++      for index in 0..<count:
++        let original = predecessors[index]
++        if original == nil:
++          # Damaged private scratch still releases the temporary handler before refusing locally.
++          f.reason = oracle.StepError.BackendFailure
++          restoreFlatTemporaryHandler(f, patches[index], flatFusionEntry, flatCharge)
++        else:
++          restoreFlatTemporaryHandler(f, patches[index], flatFusionEntry, original)
