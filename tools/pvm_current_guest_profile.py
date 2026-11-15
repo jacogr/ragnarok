@@ -95,7 +95,7 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
     destination = folder/'results.json'
     report = dict(schema='pvm-canonical-guest-profile-v1', status='incomplete',
         clock_policy='discarded', hardware_counters=False, boundary_protocol='symbol-returns-v1',
-        thread_scheduling='fair-required',
+        thread_scheduling='fair-required', scheduling_quantum=1000,
         scope='one public execute: private memory construction, native execution and publication; '
               'excludes constructor, runtime startup and complete-state driver oracles',
         image_authority='original-sealed-image', controls=[], builds=[], profiles=[])
@@ -137,7 +137,8 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
             # Keep all native-activity checks; unavailable fair scheduling is a collection failure.
             arguments = list(arguments)
             if arguments[:2] == ['valgrind', '--tool=callgrind']:
-                arguments.insert(1, '--fair-sched=yes')
+                # Short quanta let a newly queued compiler run between public invocations.
+                arguments[1:1] = ['--fair-sched=yes', '--scheduling-quantum=1000']
             options.setdefault('environment', execution_environment())
             result = original(arguments, name, **options)
             unchanged(seals)
