@@ -1,0 +1,49 @@
+{
+  "base": "ee575358c01b00a20aa480d8f9e383851d983097",
+  "patch_sha256": "1ebbb3f82e5cbb4bd5efce09cffe655fd4396928fd78afe3af2d9114dccb6850",
+  "sources": [
+    {
+      "path": "src/pvm/internal/handler_fusion.nim",
+      "base": "48a321f3fde79598a4993b39f5a19f3cd607a2913c0383b8fad6cdd7173d535c",
+      "trial": "3a72a29ffaa7abd75a1aeb5e733877c23a72b3c3a8dc2e02330a6e7f706ab4ac"
+    },
+    {
+      "path": "src/pvm/internal/handler_stream.nim",
+      "base": "9e6d2ae9cfa102c6683d79634b45ca495a6ac7624a0829c2ba53b0a12c53ca65",
+      "trial": "e583b3341565f2ee4d40599ec48bea9df660c7fa00aaddbce3c358ce0571417f"
+    }
+  ],
+  "compiler_sha256": "c0abe39987ea2cbe98b76e254f2dbc17ff4953599bd84417e1840c06daf08049",
+  "repetitions": [
+    {
+      "exit_code": 1,
+      "diagnostic": [
+        "Symbol not found in NIF module: `iir.1000.hanm5t9bb1"
+      ]
+    },
+    {
+      "exit_code": 1,
+      "diagnostic": [
+        "Symbol not found in NIF module: `iir.1000.hanau6o0f1"
+      ]
+    },
+    {
+      "exit_code": 1,
+      "diagnostic": [
+        "Symbol not found in NIF module: `iir.1000.han40ozin1"
+      ]
+    },
+    {
+      "exit_code": 1,
+      "diagnostic": [
+        "Symbol not found in NIF module: `iir.1000.hanqo4oxf1"
+      ]
+    },
+    {
+      "exit_code": 1,
+      "diagnostic": [
+        "Symbol not found in NIF module: `iir.1000.hani918oz"
+      ]
+    }
+  ]
+}
