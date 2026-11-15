@@ -43,13 +43,13 @@ name: CI
         required: false
         type: choice
         options: [jit, interpreted]
+        default: jit
 
       pvm_guest_profile:
         description: "After bench-pvm timing, profile the original Sieve image on its x86 runner"
         required: false
         type: boolean
         default: false
-        default: jit
 
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
