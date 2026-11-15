@@ -7,12 +7,17 @@
 ## The block cap bounds copied source IR independently of guest iteration counts. Original block
 ## prices and source attempts remain independent. Lowering can link only positive checked successors.
 ## Each native entry commits a bounded number of original reservations and returns their order.
-## A byte per visit is appended to fixed call-local word storage; the returned visit count
+## Ordinary graphs append one byte per visit to fixed call-local word storage; the returned count
 ## bounds every read. Unwritten tail bytes need no clearing and never participate in a receipt key.
 ## The checked bridge verifies this receipt before exposing a successor or resuming a paid
 ## memory operation. A segment may reuse validation of the same immutable source path.
 ## Dynamic edges require the frame's checked original-table tag and an immutable per-image
-## target entry. No executable pointer escapes the arena. A missed guard leaves the original
+## target entry. Small deterministic scalar SCCs instead retain only their visit count, bounded
+## by 4096 reservations per entry. Every side edge leaves the cycle immediately. The copied source
+## order and count prove weighted debits without replaying thousands of identical token sequences.
+## Eight members bound cold eligibility and per-return proof work; larger/branching/memory SCCs keep
+## the ordinary path. This generalizes repeated scalar work without a workload-specific opcode shape.
+## No executable pointer escapes the arena. A missed guard leaves the original
 ## terminal paid and untouched so the checked stream performs its write, panic or halt.
 ## The target table counts toward the same image bound; cache storage remains frame-owned.
 
@@ -23,6 +28,8 @@ const
   NativeFusionBlockLimit* = 255 ## One ranked graph; one-based byte tokens exclude zero.
   NativeFusionSlotLimit* = 512 ## Keep the largest byte-token graph below half-full in the checked map.
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
+  NativeFusionCycleLimit* = 8 ## Bound source-cycle analysis and compact receipt validation.
+  NativeFusionCycleVisitLimit* = 4096 ## Bound scalar work per entry, including zero-priced cycles.
   NativeFusionReceiptBits = 9 ## Fixed one-probe cache geometry; a bucket never grants path authority.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
   NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
@@ -57,6 +64,7 @@ type
     branch*: NativeOperation
     operations*: array[int(NativeReadFactLimit)-1, NativeOperation]
     guards*: uint32 ## Only these body nodes can be returned as paid refusals.
+    cycleNext*, cycleSize*: uint8 ## Certified simple scalar SCC; zero retains ordered path receipts.
     indirectEntry*: bool ## Cold proof that this header belongs to the original admitted jump table.
   NativeFusionContext* = object
     ## Call-local descriptors and ledger precede a fixed byte log and its returned count.
@@ -134,6 +142,126 @@ func complete*(item: NativeFusionBlock): bool =
     let low = uint32(item.branch.immediate and 0xffffffff'u64)
     if cast[uint64](int64(cast[int32](low))) != item.branch.immediate: return false
   true
+
+type
+  NativeFusionCycle* = object
+    ## One-based next token and member count certify one deterministic cyclic source order.
+    next*, size*: uint8
+  NativeFusionCycles* = array[NativeFusionBlockLimit, NativeFusionCycle]
+    ## Fixed cold analysis output; no program, frame, executable or invocation borrows.
+
+func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycles =
+  ## Find scalar strongly connected components, then keep only simple cycles of at most eight
+  ## members. Every member has exactly one distinct in-cycle successor. All other edges must
+  ## return to checked dispatch. This accepts source geometry, independent of opcode patterns.
+  ## Fixed bit rows bound transitive closure to 255 squared times four word unions.
+  result = default(NativeFusionCycles)
+  if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
+  var eligible = default(array[NativeFusionBlockLimit, bool])
+  var reach = default(array[NativeFusionBlockLimit, array[4, uint64]])
+  for index in 0..<blocks.len:
+    # A scalar cycle cannot refuse a body operation or complete an indirect edge.
+    let item {.cursor.} = blocks[index]
+    eligible[index] = item.complete and item.guards == 0 and not item.indirect and
+      item.targets[0] != NativeEntryFailure
+    for earlier in 0..<index:
+      if blocks[earlier].header == item.header: return default(NativeFusionCycles)
+  for index in 0..<blocks.len:
+    if not eligible[index]: continue
+    for target in blocks[index].targets:
+      for other in 0..<blocks.len:
+        if eligible[other] and blocks[other].header == target:
+          reach[index][other div 64] = reach[index][other div 64] or (1'u64 shl (other mod 64))
+  for middle in 0..<blocks.len:
+    # A row joins only a reachable source row; no allocation or recursive guest-sized walk.
+    for first in 0..<blocks.len:
+      if (reach[first][middle div 64] and (1'u64 shl (middle mod 64))) != 0:
+        for word in 0..<4: reach[first][word] = reach[first][word] or reach[middle][word]
+  var seen = default(array[NativeFusionBlockLimit, bool])
+  for first in 0..<blocks.len:
+    if seen[first] or (reach[first][first div 64] and (1'u64 shl (first mod 64))) == 0: continue
+    var members = default(array[NativeFusionBlockLimit, bool])
+    var count = 0
+    for other in 0..<blocks.len:
+      # Mutual reachability defines the entire SCC; a smaller cycle inside a branching SCC is refused.
+      if (reach[first][other div 64] and (1'u64 shl (other mod 64))) != 0 and
+          (reach[other][first div 64] and (1'u64 shl (first mod 64))) != 0:
+        members[other] = true
+        seen[other] = true
+        inc count
+    if count > NativeFusionCycleLimit: continue
+    var next = default(array[NativeFusionBlockLimit, uint8])
+    var valid = true
+    for index in 0..<blocks.len:
+      if not members[index]: continue
+      for target in blocks[index].targets:
+        for other in 0..<blocks.len:
+          if members[other] and blocks[other].header == target:
+            if next[index] != 0 and next[index] != uint8(other+1): valid = false
+            next[index] = uint8(other+1)
+      if next[index] == 0: valid = false
+    if not valid: continue
+    for index in 0..<blocks.len:
+      if members[index]: result[index] = NativeFusionCycle(next: next[index], size: uint8(count))
+
+proc markNativeFusionCycles*(blocks: var seq[NativeFusionBlock]) =
+  ## Replace candidate annotations from complete copied source geometry. Refused SCCs stay ordinary.
+  let cycles = nativeFusionCycles(blocks)
+  for index in 0..<blocks.len:
+    if index >= NativeFusionBlockLimit: return
+    blocks[index].cycleNext = cycles[index].next
+    blocks[index].cycleSize = cycles[index].size
+
+func nativeFusionCycleExit*(blocks: openArray[NativeFusionBlock], entryToken, next: uint32,
+    gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
+  ## Validate compact counts for a previously certified immutable scalar cycle. Native side edges
+  ## return immediately, so every earlier visit follows the sole in-cycle successor. No path bytes
+  ## carry authority in this mode. The bridge still validates the final live predicate before commit.
+  ## Division before multiplication proves exact weighted gas/attempt debits even at uint64 limits.
+  result = default(NativeFusionExit)
+  if entryToken == 0 or uint64(entryToken) > uint64(blocks.len) or state.paid != 0 or
+      state.visits > uint64(NativeFusionCycleVisitLimit) or state.gas > gas or state.remaining > quota:
+    return
+  let size = uint32(blocks[int(entryToken-1)].cycleSize)
+  if size == 0 or size > uint32(NativeFusionCycleLimit): return
+  let rounds = state.visits div uint64(size)
+  let tail = uint32(state.visits mod uint64(size))
+  var token = entryToken
+  var nextToken = entryToken
+  var lastToken = 0'u32
+  var spent = gas-state.gas
+  var attempts = quota-state.remaining
+  if attempts > uint64(NativeFusionCycleVisitLimit)*uint64(NativeReadFactLimit): return
+  for distance in 0..<int(size):
+    # Every token stays within the copied graph and closes at exactly the certified member count.
+    if token == 0 or uint64(token) > uint64(blocks.len) or (distance != 0 and token ==
+        entryToken): return
+    let item {.cursor.} = blocks[int(token-1)]
+    if uint32(item.cycleSize) != size or item.cycleNext == 0 or item.guards != 0 or item.indirect or
+        item.span == 0 or item.span > NativeReadFactLimit: return
+    let following = uint32(item.cycleNext)
+    if uint64(following) > uint64(blocks.len) or blocks[int(following-1)].header notin
+        item.targets: return
+    let visits = rounds+uint64(ord(uint32(distance) < tail))
+    if visits > attempts div uint64(item.span) or (item.price != 0 and visits >
+        spent div item.price): return
+    attempts -= visits*uint64(item.span)
+    spent -= visits*item.price
+    if uint32(distance) == tail: nextToken = token
+    if uint32(distance) == (tail+size-1) mod size: lastToken = token
+    token = following
+  if token != entryToken or spent != 0 or attempts != 0: return
+  let following {.cursor.} = blocks[int(nextToken-1)]
+  if state.visits == 0:
+    result.valid = next == following.header and (state.gas < following.price or
+      state.remaining < uint64(following.span))
+    return
+  let last {.cursor.} = blocks[int(lastToken-1)]
+  if next notin last.targets: return
+  if next == following.header and state.visits != uint64(NativeFusionCycleVisitLimit) and
+      state.gas >= following.price and state.remaining >= uint64(following.span): return
+  result = NativeFusionExit(valid: true, branches: true, lastToken: lastToken,
+    attempted: uint32(quota-state.remaining))
 
 func fusionPathToken(state: NativeFusionContext, index: uint64): uint32 =
   ## Invalid or unlogged coordinates select no token, before any fixed-array access.

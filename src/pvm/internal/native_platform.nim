@@ -68,6 +68,7 @@ type NativeImage* = object             ## Exclusive published image with its exa
     mixedOffsets, mixedLengths: array[NativeMixedLoopEntryLimit, uint32]
     mixedEntries: uint8
     fusionOffsets: seq[uint32]         # One-based offsets, kept only by a fully published fusion image.
+    fusionCycleEntries: NativeFusionEntries # External compact entries; internal ordinary paths keep byte logs.
     fusionEntries: NativeFusionEntries # Slots eligible to enter from checked dispatch.
   when NativeCheckedReadEnabled:
     ringValue: NativeRegisterRing
@@ -90,6 +91,7 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
     image.mixedEntries = 0
     `=wasMoved`(image.fusionOffsets)
     image.fusionEntries = default(NativeFusionEntries)
+    image.fusionCycleEntries = default(NativeFusionEntries)
   when NativeCheckedReadEnabled:
     image.ringValue = default(NativeRegisterRing)
 
@@ -529,8 +531,19 @@ when NativeReadCycleEnabled:
     ## allocation so external entries and linked continuations agree on every used guest lane.
     ## Short static graphs retain leaves for internal continuations without installing standalone
     ## checked-dispatch entries. Indirect graphs retain their existing entry admission policy.
+    ## Counted scalar cycles require an independently reproduced SCC certificate and complete staging.
+    ## Their optional external duplicates link only cyclic edges; ordinary internal entries retain
+    ## logging, links and dynamic-table coverage. A refused duplicate leaves the ordinary image usable.
     result = default(NativeImage)
     if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
+    var annotated = false
+    for item in blocks: annotated = annotated or item.cycleNext != 0 or item.cycleSize != 0
+    if annotated:
+      # Caller-supplied metadata cannot bypass the independent complete SCC/source proof.
+      let cycles = nativeFusionCycles(blocks)
+      for index in 0..<blocks.len:
+        if blocks[index].cycleNext != cycles[index].next or
+            blocks[index].cycleSize != cycles[index].size: return
     var hasIndirect = false
     var hasEntry = false
     for item in blocks:
@@ -542,16 +555,25 @@ when NativeReadCycleEnabled:
       const alignment = 16
       let access = x86FusionAccess(blocks)
       var code = default(array[NativeFusionBlockLimit, X86FusionEncoding])
+      var compactCode = default(array[NativeFusionBlockLimit, X86FusionEncoding])
       template data(index: int): untyped = code[index].bytes
       template fixAt(index, edge: int): untyped = code[index].edges[edge]
     else:
       const unit = 4
       const alignment = 4
       var code = default(array[NativeFusionBlockLimit, ArmFusionEncoding])
+      var compactCode = default(array[NativeFusionBlockLimit, ArmFusionEncoding])
       template data(index: int): untyped = code[index].words
       template fixAt(index, edge: int): untyped = (code[index].edges[edge]*4)
     var offsets = newSeq[uint32](blocks.len)
     if offsets.len != blocks.len: return
+    var compactOffsets = default(array[NativeFusionBlockLimit, uint32])
+    when defined(pvmX86Jit):
+      template compactData(index: int): untyped = compactCode[index].bytes
+      template compactFix(index, edge: int): untyped = compactCode[index].edges[edge]
+    else:
+      template compactData(index: int): untyped = compactCode[index].words
+      template compactFix(index, edge: int): untyped = (compactCode[index].edges[edge]*4)
     # A duplicate header has no unique entry identity even if one encoding refuses.
     for index in 0..<blocks.len:
       for earlier in 0..<index:
@@ -559,7 +581,10 @@ when NativeReadCycleEnabled:
     let reserve = if useIndirect: NativeFusionTableBytes+alignment-1 else: 0
     var used = 0
     for index in 0..<blocks.len:
-      let item {.cursor.} = blocks[index]
+      var item = blocks[index]
+      # Ordinary continuations always keep their original logging ABI, including through short cycles.
+      item.cycleNext = 0
+      item.cycleSize = 0
       when defined(pvmX86Jit): code[index] = encodeX86Fusion(item, index+1, access, useIndirect)
       else: code[index] = encodeArmFusion(item, index+1, useIndirect)
       let extent = data(index).len*unit
@@ -584,6 +609,46 @@ when NativeReadCycleEnabled:
           linkedTargets[index][edge] = uint8(other+1)
           linked = true
           break
+    # Counted external entries are optional duplicates. Ordinary code and its original indirect
+    # table remain intact: turning every visit to a short scalar SCC into a checked boundary made
+    # general-JIT DOOM tick slower. Only an outside native call may select the compact prologue.
+    # Stage one whole component atomically within the remaining graph/image budget.
+    var examined = default(array[NativeFusionBlockLimit, bool])
+    for first in 0..<blocks.len:
+      if examined[first] or blocks[first].cycleNext == 0: continue
+      var token = first
+      var complete = true
+      let start = used
+      for distance in 0..<int(blocks[first].cycleSize):
+        examined[token] = true
+        let item {.cursor.} = blocks[token]
+        when defined(pvmX86Jit): compactCode[token] = encodeX86Fusion(item, token+1, access, useIndirect)
+        else: compactCode[token] = encodeArmFusion(item, token+1, useIndirect)
+        let extent = compactData(token).len*unit
+        let offset = (used+alignment-1) and not (alignment-1)
+        if offsets[token] == 0 or extent == 0 or extent > NativeImageByteLimit or
+            offset > NativeFusionImageLimit-reserve-extent:
+          complete = false
+        elif complete:
+          compactOffsets[token] = uint32(offset+1)
+          used = offset+extent
+        token = int(item.cycleNext)-1
+      if not complete:
+        # A refused duplicate never removes ordinary native coverage or consumes arena space.
+        used = start
+        token = first
+        for distance in 0..<int(blocks[first].cycleSize):
+          compactOffsets[token] = 0
+          token = int(blocks[token].cycleNext)-1
+    for index in 0..<blocks.len:
+      if compactOffsets[index] == 0: continue
+      let target = int(blocks[index].cycleNext)-1
+      for edge in 0..1:
+        if blocks[index].targets[edge] != blocks[target].header: continue
+        let delta = int(compactOffsets[target])-int(compactOffsets[index]) +
+          compactCode[target].inner-compactFix(index, edge)
+        if not patchFusionEdge(compactCode[index], edge, delta): return
+
     if useIndirect:
       # Source permission and successful staging are both required before an indirect entry is published.
       let tableOffset = (used+alignment-1) and not (alignment-1)
@@ -624,6 +689,22 @@ when NativeReadCycleEnabled:
         # No code is reachable through an image owner until all appends complete.
         arenaRelease(handle)
         return
+    var compactEntries = default(NativeFusionEntries)
+    var publishedCompact = default(array[NativeFusionBlockLimit, bool])
+    for pass in 0..<blocks.len:
+      var selected = -1
+      for index in 0..<blocks.len:
+        if compactOffsets[index] != 0 and not publishedCompact[index] and
+            (selected < 0 or compactOffsets[index] < compactOffsets[selected]): selected = index
+      if selected < 0: break
+      let published = arenaPublish(handle, addr compactData(selected)[0],
+        uint32(compactData(selected).len))
+      if published < 0 or uint32(published)+1 != compactOffsets[selected]:
+        arenaRelease(handle)
+        return
+      publishedCompact[selected] = true
+      compactEntries[selected div 64] = compactEntries[selected div 64] or (1'u64 shl (
+          selected mod 64))
     if useIndirect:
       # Static-only images never initialize this table. The arena remains private until every entry is ready.
       let tableOffset = (used+alignment-1) and not (alignment-1)
@@ -643,9 +724,11 @@ when NativeReadCycleEnabled:
         arenaRelease(handle)
         return
       used = tableOffset+NativeFusionTableBytes
+    for index in 0..<blocks.len:
+      if compactOffsets[index] != 0: offsets[index] = compactOffsets[index]
     result = NativeImage(handle: handle, bytesValue: uint64(used),
         kindValue: NativeKind.StaticFusion,
-      fusionOffsets: move(offsets), fusionEntries: entries)
+      fusionOffsets: move(offsets), fusionEntries: entries, fusionCycleEntries: compactEntries)
 
   func nativeFusionEntry*(image: NativeImage, slot: int): bool =
     ## An absent slot never grants entry to arena offset zero.
@@ -657,6 +740,12 @@ when NativeReadCycleEnabled:
     ## A staged leaf can remain an internal native continuation without replacing its checked header.
     nativeFusionEntry(image, slot) and slot < NativeFusionBlockLimit and
       (image.fusionEntries[slot div 64] and (1'u64 shl (slot mod 64))) != 0
+
+  func nativeFusionCycleEntry*(image: NativeImage, slot: int): bool {.inline.} =
+    ## Read copied metadata only. The private mask is zero in default/moved images and set only
+    ## after complete publication. Actual entry separately checks readiness, kind and offsets.
+    slot >= 0 and slot < NativeFusionBlockLimit and
+      (image.fusionCycleEntries[slot div 64] and (1'u64 shl (slot mod 64))) != 0
 
   proc enterNativeFusion*(image: NativeImage, slot: int, registers: var RegisterFile,
       state: var NativeFusionContext): uint32 =

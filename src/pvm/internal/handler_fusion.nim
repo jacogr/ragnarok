@@ -311,7 +311,9 @@ when declared(FlatFrame):
     context[].remaining = quota
     let next = enterNativeFusion(image[], slot, f.info.registers, context[])
     if next >= uint32(f.handlers.len): return flatLocal(f, off, oracle.StepError.BackendFailure)
-    let receipt = checkNativeFusionExit(receipts[], graph[], off, next, gas, quota, context[])
+    let receipt = if nativeFusionCycleEntry(image[], slot):
+      nativeFusionCycleExit(graph[], uint32(slot+1), next, gas, quota, context[])
+    else: checkNativeFusionExit(receipts[], graph[], off, next, gas, quota, context[])
     if not receipt.valid: return flatLocal(f, off, oracle.StepError.BackendFailure)
     # The validated receipt carries the last source identity; zero names only an empty unpaid return.
     let lastToken = receipt.lastToken

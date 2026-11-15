@@ -4,7 +4,9 @@
 ## Included by the x86 emitter beside the existing exact guarded memory operations.
 ## Every external entry loads the same graph-wide guest bank and exact budgets. Linked edges
 ## preserve those registers, the context borrow and the XMM7 visit count. The log append follows
-## the horizon/gas/quota guards. All paid/unpaid returns share one commit/restore epilogue.
+## the horizon/gas/quota guards. Certified scalar SCCs count up to 4096 visits without logging;
+## side edges return immediately and cannot mix counted and logged continuations.
+## All paid/unpaid returns share one commit/restore epilogue.
 ## Optional bounded same-kind memory groups share one true-view/dirty proof at their first source
 ## site. XMM9 retains the host pointer across scalar scratch use; it never survives a native call.
 
@@ -236,6 +238,7 @@ when declared(X86Block):
     if not item.complete or token < 1 or token > NativeFusionBlockLimit: return
     if item.indirect and not useIndirect and item.terminal == item.header+1: return
     let count = int(item.terminal-item.header)-1
+    let compact = item.cycleNext != 0
     var code = default(X86Block)
     code.bytes = newSeqOfCap[byte](NativeImageByteLimit)
     if code.bytes.rawData == nil: return
@@ -253,8 +256,13 @@ when declared(X86Block):
     put(code, [0x66'u8, 0x0f, 0xef, 0xff]) # PXOR XMM7,XMM7 initializes the call-local count.
     if useIndirect: put(code, [0x66'u8, 0x45, 0x0f, 0xef, 0xc0]) # PXOR XMM8,XMM8 initializes private metadata.
     let inner = code.bytes.len
-    put(code, [0x66'u8, 0x0f, 0x7e, 0xfe, 0x83, 0xfe, byte(
-        NativeFusionVisitLimit)]) # MOVD ESI,XMM7; CMP ESI,horizon.
+    if compact:
+      # Count-only receipts allow bounded repeated scalar work without widening the ordinary byte log.
+      put(code, [0x66'u8, 0x0f, 0x7e, 0xfe, 0x81, 0xfe]) # MOVD ESI,XMM7; CMP ESI,imm32.
+      cycleWord(code, uint32(NativeFusionCycleVisitLimit))
+    else:
+      put(code, [0x66'u8, 0x0f, 0x7e, 0xfe, 0x83, 0xfe, byte(
+          NativeFusionVisitLimit)]) # MOVD ESI,XMM7; CMP ESI,horizon.
     cycleEdge(code, fixes, 0x83, unpaid)
     put(code, [0x49'u8, 0x83, 0xfb, byte(item.span)]) # CMP R11,span.
     cycleEdge(code, fixes, 0x82, unpaid)
@@ -262,9 +270,12 @@ when declared(X86Block):
     put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX checks the original unsigned block price.
     cycleEdge(code, fixes, 0x82, unpaid)
     put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x83, 0xeb, byte(item.span)]) # SUB R9,RAX; SUB R11,span.
-    put(code, [0x41'u8, 0xc6, 0x84, 0x32]) # MOV BYTE [R10+RSI+path],token.
-    cycleWord(code, uint32(NativeFusionPathOffset))
-    put(code, [byte(token), 0xff, 0xc6, 0x66, 0x0f, 0x6e, 0xfe]) # INC ESI; MOVD XMM7,ESI.
+    if not compact:
+      # Ordinary paths retain every original token; compact entries never read or write these bytes.
+      put(code, [0x41'u8, 0xc6, 0x84, 0x32]) # MOV BYTE [R10+RSI+path],token.
+      cycleWord(code, uint32(NativeFusionPathOffset))
+      put(code, [byte(token)])
+    put(code, [0xff'u8, 0xc6, 0x66, 0x0f, 0x6e, 0xfe]) # INC ESI; MOVD XMM7,ESI.
     var window = default(NativeMemoryWindow)
     for index in 0..<count:
       let op = item.operations[index]

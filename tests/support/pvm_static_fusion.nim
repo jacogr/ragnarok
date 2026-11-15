@@ -126,7 +126,8 @@ proc checkLongFusionReceipts() =
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
 proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
-    conditional: bool = false, windows: bool = false, hostPrelude: int = 0): Program =
+    conditional: bool = false, windows: bool = false, hostPrelude: int = 0,
+    scalarOnly: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -159,7 +160,8 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
     emit([127'u8, 0x4a, 8])
     emit([121'u8, 0x51, 0])
     emit([121'u8, 0x5a, 8])
-  else:
+  elif not scalarOnly:
+    # The scalar fixture omits only these memory operations; every original edge is unchanged.
     emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
     if late:
       # A wrapping in-page offset trains with one page but permits a late cross-page fault.
@@ -700,6 +702,256 @@ when NativeReadCycleEnabled:
       assert dynamicContext.gas == 90 and dynamicContext.remaining == 13
       assert uint64(dynamicRegisters[0]) == 247
 
+when NativeReadCycleEnabled:
+  proc scalarFusionCycle(count: int, conditional: bool = false): seq[NativeFusionBlock] =
+    ## Literal source-independent geometry exercises arbitrary cycle lengths, prices and folded noops.
+    result = newSeq[NativeFusionBlock](count)
+    for index in 0..<count:
+      # Each body increments the same lane; the conditional form exits exactly on its third visit.
+      let header = uint32(10+index*40)
+      result[index] = NativeFusionBlock(header: header, terminal: header+2,
+        first: uint32(index*32), span: uint32(2+index), price: uint64(index*3),
+        targets: [uint32(10+((index+1) mod count)*40), NativeEntryFailure],
+        branch: NativeOperation(opcode: 40))
+      result[index].operations[0] = fusionLiteralOperation([149'u8, 0x00, 1])
+      if conditional:
+        result[index].targets[1] = 900
+        result[index].branch = NativeOperation(opcode: 81, immediate: 3)
+    markNativeFusionCycles(result)
+
+  proc checkPublicScalarFusion() =
+    ## Ordinary prepared execution must discover the source cycle, publish it asynchronously and
+    ## actually amortize native entries while matching all interpreter state and budget exits.
+    let program = fusionGuest(scalarOnly = true)
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "scalar fusion runtime failed to start"
+    let jit = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Jit, runtime)
+    let checked = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Interpreted)
+    assert jit.error == PreparationError.None and checked.error == PreparationError.None
+    let page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+    let memory = captureMemory([page], PageLimit(2)).value
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000000))
+    info.registers[0] = RegisterValue(165)
+    info.registers[3] = RegisterValue(0xffff0000'u64)
+    info.registers[5] = RegisterValue(65536)
+    info.registers[12] = RegisterValue(200000)
+    let source = captureMachine(program, memory, info).value
+    let limit = ExecutionStepLimit(2000000)
+    let expected = execute(source, limit, checked.value)
+    assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+    for sample in 0..2:
+      # Compiler waits remain outside the public call and distinguish publication from actual use.
+      let before = preparedInfo(jit.value).value
+      assertSameFusionResult(execute(source, limit, jit.value), expected)
+      waitNativeCompiler(runtime)
+      let after = preparedInfo(jit.value).value
+      if sample == 2:
+        assert after.nativeFragments == 2 and after.nativeOperations-before.nativeOperations >= 1000000
+        assert after.nativeCalls-before.nativeCalls < 1000, "counted cycle must amortize native entries"
+    for budget in [4096'u64, 4097, 4098, 20479, 20480, 20481]:
+      # These quotas straddle ordinary and compact entry horizons and original folded-noop attempts.
+      let quota = ExecutionStepLimit(budget)
+      assertSameFusionResult(execute(source, quota, jit.value), execute(source, quota,
+          checked.value))
+    info.gas = MachineGas(1000)
+    let short = captureMachine(program, memory, info).value
+    assertSameFusionResult(execute(short, limit, jit.value), execute(short, limit, checked.value))
+    assert close(runtime)
+
+  proc checkScalarFusionCycles() =
+    ## Compare both native lowerers against independent visit/debit equations, including rotation,
+    ## zero price, short gas/quota, exact horizon, side exits and unwritten path bytes.
+    for count in 1..NativeFusionCycleLimit:
+      for conditional in [false, true]:
+        let blocks = scalarFusionCycle(count, conditional)
+        let image = lowerNativeFusion(blocks)
+        assert image.ready
+        for entry in 0..<count:
+          assert blocks[entry].cycleSize == uint8(count)
+          assert nativeFusionDispatchEntry(image, entry)
+          for gasLimited in [false, true]:
+            for budget in [0'u64, 1, 2, 3, 8, 31, 63, 64, 65, 4095, 4096, 4097, 1000000]:
+              # Compute the ordered original reservations without consulting any returned native receipt.
+              let gas = if gasLimited: budget else: 1000000'u64
+              let quota = if gasLimited: 1000000'u64 else: budget
+              var leftGas = gas
+              var leftQuota = quota
+              var position = entry
+              var visits = 0'u64
+              var next = blocks[entry].header
+              while visits < uint64(NativeFusionCycleVisitLimit):
+                let item = blocks[position]
+                if leftGas < item.price or leftQuota < uint64(item.span): break
+                leftGas -= item.price
+                leftQuota -= uint64(item.span)
+                inc visits
+                if conditional and visits == 3:
+                  next = 900
+                  break
+                position = (position+1) mod count
+                next = blocks[position].header
+              var registers = default(RegisterFile)
+              var context = NativeFusionContext(gas: gas, remaining: quota)
+              for index in 0..<context.path.len: context.path[index] = high(uint64)
+              assert enterNativeFusion(image, entry, registers, context) == next
+              assert context.visits == visits and context.paid == 0
+              assert context.gas == leftGas and context.remaining == leftQuota
+              assert uint64(registers[0]) == visits
+              for word in context.path: assert word == high(uint64), "compact entries never log a path"
+              let receipt = nativeFusionCycleExit(blocks, uint32(entry+1), next, gas, quota, context)
+              assert receipt.valid and receipt.attempted == uint32(quota-leftQuota)
+              if visits != 0:
+                assert receipt.lastToken == uint32((entry+int(visits)-1) mod count+1)
+                assert receipt.branches and receipt.paidHeader == 0
+              assert not nativeFusionCycleExit(blocks, uint32(entry+1), next+1, gas, quota, context).valid
+              context.paid = 1
+              assert not nativeFusionCycleExit(blocks, uint32(entry+1), next, gas, quota, context).valid
+              context.paid = 0
+              inc context.remaining
+              assert not nativeFusionCycleExit(blocks, uint32(entry+1), next, gas, quota, context).valid
+
+    # Every guest lane participates so x86 must keep both GPR and SSE2 placements across cyclic links.
+    var banked = scalarFusionCycle(3)
+    for index in 0..<banked.len:
+      banked[index].terminal = banked[index].header+14
+      banked[index].span = 14
+      for lane in 0..12:
+        banked[index].operations[lane] = fusionLiteralOperation([149'u8, byte(lane*17), byte(lane+1)])
+    markNativeFusionCycles(banked)
+    let bankedImage = lowerNativeFusion(banked)
+    assert bankedImage.ready
+    for entry in 0..<banked.len:
+      var registers = default(RegisterFile)
+      for lane in 0..12: registers[lane] = RegisterValue(high(uint64)-uint64(lane))
+      var context = NativeFusionContext(gas: 1000000, remaining: 1000000)
+      let next = enterNativeFusion(bankedImage, entry, registers, context)
+      assert context.visits == uint64(NativeFusionCycleVisitLimit)
+      for lane in 0..12:
+        assert uint64(registers[lane]) == high(uint64)-uint64(lane) +
+          uint64(NativeFusionCycleVisitLimit)*uint64(lane+1)
+      assert nativeFusionCycleExit(banked, uint32(entry+1), next, 1000000, 1000000, context).valid
+
+    # An SCC with two in-cycle choices is not a deterministic compact cycle, even with a small subcycle.
+    var branching = scalarFusionCycle(3)
+    branching[0].targets[1] = branching[2].header
+    branching[0].branch = NativeOperation(opcode: 81)
+    markNativeFusionCycles(branching)
+    for item in branching: assert item.cycleNext == 0 and item.cycleSize == 0
+    var wide = scalarFusionCycle(NativeFusionCycleLimit+1)
+    for item in wide: assert item.cycleNext == 0 and item.cycleSize == 0
+
+    # A memory guard breaks scalar eligibility; false annotations cannot authorize a published image.
+    var guarded = scalarFusionCycle(3)
+    guarded[1].operations[0] = fusionLiteralOperation([128'u8, 0x10, 0])
+    guarded[1].guards = 1
+    assert not lowerNativeFusion(guarded).ready
+    markNativeFusionCycles(guarded)
+    for item in guarded: assert item.cycleNext == 0
+    var forged = scalarFusionCycle(3)
+    forged[0].cycleNext = forged[0].cycleNext+1
+    assert not lowerNativeFusion(forged).ready
+
+    # Compact side exits return checked; outside native paths retain ordinary links through the cycle.
+    var mixed = scalarFusionCycle(3, true)
+    mixed.add(NativeFusionBlock(header: 900, terminal: 902, first: 200, span: 2, price: 7,
+      guards: 1,
+      targets: [10'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)))
+    mixed[3].operations[0] = fusionLiteralOperation([124'u8, 0x41, 0])
+    markNativeFusionCycles(mixed)
+    assert mixed[0].cycleSize == 3 and mixed[3].cycleSize == 0
+    let mixedImage = lowerNativeFusion(mixed)
+    assert mixedImage.ready
+    var bytes = [42'u8]
+    var mixedRegisters = default(RegisterFile)
+    mixedRegisters[4] = RegisterValue(65536)
+    var mixedContext = NativeFusionContext(gas: 1000, remaining: 1000)
+    assert enterNativeFusion(mixedImage, 0, mixedRegisters, mixedContext) == 900
+    assert mixedContext.visits == 3 and mixedContext.paid == 0
+    assert nativeFusionCycleExit(mixed, 1, 900, 1000, 1000, mixedContext).valid
+    mixedContext.memory.read[0] = initNativeReadRegion(65536, bytes)
+    let beforeGas = mixedContext.gas
+    let beforeQuota = mixedContext.remaining
+    assert enterNativeFusion(mixedImage, 3, mixedRegisters, mixedContext) == 10
+    assert mixedContext.visits == uint64(NativeFusionVisitLimit) and (mixedContext.path[0] and
+        255) == 4
+    assert nativeFusionExit(mixed, 900, 10, beforeGas, beforeQuota, mixedContext).valid
+
+    # A live dynamic tag enters the ordinary logged continuation, preserving its original path coverage.
+    mixed[0].indirectEntry = true
+    mixed[3].terminal = 901
+    mixed[3].span = 1
+    mixed[3].guards = 0
+    mixed[3].targets = [NativeEntryFailure, NativeEntryFailure]
+    mixed[3].branch = NativeOperation(opcode: 50)
+    markNativeFusionCycles(mixed)
+    let indirectImage = lowerNativeFusion(mixed)
+    assert indirectImage.ready
+    var jumps = default(DynamicJumpTags)
+    jumps[0] = (1'u64 shl 32) or 11
+    mixedRegisters[0] = RegisterValue(2)
+    mixedContext = NativeFusionContext(gas: 1000, remaining: 1000, jumps: addr jumps)
+    assert enterNativeFusion(indirectImage, 3, mixedRegisters, mixedContext) == 901
+    assert mixedContext.paid == 1 and mixedContext.visits == 3 and mixedContext.path[0] == 0x040104
+    assert uint64(mixedRegisters[0]) == 3
+    assert nativeFusionExit(mixed, 900, 901, 1000, 1000, mixedContext).valid
+
+    # Metadata queries remain bounded and moved/default images expose no compact selection.
+    var empty = default(NativeImage)
+    assert not nativeFusionCycleEntry(empty, 0)
+    var transferable = lowerNativeFusion(scalarFusionCycle(1))
+    assert nativeFusionCycleEntry(transferable, 0)
+    assert not nativeFusionCycleEntry(transferable, -1)
+    assert not nativeFusionCycleEntry(transferable, NativeFusionBlockLimit)
+    let retained = move(transferable)
+    assert nativeFusionCycleEntry(retained, 0)
+    assert not nativeFusionCycleEntry(transferable, 0)
+
+    # A full ordinary arena can retain only some optional duplicates. Refused copies keep callable
+    # logged entries, rather than disabling an otherwise valid graph or publishing a partial cycle.
+    var crowded = newSeq[NativeFusionBlock](NativeFusionBlockLimit)
+    for index in 0..<crowded.len:
+      let header = uint32(index*40)
+      crowded[index] = NativeFusionBlock(header: header, terminal: header+32,
+        first: uint32(index*32), span: 32, price: 1,
+        targets: [header, NativeEntryFailure], branch: NativeOperation(opcode: 40))
+      for position in 0..<31:
+        crowded[index].operations[position] = NativeOperation(opcode: 20,
+          immediate: 0x123456789abcdef0'u64)
+    markNativeFusionCycles(crowded)
+    let crowdedImage = lowerNativeFusion(crowded)
+    assert crowdedImage.ready and crowdedImage.codeBytes <= uint64(NativeFusionImageLimit)
+    var duplicates = 0
+    var ordinary = -1
+    for index in 0..<crowded.len:
+      assert nativeFusionEntry(crowdedImage, index)
+      if nativeFusionCycleEntry(crowdedImage, index): inc duplicates
+      else: ordinary = index
+    assert duplicates > 0 and duplicates < crowded.len and ordinary >= 0
+    var ordinaryRegisters = default(RegisterFile)
+    var ordinaryContext = NativeFusionContext(gas: 1000000, remaining: 1000000)
+    let ordinaryNext = enterNativeFusion(crowdedImage, ordinary, ordinaryRegisters, ordinaryContext)
+    assert ordinaryNext == crowded[ordinary].header
+    assert ordinaryContext.visits == uint64(NativeFusionVisitLimit)
+    assert nativeFusionExit(crowded, crowded[ordinary].header, ordinaryNext, 1000000, 1000000,
+      ordinaryContext).valid
+
+    # Huge prices and zero-priced members retain guarded subtraction at the full unsigned boundary.
+    var expensive = scalarFusionCycle(3)
+    expensive[0].price = high(uint64)
+    let costly = lowerNativeFusion(expensive)
+    assert costly.ready
+    var registers = default(RegisterFile)
+    var context = NativeFusionContext(gas: high(uint64), remaining: high(uint64))
+    let next = enterNativeFusion(costly, 0, registers, context)
+    assert context.visits == 1 and context.gas == 0 and context.remaining == high(uint64)-2
+    assert next == expensive[1].header
+    assert nativeFusionCycleExit(expensive, 1, next, high(uint64), high(uint64), context).valid
+    context.visits = uint64(NativeFusionCycleVisitLimit)+1
+    assert not nativeFusionCycleExit(expensive, 1, next, high(uint64), high(uint64), context).valid
+
 proc checkWindowFusionFault()
   ## The grouped ordinary-call fault/repair witness is defined after the public fusion checks.
 
@@ -814,6 +1066,8 @@ proc runStaticFusion*() =
   checkCollidingFusionReceipts()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
+    checkScalarFusionCycles()
+    checkPublicScalarFusion()
     when defined(pvmSharedAsyncWitness): runFusionComposition()
     checkFusionConditionalMoves()
     checkFusionGraphTokens()
