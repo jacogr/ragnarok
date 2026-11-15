@@ -41,12 +41,15 @@ when NativeReadCycleEnabled:
   import ./[native_mixed_loop, native_platform, native_fusion]
   from ./jit_rules import supportedScalarOpcode
 
-  const FlatFusionTrainingSegments = 64'u32
-    ## Bound callback-separated observation even when each host segment is too short to rank.
+  const
+    FlatFusionTrainingSegments = 4096'u32
+      ## Bound callback-separated observation independently of source size and host-call policy.
+    FlatFusionSampleLimit = 262144'u32
+      ## Keep the existing per-window sample ceiling across every retained host segment.
 
   type
     FlatFusionSample = object
-      ## Count a checked header under its one-based stream token.
+      ## Conservative observed-header count after bounded collision cancellation; never invented reuse.
       token, count: uint32
     FlatFusionSlot = object
       ## Segment-local map from original header to rank slot.
@@ -3667,8 +3670,9 @@ when NativeReadCycleEnabled:
   proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Borrow the exact optional owner once per segment; unavailable images retain
     ## ordinary execution and one bounded observation window per source epoch.
-    ## Short Host segments retain source counters; a clean Host with sufficient evidence can
-    ## publish the same source-only graph as Halt. Guest state never reaches the compiler.
+    ## Host segments retain counters until Halt or a fixed window budget. The ranking minimum
+    ## cannot end observation: later program phases may contain the hottest source regions.
+    ## A clean Host at the budget boundary can publish the same source-only graph as Halt.
     let borrowed = borrowNativeFusion(f.nativeSession)
     let image = borrowed.image
     let blocks = borrowed.blocks
@@ -3690,7 +3694,7 @@ when NativeReadCycleEnabled:
         flatDispatchLoop(f, entry, false, true, probe)
         if continueFlatFusionTraining(f, probe, 1):
           # Callback-free training keeps its original stack table and allocates nothing here.
-          # Allocate only after a short clean Host proves that another segment is needed.
+          # Allocate only after a clean Host proves that another segment is needed.
           when defined(pvmSharedAsyncWitness):
             var retained = if allowFusionTrainingAllocation(): newSeq[FlatFusionTraining](
                 1) else: @[]

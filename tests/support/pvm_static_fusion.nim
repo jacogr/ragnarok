@@ -218,7 +218,7 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for value in mask: wire.add(value)
   let decoded = decodeProgram(wire, CodeAddress(0),
-    ProgramByteLimit(if hostPrelude == 0: 128 else: 512), JumpCountLimit(1))
+    ProgramByteLimit(if hostPrelude == 0: 128 else: 16384), JumpCountLimit(1))
   assert decoded.error == ProgramError.None
   decoded.value
 
@@ -590,7 +590,7 @@ when NativeReadCycleEnabled:
       HostCallLimit(uint64(prelude+1)), checked.value)
     assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
     assert reference.calls == prelude+1
-    let publishes = prelude < 63 and not abort and not refuseAllocation
+    let publishes = prelude < 4095 and not abort and not refuseAllocation
     for sample in 0..2:
       # Publish the ordinary seed, train the host-separated source, then execute the actual image.
       if sample == 1:
@@ -822,8 +822,8 @@ proc runStaticFusion*() =
     checkShortFusionEntries()
     checkFusionHostTraining(1, false)
     checkFusionHostTraining(1, true)
-    checkFusionHostTraining(62, false)
-    checkFusionHostTraining(63, false)
+    checkFusionHostTraining(4094, false)
+    checkFusionHostTraining(4095, false)
     checkFusionHostTraining(1, false, abort = true)
     when defined(pvmSharedAsyncWitness):
       checkFusionHostTraining(1, false, refuseAllocation = true)

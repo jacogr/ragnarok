@@ -167,21 +167,32 @@ when declared(FlatFrame):
     seed = seed xor (seed shl 5)
     probe.seed = seed
     probe.down = 1+(seed and 63)
-    if probe.taken == 262144'u32: return
+    if probe.taken == FlatFusionSampleLimit: return
     inc probe.taken
     if header >= NativeEntryLimit: return
     let token = header+1
     let start = (token*0x9e3779b9'u32) shr 22
+    var empty = -1
     for index in 0'u32..3'u32:
       let slot = int((start+index) and 1023)
-      if probe.samples[slot].token in [0'u32, token]:
-        probe.samples[slot].token = token
+      if probe.samples[slot].token == token:
         inc probe.samples[slot].count
         return
+      if probe.samples[slot].token == 0 and empty < 0: empty = slot
+    if empty >= 0:
+      # Search the entire bucket first: cancellation can leave a hole before an existing key.
+      probe.samples[empty] = FlatFusionSample(token: token, count: 1)
+      return
+    # Cold first arrivals cannot permanently exclude later hot regions. Four-way cancellation
+    # only subtracts observations, so retained counts remain lower bounds on actual source visits.
+    for index in 0'u32..3'u32:
+      let slot = int((start+index) and 1023)
+      if probe.samples[slot].count > 0: dec probe.samples[slot].count
+      if probe.samples[slot].count == 0: probe.samples[slot].token = 0
 
   proc observeFlatFusion(probe: var FlatFusionProbe, header: uint32) {.inline.} =
     ## Keep the ordinary dispatcher free of sampling state outside the training segment.
-    if probe.taken < 262144'u32:
+    if probe.taken < FlatFusionSampleLimit:
       dec probe.down
       if probe.down == 0: sampleFlatFusion(probe, header)
 
@@ -190,7 +201,8 @@ when declared(FlatFrame):
     if f.fusionTraining.len != 1 or f.plan == nil: return false
     let retained {.cursor.} = f.fusionTraining[0]
     if retained.segments == 0 or retained.segments >= FlatFusionTrainingSegments or
-        retained.probe.taken >= 4096 or retained.probe.down == 0 or retained.probe.down > 64:
+        retained.probe.taken >= FlatFusionSampleLimit or retained.probe.down == 0 or
+        retained.probe.down > 64:
       return false
     let epoch = nativeEpoch(f.nativeSession)
     if epoch == 0 or retained.epoch != epoch or retained.owner != flatPlanIdentity(
@@ -199,10 +211,10 @@ when declared(FlatFrame):
     key.ticket != 0 and key.epoch == epoch and key.kind == NativeKind.PurePrefix
 
   func continueFlatFusionTraining(f: FlatFrame, probe: FlatFusionProbe, segments: uint32): bool =
-    ## Host exits preserve source-only counts until ranking is useful or the fixed segment budget ends.
-    ## A short first host call used to consume the epoch's sole training attempt without a graph.
+    ## Host exits preserve source counts through later phases until either fixed window budget ends.
+    ## Ranking needs 4096 samples, but that minimum is not evidence that observation is representative.
     f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host and
-      f.preparationFailure == FlatError.None and probe.taken < 4096 and
+      f.preparationFailure == FlatError.None and probe.taken < FlatFusionSampleLimit and
       segments < FlatFusionTrainingSegments
 
   proc markFlatIndirectEntries(f: FlatFrame, blocks: var seq[NativeFusionBlock]) =

@@ -60,6 +60,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
 
   proc runFusionComposition*() =
     ## Both original arithmetic/branch predicates and both external exits share the actual scoped bridge.
+    witnessFlatFusionSampling()
     let runtime = newNativeRuntime()
     try:
       assert start(runtime)
