@@ -263,6 +263,10 @@ type
       fusionReceipts: nil ptr NativeFusionReceipts
       fusionContext: nil ptr NativeFusionContext
       fusionSlots: nil ptr array[NativeFusionSlotLimit, FlatFusionSlot]
+      when defined(pvmSharedAsyncWitness):
+        # Private test borrows are cleared before either owned source image or frame leaves its scope.
+        fusionWitnessImage: nil ptr NativeImage
+        fusionWitnessBlocks: nil ptr seq[NativeFusionBlock]
       mixedProbe: nil ptr FlatMixedLoopProbe
       mixedProofs: nil ptr NativeMixedLoopSet # Borrowed only inside the outlined frame segment.
       mixedImage: nil ptr NativeImage
@@ -1102,6 +1106,8 @@ proc flatUnresolvedBranch[Code: static[int]](f: var FlatFrame, off: uint32): uin
 
 proc flatFusedRegisterBranch[First, Branch: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Combine only a validated cached branch with its preceding arithmetic; both source nodes remain addressable.
+  ## This removes one indirect handoff on checked execution. Keeping the branch record separate
+  ## lets a partial quota stop after arithmetic and resume that original terminal without replay.
   let a = f.arguments[int(off)]
   var index: range[0..12] = 0
   var value = RegisterValue(0)
@@ -1161,6 +1167,11 @@ when NativeCheckedReadEnabled:
 proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f: var FlatFrame,
     off: uint32): uint32 =
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
+  ## Three historically selected source patterns avoid repeated opcode and backedge dispatch in
+  ## checked execution. An observed closed round permits stable coordinates; matching opcode
+  ## shapes alone do not authorize another record's operands. Each original block still reserves
+  ## its own gas and attempts. A ready native ring can take over through the same source proof.
+  ## Coverage is limited to the cold selector's patterns, independently of general fusion support.
   var current = off
   var destination = flatStop
   when NativeCheckedReadEnabled and Ring:
@@ -1234,6 +1245,11 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
 
 proc flatChargedAdjacent[First: static[bool]](f: var FlatFrame, off: uint32): uint32 =
   ## Follow the matching peer only through original cached branches and checked bodies.
+  ## This pair came from Sieve's repeated adjacent register blocks (PR #2176).
+  ## Holding this one source-proven two-block pair removes per-operation and backedge handoffs
+  ## in checked execution. It is useful only while the actual branch selects the same peer.
+  ## Either block can contain a separately owned native prefix, so that body must return to
+  ## ordinary dispatch instead of being executed inline by the checked specialization.
   let bodySpan = when First: 2'u32 else: 1'u32
   # A published native prefix owns its original body entry, even in the shared checked layout.
   if f.nativeEntry > off and f.nativeEntry-off <= bodySpan: return flatCharge(f, off)
@@ -3536,8 +3552,11 @@ template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[
   while node != flatStop:
     assert int(node) < f.handlers.len
     let selected = f.handlers[int(node)]
+    when NativeReadCycleEnabled:
+      when SampleFusion:
+        # Sample candidate headers at actual dispatcher entry; checked peer rounds remain internal.
+        if fusionHeaderWorker(selected): observeFlatFusion(fusionProbe, node)
     if selected == flatCharge:
-      when SampleFusion: observeFlatFusion(fusionProbe, node)
       # Preserve temporary barriers: select the first operation only after complete reservation/patching.
       when ObserveLater:
         node = flatReserveHeader[true](f, node)
@@ -3566,33 +3585,23 @@ template flatDispatchSegment(f: var FlatFrame, entry: uint32) =
     flatDispatchLoop(f, entry, false)
 
 when NativeReadCycleEnabled:
-  proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
-    ## Rebind the exact optional lease once per segment. Keep every other route
-    ## and the original checked worker for every linked block.
-    let borrowed = borrowNativeFusion(f.nativeSession)
-    let image = borrowed.image
-    let blocks = borrowed.blocks
-    if image == nil or blocks == nil:
-      if nativeFusionTraining(f.nativeSession) and f.remaining >= NativeFusionTrainingFloor:
-        markNativeFusionSampled(f.nativeSession)
-        var probe = FlatFusionProbe(down: 1, seed: 0x9e3779b9'u32)
-        flatDispatchLoop(f, entry, false, true, probe)
-        if f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Halt:
-          offerFlatFusion(f, probe)
-      else:
-        flatDispatchSegment(f, entry)
-      return
-    defer: returnNativeMixedLoop(f.nativeSession)
+  proc runFlatFusionImage(f: var FlatFrame, entry: uint32, image: ptr NativeImage,
+      blocks: ptr seq[NativeFusionBlock]) {.inline.} =
+    ## Execute one synchronously borrowed immutable image/graph. The caller retains
+    ## the exclusive native lease until this routine restores every temporary slot.
+    ## Only source-proven reservation workers may be replaced; both live slots and
+    ## saved quota predecessors recover their exact identities before handback.
     if blocks[].len > NativeFusionBlockLimit:
       flatDispatchSegment(f, entry)
       return
     var patches = default(array[NativeFusionBlockLimit, uint32])
+    var predecessors = default(array[NativeFusionBlockLimit, nil FlatHandler])
     var slots = default(array[NativeFusionSlotLimit, FlatFusionSlot])
     var count = 0
     for slot in 0..<blocks[].len:
       if not nativeFusionEntry(image[], slot): continue
       let header = blocks[][slot].header
-      if header >= uint32(f.handlers.len) or f.handlers[int(header)] != flatCharge:
+      if header >= uint32(f.handlers.len) or not fusionHeaderWorker(f.handlers[int(header)]):
         # A conflict anywhere in the graph prevents all linked entries from acquiring authority.
         flatDispatchSegment(f, entry)
         return
@@ -3602,6 +3611,7 @@ when NativeReadCycleEnabled:
       while slots[at].token != 0: at = (at+1) and (NativeFusionSlotLimit-1)
       slots[at] = FlatFusionSlot(token: token, index: uint32(slot))
       patches[count] = header
+      predecessors[count] = f.handlers[int(header)]
       inc count
     if count == 0:
       flatDispatchSegment(f, entry)
@@ -3626,13 +3636,39 @@ when NativeReadCycleEnabled:
     f.fusionSlots = addr slots
     for index in 0..<count: f.handlers[int(patches[index])] = flatFusionEntry
     defer:
-      for index in 0..<count: f.handlers[int(patches[index])] = flatCharge
+      for index in 0..<count:
+        let original = predecessors[index]
+        if original == nil:
+          # Damaged private scratch still releases the temporary handler before refusing locally.
+          f.reason = oracle.StepError.BackendFailure
+          restoreFlatTemporaryHandler(f, patches[index], flatFusionEntry, flatCharge)
+        else:
+          restoreFlatTemporaryHandler(f, patches[index], flatFusionEntry, original)
       f.fusionContext = nil
       f.fusionSlots = nil
       f.fusionBlocks = nil
       f.fusionReceipts = nil
       f.fusionImage = nil
     flatDispatchSegment(f, entry)
+
+  proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
+    ## Borrow the exact optional owner once per segment; unavailable images retain
+    ## ordinary execution and the existing bounded one-shot source observation.
+    let borrowed = borrowNativeFusion(f.nativeSession)
+    let image = borrowed.image
+    let blocks = borrowed.blocks
+    if image == nil or blocks == nil:
+      if nativeFusionTraining(f.nativeSession) and f.remaining >= NativeFusionTrainingFloor:
+        markNativeFusionSampled(f.nativeSession)
+        var probe = FlatFusionProbe(down: 1, seed: 0x9e3779b9'u32)
+        flatDispatchLoop(f, entry, false, true, probe)
+        if f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Halt:
+          offerFlatFusion(f, probe)
+      else:
+        flatDispatchSegment(f, entry)
+      return
+    defer: returnNativeMixedLoop(f.nativeSession)
+    runFlatFusionImage(f, entry, image, blocks)
 
   proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =
     ## A completed original BNE counts one full checked visit, including folded source facts.
@@ -3788,6 +3824,11 @@ when NativeReadCycleEnabled:
       flatDispatchSegment(f, entry)
 
   template dispatchPreparedMixed(f: var FlatFrame, offset: uint32) =
+    ## Mixed-loop nomination and generic fusion share one optional mailbox/borrowed arena.
+    ## Preserve mixed-loop settlement first until those ownership protocols can be composed.
+    ## A current mixed candidate takes this branch even if probing falls back to checked work;
+    ## that segment therefore neither trains nor runs generic fusion. This is a routing policy,
+    ## not evidence that the remaining source cannot benefit from the general compiler.
     template ordinary() =
       if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
           mixedLoopPrimaryReady(f.nativeSession):
@@ -3876,7 +3917,14 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if f.prefixProbeOriginal == nil and nativePrefixObservation(f.nativeSession):
     installFlatPrefixProbe(f)
   when NativeReadCycleEnabled:
-    dispatchPreparedMixed(f, offset)
+    when defined(pvmSharedAsyncWitness):
+      # The private witness borrows a source-bound owned image through the same execution scope.
+      let image = f.fusionWitnessImage
+      let blocks = f.fusionWitnessBlocks
+      if image != nil and blocks != nil: runFlatFusionImage(f, offset, image, blocks)
+      else: dispatchPreparedMixed(f, offset)
+    else:
+      dispatchPreparedMixed(f, offset)
   else:
     flatDispatchSegment(f, offset)
   restoreFlatPrefixProbe(f)
@@ -4961,3 +5009,6 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
       assert access.error == MachineError.None
       flatMaterializeStore[1](frame, address)
       flatMarkStore[1](frame, address)
+
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+  include ./handler_fusion_witness

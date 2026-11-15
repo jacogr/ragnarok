@@ -92,6 +92,10 @@ when declared(FlatFrame):
 
   proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.} =
     ## Nominate a checked round once, then dispatch the stock checked worker until publication.
+    ## Discovery currently depends on flatChargedShape observing a complete closed round.
+    ## This also admits DOOM init's native ring: bypassing the checked shape selector removes
+    ## that native coverage. A source-driven replacement must preserve this nomination capability
+    ## before the checked specialization can be removed.
     let epoch = nativeRingAdmissionEpoch(f.nativeSession)
     if epoch == 0: return false
     let headers = [first, middle, last]
