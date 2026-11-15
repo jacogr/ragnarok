@@ -5,7 +5,8 @@
 ## the six lanes with most static operand references occupy saved SysV GPRs, and the remaining used lanes occupy
 ## XMM0..XMM6. SSE2 is part of the x86-64 baseline; no CPU feature probe is required.
 ## Scalar and memory emitters keep their original scratch registers. R9/R11 retain gas/quota,
-## XMM7 retains the visit count, and every checked exit publishes the written guest lanes.
+## XMM7 retains the visit count, XMM8 the indirect address, and XMM9 a proved memory-group
+## pointer. Those private lanes cannot overlap guest storage. Every checked exit publishes written lanes.
 
 when declared(X86Block):
   type X86FusionAccess* = object

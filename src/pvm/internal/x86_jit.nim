@@ -26,7 +26,7 @@ import ./native_read_body
 when defined(pvmX86Jit) and NativeReadCycleEnabled:
   from std/bitops import countSetBits
   import ./native_read_cycle
-  import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
+  import ./[native_mixed_loop, native_bitmap_loop, native_fusion, native_memory_window]
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.

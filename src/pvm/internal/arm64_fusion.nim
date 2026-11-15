@@ -6,6 +6,8 @@
 ## history after a successful reservation. All exits set their original continuation and paid
 ## marker before one block-local restoration tail. Sharing this tail keeps guard-heavy entries
 ## within the existing 4 KiB code ceiling without changing their source or reservation limits.
+## Optional bounded same-kind memory groups retain one proved true-view pointer in X17 across
+## scalar work. A failed whole-window proof resumes paid at the first original memory operation.
 ## Standalone source audits import an empty fragment.
 
 when declared(ArmBlock):
@@ -20,6 +22,129 @@ when declared(ArmBlock):
     ## Resolve one unconditional edge relative to its instruction, within the arena cap.
     if at < 0 or at >= words.len or delta < -33554432 or delta >= 33554432: return false
     words[at] = 0x14000000'u32 or (uint32(delta) and 0x3ffffff'u32)
+    true
+
+  proc armWindowCondition(words: var seq[uint32], at, target: int, condition: uint32): bool =
+    ## Patch a local forward staging edge; the enclosing encoder still owns every instruction.
+    if at < 0 or at >= words.len or target < 0 or target > words.len or condition > 15:
+      return false
+    let delta = int64(target)-int64(at)
+    if delta < -262144 or delta > 262143: return false
+    words[at] = 0x54000000'u32 or
+      (uint32(cast[uint64](delta) and 0x7ffff'u64) shl 5) or condition
+    true
+
+  proc armWindowAddress(words: var seq[uint32], window: NativeMemoryWindow) =
+    ## X3 captures the original modulo-32 minimum address without changing a guest lane.
+    if window.absolute:
+      armCompactImmediate(words, 3, uint64(window.displacement))
+    else:
+      let source = uint32(window.baseLane)+4
+      words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource.
+      if window.displacement != 0:
+        armCompactImmediate(words, 2, uint64(window.displacement))
+        words.add(0x0b020063'u32) # ADD W3,W3,W2 wraps the original address once.
+
+  proc armWindowRegions(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      window: NativeMemoryWindow, refusal: int): bool =
+    ## Select the first nonempty region intersecting the whole window. Partial overlap declines
+    ## at the first original site, preserving descriptor priority and checked partial behavior.
+    ## X3 is the proved virtual start; X17 receives the sole accepted host-window pointer.
+    let writing = window.kind == NativeWindowKind.Write
+    let regions = if writing: 2 else: 3
+    let first = if writing: uint32(NativeCycleWritableOffset) else: 0'u32
+    let stride = if writing: uint32(sizeof(NativeCycleWritable)) else: uint32(sizeof(NativeReadRegion))
+    armCompactImmediate(words, 0, uint64(window.span))
+    var accepted = default(array[3, int])
+    for region in 0..<regions:
+      # Empty views have no precedence. A nonempty nil view conservatively stays checked.
+      let offset = first+uint32(region)*stride
+      cycleLoad(words, 1, 20, offset)
+      cycleLoad(words, 2, 20, offset+8)
+      cycleLoad(words, 17, 20, offset+16)
+      cycleCompareImmediate(words, 2, 0)
+      let empty = words.len
+      words.add(0)
+      cycleCompareImmediate(words, 17, 0)
+      cycleEdge(words, fixes, refusal, 0)
+      cycleCompare(words, 1, 3)
+      let before = words.len
+      words.add(0)
+      words.add(0xcb010061'u32) # SUB X1,X3,X1: nonnegative region-relative start.
+      cycleCompare(words, 1, 2)
+      let outside = words.len
+      words.add(0)
+      words.add(0xcb010042'u32) # SUB X2,X2,X1: remaining true bytes.
+      cycleCompare(words, 2, 0)
+      cycleEdge(words, fixes, refusal, 3)
+      words.add(0x8b010231'u32) # ADD X17,X17,X1 keeps only a proved borrowed address.
+      accepted[region] = words.len
+      words.add(0)
+      let earlier = words.len
+      words.add(0xcb030021'u32) # SUB X1,X1,X3: positive gap before this region.
+      cycleCompare(words, 1, 0)
+      cycleEdge(words, fixes, refusal, 3)
+      let following = words.len
+      if not armWindowCondition(words, empty, following, 0) or
+          not armWindowCondition(words, before, earlier, 8) or
+          not armWindowCondition(words, outside, following, 2): return false
+    cycleEdge(words, fixes, refusal, 16)
+    let following = words.len
+    for region in 0..<regions:
+      # Every accepted view bypasses all later descriptors and the common refusal.
+      if not armFusionBranchWord(words, accepted[region], following-accepted[region]): return false
+    true
+
+  proc armFusionWindowGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+      window: NativeMemoryWindow, refusal: int): bool =
+    ## Preflight true bounds and existing dirty authority before the group's first mutation.
+    ## At most two pages cover a 4 KiB window. Dirty checks preserve X3 and never set a bit.
+    if not window.ready or window.span == 0 or window.span > 4096 or
+        window.baseLane < 0 or window.baseLane > 12: return false
+    armWindowAddress(words, window)
+    armCompactImmediate(words, 1, 65536)
+    cycleCompare(words, 3, 1)
+    cycleEdge(words, fixes, refusal, 3)
+    armCompactImmediate(words, 2, 0xffffffff'u64-uint64(window.span))
+    cycleCompare(words, 3, 2)
+    cycleEdge(words, fixes, refusal, 8)
+    if window.kind == NativeWindowKind.Write:
+      # Check the first page and, only when distinct, the final page before borrowing data.
+      armCycleDirtyPage(words, fixes, refusal)
+      cycleAddImmediate(words, 0, 3, window.span-1)
+      words.add(0xd34cfc61'u32) # LSR X1,X3,#12.
+      words.add(0xd34cfc02'u32) # LSR X2,X0,#12.
+      cycleCompare(words, 1, 2)
+      let samePage = words.len
+      words.add(0)
+      cycleMove(words, 3, 0)
+      armCycleDirtyPage(words, fixes, refusal)
+      armWindowAddress(words, window)
+      if not armWindowCondition(words, samePage, words.len, 0): return false
+    armWindowRegions(words, fixes, window, refusal)
+
+  proc armFusionWindowOperation(words: var seq[uint32], op: NativeOperation,
+      window: NativeMemoryWindow): bool =
+    ## A whole-view proof covers each original scalar transfer, including signed/unaligned loads.
+    let encoding = nativeWindowOpcode(op.opcode)
+    if encoding < 120 or encoding > 130: return false
+    let width = indirectMemoryAccess(range[120..130](encoding)).width
+    let delta = uint32(op.immediate and 0xffffffff'u64)-window.displacement
+    if delta >= window.span or width > window.span-delta or delta mod width != 0: return false
+    let instruction = case encoding
+      of 120: 0x39000000'u32
+      of 121: 0x79000000'u32
+      of 122: 0xb9000000'u32
+      of 123: 0xf9000000'u32
+      of 124: 0x39400000'u32
+      of 125: 0x39800000'u32
+      of 126: 0x79400000'u32
+      of 127: 0x79800000'u32
+      of 128: 0xb9400000'u32
+      of 129: 0xb9800000'u32
+      else: 0xf9400000'u32
+    words.add(instruction or ((delta div width) shl 10) or (17'u32 shl 5) or
+      (uint32(op.slots.aIndex)+4))
     true
 
   proc patchFusionEdge*(code: var ArmFusionEncoding, edge, deltaBytes: int): bool =
@@ -120,6 +245,7 @@ when declared(ArmBlock):
     ## Reserve checked capacities before reusing the existing mixed memory and scalar emitters.
     const capacity = NativeImageByteLimit div 4
     const operationWords = 64
+    const windowWords = 128 # Includes both dirty-page guards and the first scalar transfer.
     const returnWords = 4 # Two continuation words, one paid-marker word and one branch.
     const epilogueWords = 25 # Includes the optional pre-write D17 address store.
     const unpaid = 0
@@ -168,9 +294,20 @@ when declared(ArmBlock):
     cycleAddImmediate(words, 23, 23, 1, true)
     armCompactImmediate(words, 1, uint64(token))
     words.add(0x38001701'u32) # STRB W1,[X24],#1 appends only after the visit guard and debit.
+    var window = default(NativeMemoryWindow)
     for index in 0..<count:
-      if words.len > capacity-operationWords: return
       let op = item.operations[index]
+      if nativeWindowOpcode(op.opcode) != 0 and index >= window.past:
+        window = nativeMemoryWindow(item.operations, count, index)
+        if window.ready and words.len > capacity-windowWords:
+          # Ordinary lowering retains admission when the conservative optional forecast cannot fit.
+          window = default(NativeMemoryWindow)
+      if window.contains(index):
+        if index == window.first:
+          if not armFusionWindowGuard(words, fixes, window, index+1): return
+        if words.len >= capacity or not armFusionWindowOperation(words, op, window): return
+        continue
+      if words.len > capacity-operationWords: return
       let width = nativeMixedLoopStoreWidth(op.opcode)
       if width != 0:
         armPaidLoopStore(words, fixes, op, index+1)

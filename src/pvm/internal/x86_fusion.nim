@@ -5,6 +5,8 @@
 ## Every external entry loads the same graph-wide guest bank and exact budgets. Linked edges
 ## preserve those registers, the context borrow and the XMM7 visit count. The log append follows
 ## the horizon/gas/quota guards. All paid/unpaid returns share one commit/restore epilogue.
+## Optional bounded same-kind memory groups share one true-view/dirty proof at their first source
+## site. XMM9 retains the host pointer across scalar scratch use; it never survives a native call.
 
 when declared(X86Block):
   type X86FusionEncoding* = object
@@ -13,6 +15,134 @@ when declared(X86Block):
     inner*: int
     edges*: array[2, int]
     table*: int ## rel32 operand for the immutable native header table; negative when unused.
+
+  proc x86WindowPatch(code: var X86Block, at, target: int): bool =
+    ## Patch a local staging displacement without consuming the enclosing label table.
+    if at < 0 or at > code.bytes.len-4 or target < 0 or target > code.bytes.len: return false
+    let delta = int64(target)-int64(at+4)
+    if delta < -int64(NativeImageByteLimit) or delta > int64(NativeImageByteLimit): return false
+    let value = cast[uint32](int32(delta))
+    for index in 0..<4:
+      code.bytes[at+index] = byte((value shr (index*8)) and 255)
+    true
+
+  proc x86WindowBranch(code: var X86Block, condition: byte): int =
+    ## Reserve one local rel32 edge; zero selects an unconditional branch.
+    if condition == 0: put(code, [0xe9'u8])
+    else: put(code, [0x0f'u8, condition])
+    result = code.bytes.len
+    cycleWord(code, 0)
+
+  proc x86WindowAddress(code: var X86Block, window: NativeMemoryWindow,
+      access: X86FusionAccess): bool =
+    ## EDX captures the original modulo-32 minimum before any source operation mutates its base.
+    if window.absolute:
+      put(code, [0xba'u8]) # MOV EDX,absolute32.
+    else:
+      if window.baseLane < 0 or window.baseLane > 12: return false
+      readBodyBase(code, access, range[0..12](window.baseLane))
+      put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps the original address once.
+    cycleWord(code, window.displacement)
+    true
+
+  proc x86WindowRegions(code: var X86Block, fixes: var seq[X86CycleFixup],
+      window: NativeMemoryWindow, refusal: byte): bool =
+    ## Accept only the first nonempty intersecting true-length view, declining partial overlap.
+    ## RDX remains the virtual minimum; XMM9 retains the proved host pointer across scalar work.
+    let writing = window.kind == NativeWindowKind.Write
+    let regions = if writing: 2 else: 3
+    let first = if writing: NativeCycleWritableOffset else: 0
+    let stride = if writing: sizeof(NativeCycleWritable) else: sizeof(NativeReadRegion)
+    var accepted = default(array[3, int])
+    for region in 0..<regions:
+      # Empty descriptors have no precedence; malformed nonempty nil views stay checked.
+      let offset = first+region*stride
+      readCycleContextOp(code, [0x49'u8, 0x8b, 0x82], offset)
+      readCycleContextOp(code, [0x49'u8, 0x8b, 0x8a], offset+8)
+      readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], offset+16)
+      put(code, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX checks true length.
+      let empty = x86WindowBranch(code, 0x84)
+      put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI checks the borrowed data.
+      cycleEdge(code, fixes, 0x84, refusal)
+      put(code, [0x48'u8, 0x39, 0xd0]) # CMP RAX,RDX checks a later start.
+      let before = x86WindowBranch(code, 0x87)
+      put(code, [0x49'u8, 0x89, 0xd0, 0x49, 0x29, 0xc0, 0x49, 0x39, 0xc8])
+      let outside = x86WindowBranch(code, 0x83) # R8 is region-relative minimum; JAE skips it.
+      put(code, [0x4c'u8, 0x29, 0xc1, 0x48, 0x81, 0xf9]) # SUB RCX,R8; CMP RCX,span.
+      cycleWord(code, window.span)
+      cycleEdge(code, fixes, 0x82, refusal)
+      put(code, [0x49'u8, 0x01, 0xf0, 0x66, 0x4d, 0x0f, 0x6e, 0xc8])
+      accepted[region] = x86WindowBranch(code, 0) # ADD R8,RSI; MOVQ XMM9,R8.
+      let earlier = code.bytes.len
+      put(code, [0x48'u8, 0x29, 0xd0, 0x48, 0x3d]) # SUB RAX,RDX; CMP RAX,span.
+      cycleWord(code, window.span)
+      cycleEdge(code, fixes, 0x82, refusal)
+      let following = code.bytes.len
+      if not x86WindowPatch(code, empty, following) or
+          not x86WindowPatch(code, before, earlier) or
+          not x86WindowPatch(code, outside, following): return false
+    cycleEdge(code, fixes, 0, refusal)
+    for region in 0..<regions:
+      # Every successful proof bypasses later descriptors and the common refusal.
+      if not x86WindowPatch(code, accepted[region], code.bytes.len): return false
+    true
+
+  proc x86FusionWindowGuard(code: var X86Block, fixes: var seq[X86CycleFixup],
+      window: NativeMemoryWindow, refusal: byte, access: X86FusionAccess): bool =
+    ## Prove bounds and already-dirty authority before the first original transfer.
+    ## A failed whole-window proof returns paid at that site without moving any source effect.
+    if not window.ready or window.span == 0 or window.span > 4096 or
+        window.baseLane < 0 or window.baseLane > 12: return false
+    if not x86WindowAddress(code, window, access): return false
+    put(code, [0x81'u8, 0xfa]) # CMP EDX,65536 protects the low pages.
+    cycleWord(code, 65536)
+    cycleEdge(code, fixes, 0x82, refusal)
+    put(code, [0x81'u8, 0xfa]) # CMP EDX,UINT32_MAX-span excludes wrap and the top byte.
+    cycleWord(code, 0xffffffff'u32-window.span)
+    cycleEdge(code, fixes, 0x87, refusal)
+    if window.kind == NativeWindowKind.Write:
+      # Dirty guards only read the bitmap. At most two pages can intersect a 4 KiB span.
+      readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset)
+      put(code, [0x48'u8, 0x85, 0xf6])
+      cycleEdge(code, fixes, 0x84, refusal)
+      readCycleDirtyPage(code, fixes, refusal)
+      put(code, [0x89'u8, 0xd0, 0x05]) # MOV EAX,EDX; ADD EAX,span-1.
+      cycleWord(code, window.span-1)
+      put(code, [0x31'u8, 0xd0, 0xa9]) # XOR EAX,EDX; TEST EAX,upper page bits.
+      cycleWord(code, 0xfffff000'u32)
+      let samePage = x86WindowBranch(code, 0x84)
+      put(code, [0x81'u8, 0xc2]) # ADD EDX,span-1 selects the last byte's page.
+      cycleWord(code, window.span-1)
+      readCycleDirtyPage(code, fixes, refusal)
+      if not x86WindowAddress(code, window, access): return false
+      if not x86WindowPatch(code, samePage, code.bytes.len): return false
+    x86WindowRegions(code, fixes, window, refusal)
+
+  proc x86FusionWindowOperation(code: var X86Block, op: NativeOperation,
+      window: NativeMemoryWindow, access: X86FusionAccess): bool =
+    ## Preserve exact source width/sign and restore R8 after scalar emitters may clobber it.
+    let encoding = nativeWindowOpcode(op.opcode)
+    if encoding < 120 or encoding > 130: return false
+    let width = indirectMemoryAccess(range[120..130](encoding)).width
+    let delta = uint32(op.immediate and 0xffffffff'u64)-window.displacement
+    if delta >= window.span or width > window.span-delta: return false
+    put(code, [0x66'u8, 0x4d, 0x0f, 0x7e, 0xc8]) # MOVQ R8,XMM9.
+    if encoding <= 123: readAccess(code, access, op.slots.aIndex, false)
+    case encoding
+    of 120: put(code, [0x41'u8, 0x88, 0x80])
+    of 121: put(code, [0x66'u8, 0x41, 0x89, 0x80])
+    of 122: put(code, [0x41'u8, 0x89, 0x80])
+    of 123: put(code, [0x49'u8, 0x89, 0x80])
+    of 124: put(code, [0x41'u8, 0x0f, 0xb6, 0x80])
+    of 125: put(code, [0x49'u8, 0x0f, 0xbe, 0x80])
+    of 126: put(code, [0x41'u8, 0x0f, 0xb7, 0x80])
+    of 127: put(code, [0x49'u8, 0x0f, 0xbf, 0x80])
+    of 128: put(code, [0x41'u8, 0x8b, 0x80])
+    of 129: put(code, [0x49'u8, 0x63, 0x80])
+    else: put(code, [0x49'u8, 0x8b, 0x80])
+    cycleWord(code, delta)
+    if encoding >= 124: writeAccess(code, access, op.slots.aIndex)
+    true
 
   proc patchFusionEdge*(code: var X86FusionEncoding, edge, deltaBytes: int): bool =
     ## Store an arena-relative displacement measured from the rel32 operand.
@@ -93,6 +223,7 @@ when declared(X86Block):
     const
       operationBytes = 240
       operationFixes = 16
+      windowBytes = 512 # Includes both dirty guards, three views and the first transfer.
       returnBytes = 21
       epilogueBytes = 112
       unpaid = 0'u8
@@ -134,9 +265,21 @@ when declared(X86Block):
     put(code, [0x41'u8, 0xc6, 0x84, 0x32]) # MOV BYTE [R10+RSI+path],token.
     cycleWord(code, uint32(NativeFusionPathOffset))
     put(code, [byte(token), 0xff, 0xc6, 0x66, 0x0f, 0x6e, 0xfe]) # INC ESI; MOVD XMM7,ESI.
+    var window = default(NativeMemoryWindow)
     for index in 0..<count:
-      if code.bytes.len > NativeImageByteLimit-operationBytes: return
       let op = item.operations[index]
+      if nativeWindowOpcode(op.opcode) != 0 and index >= window.past:
+        window = nativeMemoryWindow(item.operations, count, index)
+        if window.ready and code.bytes.len > NativeImageByteLimit-windowBytes:
+          # Optional geometry never removes ordinary lowering when the remaining entry is small.
+          window = default(NativeMemoryWindow)
+      if window.contains(index):
+        if index == window.first:
+          if not x86FusionWindowGuard(code, fixes, window, firstGuard+byte(index), access): return
+        if code.bytes.len > NativeImageByteLimit-24 or
+            not x86FusionWindowOperation(code, op, window, access): return
+        continue
+      if code.bytes.len > NativeImageByteLimit-operationBytes: return
       let width = nativeMixedLoopStoreWidth(op.opcode)
       let encoding = nativeReadEncodingOpcode(op.opcode)
       let guard = firstGuard+byte(index)
