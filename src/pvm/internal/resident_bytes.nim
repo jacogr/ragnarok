@@ -3,6 +3,7 @@
 
 ## Exclusive first-RW storage and one backend-neutral borrowed view.
 ## Foreign bytes are owner-accounted separately from managed heap telemetry; no quota or pool.
+## Scalar transfers prove their full borrowed extent and preserve outputs/bytes on refusal.
 
 import std/assertions
 
@@ -239,6 +240,62 @@ func mappedBytes*(storage: RWStorage): uint64 =
   case storage.kind
   of RWStorageKind.Resident: uint64(storage.resident.backing)
   of RWStorageKind.Managed, RWStorageKind.Empty: 0'u64 # Managed telemetry remains separate.
+
+when defined(pvmSharedAsyncWitness):
+  proc invalidateRWDataForWitness*(view: var RWView) =
+    ## Drop only a test borrow's data pointer; its real owner remains live for independent byte checks.
+    view.data = nil
+
+proc tryReadScalar*[W: static[int]](view: RWView, at: int, value: var uint64): bool {.inline.} =
+  ## Read exactly one little-endian scalar from this synchronous borrow. A missing pointer or
+  ## incomplete extent returns false without changing value. The owner must remain stable/alive
+  ## for the call. No pointer or mutable storage escapes, and no allocation is performed.
+  when W != 1 and W != 2 and W != 4 and W != 8: {.error: "RW scalar transfers require 1, 2, 4, or 8 bytes".}
+  if at < 0 or view.length < W or at > view.length-W: return false
+  let data = view.data
+  if data == nil: return false
+  var word = 0'u64
+  var endian = 1'u16
+  var tag = default(array[2, byte])
+  copyMem(addr tag[0], addr endian, 2)
+  if tag[0] == 1:
+    # The complete bounds proof precedes the unaligned transfer into a disjoint private word.
+    copyMem(addr word, unsafeAddr data[at], W)
+  else:
+    # Other host byte orders retain the original scalar little-endian equation.
+    for index in 0..<W: word = word or (uint64(data[at+index]) shl (index*8))
+  value = word
+  true
+
+proc tryWriteScalar*[W: static[int]](view: var RWView, at: int, value: uint64): bool {.inline.} =
+  ## Write one truncated little-endian scalar only after its complete synchronous borrow is
+  ## proved. False leaves every byte untouched; neither allocation nor resize authority exists.
+  when W != 1 and W != 2 and W != 4 and W != 8: {.error: "RW scalar transfers require 1, 2, 4, or 8 bytes".}
+  if at < 0 or view.length < W or at > view.length-W: return false
+  var data = view.data
+  if data == nil: return false
+  var endian = 1'u16
+  var tag = default(array[2, byte])
+  copyMem(addr tag[0], addr endian, 2)
+  if tag[0] == 1:
+    # All software failure checks finish before the first mutable byte is exposed.
+    var word = value
+    copyMem(addr data[at], addr word, W)
+  else:
+    # Portable hosts store the same low bytes without reinterpreting native byte order.
+    for index in 0..<W: data[at+index] = byte((value shr (index*8)) and 255)
+  true
+
+when defined(pvmResidentWitness):
+  proc residentWitnessNullScalar*(): bool =
+    ## A forged test-only nonempty/no-data view must refuse without dereferencing or changing output.
+    var view = RWView(length: 8, data: nil)
+    var value = 0xfedcba9876543210'u64
+    if tryReadScalar[1](view, 0, value) or tryReadScalar[2](view, 0, value) or
+        tryReadScalar[4](view, 0, value) or tryReadScalar[8](view, 0, value): return false
+    if value != 0xfedcba9876543210'u64: return false
+    not (tryWriteScalar[1](view, 0, 1) or tryWriteScalar[2](view, 0, 1) or
+      tryWriteScalar[4](view, 0, 1) or tryWriteScalar[8](view, 0, 1))
 
 func `[]`*(view: RWView, index: int): byte =
   ## Read one checked byte; mutations go through the separate checked setter.
