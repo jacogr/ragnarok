@@ -9,7 +9,7 @@ import ./pvm_memory_windows
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform, native_read_body]
-when NativeReadCycleEnabled:
+when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   import ./pvm_fusion_composition
 
 proc checkRepeatedFusionReceipt() =
@@ -681,7 +681,7 @@ proc runStaticFusion*() =
   checkCollidingFusionReceipts()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
-    runFusionComposition()
+    when defined(pvmSharedAsyncWitness): runFusionComposition()
     checkFusionConditionalMoves()
     checkFusionGraphTokens()
     checkFusionIndirectTargets()
