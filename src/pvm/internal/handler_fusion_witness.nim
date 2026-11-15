@@ -41,6 +41,21 @@ when declared(FlatFrame):
       if scenario == 0: assert seen[4] == 1, "late hot source survives a full cold bucket"
       else: assert seen[1] == 1
 
+  proc witnessFlatFusionSourceLimit*(program: Program, accepted: bool) =
+    ## Bound original work, including folded noops; an oversized complete block leaves output intact.
+    var admitted = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+    assert admitted.error == FlatError.None
+    let plan = takeValue(admitted)
+    var source = FusionSourceBlock(start: CodeAddress(77), price: 123)
+    let before = source
+    assert decodeFusionSource(plan, CodeAddress(0), source) == accepted
+    if accepted:
+      # Both boundary fixtures have one real body operation and one branch terminal.
+      assert source.span == NativeReadFactLimit and source.bodyCount == 1
+    else:
+      assert source == before
+    assert plan.facts.len == 0 and plan.pricePcs.len == 0
+
   proc fusionWitnessOperations(session: NativeSession): uint64 {.noinline.} =
     ## Keep the established NIM-005 counter observation boundary across mutable frame calls.
     nativeOperationCount(session)
@@ -86,6 +101,16 @@ when declared(FlatFrame):
     var admitted = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
     assert admitted.error == FlatError.None
     let plan = takeValue(admitted)
+    assert plan.facts.len == 0 and plan.pricePcs.len == 0
+    var firstSource, secondSource = default(FusionSourceBlock)
+    assert decodeFusionSource(plan, CodeAddress(0), firstSource)
+    assert decodeFusionSource(plan, CodeAddress(uint64(secondPc)), secondSource)
+    assert plan.facts.len == 0 and plan.pricePcs.len == 0,
+        "source IR does not materialize a checked catalogue"
+    var untouched = firstSource
+    for invalid in [CodeAddress(1), CodeAddress(high(uint64))]:
+      # Neither an interior instruction/operand nor an out-of-range PC is a complete block entry.
+      assert not decodeFusionSource(plan, invalid, untouched) and untouched == firstSource
     var page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
     page.bytes[0] = 0x5a
     var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000))
@@ -93,6 +118,17 @@ when declared(FlatFrame):
     info.registers[2] = RegisterValue(0)
     info.registers[3] = RegisterValue(0xffff0000'u64)
     let session = newNativeSession(runtime)
+    block reversePlacement:
+      # Resolve the later source block first: logical ordinals/edges cannot depend on physical order.
+      var reversed = newFlatFrame(plan, [page], info)
+      let later = flatResolve(reversed, secondPc)
+      let earlier = flatResolve(reversed, 0)
+      assert later != flatStop and earlier != flatStop and later < earlier
+      var reconstructed = default(FusionSourceBlock)
+      assert decodeFusionSource(reversed.plan, CodeAddress(0), reconstructed) and
+          reconstructed == firstSource
+      assert decodeFusionSource(reversed.plan, CodeAddress(uint64(secondPc)), reconstructed) and
+          reconstructed == secondSource
     for warm in [false, true]:
       # Both workers use genuine resolved branch capabilities; cold/hot body identities are distinct.
       var native = newFlatFrame(plan, [page], info)
@@ -119,6 +155,10 @@ when declared(FlatFrame):
           discard charge(frame[], first)
         resetFlatFrame(frame[], info)
         frame[].remaining = 0
+      var reconstructed = default(FusionSourceBlock)
+      assert decodeFusionSource(native.plan, CodeAddress(0), reconstructed) and reconstructed == firstSource
+      assert decodeFusionSource(native.plan, CodeAddress(uint64(secondPc)), reconstructed) and
+          reconstructed == secondSource
       let firstOriginal = native.handlers[int(first)]
       let secondOriginal = native.handlers[int(second)]
       assert firstOriginal == flatCharge and secondOriginal == flatChargedAdjacent[false]
@@ -161,9 +201,15 @@ when declared(FlatFrame):
         of 9: native.handlers[int(adjacentTerminal)] = flatBudget
         else: native.arguments[int(adjacentTerminal)].x = adjacentTerminalArgs.x xor 1
         let target = if mutation >= 7: second else: first
-        var refused = default(NativeFusionBlock)
+        var reconstructed = default(FusionSourceBlock)
+        assert decodeFusionSource(native.plan, CodeAddress(0), reconstructed) and reconstructed == firstSource
+        assert decodeFusionSource(native.plan, CodeAddress(uint64(secondPc)), reconstructed) and
+            reconstructed == secondSource
+        var refused = blocks[0]
+        let beforeRefusal = refused
         assert not bindFlatFusion(native, target, refused),
             "damaged composed source must refuse: " & $mutation
+        assert refused == beforeRefusal, "binding refusal leaves its output untouched"
         assert native.info == info and native.remaining == 0 and native.dirtyIndices.len == 0
         native.handlers[int(first)] = firstOriginal
         native.handlers[int(body)] = originalBody
@@ -174,6 +220,19 @@ when declared(FlatFrame):
         native.arguments[int(second)].y = blocks[1].span
         native.handlers[int(adjacentTerminal)] = adjacentTerminalWorker
         native.arguments[int(adjacentTerminal)] = adjacentTerminalArgs
+      if branch == 88:
+        # A folded noop has no physical node, but its source geometry still belongs to the proof.
+        let ordinal = int(blocks[0].first)
+        let original = native.plan.facts[ordinal]
+        var damaged = original
+        inc damaged.next
+        assert writeMetadata(native.plan.facts, ordinal, damaged)
+        var refused = blocks[0]
+        assert not bindFlatFusion(native, first, refused) and refused == blocks[0],
+            "folded source facts cannot evade binding validation"
+        var reconstructed = default(FusionSourceBlock)
+        assert decodeFusionSource(native.plan, CodeAddress(0), reconstructed) and reconstructed == firstSource
+        assert writeMetadata(native.plan.facts, ordinal, original)
       var image = lowerNativeFusion(blocks)
       assert image.ready and nativeFusionDispatchEntry(image, 0) and nativeFusionDispatchEntry(
           image, 1), "composition graph must expose both linked entries"

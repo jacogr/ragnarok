@@ -24,6 +24,13 @@ PC-map payloads use direct storage for small extents and bounded chunks for larg
 extents remain those admitted for the whole source.
 See the [checked stream owner](../../src/pvm/internal/handler_stream.nim).
 
+Fusion reconstructs a bounded original block from immutable source and admission ranks before
+binding it to executable offsets. The [source IR](../../src/pvm/internal/handler_fusion_source.nim)
+contains logical edges and copied operands; it needs no checked catalogue, worker, CPU or memory.
+The [overlay adapter](../../src/pvm/internal/handler_fusion.nim) independently proves the current
+layout, price, operands and worker ownership. A refused binding stays checked; asynchronous
+lowering receives only the complete copied, physically linked request.
+
 The [Services owner](../../src/app/services.nim) inventories production runtime consumers and
 the ownership, aggregate retention and competition contract required before wider integration.
 The [scheduler](../../src/pvm/internal/native_pipeline.nim) documents current image capacity

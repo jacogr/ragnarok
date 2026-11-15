@@ -8,9 +8,9 @@
 ## The primary retains its handlers. Fusion patches only disjoint source-proven reservation
 ## headers during one segment and restores each exact predecessor before releasing the arena.
 ## Existing combined register/branch workers keep their separately addressable original nodes.
-## Binding still couples source proof to the current checked-worker identities so it cannot
-## silently replace a temporary or foreign owner. These compatibility checks are not optimizer
-## passes: an IR-first builder needs independent overlay ownership before removing that coupling.
+## Immutable source reconstruction lives in handler_fusion_source. This adapter proves the
+## current checked layout and ownership before assigning physical targets and fallback sites.
+## Checked-worker identities grant overlay compatibility only; they never define the copied IR.
 
 when declared(FlatFrame):
   when defined(pvmSharedAsyncWitness):
@@ -50,18 +50,29 @@ when declared(FlatFrame):
     ## Classify reservation workers only; binding still proves the complete source and specialized shape.
     handler == flatCharge or handler == flatChargedAdjacent[false]
 
+  func fusionSourceHeader(f: FlatFrame, header: uint32, pc: CodeAddress): bool =
+    ## Narrow only an in-program logical target; physical permission remains with the checked PC map.
+    if f.plan == nil or uint64(pc) >= uint64(f.plan.codeBytes): return false
+    flatSourceHeader(f, header, uint32(uint64(pc)))
+
   proc bindFlatFusion(f: FlatFrame, off: uint32, item: var NativeFusionBlock): bool =
-    ## Decode the sealed source once during selection. A refused block stays checked.
+    ## Bind independent original-source IR to the exclusive checked stream. A refused block stays
+    ## checked and leaves the output untouched. No candidate executes or changes guest/native state.
     if uint64(off) >= uint64(f.handlers.len) or uint64(off) >= uint64(f.sites.len) or
         not fusionHeaderWorker(f.handlers[int(off)]): return false
     let ordinal = f.sites[int(off)]
     if uint64(ordinal) >= uint64(f.plan.facts.len): return false
     let pc = f.plan.facts[int(ordinal)].pc
+    var originalSource = default(FusionSourceBlock)
+    if not decodeFusionSource(f.plan, CodeAddress(uint64(pc)), originalSource): return false
     var header = 0'u32
     var source = default(FlatSourceInterval)
     var summary = default(FlatSourceSummary)
     if not flatCompleteOriginalHeader(f, pc, NativeReadFactLimit, header, source): return false
     if header != off or not flatWalkCompleteSource(f, header, source, summary): return false
+    if originalSource.first != source.first or originalSource.span != source.span or
+        originalSource.bodyCount+1 != summary.operations or originalSource.price != source.price or
+        uint64(originalSource.terminalPc) != uint64(f.plan.facts[int(source.last)].pc): return false
     if f.handlers[int(off)] != flatCharge:
       # The adjacent worker hard-codes these two source operations. Its identity alone
       # cannot grant native authority to a different otherwise valid original block.
@@ -72,21 +83,22 @@ when declared(FlatFrame):
     if nativeReadObservationOverlaps(f.nativeSession, NativeReadBodyInfo(header: off,
         terminal: summary.terminal, first: source.first, last: source.last,
         epoch: nativeEpoch(f.nativeSession))): return false
-    let price = blockGas(f.plan.source, CodeAddress(uint64(pc)), f.plan.cycles)
-    if price.error != GasError.None or uint64(price.value) != source.price: return false
-    item = NativeFusionBlock(header: off, terminal: summary.terminal, first: source.first,
-      span: source.span, price: source.price, targets: [NativeEntryFailure, NativeEntryFailure])
+    var bound = NativeFusionBlock(header: off, terminal: summary.terminal,
+      first: originalSource.first,
+      span: originalSource.span, price: originalSource.price, operations: originalSource.operations,
+      guards: originalSource.guards, targets: [NativeEntryFailure, NativeEntryFailure])
     let priceIndex = f.plan.facts[int(source.first)].priceIndex
     var node = off+1
     for index in source.first..source.last:
       let fact = f.plan.facts[int(index)]
-      if fact.priceIndex != priceIndex: return false
-      if fact.opcode == 2: continue
+      if fact.priceIndex != priceIndex or uint64(fact.pc) != uint64(
+          originalSource.locations[int(index-source.first)]): return false
       let decoded = instruction(f.plan.source, CodeAddress(uint64(fact.pc)))
       if decoded.error != ProgramError.None: return false
       let original = decoded.value
       if original.opcode != fact.opcode or
           uint64(original.address)+1+uint64(original.skip) != uint64(fact.next): return false
+      if fact.opcode == 2: continue
       let payload = flatSourcePayload(decoded)
       let args = f.arguments[int(node)]
       let worker = f.handlers[int(node)]
@@ -117,33 +129,27 @@ when declared(FlatFrame):
                   f.sites[int(node+1)] != index+1: return false
               let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
               if fused == nil or worker != fused: return false
-        let slot = int(node-off-1)
-        if slot >= item.operations.len: return false
-        let op = fact.opcode
-        if nativeMixedLoopStoreWidth(op) != 0 or nativeReadOpcode(nativeReadEncodingOpcode(op)):
-          item.guards = item.guards or (1'u32 shl slot)
-        elif not supportedScalarOpcode(op): return false
-        item.operations[slot] = NativeOperation(opcode: op, slots: args.slots, immediate: args.x)
       elif fact.opcode in [1'u8, 40]:
         # The sealed original destination proves the edge once the cached operand
         # is a positive node for that exact original source. Unresolved workers
         # still carry a guest PC. Their identity must be excluded.
-        if worker != payload.handler and flatSourceHeader(f, args.y, payload.args.y):
-          item.targets[0] = args.y
-          item.branch = NativeOperation(opcode: fact.opcode)
+        let cached = if fact.opcode == 1: worker == flatCachedJump[1]
+          else: worker == flatCachedJump[40]
+        if cached and originalSource.targetValid[0] and
+            fusionSourceHeader(f, args.y, originalSource.targets[0]):
+          bound.targets[0] = args.y
+          bound.branch = originalSource.terminal
       elif fact.opcode == 80:
         # Link the cached edge only if its register and immediate match the original write.
-        if worker == flatCachedJump[80] and flatSourceHeader(f, args.y, payload.args.y):
+        if worker == flatCachedJump[80] and originalSource.targetValid[0] and
+            fusionSourceHeader(f, args.y, originalSource.targets[0]):
           if args.slots != payload.args.slots or args.x != payload.args.x: return false
-          item.targets[0] = args.y
-          item.branch = NativeOperation(opcode: 80, slots: payload.args.slots,
-            immediate: payload.args.x)
+          bound.targets[0] = args.y
+          bound.branch = originalSource.terminal
       elif fact.opcode in [50'u8, 180]:
         # The exact original dynamic worker/operands are required; execution still guards the live cache.
         if worker != payload.handler or args != payload.args: return false
-        let immediate = if fact.opcode == 50: args.x
-          else: (args.x and 0xffffffff'u64) or (uint64(args.y) shl 32)
-        item.branch = NativeOperation(opcode: fact.opcode, slots: args.slots, immediate: immediate)
+        bound.branch = originalSource.terminal
       else:
         let cached = fusionBranchHandler(fact.opcode)
         if cached != nil and worker == cached:
@@ -151,13 +157,15 @@ when declared(FlatFrame):
           let no = args.y
           let mask = 0xffffffff'u64
           if args.slots != payload.args.slots or (args.x and mask) != (payload.args.x and mask) or
-              not flatSourceHeader(f, yes, uint32(payload.args.x shr 32)) or
-              not flatSourceHeader(f, no, payload.args.y): return false
-          item.targets = [no, yes]
-          item.branch = NativeOperation(opcode: fact.opcode, slots: args.slots,
-            immediate: flatSext32(uint32(args.x and mask)))
+              not originalSource.targetValid[0] or not originalSource.targetValid[1] or
+              not fusionSourceHeader(f, yes, originalSource.targets[1]) or
+              not fusionSourceHeader(f, no, originalSource.targets[0]): return false
+          bound.targets = [no, yes]
+          bound.branch = originalSource.terminal
       inc node
-    item.complete
+    if not bound.complete: return false
+    item = bound
+    true
 
   proc sampleFlatFusion(probe: var FlatFusionProbe, header: uint32) {.noinline.} =
     ## Sparse bounded counts. The pseudorandom interval avoids lockstep with guest loops.

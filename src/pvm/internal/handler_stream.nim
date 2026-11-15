@@ -2868,6 +2868,7 @@ when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
     include ./handler_mixed_loop
     include ./handler_read_cycle
+    include ./handler_fusion_source
     include ./handler_fusion
   include ./read_admission_probe
 
