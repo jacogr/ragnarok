@@ -1986,6 +1986,8 @@ when defined(pvmSharedAsyncWitness) and NativeCheckedReadEnabled:
 
 proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
+  when defined(pvmSharedAsyncWitness):
+    assert probeRegisterDispatchBounds(), "register dispatch bounds must refuse without mutation"
   diagnosticPhase("checkedReceipts")
   checkedReceipts()
   diagnosticPhase("closedHandleMoves")

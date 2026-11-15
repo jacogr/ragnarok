@@ -85,3 +85,21 @@ reports a stale C module after removing a standard-library `requires` clause; th
 does not involve that edit, and equivalence has not been established. No issue was filed and
 upstream master was not tested. Preserve this record until the full-project failure can be
 reduced and classified.
+
+
+## November 15 pinned-build observation
+
+The pristine official `8102b8e3c46bde87b733ecd82e2249cb562e3a8f` macOS ARM64 archive
+also accepted semantic checking of a register-dispatch test that selected `flatRegisterPair[149]`
+or `flatRegister[149]` through a conditional procedure-value expression, then failed its checked
+ARC/Clang ThinLTO native build with the same undeclared `iir.1001` symbol in `shoggoth`.
+The retained build is `build/windows/dispatch-final-arm-build.log` and its private compiler cache;
+`build/compiler-issues/recursive-handler-seq/failed-probe.nim` retains the test shape. This is a
+second project-bound observation, not a standalone reproducer or an upstream diagnosis.
+
+Two reduced recursive procedure-container controls compiled with this archive. The supported
+witness uses the existing `flatHandler` and `flatRegisterPairHandler` factories, checks their
+results, and exercises those ordinary dispatch procedure values. Full native ARM shared tests
+pass with that construction, including invalid offsets, missing continuations and valid offsets
+above the optional native image coordinate ceiling. No compiler source or pin was changed.
+Five fresh failing reductions, current upstream testing and a confirmed root cause remain pending.

@@ -599,7 +599,14 @@ proc flatChargeFailure[Error: static[oracle.StepError]](f: var FlatFrame, off: u
   flatCharge(f, off)
 
 proc flatRegister[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
-  ## This is our literal prepared-register worker on a sixteen-byte operand record and flat register file.
+  ## Execute one sealed register operation from its sixteen-byte operand record. Invalid internal
+  ## coordinates refuse locally before mutation. Signed index guards match the checked array
+  ## predicates, allowing the common scalar workers to remain leaves with checks enabled.
+  ## Admitted stream extents are at most2^31-2 nodes, so a valid offset advances without wrapping.
+  if int(off) >= f.arguments.len:
+    # A damaged internal coordinate grants no guest snapshot and must not reach an array check.
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   let a = f.arguments[int(off)]
   var index: range[0..12] = 0
   var value = RegisterValue(0)
@@ -609,14 +616,24 @@ proc flatRegister[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   off+1
 
 proc flatRegisterPair[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
-  ## Master-style register-first prefix: the first mutation completes before the original checked second handler.
+  ## Prove both table extents, then complete the first mutation before its original checked
+  ## continuation. Admitted stream extents prove off+1 cannot wrap; a bad coordinate returns BackendFailure
+  ## without publishing CPU state. Valid second-node budget barriers retain their original handler.
+  if int(off) >= f.arguments.len:
+    # A damaged internal coordinate grants no guest snapshot and must not reach an array check.
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   let a = f.arguments[int(off)]
   var index: range[0..12] = 0
   var value = RegisterValue(0)
   if not computeRegisterOperands(a.slots, a.x, byte(Code), f.info.registers, index, value, Code):
     return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
-  f.info.registers[index] = value
   let next = off+1
+  if int(next) >= f.handlers.len:
+    # Prove the continuation before publishing the first original register mutation.
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
+  f.info.registers[index] = value
   let selected = f.handlers[int(next)]
   selected(f, next)
 
@@ -1734,6 +1751,50 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 129: flatMemoryWorker[4, true, true, true, false, true, true]
   of 130: flatMemoryWorker[8, true, false, true, false, true, true]
   else: nil
+
+when defined(pvmSharedAsyncWitness):
+  proc probeRegisterDispatchBounds*(): bool =
+    ## Test-only internal damage preserves CPU on a refused current slot or missing continuation.
+    ## Real admitted frames own all parallel tables; no malformed fixture grants execution authority.
+    let single = flatHandler(149, true, true)
+    let pair = flatRegisterPairHandler(149)
+    if single == nil or pair == nil: return false
+    for paired in [false, true]:
+      for off in [0'u32, NativeEntryLimit, high(uint32)]:
+        var frame = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None)
+        frame.info.gas = MachineGas(123)
+        frame.info.registers[0] = RegisterValue(0xabcdef0123456789'u64)
+        let before = frame.info
+        let selected = if paired: pair else: single
+        if selected(frame, off) != flatStop or frame.reason != oracle.StepError.BackendFailure or
+            frame.info != before: return false
+    var frame = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None)
+    frame.arguments = @[FlatArgs(x: 1)]
+    frame.info.registers[0] = RegisterValue(0xabcdef0123456789'u64)
+    let before = frame.info
+    if pair(frame, 0) != flatStop or
+        frame.reason != oracle.StepError.BackendFailure or frame.info != before: return false
+    var live = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None)
+    live.arguments = @[FlatArgs(x: 1), FlatArgs(x: 1)]
+    let worker = single
+    live.handlers = @[]
+    live.handlers.add(worker)
+    live.handlers.add(worker)
+    if pair(live, 0) != 2 or live.reason != oracle.StepError.None or
+        uint64(live.info.registers[0]) != 2: return false
+    if single(live, 0) != 1 or uint64(live.info.registers[0]) != 3: return false
+    # Interpreted streams may extend beyond the optional native image coordinate ceiling.
+    let largeOffset = NativeEntryLimit
+    var large = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None)
+    large.arguments = newSeqOfCap[FlatArgs](int(largeOffset)+2)
+    large.handlers = newSeqOfCap[FlatHandler](int(largeOffset)+2)
+    for index in 0..<int(largeOffset)+2:
+      large.arguments.add(FlatArgs(x: 1))
+      large.handlers.add(worker)
+    if pair(large, largeOffset) != largeOffset+2 or
+        large.reason != oracle.StepError.None or uint64(large.info.registers[0]) != 2:
+      return false
+    true
 
 proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
   ## Retain the same eagerly validated source boundaries and logical admission units without rich payload storage.
