@@ -237,3 +237,14 @@ when declared(FlatFrame):
       assertFusionFrame(reused, compared)
       assert uint64(reused.info.registers[2]) == 1 and after-before == uint64(blocks[1].span)
       assert reused.handlers[int(first)] == firstOriginal and reused.handlers[int(second)] == secondOriginal
+      # Sample genuine dispatcher entries after all cold/hot and paid-resume controls have finished.
+      # The adjacent worker may execute internal peer rounds; those are not dispatcher observations.
+      resetFlatFrame(reused, info)
+      reused.nativeSession = default(NativeSession)
+      reused.remaining = 12
+      var probe = FlatFusionProbe(down: 1, seed: 0)
+      flatDispatchLoop(reused, first, false, true, probe)
+      var observed = 0'u32
+      for sample in probe.samples:
+        if sample.token == second+1: observed += sample.count
+      assert observed == 1, "composition sampler observes the actual adjacent header entry"

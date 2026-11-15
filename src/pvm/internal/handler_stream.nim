@@ -3552,8 +3552,11 @@ template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[
   while node != flatStop:
     assert int(node) < f.handlers.len
     let selected = f.handlers[int(node)]
+    when NativeReadCycleEnabled:
+      when SampleFusion:
+        # Sample candidate headers at actual dispatcher entry; checked peer rounds remain internal.
+        if fusionHeaderWorker(selected): observeFlatFusion(fusionProbe, node)
     if selected == flatCharge:
-      when SampleFusion: observeFlatFusion(fusionProbe, node)
       # Preserve temporary barriers: select the first operation only after complete reservation/patching.
       when ObserveLater:
         node = flatReserveHeader[true](f, node)
