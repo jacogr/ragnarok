@@ -1,7 +1,7 @@
 # Suspected handler-value lowering failure during fusion composition
 
 This is another project-bound observation under **NIM-010**, not a confirmed common root cause
-or an upstream-ready report. The actual composition candidate did not produce an executable,
+or an upstream-ready report. The original composition candidate did not produce an executable,
 so it has no runtime correctness or performance result. No production PVM behavior, compiler
 source, build policy or pin is changed by this report.
 
@@ -101,4 +101,43 @@ copies contain no compiler/stdlib edit. Upstream master was observed at
 Next: reduce while retaining the optimizer assertion, run the applicable language-feature
 controls, check a pristine current upstream build, and investigate the relationship to the
 [earlier NIM-010 observations](../nimony-reports-2026-11-14/conditional-handler-value.md).
-No upstream issue or comment has been submitted, and no workaround is adopted by this report.
+No upstream issue or comment has been submitted. The original failing input remains unchanged;
+the subsequent supported source construction is recorded below.
+
+## Supported direct-comparison alternative
+
+A subsequent independent investigation preserved the failing input and replaced only the typed
+`cold`/`warm` bindings with direct comparisons to the same explicit handler instantiations:
+
+```nim
+if branch == 83:
+  combinedBranch = worker == flatRegisterBranchCold[131, 83] or
+      worker == flatFusedRegisterBranch[131, 83]
+elif branch == 88:
+  combinedBranch = worker == flatRegisterBranchCold[131, 88] or
+      worker == flatFusedRegisterBranch[131, 88]
+```
+
+The unchanged original full Pinky build reproduces the optimizer assertion. This alternative
+compiles and links the actual Pinky and DOOM drivers with the same pristine `8102b8e3` checked
+ARC/Clang ThinLTO profile and fresh project/stdlib caches. Its generated final C contains all
+four comparisons against defined specialized routine symbols. The existing full shared ARM
+suite also runs successfully with that construction. No casts, feature opt-ins, closure/thunk,
+defensive container copies, compiler changes, pin changes or disabled checks are involved.
+
+The retained independent receipt, source deltas and generated files are under ignored
+`build/compiler-issues/fusion-composition-workaround/` in the investigation checkout.
+The maintained [fusion source binder](../../src/pvm/internal/handler_fusion.nim) uses this direct
+construction. Its additional cached-terminal and specialized-header source guards are separate
+runtime admission requirements, not changes to this failing reproduction.
+
+The runtime follow-up independently passes both ARM and Linux x86 semantic profiles and the
+full shared ARM suite under checked ThinLTO. New source-bound controls cover actual cold/hot
+identities, altered capabilities, partial gas/attempt quotas, both conditional arms, halt/host
+exits, exact live/saved predecessor restoration and retained paid continuation. Compiler
+compilation success alone does not establish runtime correctness or a performance improvement;
+runtime qualification and measurements belong to that implementation change.
+
+This successful source construction does not repair the compiler, establish the assertion's
+root cause, qualify current upstream or complete the pending standalone reduction. The original
+portable patch and five failure receipts above are intentionally unchanged.

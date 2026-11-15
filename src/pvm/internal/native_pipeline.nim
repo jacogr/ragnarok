@@ -1031,6 +1031,9 @@ when NativeReadCycleEnabled:
   func nativeFusionTraining*(session: NativeSession): bool =
     ## One previous long settled call is required, with little work done by a ready prefix.
     ## Existing checked read, ring and connected mixed ownership takes precedence.
+    ## The work-share gate avoids sampling and another compilation when the current owner already
+    ## performs appreciable native work. It is a coarse admission-cost policy, not an estimate of
+    ## remaining optimizable source; a useful specialization can therefore suppress graph training.
     let data {.cursor.} = session.data
     if data == nil or data.fusionOffered or data.fusionSampled or
         data.lastSettledWork < NativeFusionTrainingFloor or

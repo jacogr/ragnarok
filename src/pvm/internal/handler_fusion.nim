@@ -5,8 +5,12 @@
 ## The copied block must reproduce original operands, paid extent and positive static edges.
 ## Dynamic entry permission comes only from the admitted original jump table; live checked tags
 ## and immutable native entries must both agree before an indirect terminal can complete natively.
-## The primary retains its handlers. Fusion patches only disjoint ordinary headers during
-## one segment and restores all of them before releasing the auxiliary arena.
+## The primary retains its handlers. Fusion patches only disjoint source-proven reservation
+## headers during one segment and restores each exact predecessor before releasing the arena.
+## Existing combined register/branch workers keep their separately addressable original nodes.
+## Binding still couples source proof to the current checked-worker identities so it cannot
+## silently replace a temporary or foreign owner. These compatibility checks are not optimizer
+## passes: an IR-first builder needs independent overlay ownership before removing that coupling.
 
 when declared(FlatFrame):
   func fusionBranchHandler(opcode: byte): nil FlatHandler =
@@ -30,10 +34,14 @@ when declared(FlatFrame):
     of 175: flatBranch[175]
     else: nil
 
+  func fusionHeaderWorker(handler: FlatHandler): bool =
+    ## Classify reservation workers only; binding still proves the complete source and specialized shape.
+    handler == flatCharge or handler == flatChargedAdjacent[false]
+
   proc bindFlatFusion(f: FlatFrame, off: uint32, item: var NativeFusionBlock): bool =
     ## Decode the sealed source once during selection. A refused block stays checked.
     if uint64(off) >= uint64(f.handlers.len) or uint64(off) >= uint64(f.sites.len) or
-        f.handlers[int(off)] != flatCharge: return false
+        not fusionHeaderWorker(f.handlers[int(off)]): return false
     let ordinal = f.sites[int(off)]
     if uint64(ordinal) >= uint64(f.plan.facts.len): return false
     let pc = f.plan.facts[int(ordinal)].pc
@@ -42,6 +50,13 @@ when declared(FlatFrame):
     var summary = default(FlatSourceSummary)
     if not flatCompleteOriginalHeader(f, pc, NativeReadFactLimit, header, source): return false
     if header != off or not flatWalkCompleteSource(f, header, source, summary): return false
+    if f.handlers[int(off)] != flatCharge:
+      # The adjacent worker hard-codes these two source operations. Its identity alone
+      # cannot grant native authority to a different otherwise valid original block.
+      if source.span != 2 or source.last != source.first+1 or
+          f.plan.facts[int(source.first)].opcode != 132 or
+          f.plan.facts[int(source.last)].opcode != 81: return false
+      if f.handlers[int(summary.terminal)] != flatBranch[81]: return false
     if nativeReadObservationOverlaps(f.nativeSession, NativeReadBodyInfo(header: off,
         terminal: summary.terminal, first: source.first, last: source.last,
         epoch: nativeEpoch(f.nativeSession))): return false
@@ -70,10 +85,26 @@ when declared(FlatFrame):
           let paired = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(fact.opcode)
             else: flatMemoryPairHandler(fact.opcode)
           if paired == nil or worker != paired:
-            if index >= source.last or node+1 >= summary.terminal or
-                f.sites[int(node+1)] != index+1: return false
-            let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
-            if fused == nil or worker != fused: return false
+            var combinedBranch = false
+            if index+1 == source.last and node+1 == summary.terminal and fact.opcode == 131:
+              # Both workers retain the original terminal record, which is checked below.
+              # Direct comparisons avoid the typed-local lowering failure tracked as NIM-010.
+              let branch = f.plan.facts[int(index+1)].opcode
+              if branch == 83:
+                combinedBranch = worker == flatRegisterBranchCold[131, 83] or
+                    worker == flatFusedRegisterBranch[131, 83]
+              elif branch == 88:
+                combinedBranch = worker == flatRegisterBranchCold[131, 88] or
+                    worker == flatFusedRegisterBranch[131, 88]
+              if combinedBranch:
+                # A combined checked worker owns this exact cached terminal, not an opaque paid fallback.
+                let cached = fusionBranchHandler(branch)
+                if cached == nil or f.handlers[int(summary.terminal)] != cached: return false
+            if not combinedBranch:
+              if index >= source.last or node+1 >= summary.terminal or
+                  f.sites[int(node+1)] != index+1: return false
+              let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
+              if fused == nil or worker != fused: return false
         let slot = int(node-off-1)
         if slot >= item.operations.len: return false
         let op = fact.opcode

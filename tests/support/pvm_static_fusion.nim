@@ -9,6 +9,8 @@ import ./pvm_memory_windows
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform, native_read_body]
+when NativeReadCycleEnabled:
+  import ./pvm_fusion_composition
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -679,6 +681,7 @@ proc runStaticFusion*() =
   checkCollidingFusionReceipts()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
+    runFusionComposition()
     checkFusionConditionalMoves()
     checkFusionGraphTokens()
     checkFusionIndirectTargets()
