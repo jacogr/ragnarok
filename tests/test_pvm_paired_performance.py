@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Check direct paired arithmetic, fresh failure evidence and detached baseline cleanup."""
+import contextlib
+import io
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -17,10 +19,10 @@ import pvm_ci_performance as performance
 from pvm_performance_fixtures import invocation_observations
 
 
-def cells():
+def cells(backend='jit'):
     """Independent timings distinguish median pair ratios from a ratio of pooled medians."""
     template = next(row['parsed'] for row in invocation_observations()['runs']
-                    if row['case_id'] == 'pinky-1' and row['role'] == 'jit')
+                    if row['case_id'] == 'pinky-1' and row['role'] == backend)
     rows = []
     for pair, base, candidate in [(0, 100, 60), (1, 300, 150)]:
         for version, value in [('baseline', base), ('candidate', candidate)]:
@@ -68,6 +70,59 @@ class PairedPerformanceTests(unittest.TestCase):
                 else: rows[0]['parsed']['policy']['jit_built'] = False
                 with self.assertRaises(ValueError):
                     performance.paired_summary(rows, [dict(case_id='pinky-1')], 2)
+
+    def test_interpreted_pairs_reject_wrong_policy_and_native_work(self):
+        """A JIT fallback cannot impersonate interpretation, and interpretation must perform no native work."""
+        for kind in ('wrong-policy', 'native-work'):
+            with self.subTest(kind=kind):
+                rows = cells('jit' if kind == 'wrong-policy' else 'interpreted')
+                if kind == 'native-work':
+                    parsed = rows[0]['parsed']
+                    for key in ('fragments', 'calls', 'operations', 'code_bytes'):
+                        parsed['native'][key] = 1
+                        parsed['policy'][key] = 1
+                    parsed['policy']['actual'] = 'jit'
+                with self.assertRaises(ValueError):
+                    performance.paired_summary(rows, [dict(case_id='pinky-1')], 2, 'interpreted')
+
+    def test_help_preserves_accepted_pairing_evidence(self):
+        """Inspecting CLI help performs no benchmark request and must not erase accepted evidence."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            for name in ('paired-results.json', 'paired-summary.md'): (folder/name).write_text('accepted')
+            with (patch.object(performance, 'BUILD', folder),
+                  patch.object(sys, 'argv', ['pvm_ci_performance.py', '--help']),
+                  patch.object(performance.PerformanceRunner, 'execute') as execute,
+                  contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stopped):
+                performance.main()
+            self.assertEqual(stopped.exception.code, 0)
+            execute.assert_not_called()
+            for name in ('paired-results.json', 'paired-summary.md'):
+                self.assertEqual((folder/name).read_text(), 'accepted')
+
+    def test_invalid_backend_retires_stale_pair_before_work(self):
+        """Bad API and CLI requests cannot leave an older accepted pair or start expensive qualification."""
+        for source in ('api', 'cli', 'environment'):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                (folder/'paired-results.json').write_text('{"status":"passed"}')
+                (folder/'paired-summary.md').write_text('old accepted ratios')
+                if source == 'api':
+                    with self.assertRaises(ValueError):
+                        performance.PairedRunner(context(folder), 'b'*40, 'reference')
+                    self.assertEqual(json.loads((folder/'paired-results.json').read_text())['status'], 'failed')
+                else:
+                    arguments = ['pvm_ci_performance.py', '--baseline', 'b'*40]
+                    if source == 'cli': arguments += ['--paired-backend', 'reference']
+                    with (patch.object(performance, 'BUILD', folder), patch.object(sys, 'argv', arguments),
+                          patch.dict(performance.os.environ, {'PVM_PAIR_BACKEND': 'reference'}),
+                          patch.object(performance.PerformanceRunner, 'execute') as execute,
+                          contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit)):
+                        performance.main()
+                    execute.assert_not_called()
+                    self.assertFalse((folder/'paired-results.json').exists())
+                self.assertNotIn('old accepted', (folder/'paired-summary.md').read_text()
+                    if (folder/'paired-summary.md').exists() else '')
 
     def test_zero_resolution_is_explicit(self):
         """A zero denominator yields no ratio rather than infinity or a fabricated speedup."""
@@ -160,12 +215,20 @@ class PairedPerformanceTests(unittest.TestCase):
                         self.assertEqual(observed['error'], 'primary process failure')
 
     def test_complete_alternating_cohort_and_interrupted_recheck(self):
+        """The default JIT path preserves balanced complete samples and strict interrupted rechecks."""
+        self._assert_complete_cohort('jit')
+
+    def test_interpreted_cohort_keeps_policy_and_all_samples(self):
+        """Both revisions use checked interpretation without weakening sampling or failure acceptance."""
+        self._assert_complete_cohort('interpreted')
+
+    def _assert_complete_cohort(self, backend):
         """Publish every paired full-call cell, then invalidate that success on a failed new run."""
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             current = context(folder)
             current.cases = [dict(case_id='pinky-1', family='guest', case='pinky', limit=1)]
-            templates = {row['version']: row['parsed'] for row in cells() if row['pair'] == 0}
+            templates = {row['version']: row['parsed'] for row in cells(backend) if row['pair'] == 0}
             class Controlled(performance.PairedRunner):
                 """Supply literal parsed clocks while exercising the real scheduling/publication loop."""
                 fail_at = 0
@@ -175,10 +238,10 @@ class PairedPerformanceTests(unittest.TestCase):
                     return {'guest': Path('baseline')}, {'guest': Path('candidate')}
                 def controls(self, case, role):
                     """Record which executable received the baseline controls."""
-                    self.report['controls'].append(dict(version=self.images['guest'].name))
+                    self.report['controls'].append(dict(version=self.images['guest'].name, backend=role))
                 def invocation(self, case, role):
                     """Both versions receive the same fixture marker and differ only in executable."""
-                    return [self.images['guest'].name], {'input': 'same'}, None
+                    return [self.images['guest'].name], {'input': 'same', 'backend': role}, None
                 def command(self, arguments, name, env=None, **options):
                     """Retain observable inputs, or fail before accepting the configured process."""
                     self.launched += 1
@@ -189,20 +252,25 @@ class PairedPerformanceTests(unittest.TestCase):
                 def parse(self, output, case, role):
                     """Literal full-invocation fixtures retain the canonical measurement/policy shape."""
                     return {'pinky-1': deepcopy(templates[output])}
-            runner = Controlled(current, 'b'*40)
+            runner = Controlled(current, 'b'*40, backend)
             observed = runner.execute()
             self.assertEqual(observed['status'], 'passed')
+            self.assertEqual(observed['backend'], backend)
+            self.assertIn(('JIT' if backend == 'jit' else 'Interpreted')+' processes',
+                          (folder/'paired-summary.md').read_text())
             self.assertEqual(len(observed['runs']), 22)
-            self.assertEqual(observed['controls'], [dict(version='baseline'), dict(version='candidate')])
+            self.assertEqual(observed['controls'], [dict(version=version, backend=backend)
+                for version in ('baseline', 'candidate')])
             for pair in range(11):
                 rows = [row for row in observed['runs'] if row['pair'] == pair]
                 self.assertEqual([row['version'] for row in rows], rows[0]['order'])
                 self.assertEqual({row['version'] for row in rows}, {'baseline', 'candidate'})
-                self.assertTrue(all(row['run']['benchmark_environment']['input'] == 'same' for row in rows))
+                self.assertTrue(all(row['run']['benchmark_environment'] ==
+                    dict(input='same', backend=backend) for row in rows))
             orders = [tuple(row['order']) for row in observed['runs'][::2]]
             self.assertEqual(set(orders), {('baseline', 'candidate'), ('candidate', 'baseline')})
             self.assertLessEqual(abs(orders.count(orders[0])-orders.count(orders[1])), 1)
-            failed = Controlled(current, 'b'*40)
+            failed = Controlled(current, 'b'*40, backend)
             failed.fail_at = 3
             with self.assertRaisesRegex(RuntimeError, 'injected process'):
                 failed.execute()
