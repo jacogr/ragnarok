@@ -30,7 +30,7 @@ const
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
   NativeFusionCycleLimit* = 8 ## Bound source-cycle analysis and compact receipt validation.
   NativeFusionCycleVisitLimit* = 4096 ## Bound scalar work per entry, including zero-priced cycles.
-  NativeFusionReceiptBits = 9 ## Fixed one-probe cache geometry; a bucket never grants path authority.
+  NativeFusionReceiptBits = 11 ## Fixed one-probe cache geometry; a bucket never grants path authority.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
   NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
   NativeFusionGasOffset* = NativeMixedLoopContextBytes
@@ -89,8 +89,8 @@ type
     entry, next: uint32
     receipt: NativeFusionExit
   NativeFusionReceipts* = array[1 shl NativeFusionReceiptBits, NativeFusionReceipt]
-    ## One bounded 52 KiB call-local cache of successful proofs for exactly one borrowed graph.
-    ## Its 512 records reduce collisions between different paths while retaining one lookup.
+    ## One bounded 208 KiB call-local cache of successful proofs for exactly one borrowed graph.
+    ## Its 2048 records reduce repeated source walks across diverse long paths while retaining one lookup.
     ## Only an active graph segment initializes this storage; no invocation borrow escapes it.
 
 func nativeFusionSlot*(token: uint32): int {.inline.} =

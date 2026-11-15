@@ -42,13 +42,13 @@ proc checkRepeatedFusionReceipt() =
   assert checkNativeFusionExit(memo, blocks, 10, 21, 15, 5, state) == proven
 
 proc checkCollidingFusionReceipts() =
-  ## These independent one-visit receipts collide in upper-bank bucket 300 at the current width.
+  ## These independent one-visit receipts collide in bucket 1203 in the 2048-slot cache.
   ## Alternating them must preserve complete source/debit identity, including after a cache hit.
   let blocks = [
     NativeFusionBlock(header: 10, terminal: 11, span: 1, price: 3,
       targets: [638'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
     NativeFusionBlock(header: 20, terminal: 21, first: 1, span: 1, price: 7,
-      targets: [271'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+      targets: [5625'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
   var memo = default(NativeFusionReceipts)
   for trial in 0..7:
     # Literal next headers and source tokens exercise the same occupied bucket in both directions.
