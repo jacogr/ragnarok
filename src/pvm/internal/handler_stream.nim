@@ -989,14 +989,22 @@ proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateSt
   ## Shared selected access equation; only the cold load worker preserves state across full preflight.
   ## Prove current arguments and a paired continuation before publishing registers, bytes or dirty bits.
   ## Admitted streams bound coordinates below 2^31, so a valid current slot proves off+1 cannot wrap.
+  ## Freeze the actual next entry before scalar work; its enclosing reservation has already patched
+  ## any partial-budget barrier. Memory operations never patch handlers or invoke host callbacks.
   if int(off) >= f.arguments.len:
     f.reason = oracle.StepError.BackendFailure
     return flatStop
-  when Pair:
-    # Validate the continuation before a load publishes a register or a store changes bytes.
-    if int(off+1) >= f.handlers.len:
+  let selected = when Pair:
+    # Capture the actual entry after reservation installed any quota barrier. Scalar memory
+    # work cannot patch the exclusive frame's handlers or invoke callbacks; this pointer stays valid.
+    let next = off+1
+    if int(next) >= f.handlers.len:
       f.reason = oracle.StepError.BackendFailure
       return flatStop
+    f.handlers[int(next)]
+  else:
+    # The unpaired specialization never uses this constant; it emits no continuation lookup.
+    flatNoop
   let a = f.arguments[int(off)]
   var base = 0'u64
   when Indirect:
@@ -1020,10 +1028,8 @@ proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateSt
     let value = when ImmediateStore: flatSext32(a.y) else: uint64(f.info.registers[a.slots.aIndex])
     if not flatStore[Width](f, off, address, value): return flatStop
   when Pair:
-    # Source continuation is unchanged, including partial-budget barriers installed in the next slot.
-    let next = off+1
-    let selected = f.handlers[int(next)]
-    selected(f, next)
+    # Invoke the validated original entry without repeating a table proof after CPU/byte publication.
+    selected(f, off+1)
   else:
     off+1
 
