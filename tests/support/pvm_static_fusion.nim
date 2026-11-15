@@ -5,6 +5,7 @@
 ## A two-block loop leaves a tiny pure prefix intact, trains once, and has a paid memory exit.
 
 import std/assertions
+import ./pvm_memory_windows
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform, native_read_body]
@@ -122,7 +123,7 @@ proc checkLongFusionReceipts() =
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
 proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
-    conditional: bool = false): Program =
+    conditional: bool = false, windows: bool = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -142,22 +143,33 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   jump([40'u8], first)
   assert code.len == first
   emit([2'u8]) # Folded no-op still consumes an original attempt.
-  emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
-  if late:
-    # A wrapping in-page offset trains with one page but permits a late cross-page fault.
-    emit([132'u8, 0x24, 0xff, 0x0f]) # R4 = R2 & 4095.
-    emit([200'u8, 0x64, 4]) # R4 = R4 + R6.
-    if wide:
-      # All13 lanes participate across linked blocks, including full-width aliased writes
-      # before the possible paid refusal and a read-only halt sentinel copied into R10.
-      emit([149'u8, 0x77, 1])
-      emit([149'u8, 0x88, 1])
-      emit([100'u8, 0x3a]) # R10 = R3.
-      emit([133'u8, 0xbb, 0x80]) # R11 = R11 xor sign-extended -128.
-      emit([100'u8, 0xc9]) # R9 = R12 before the later load-and-jump replaces it.
-    emit([124'u8, 0x41, 0]) # Read byte R1,[R4].
+  if windows:
+    # An ordered store prefix precedes nearby signed reads and a separate nearby write group.
+    emit([120'u8, 0x50, 0])
+    emit([132'u8, 0x24, 7]) # R4 = R2 & 7 keeps training within one page.
+    emit([200'u8, 0x64, 4])
+    emit([127'u8, 0x41, 0])
+    emit([215'u8, 0xa9, 11]) # Clobber x86 R8 scratch between the grouped reads.
+    emit([127'u8, 0x4a, 8])
+    emit([121'u8, 0x51, 0])
+    emit([121'u8, 0x5a, 8])
   else:
-    emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
+    emit([120'u8, 0x50, 0]) # Store byte R0,[R5].
+    if late:
+      # A wrapping in-page offset trains with one page but permits a late cross-page fault.
+      emit([132'u8, 0x24, 0xff, 0x0f]) # R4 = R2 & 4095.
+      emit([200'u8, 0x64, 4]) # R4 = R4 + R6.
+      if wide:
+        # All13 lanes participate across linked blocks, including full-width aliased writes
+        # before the possible paid refusal and a read-only halt sentinel copied into R10.
+        emit([149'u8, 0x77, 1])
+        emit([149'u8, 0x88, 1])
+        emit([100'u8, 0x3a]) # R10 = R3.
+        emit([133'u8, 0xbb, 0x80]) # R11 = R11 xor sign-extended -128.
+        emit([100'u8, 0xc9]) # R9 = R12 before the later load-and-jump replaces it.
+      emit([124'u8, 0x41, 0]) # Read byte R1,[R4].
+    else:
+      emit([124'u8, 0x61, 0]) # Read byte R1,[R6]. A missing page is a paid fault.
   if conditional:
     # The portable public call independently checks all four conditional forms in a native body.
     emit([147'u8, 0x1a, 0x80])
@@ -344,14 +356,17 @@ when NativeReadCycleEnabled:
 
   proc checkDenseFusionGuards() =
     ## Dense guarded bodies must fit without duplicating restoration for every paid site.
+    ## Alternating source bases keep every guard independent even when their live values agree.
     ## Literal source operands grant no Frame authority. Each native return is checked before replay.
-    let source = decodeProgram([0'u8, 0, 10, 124, 0x41, 0, 149, 0x77, 1, 149, 0x88, 1,
-      0, 0x49, 2], CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+    let source = decodeProgram([0'u8, 0, 13, 124, 0x41, 0, 124, 0x51, 0, 149, 0x77, 1,
+      149, 0x88, 1, 0, 0x49, 0x12], CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
     assert source.error == ProgramError.None
     let read = instruction(source.value, CodeAddress(0))
-    let increment = instruction(source.value, CodeAddress(3))
-    let successor = instruction(source.value, CodeAddress(6))
-    assert read.error == ProgramError.None and increment.error == ProgramError.None and
+    let alternate = instruction(source.value, CodeAddress(3))
+    let increment = instruction(source.value, CodeAddress(6))
+    let successor = instruction(source.value, CodeAddress(9))
+    assert read.error == ProgramError.None and alternate.error == ProgramError.None and
+      increment.error == ProgramError.None and
       successor.error == ProgramError.None
     var bytes = default(array[15, byte])
     for index in 0..<bytes.len: bytes[index] = byte(index+1)
@@ -365,7 +380,8 @@ when NativeReadCycleEnabled:
           branch: NativeOperation(opcode: 40))]
       for index in 0..<bytes.len:
         blocks[0].operations[index] = NativeOperation(opcode: 124,
-          slots: instructionRegisters(read), immediate: uint64(index))
+          slots: instructionRegisters(if (index and 1) == 0: read else: alternate),
+          immediate: uint64(index))
       blocks[0].operations[15] = NativeOperation(opcode: 149,
         slots: instructionRegisters(increment), immediate: 1)
       blocks[1].operations[0] = NativeOperation(opcode: 149,
@@ -382,6 +398,7 @@ when NativeReadCycleEnabled:
       for slot in 0..12: initial[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
       initial[0] = RegisterValue(0x1234567800000002'u64)
       initial[4] = RegisterValue(0x1234567800010000'u64)
+      initial[5] = initial[4]
       for accessible in 0..bytes.len:
         # Clip the same original extent at each guard; earlier writes survive the first failed load.
         var registers = initial
@@ -548,6 +565,9 @@ when NativeReadCycleEnabled:
       assert dynamicContext.gas == 90 and dynamicContext.remaining == 13
       assert uint64(dynamicRegisters[0]) == 247
 
+proc checkWindowFusionFault()
+  ## The grouped ordinary-call fault/repair witness is defined after the public fusion checks.
+
 proc checkLateFusionFault(wide: bool)
   ## The late paid-memory fixture is defined below the main supported fusion witness.
 
@@ -654,6 +674,7 @@ proc checkPublicFusion(mode: byte, conditional: bool = false) =
 
 proc runStaticFusion*() =
   ## Exercise raw geometry/refusal controls, then ordinary prepared calls through every supported branch form.
+  runMemoryWindows()
   checkRepeatedFusionReceipt()
   checkCollidingFusionReceipts()
   checkLongFusionReceipts()
@@ -666,6 +687,7 @@ proc runStaticFusion*() =
   for mode in [0'u8, 50, 180, 181]:
     checkPublicFusion(mode)
   checkPublicFusion(0, conditional = true)
+  checkWindowFusionFault()
   checkLateFusionFault(wide = false)
   checkLateFusionFault(wide = true)
 
@@ -724,4 +746,66 @@ proc checkLateFusionFault(wide: bool) =
     RegisterValue(165)
   assert pageImage(memory, PageIndex(16)).value.bytes[0] == 0
   assert machineInfo(late.value).value == info
+  assert close(runtime)
+
+proc checkWindowFusionFault() =
+  ## Train one source-owned graph, preserve a late partial read, then repair and resume the same owners.
+  let program = fusionGuest(windows = true)
+  let runtime = newNativeRuntime()
+  try:
+    assert start(runtime)
+  except:
+    assert false, "memory-window runtime failed to start"
+  let jit = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Jit, runtime)
+  let checked = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Interpreted)
+  assert jit.error == PreparationError.None and checked.error == PreparationError.None
+  var page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+  for index in 0..<page.bytes.len: page.bytes[index] = byte(index and 255)
+  let capturedMemory = captureMemory([page], PageLimit(2))
+  assert capturedMemory.error == MachineError.None
+  let memory = capturedMemory.value
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(8000000))
+  info.registers[0] = RegisterValue(0xdeadbeef000000a5'u64)
+  info.registers[3] = RegisterValue(0xffff0000'u64)
+  info.registers[5] = RegisterValue(65536)
+  info.registers[6] = RegisterValue(65536)
+  info.registers[7] = RegisterValue(0x8765432100000007'u64)
+  info.registers[12] = RegisterValue(90000)
+  let captured = captureMachine(program, memory, info)
+  assert captured.error == MachineError.None
+  let source = captured.value
+  let limit = ExecutionStepLimit(2000000)
+  let expected = execute(source, limit, checked.value)
+  assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+  for sample in 0..2:
+    # Publish/train outside invocation; every process call retains its full scalar state oracle.
+    assertSameFusionResult(execute(source, limit, jit.value), expected)
+    waitNativeCompiler(runtime)
+  assert preparedInfo(jit.value).value.nativeFragments == 2
+  info.registers[6] = RegisterValue(65536+4096-12)
+  let late = captureMachine(program, memory, info)
+  assert late.error == MachineError.None
+  let before = preparedInfo(jit.value).value.nativeOperations
+  let fault = execute(late.value, limit, jit.value)
+  let reference = execute(late.value, limit, checked.value)
+  assertSameFusionResult(fault, reference)
+  assert fault.error == StepError.None and fault.value.exit == StepExit.Fault
+  assert preparedInfo(jit.value).value.nativeOperations > before
+  let cpu = machineInfo(fault.value.machine).value
+  assert uint64(cpu.registers[2]) == 3 and cpu.blockCharged
+  assert uint64(cpu.registers[1]) == 0xfffffffffffff8f7'u64,
+    "checked replay must retain the first signed read before the second read faults"
+  assert uint64(fault.value.faultPage) == 17'u64*4096
+  assert pageImage(memory, PageIndex(16)).value == page
+  assert machineInfo(late.value).value == info
+  let committed = pageImage(memoryOf(fault.value.machine).value, PageIndex(16)).value
+  let repairedMemory = captureMemory([committed,
+    PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)], PageLimit(2))
+  assert repairedMemory.error == MachineError.None
+  let repaired = captureMachine(program, repairedMemory.value, cpu)
+  assert repaired.error == MachineError.None
+  let resumed = execute(repaired.value, limit, jit.value)
+  let resumedReference = execute(repaired.value, limit, checked.value)
+  assertSameFusionResult(resumed, resumedReference)
+  assert resumed.error == StepError.None and resumed.value.exit == StepExit.Halt
   assert close(runtime)

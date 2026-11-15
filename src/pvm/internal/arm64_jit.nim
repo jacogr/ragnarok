@@ -18,7 +18,7 @@ import ./native_read_body
 when NativeReadCycleEnabled:
   from std/bitops import countSetBits
   import ./[native_read_cycle, native_read_window]
-  import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
+  import ./[native_mixed_loop, native_bitmap_loop, native_fusion, native_memory_window]
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
