@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Read parsed CI configuration and evaluate only the scheduling expressions under test."""
+"""Read duplicate-safe CI configuration and evaluate only the scheduling expressions under test."""
 import ast
 from copy import deepcopy
 from functools import lru_cache
@@ -65,11 +65,28 @@ def expression(source, context):
     return value(tree.body)
 
 
+class WorkflowLoader(getattr(yaml, 'CSafeLoader', yaml.SafeLoader)):
+    """Reject duplicate explicit keys like GitHub, while retaining valid anchors and merge overrides."""
+
+    def construct_mapping(self, node, deep=False):
+        """Check original keys before the safe constructor expands inherited merge mappings."""
+        seen = set()
+        for key, _ in node.value:
+            # A merge may intentionally supply a value overridden by an explicit key.
+            if key.tag == 'tag:yaml.org,2002:merge':
+                continue
+            name = self.construct_object(key, deep=deep)
+            if name in seen:
+                raise ValueError('Duplicate workflow key '+str(name)+' at line '+str(key.start_mark.line+1))
+            seen.add(name)
+        return super().construct_mapping(node, deep=deep)
+
+
 # Parse YAML once per input; return owned data so mutation witnesses cannot contaminate later tests.
 @lru_cache(maxsize=8)
 def _parsed_workflow(text):
     """Use safe constructors, including anchors, without a layout-specific workflow parser."""
-    return yaml.load(text, Loader=getattr(yaml, 'CSafeLoader', yaml.SafeLoader))
+    return yaml.load(text, Loader=WorkflowLoader)
 
 
 def workflow(text):

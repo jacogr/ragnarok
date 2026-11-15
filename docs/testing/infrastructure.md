@@ -494,6 +494,13 @@ timings from different CI machines or operating systems do not establish a runti
 Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.
 
+For current x86 Sieve attribution, add `pvm_guest_profile=true` to the focused `bench-pvm`
+dispatch. Profiling runs after timing in the same native job, using the exact retained canonical
+image and inputs. It retains all thirteen complete-state calls and calibrated cold/final reused
+instruction and simulated branch counts; instrumented clocks are discarded. The short input
+covers both runtime policies, while the large input profiles JIT only to bound collection cost.
+The PVM artifact includes the original raw Callgrind parts, annotations and source-bound report.
+
 Provisioned Nimony/formatter, tlanif, browser-backend and production native library caches live
 under `build-tools/`, separate from project outputs and verification evidence under `build/`. `make clean` retains these
 tools; `make clean-tools` retires them explicitly. Setup and tool cleanup share an exclusive lock.

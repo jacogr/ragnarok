@@ -45,6 +45,12 @@ name: CI
         options: [jit, interpreted]
         default: jit
 
+      pvm_guest_profile:
+        description: "After bench-pvm timing, profile the original Sieve image on its x86 runner"
+        required: false
+        type: boolean
+        default: false
+
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
         required: false
@@ -888,9 +894,15 @@ jobs:
       - *quic-built-cache
       - *polkavm-built-cache
       - name: Install pinned asset decompression prerequisite
+        env:
+          # Install before the canonical build/timing so profiling cannot change its system libraries.
+          PVM_PROFILE_TOOLS: ${{ inputs.suite == 'bench-pvm' && inputs.pvm_guest_profile && matrix.family.group == 'x86_64' && '1' || '0' }}
         run: make host-tools PVM_ASSET_TOOLS=1
       - name: Qualify and compare current PVM backends
         run: make bench-pvm-performance
+      - name: Attribute retained Sieve public invocations
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' && inputs.pvm_guest_profile && matrix.family.group == 'x86_64' }}
+        run: make profile-pvm-current-guest PVM_PROFILE_REVISION="$GITHUB_SHA"
       - name: Show complete current-source comparison
         if: always()
         run: |
@@ -919,6 +931,9 @@ jobs:
             build/tests/pvm-native/*.log
             build/tests/native/selected/pvm_memory_reuse.log
             build/tests/native/compiler-*/evidence/pvm_memory_reuse.json
+            build/tests/pvm-guest-profile/*.json
+            build/tests/pvm-guest-profile/*.log
+            build/tests/pvm-guest-profile/*.callgrind*
             build/ci/*.log
 
   pvm-fuzz:
