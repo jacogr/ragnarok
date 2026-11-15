@@ -898,6 +898,17 @@ when NativeReadCycleEnabled:
     assert uint64(mixedRegisters[0]) == 3
     assert nativeFusionExit(mixed, 900, 901, 1000, 1000, mixedContext).valid
 
+    # Metadata queries remain bounded and moved/default images expose no compact selection.
+    var empty = default(NativeImage)
+    assert not nativeFusionCycleEntry(empty, 0)
+    var transferable = lowerNativeFusion(scalarFusionCycle(1))
+    assert nativeFusionCycleEntry(transferable, 0)
+    assert not nativeFusionCycleEntry(transferable, -1)
+    assert not nativeFusionCycleEntry(transferable, NativeFusionBlockLimit)
+    let retained = move(transferable)
+    assert nativeFusionCycleEntry(retained, 0)
+    assert not nativeFusionCycleEntry(transferable, 0)
+
     # A full ordinary arena can retain only some optional duplicates. Refused copies keep callable
     # logged entries, rather than disabling an otherwise valid graph or publishing a partial cycle.
     var crowded = newSeq[NativeFusionBlock](NativeFusionBlockLimit)

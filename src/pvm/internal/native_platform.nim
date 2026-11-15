@@ -741,9 +741,10 @@ when NativeReadCycleEnabled:
     nativeFusionEntry(image, slot) and slot < NativeFusionBlockLimit and
       (image.fusionEntries[slot div 64] and (1'u64 shl (slot mod 64))) != 0
 
-  func nativeFusionCycleEntry*(image: NativeImage, slot: int): bool =
-    ## Only a successfully published compact external prologue authorizes count-only receipts.
-    nativeFusionEntry(image, slot) and slot < NativeFusionBlockLimit and
+  func nativeFusionCycleEntry*(image: NativeImage, slot: int): bool {.inline.} =
+    ## Read copied metadata only. The private mask is zero in default/moved images and set only
+    ## after complete publication. Actual entry separately checks readiness, kind and offsets.
+    slot >= 0 and slot < NativeFusionBlockLimit and
       (image.fusionCycleEntries[slot div 64] and (1'u64 shl (slot mod 64))) != 0
 
   proc enterNativeFusion*(image: NativeImage, slot: int, registers: var RegisterFile,
