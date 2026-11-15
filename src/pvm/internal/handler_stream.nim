@@ -3875,7 +3875,9 @@ when NativeReadCycleEnabled:
     ## that segment therefore neither trains nor runs generic fusion. This is a routing policy,
     ## not evidence that the remaining source cannot benefit from the general compiler.
     template ordinary() =
-      if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
+      # Checked-only segments have no ready primary owner for either auxiliary path.
+      if not nativeAuxiliaryOwnerReady(f.nativeSession): flatDispatchSegment(f, offset)
+      elif f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
           mixedLoopPrimaryReady(f.nativeSession):
         runFlatMixedLoopSegment(f, offset)
       elif not f.readProbe.observing and f.pricingKind == 0:

@@ -969,6 +969,12 @@ when NativeCheckedReadEnabled:
       false
 
 when NativeReadCycleEnabled:
+  func nativeAuxiliaryOwnerReady*(session: NativeSession): bool {.inline.} =
+    ## Readiness is only a prerequisite; source/epoch/ABI guards still authorize every auxiliary use.
+    ## Do not apply the invocation horizon here: a retained profile can continue through a short call.
+    let data {.cursor.} = session.data
+    data != nil and data.state == NativeState.Ready
+
   func mixedLoopPrimaryReady*(session: NativeSession): bool =
     ## An auxiliary image is always subordinate to the current connected Read ticket.
     matchesNativeImage(session, nativeInstalledKey(session), NativeKind.ConnectedReadCycle)
