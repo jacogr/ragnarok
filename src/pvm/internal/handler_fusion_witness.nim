@@ -4,6 +4,43 @@
 ## Included test-only source-binding, scoped overlay and exact quota/predecessor controls.
 
 when declared(FlatFrame):
+  proc witnessFlatFusionSampling*() =
+    ## Late hot headers must displace cold collisions without duplicate keys or invented observations.
+    const headers = [0'u32, 987, 2584, 3571, 4181]
+    let bucket = ((headers[0]+1)*0x9e3779b9'u32) shr 22
+    for header in headers:
+      assert ((header+1)*0x9e3779b9'u32) shr 22 == bucket
+    for scenario in 0..1:
+      var probe = FlatFusionProbe(down: 1, seed: 0)
+      for index in 0..3:
+        # Distinct genuine observations fill one bucket, with a hole before a live key after cancellation.
+        let repeats = if scenario == 0 or index == 0: 1 else: (if index == 1: 5 else: 20)
+        for repeat in 0..<repeats: sampleFlatFusion(probe, headers[index])
+      if scenario == 0:
+        # The original first-arrival table dropped every observation of this later hot header.
+        for repeat in 0..<16: sampleFlatFusion(probe, headers[4])
+      else:
+        # Cancellation opens the first slot; lookup must still find the existing second key.
+        sampleFlatFusion(probe, headers[4])
+        sampleFlatFusion(probe, headers[1])
+      var seen = default(array[5, uint32])
+      var total = 0'u64
+      for sample in probe.samples:
+        if sample.token == 0:
+          assert sample.count == 0
+        else:
+          assert sample.count != 0
+          total += uint64(sample.count)
+          for index in 0..<headers.len:
+            if sample.token == headers[index]+1:
+              inc seen[index]
+              if scenario == 0 and index == 4: assert sample.count in 4'u32..16'u32
+              if scenario == 1 and index == 1: assert sample.count in 1'u32..6'u32
+      for count in seen: assert count <= 1, "sampling never duplicates a source-header key"
+      assert total <= uint64(probe.taken), "retained counts are conservative source observations"
+      if scenario == 0: assert seen[4] == 1, "late hot source survives a full cold bucket"
+      else: assert seen[1] == 1
+
   proc fusionWitnessOperations(session: NativeSession): uint64 {.noinline.} =
     ## Keep the established NIM-005 counter observation boundary across mutable frame calls.
     nativeOperationCount(session)

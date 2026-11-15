@@ -969,6 +969,12 @@ when NativeCheckedReadEnabled:
       false
 
 when NativeReadCycleEnabled:
+  func nativeAuxiliaryOwnerReady*(session: NativeSession): bool {.inline.} =
+    ## Readiness is only a prerequisite; source/epoch/ABI guards still authorize every auxiliary use.
+    ## Do not apply the invocation horizon here: a retained profile can continue through a short call.
+    let data {.cursor.} = session.data
+    data != nil and data.state == NativeState.Ready
+
   func mixedLoopPrimaryReady*(session: NativeSession): bool =
     ## An auxiliary image is always subordinate to the current connected Read ticket.
     matchesNativeImage(session, nativeInstalledKey(session), NativeKind.ConnectedReadCycle)
@@ -1048,7 +1054,8 @@ when NativeReadCycleEnabled:
     data != nil and (data.fusionOffered or nativeFusionTraining(session))
 
   proc markNativeFusionSampled*(session: NativeSession) =
-    ## Pay for at most one sampling segment and graph construction per stream epoch.
+    ## Pay for at most one bounded observation window and graph construction per stream epoch.
+    ## The exclusive checked stream can retain source counters across short host segments.
     let data {.cursor.} = session.data
     if data != nil: data.fusionSampled = true
 
