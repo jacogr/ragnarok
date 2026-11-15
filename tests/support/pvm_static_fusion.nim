@@ -11,6 +11,7 @@ import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/internal/[dynamic_jump_cache, native_pipeline, native_fusion, native_platform, native_read_body]
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   import ./pvm_fusion_composition
+  import ../../src/pvm/internal/handler_stream
 
 proc checkRepeatedFusionReceipt() =
   ## Warm a paid path, then exercise the same key with incorrect live debits and
@@ -125,7 +126,7 @@ proc checkLongFusionReceipts() =
   assert not checkNativeFusionExit(memo, blocks, 10, 10, 1000, 1000, empty).valid
 
 proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
-    conditional: bool = false, windows: bool = false): Program =
+    conditional: bool = false, windows: bool = false, hostPrelude: int = 0): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -141,6 +142,9 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   emit([149'u8, 0x77, 1]) # Small incumbent pure prefix.
   emit([149'u8, 0x88, 1])
   emit([120'u8, 0x50, 1]) # Mark the writable page before native entry.
+  for index in 0..<hostPrelude:
+    # Each short host block is independently priced before the long loop.
+    emit([10'u8, 42])
   let first = code.len+5
   jump([40'u8], first)
   assert code.len == first
@@ -198,6 +202,9 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
     assert code.len == second
   emit([149'u8, 0x99, 1])
   jump([171'u8, 0xc2], first) # Continue while R2 != R12.
+  if hostPrelude != 0:
+    # The hot source graph can publish at this real host boundary before final halt.
+    emit([10'u8, 43])
   emit([50'u8, 3]) # Dynamic halt sentinel in R3.
   var wire = if mode == 0: @[0'u8, 0] else: @[1'u8, 1]
   let size = encode(JamNatural(uint64(code.len)))
@@ -210,7 +217,8 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
   var mask = newSeq[byte]((code.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for value in mask: wire.add(value)
-  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(1))
+  let decoded = decodeProgram(wire, CodeAddress(0),
+    ProgramByteLimit(if hostPrelude == 0: 128 else: 512), JumpCountLimit(1))
   assert decoded.error == ProgramError.None
   decoded.value
 
@@ -498,6 +506,17 @@ when NativeReadCycleEnabled:
     blocks.add(default(NativeFusionBlock))
     assert not lowerNativeFusion(blocks).ready, "a256th graph entry must refuse before publication"
 
+proc assertSameFusionMachine(actual, expected: Machine) =
+  ## Compare immutable CPU, page membership and every committed byte at halt or a host boundary.
+  assert machineInfo(actual).value == machineInfo(expected).value, "paired CPU"
+  let observed = memoryOf(actual).value
+  let reference = memoryOf(expected).value
+  let observedPages = pageIndices(observed).value
+  let referencePages = pageIndices(reference).value
+  assert observedPages == referencePages
+  for page in referencePages:
+    assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
+
 proc assertSameFusionResult(actual, expected: StepResult) =
   ## Checked output owns the independent guest state and attempt accounting oracle.
   assert actual.error == expected.error, "paired step error"
@@ -505,17 +524,131 @@ proc assertSameFusionResult(actual, expected: StepResult) =
     assert actual.value.exit == expected.value.exit, "paired guest exit"
     if expected.value.exit == StepExit.Fault:
       assert uint64(actual.value.faultPage) == uint64(expected.value.faultPage)
-    assert machineInfo(actual.value.machine).value == machineInfo(expected.value.machine).value, "paired CPU"
-    let observed = memoryOf(actual.value.machine).value
-    let reference = memoryOf(expected.value.machine).value
-    let observedPages = pageIndices(observed).value
-    let referencePages = pageIndices(reference).value
-    assert observedPages == referencePages
-    for page in referencePages:
-      assert pageImage(observed, page).value == pageImage(reference, page).value, "paired memory bytes"
+    assertSameFusionMachine(actual.value.machine, expected.value.machine)
 
 when NativeReadCycleEnabled:
   # Keep native-only API references out of unsupported and checked-only module profiles.
+  type FusionHostContext = object
+    ## Callback observations and mapping selection remain host-owned.
+    calls, prelude: int
+    remap: bool
+    trace: seq[Machine]
+
+  proc continueFusionHost(context: var FusionHostContext,
+      stopped: StepOutcome): HostResponse {.raises: [].} =
+    ## Preserve stopped CPU/bytes; an optional extra page forces full same-code frame replacement.
+    assert stopped.exit == StepExit.Host
+    let expected = if context.calls < context.prelude: 42'u64 else: 43'u64
+    assert uint64(stopped.hostCall) == expected
+    inc context.calls
+    context.trace.add(stopped.machine)
+    let cpu = machineInfo(stopped.machine).value
+    var memory = memoryOf(stopped.machine).value
+    if context.remap and context.calls == 1:
+      # The short source profile must follow the new frame while committed bytes remain intact.
+      let committed = pageImage(memory, PageIndex(16))
+      assert committed.error == MachineError.None
+      let changed = captureMemory([committed.value,
+        PageImage(index: PageIndex(18), access: PageAccess.ReadWrite)], PageLimit(3))
+      assert changed.error == MachineError.None
+      memory = changed.value
+    HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
+        memory: memory)
+
+  proc assertFusionHostTrace(actual, expected: FusionHostContext) =
+    ## Every callback observes identical paid CPU and immutable memory before selecting a response.
+    assert actual.calls == expected.calls and actual.trace.len == expected.trace.len
+    for index in 0..<actual.trace.len:
+      assertSameFusionMachine(actual.trace[index], expected.trace[index])
+
+  proc checkFusionHostTraining(prelude: int, remap: bool, abort: bool = false,
+      refuseAllocation: bool = false) =
+    ## Actual prepared calls must train across short Host and replacement, or stop at the segment cap.
+    let program = fusionGuest(hostPrelude = prelude)
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "host fusion runtime failed to start"
+    let jit = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Jit, runtime)
+    let checked = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Interpreted)
+    assert jit.error == PreparationError.None and checked.error == PreparationError.None
+    let memory = captureMemory([PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)],
+        PageLimit(3))
+    assert memory.error == MachineError.None
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(4000000))
+    info.registers[0] = RegisterValue(165)
+    info.registers[3] = RegisterValue(0xffff0000'u64)
+    info.registers[5] = RegisterValue(65536)
+    info.registers[6] = RegisterValue(65536)
+    info.registers[12] = RegisterValue(90000)
+    let source = captureMachine(program, memory.value, info)
+    assert source.error == MachineError.None
+    let limit = ExecutionStepLimit(2000000)
+    var reference = FusionHostContext(prelude: prelude, remap: remap)
+    let expected = executeWithHost(source.value, reference, continueFusionHost, limit,
+      HostCallLimit(uint64(prelude+1)), checked.value)
+    assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+    assert reference.calls == prelude+1
+    let publishes = prelude < 63 and not abort and not refuseAllocation
+    for sample in 0..2:
+      # Publish the ordinary seed, train the host-separated source, then execute the actual image.
+      if sample == 1:
+        # Return the short Host through the public code-cache handover before a fresh CPU resumes profiling.
+        when defined(pvmSharedAsyncWitness):
+          if refuseAllocation: refuseNextFusionTrainingAllocation()
+        let stopped = execute(source.value, limit, jit.value)
+        assertSameFusionResult(stopped, execute(source.value, limit, checked.value))
+        assert stopped.error == StepError.None and stopped.value.exit == StepExit.Host
+        if remap:
+          # A foreign program cannot consume or reinterpret the pending source profile.
+          let foreign = captureMachine(fusionGuest(), memory.value, info)
+          assert foreign.error == MachineError.None
+          assert execute(foreign.value, limit, jit.value).error == StepError.InvalidPreparedProgram
+        if abort:
+          # An attempted partial prefix discards profiling and never buys another epoch-local attempt.
+          assert execute(source.value, ExecutionStepLimit(1), jit.value).error ==
+              StepError.StepLimitExceeded
+      var context = FusionHostContext(prelude: prelude, remap: remap)
+      let outcome = executeWithHost(source.value, context, continueFusionHost, limit,
+        HostCallLimit(uint64(prelude+1)), jit.value)
+      assertSameFusionResult(outcome, expected)
+      assertFusionHostTrace(context, reference)
+      waitNativeCompiler(runtime)
+      let state = preparedInfo(jit.value).value
+      if sample >= 1:
+        if publishes:
+          assert state.nativeFragments == 2, "host-separated training must publish an actual fusion image"
+        else:
+          assert state.nativeFragments == 1, "short host segments exhaust the bounded training window"
+      if sample == 2 and publishes:
+        assert state.nativeOperations > 500000, "host-separated image must execute actual source operations"
+    for quota in [2'u64, 3, 4, 5, 4096, 4097]:
+      # Source attempts and paid entry stay identical on both sides of the first callback.
+      var actualContext = FusionHostContext(prelude: prelude, remap: remap)
+      var expectedContext = FusionHostContext(prelude: prelude, remap: remap)
+      let actual = executeWithHost(source.value, actualContext, continueFusionHost,
+        ExecutionStepLimit(quota), HostCallLimit(uint64(prelude+1)), jit.value)
+      let oracle = executeWithHost(source.value, expectedContext, continueFusionHost,
+        ExecutionStepLimit(quota), HostCallLimit(uint64(prelude+1)), checked.value)
+      assertSameFusionResult(actual, oracle)
+      assertFusionHostTrace(actualContext, expectedContext)
+    for gas in [1'u64, 3, 4, 10, 5000]:
+      # Gas exhaustion before and after a real callback preserves all publicly observed prefixes.
+      var cpu = info
+      cpu.gas = MachineGas(gas)
+      let short = captureMachine(program, memory.value, cpu)
+      assert short.error == MachineError.None
+      var actualContext = FusionHostContext(prelude: prelude, remap: remap)
+      var expectedContext = FusionHostContext(prelude: prelude, remap: remap)
+      let actual = executeWithHost(short.value, actualContext, continueFusionHost, limit,
+        HostCallLimit(uint64(prelude+1)), jit.value)
+      let oracle = executeWithHost(short.value, expectedContext, continueFusionHost, limit,
+        HostCallLimit(uint64(prelude+1)), checked.value)
+      assertSameFusionResult(actual, oracle)
+      assertFusionHostTrace(actualContext, expectedContext)
+    assert close(runtime)
+
   proc checkShortFusionEntries() =
     ## A static predecessor can enter from checked dispatch. Its terminal leaf
     ## stays checked on a direct visit, but must still execute inside the chain.
@@ -687,6 +820,13 @@ proc runStaticFusion*() =
     checkFusionIndirectTargets()
     checkDenseFusionGuards()
     checkShortFusionEntries()
+    checkFusionHostTraining(1, false)
+    checkFusionHostTraining(1, true)
+    checkFusionHostTraining(62, false)
+    checkFusionHostTraining(63, false)
+    checkFusionHostTraining(1, false, abort = true)
+    when defined(pvmSharedAsyncWitness):
+      checkFusionHostTraining(1, false, refuseAllocation = true)
   for mode in [0'u8, 50, 180, 181]:
     checkPublicFusion(mode)
   checkPublicFusion(0, conditional = true)

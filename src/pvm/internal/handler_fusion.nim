@@ -13,6 +13,18 @@
 ## passes: an IR-first builder needs independent overlay ownership before removing that coupling.
 
 when declared(FlatFrame):
+  when defined(pvmSharedAsyncWitness):
+    var refuseFusionTrainingAllocation {.threadvar.}: bool
+
+    proc refuseNextFusionTrainingAllocation*() =
+      ## Exercise optional profiling allocation refusal through the real prepared callback boundary.
+      refuseFusionTrainingAllocation = true
+
+    proc allowFusionTrainingAllocation(): bool =
+      ## Consume the one-shot witness before the ordinary allocation; refusal must keep execution checked.
+      result = not refuseFusionTrainingAllocation
+      refuseFusionTrainingAllocation = false
+
   func fusionBranchHandler(opcode: byte): nil FlatHandler =
     ## Accept only the already resolved branch with the original GP predicate.
     case opcode
@@ -172,6 +184,26 @@ when declared(FlatFrame):
     if probe.taken < 262144'u32:
       dec probe.down
       if probe.down == 0: sampleFlatFusion(probe, header)
+
+  func liveFlatFusionTraining(f: FlatFrame): bool =
+    ## Coordinates remain meaningful only for the exact immutable source, epoch and prefix ABI.
+    if f.fusionTraining.len != 1 or f.plan == nil: return false
+    let retained {.cursor.} = f.fusionTraining[0]
+    if retained.segments == 0 or retained.segments >= FlatFusionTrainingSegments or
+        retained.probe.taken >= 4096 or retained.probe.down == 0 or retained.probe.down > 64:
+      return false
+    let epoch = nativeEpoch(f.nativeSession)
+    if epoch == 0 or retained.epoch != epoch or retained.owner != flatPlanIdentity(
+        f.plan): return false
+    let key = nativeInstalledKey(f.nativeSession)
+    key.ticket != 0 and key.epoch == epoch and key.kind == NativeKind.PurePrefix
+
+  func continueFlatFusionTraining(f: FlatFrame, probe: FlatFusionProbe, segments: uint32): bool =
+    ## Host exits preserve source-only counts until ranking is useful or the fixed segment budget ends.
+    ## A short first host call used to consume the epoch's sole training attempt without a graph.
+    f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host and
+      f.preparationFailure == FlatError.None and probe.taken < 4096 and
+      segments < FlatFusionTrainingSegments
 
   proc markFlatIndirectEntries(f: FlatFrame, blocks: var seq[NativeFusionBlock]) =
     ## One pass over the already admitted jump table marks source-backed entry permission.

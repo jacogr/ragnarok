@@ -1048,7 +1048,8 @@ when NativeReadCycleEnabled:
     data != nil and (data.fusionOffered or nativeFusionTraining(session))
 
   proc markNativeFusionSampled*(session: NativeSession) =
-    ## Pay for at most one sampling segment and graph construction per stream epoch.
+    ## Pay for at most one bounded observation window and graph construction per stream epoch.
+    ## The exclusive checked stream can retain source counters across short host segments.
     let data {.cursor.} = session.data
     if data != nil: data.fusionSampled = true
 

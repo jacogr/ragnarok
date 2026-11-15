@@ -41,6 +41,9 @@ when NativeReadCycleEnabled:
   import ./[native_mixed_loop, native_platform, native_fusion]
   from ./jit_rules import supportedScalarOpcode
 
+  const FlatFusionTrainingSegments = 64'u32
+    ## Bound callback-separated observation even when each host segment is too short to rank.
+
   type
     FlatFusionSample = object
       ## Count a checked header under its one-based stream token.
@@ -49,7 +52,7 @@ when NativeReadCycleEnabled:
       ## Segment-local map from original header to rank slot.
       token, index: uint32
     FlatFusionProbe = object
-      ## One segment's sparse observation. No size depends on admitted source.
+      ## One bounded source-epoch observation. No size depends on admitted source.
       down, seed, taken: uint32
       samples: array[1024, FlatFusionSample]
 
@@ -173,6 +176,13 @@ type
     codeBytes: uint32          # Logical PC extent remains known before a lazy map is allocated.
     ranks: nil FlatSourceRanks # Shared immutable source-global index, built once during admission.
     materialized: uint32       # Filled fact slots only; reserved array capacity is a separate cost.
+  FlatFusionTraining = object
+    ## One optional fixed-size source profile, owned by the exclusive frame/stream across host resumes.
+    when NativeReadCycleEnabled:
+      owner: nil FlatPlan
+      epoch: uint64
+      segments: uint32
+      probe: FlatFusionProbe
   FlatRegion = object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
@@ -278,6 +288,7 @@ type
       when defined(pvmPaidMixedLoopWitness):
         mixedPairMode*: FlatMixedPairMode
         mixedPair: nil ptr FlatMixedPairWitness
+      fusionTraining: seq[FlatFusionTraining] # Empty or one bounded source-only profile; never a frame borrow.
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -314,6 +325,8 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
     # A moved frame cannot retain a ready context into storage now owned elsewhere.
     frame.readContext = default(NativeReadContext)
     frame.readContextReady = false
+  when NativeReadCycleEnabled:
+    `=wasMoved`(frame.fusionTraining)
 
 proc `=copy`*(destination: var FlatResult[FlatFrame], source: FlatResult[FlatFrame]) {.error.}
   ## The success wrapper is itself noncopyable, independently of its exclusive child.
@@ -3653,20 +3666,48 @@ when NativeReadCycleEnabled:
 
   proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Borrow the exact optional owner once per segment; unavailable images retain
-    ## ordinary execution and the existing bounded one-shot source observation.
+    ## ordinary execution and one bounded observation window per source epoch.
+    ## Short Host segments retain source counters; a clean Host with sufficient evidence can
+    ## publish the same source-only graph as Halt. Guest state never reaches the compiler.
     let borrowed = borrowNativeFusion(f.nativeSession)
     let image = borrowed.image
     let blocks = borrowed.blocks
     if image == nil or blocks == nil:
-      if nativeFusionTraining(f.nativeSession) and f.remaining >= NativeFusionTrainingFloor:
+      if liveFlatFusionTraining(f):
+        # The owned counter table stays local while dispatch mutates the frame; no borrowed field aliases it.
+        var retained = move(f.fusionTraining)
+        inc retained[0].segments
+        flatDispatchLoop(f, entry, false, true, retained[0].probe)
+        if continueFlatFusionTraining(f, retained[0].probe, retained[0].segments):
+          f.fusionTraining = move(retained)
+        elif f.reason == oracle.StepError.None and f.exit in {oracle.StepExit.Halt,
+            oracle.StepExit.Host}:
+          offerFlatFusion(f, retained[0].probe)
+      elif nativeFusionTraining(f.nativeSession) and f.remaining >= NativeFusionTrainingFloor:
+        f.fusionTraining = @[]
         markNativeFusionSampled(f.nativeSession)
         var probe = FlatFusionProbe(down: 1, seed: 0x9e3779b9'u32)
         flatDispatchLoop(f, entry, false, true, probe)
-        if f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Halt:
+        if continueFlatFusionTraining(f, probe, 1):
+          # Callback-free training keeps its original stack table and allocates nothing here.
+          # Allocate only after a short clean Host proves that another segment is needed.
+          when defined(pvmSharedAsyncWitness):
+            var retained = if allowFusionTrainingAllocation(): newSeq[FlatFusionTraining](
+                1) else: @[]
+          else:
+            var retained = newSeq[FlatFusionTraining](1)
+          if retained.rawData != nil:
+            retained[0] = FlatFusionTraining(owner: flatPlanIdentity(f.plan),
+              epoch: nativeEpoch(f.nativeSession), segments: 1, probe: probe)
+            f.fusionTraining = move(retained)
+        elif f.reason == oracle.StepError.None and f.exit in {oracle.StepExit.Halt,
+            oracle.StepExit.Host}:
           offerFlatFusion(f, probe)
       else:
+        f.fusionTraining = @[]
         flatDispatchSegment(f, entry)
       return
+    f.fusionTraining = @[]
     defer: returnNativeMixedLoop(f.nativeSession)
     runFlatFusionImage(f, entry, image, blocks)
 
@@ -3833,8 +3874,9 @@ when NativeReadCycleEnabled:
       if f.mixedSource.count != 0 and f.mixedSource.epoch == nativeEpoch(f.nativeSession) and
           mixedLoopPrimaryReady(f.nativeSession):
         runFlatMixedLoopSegment(f, offset)
-      elif not f.readProbe.observing and f.pricingKind == 0 and f.remaining >= NativeInvocationFloor:
-        if nativeFusionAvailable(f.nativeSession): runFlatFusionSegment(f, offset)
+      elif not f.readProbe.observing and f.pricingKind == 0:
+        if liveFlatFusionTraining(f) or (f.remaining >= NativeInvocationFloor and
+            nativeFusionAvailable(f.nativeSession)): runFlatFusionSegment(f, offset)
         else: flatDispatchSegment(f, offset)
       else:
         flatDispatchSegment(f, offset)
@@ -3867,7 +3909,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
   ## A cold bitmap backedge stays with the exclusive cached stream across short calls.
   ## The first segment with enough settled work consumes it for a source proof.
-  defer: restoreFlatPrefixProbe(f)
+  defer:
+    restoreFlatPrefixProbe(f)
+    when NativeReadCycleEnabled:
+      if f.fusionTraining.len != 0 and (f.reason != oracle.StepError.None or
+          f.exit != oracle.StepExit.Host or not liveFlatFusionTraining(f)):
+        # Failed, exhausted, completed or invalidated calls cannot retain unfinished profiling.
+        f.fusionTraining = @[]
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -4323,6 +4371,7 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
 
 proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   ## Both callers fully validate a fresh same-plan frame before moving the code-only cache and policies.
+  ## Short host-training windows move only source counters and their immutable plan/epoch identity.
   when NativeCheckedReadEnabled:
     # The prior segment always restores its terminal handlers before any host transition.
     assert not f.readProbe.observing
@@ -4346,6 +4395,7 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   when NativeReadCycleEnabled:
     assert f.mixedImage == nil
     replacement.mixedSource = f.mixedSource
+    replacement.fusionTraining = move(f.fusionTraining)
   f = move(replacement)
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -4540,6 +4590,7 @@ type FlatStream* = object
   when NativeReadCycleEnabled:
     bitmapCandidate: uint32
     mixedSource: FlatMixedLoopSource
+    fusionTraining: seq[FlatFusionTraining]
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
@@ -4556,6 +4607,8 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## cumulative preparation usage and native restoration state. Generated leaves
   ## retain no invocation pointers. A pending bitmap observation moves with its
   ## original stream coordinates and is discarded with the stream on repricing.
+  ## A pending host-training window also moves with this source owner and epoch, carrying
+  ## no CPU, memory, callback or borrowed image. Repricing discards it with the executable cache.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
   if f.preparationFailure == FlatError.StreamAllocationRefused:
@@ -4584,6 +4637,7 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     f.bitmapCandidate = 0
     result.mixedSource = f.mixedSource
     f.mixedSource = default(FlatMixedLoopSource)
+    result.fusionTraining = move(f.fusionTraining)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Restore an executable stream only for the exact immutable plan.
@@ -4625,6 +4679,7 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     stream.bitmapCandidate = 0
     f.mixedSource = stream.mixedSource
     stream.mixedSource = default(FlatMixedLoopSource)
+    f.fusionTraining = move(stream.fusionTraining)
   flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.
   when NativeCheckedReadEnabled:
     # Restored original facts authorize a deferred read retry without discovering another candidate.
