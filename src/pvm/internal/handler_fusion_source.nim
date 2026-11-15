@@ -35,8 +35,9 @@ when declared(FlatPlan):
     ## Decode at most one bounded original block independently of the lazy checked catalogue.
     ## Failure leaves the caller's output untouched. Source/gas limits are the admitted owner's.
     if plan == nil or plan.singleStep or uint64(pc) >= uint64(plan.codeBytes): return false
-    let containing = containingBlockStart(plan.source, pc)
-    if containing.error != ProgramError.None or containing.value != pc: return false
+    # Membership checks at most 25 bytes, even when refusing an interior PC in a huge block.
+    let entry = basicBlockStart(plan.source, pc)
+    if entry.error != ProgramError.None or not entry.value: return false
     let ranks {.cursor.} = plan.ranks
     if ranks == nil: return false
     let wordIndex = int(uint64(pc) div 64)
