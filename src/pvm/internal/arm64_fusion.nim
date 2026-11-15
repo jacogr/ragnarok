@@ -3,7 +3,9 @@
 
 ## Included by the ARM64 emitter. Retain the complete guest bank and exact path
 ## across source-checked edges. X23 bounds visits and X24 appends one token to call-local
-## history after a successful reservation. All exits set their original continuation and paid
+## history after a successful reservation. Certified scalar SCCs use a larger bounded counter
+## without touching the byte log; only their sole cyclic successor can link internally.
+## All exits set their original continuation and paid
 ## marker before one block-local restoration tail. Sharing this tail keeps guard-heavy entries
 ## within the existing 4 KiB code ceiling without changing their source or reservation limits.
 ## Optional bounded same-kind memory groups retain one proved true-view pointer in X17 across
@@ -222,14 +224,14 @@ when declared(ArmBlock):
     armCompactImmediate(words, 2, uint64(ord(paid)))
     cycleEdge(words, fixes, finish, 16)
 
-  proc armFusionFinish(words: var seq[uint32], useIndirect: bool) =
+  proc armFusionFinish(words: var seq[uint32], useIndirect: bool, horizon: uint32) =
     ## Commit the original guest bank, debits, path length and pre-write address exactly once.
     ## X0 carries the original continuation and X2 the paid marker from every return stub.
     for slot in 0..12:
       cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
     cycleStore(words, 21, 20, uint32(NativeFusionGasOffset))
     cycleStore(words, 22, 20, uint32(NativeFusionQuotaOffset))
-    armCompactImmediate(words, 1, uint64(NativeFusionVisitLimit))
+    armCompactImmediate(words, 1, uint64(horizon))
     cycleAddRegister(words, 1, 1, 23, true)
     cycleStore(words, 1, 20, uint32(NativeFusionVisitsOffset))
     cycleStore(words, 2, 20, uint32(NativeFusionPaidOffset))
@@ -253,6 +255,8 @@ when declared(ArmBlock):
     if not item.complete or token < 1 or token > NativeFusionBlockLimit: return
     if item.indirect and not useIndirect and item.terminal == item.header+1: return
     let count = int(item.terminal-item.header)-1
+    let compact = item.cycleNext != 0
+    let horizon = uint32(if compact: NativeFusionCycleVisitLimit else: NativeFusionVisitLimit)
     let finish = count+4
     var words = newSeqOfCap[uint32](capacity)
     if words.rawData == nil: return
@@ -278,7 +282,7 @@ when declared(ArmBlock):
     cycleMove(words, 20, 1)
     cycleLoad(words, 21, 20, uint32(NativeFusionGasOffset))
     cycleLoad(words, 22, 20, uint32(NativeFusionQuotaOffset))
-    words.add(0xd2800017'u32 or (uint32(NativeFusionVisitLimit) shl 5)) # MOV X23,bounded horizon.
+    words.add(0xd2800017'u32 or (horizon shl 5)) # MOV X23,bounded horizon.
     cycleAddImmediate(words, 24, 20, uint32(NativeFusionPathOffset))
     for slot in 0..12:
       cycleLoad(words, uint32(slot+4), 19, uint32(slot*8))
@@ -292,8 +296,10 @@ when declared(ArmBlock):
     cyclePriceChange(words, item.price)
     cycleAddImmediate(words, 22, 22, item.span, true)
     cycleAddImmediate(words, 23, 23, 1, true)
-    armCompactImmediate(words, 1, uint64(token))
-    words.add(0x38001701'u32) # STRB W1,[X24],#1 appends only after the visit guard and debit.
+    if not compact:
+      # A certified scalar cycle returns a count; every other graph retains its ordered byte log.
+      armCompactImmediate(words, 1, uint64(token))
+      words.add(0x38001701'u32) # STRB W1,[X24],#1 follows the visit guard and debit.
     var window = default(NativeMemoryWindow)
     for index in 0..<count:
       let op = item.operations[index]
@@ -360,6 +366,6 @@ when declared(ArmBlock):
         labels[index+1] = words.len
         armFusionReturn(words, fixes, item.header+uint32(index)+1, true, finish)
     labels[finish] = words.len
-    armFusionFinish(words, useIndirect)
+    armFusionFinish(words, useIndirect, horizon)
     if words.len <= capacity and armMacroPatch(words, fixes, labels):
       result = ArmFusionEncoding(words: move(words), inner: inner*4, edges: edges, table: table)

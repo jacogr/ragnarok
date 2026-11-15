@@ -1072,6 +1072,8 @@ when NativeReadCycleEnabled:
           header: item.header, terminal: item.terminal, first: item.first,
           last: item.first+item.span-1, epoch: data.epoch)):
         return false
+    # Copied source geometry, rather than a checked-worker pattern, nominates bounded scalar cycles.
+    markNativeFusionCycles(requested)
     let anchor {.cursor.} = data.runtime
     if anchor == nil: return false
     let runtime = addr anchor.storage
