@@ -259,6 +259,23 @@ proc checkArmMemoryCycleBackend*(dirtySource, prefixSource, tailSource: Program)
     inc result
     assert armEntry(jit, 31, 64) >= 2
     inc result
+    block:
+      # A refused prefix still retains private words; the linked driver must reject it before publication.
+      var failed = cyclePrefix(prefixSource)
+      emitArmOperation(failed, 0, default(RegisterSlots), 0)
+      assert failed.error == ArmEmissionError.UnsupportedOpcode and armInstructions(failed).len == 0
+      var rejected = cycleBlock(move(failed))
+      let bytes = jit.codeBytes
+      let fragments = jit.fragments
+      let dirty = armDirtyLoopStatistics(jit)
+      let tail = armEntry(jit, 31, 64)
+      assert not publishArmMemoryCycle(jit, move(rejected)), "linked driver accepted a refused prefix"
+      assert armMemoryCycleStatus(jit) == 0 and jit.codeBytes == bytes and jit.fragments ==
+          fragments,
+        "refused prefix changed the cycle slot or executable arena"
+      assert armDirtyLoopStatistics(jit) == dirty and armEntry(jit, 31, 64) == tail,
+        "refused prefix changed its real prepared children"
+    # The same children and cycle slot must still accept and execute the complete original prefix.
     var prefix = cyclePrefix(prefixSource)
     var cycle = cycleBlock(move(prefix))
     assert publishArmMemoryCycle(jit, move(cycle))

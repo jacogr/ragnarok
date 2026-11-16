@@ -2277,6 +2277,8 @@ func armMemoryCycleStatistics*(jit: ArmJit): array[6, uint64] =
 
 proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Emit a complete inline prefix and BL only the existing same-owner dirty/read children.
+  ## A refused prefix retains private words but no executable instructions; reject before consuming the cycle slot.
+  if item.prefixBody.failure != ArmEmissionError.None: return false
   if item.tailRead.clippedReads and not jit.clippedReads: return false
   if jit.memoryCycle.status != 0: return false
   if jit.unavailable or jit.fragments >= 8191 or jit.codeBytes > 1048576:

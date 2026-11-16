@@ -6,6 +6,8 @@
 import std/[assertions, syncio]
 import ../../../src/pvm/program
 import ../../../src/pvm/internal/arm64_jit
+when defined(arm64) and (defined(linux) or defined(macosx)):
+  import ../../support/pvm_arm_memory_cycle_backend
 
 proc scalarRefusal() =
   ## An unsupported operation poisons preceding and subsequent bytes until this builder is discarded.
@@ -76,4 +78,27 @@ proc publicationRefusal() =
 scalarRefusal()
 branchRefusal()
 publicationRefusal()
+when defined(arm64) and (defined(linux) or defined(macosx)):
+  proc source(parts: openArray[seq[byte]]): Program =
+    ## The legacy cycle's independently framed literal programs retain their original opcode boundaries.
+    var code: seq[byte] = @[]
+    var starts: seq[int] = @[]
+    for part in parts:
+      starts.add(code.len)
+      for value in part: code.add(value)
+    assert code.len < 128
+    var wire = @[0'u8, 0, byte(code.len)]
+    for value in code: wire.add(value)
+    var mask = newSeq[byte]((code.len+7) div 8)
+    for at in starts: mask[at div 8] = mask[at div 8] or (1'u8 shl (at mod 8))
+    for value in mask: wire.add(value)
+    let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(256), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    decoded.value
+
+  let dirty = source([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0], @[149'u8, 0x00, 1],
+    @[149'u8, 0x11, 1], @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+  let prefix = source([@[149'u8, 0x55, 1], @[149'u8, 0x55, 1], @[149'u8, 0x55, 1], @[1'u8], @[0'u8]])
+  let tail = source([@[57'u8, 6, 0, 0, 1, 0], @[149'u8, 0x33, 2], @[173'u8, 0x70, 0, 0, 0, 0], @[0'u8]])
+  assert checkArmMemoryCycleBackend(dirty, prefix, tail) > 1
 echo "PVM ARM scalar refusal passed"
