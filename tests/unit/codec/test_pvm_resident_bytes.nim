@@ -257,11 +257,11 @@ proc checkRefusal() =
   let before = residentWitnessSnapshot()
   refuseNextResidentAllocation()
   let refused = tryMapFreshZero(4099)
-  assert refused.error == ResidentAllocationError.AllocationRefused
+  assert refused.error == ResidentAllocationError.AllocationRefused, "checkRefusal: status"
   let after = residentWitnessSnapshot()
-  assert after.refusals == before.refusals+1
-  assert after.acquisitions == before.acquisitions and after.releases == before.releases
-  assert after.logicalBytes == before.logicalBytes and after.mappedBytes == before.mappedBytes
+  assert after.refusals == before.refusals+1, "checkRefusal: refusal count"
+  assert after.acquisitions == before.acquisitions and after.releases == before.releases, "checkRefusal: ownership count"
+  assert after.logicalBytes == before.logicalBytes and after.mappedBytes == before.mappedBytes, "checkRefusal: retained extent"
   foreignCycle(4099)
 
 checkDefaults()
@@ -271,6 +271,9 @@ when FreshRWProfileEnabled:
   let layout = residentWitnessLayout()
   assert layout[0] == 24 and layout[1] == 16
   assert layout[3] == 8 and layout[4] == 16 and layout[5] == 0 and layout[6] == 8
+  var retirementStage = 0
+  assert residentWitnessRetirement(retirementStage),
+      "refused cleanup must retain physical mapping and charge until exact retry; stage=" & $retirementStage
   checkRefusal()
   checkHeapDrop()
   checkMoveOverwrite()

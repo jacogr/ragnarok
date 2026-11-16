@@ -4,6 +4,12 @@
 ## Exclusive first-RW storage and one backend-neutral borrowed view.
 ## Foreign bytes are owner-accounted separately from managed heap telemetry; no quota or pool.
 ## Scalar transfers prove their full borrowed extent and preserve outputs/bytes on refusal.
+## A cold C record owns the original mapping coordinates independently of cached Nim extents.
+## Final drop either releases it or transfers it to serialized pending cleanup without allocating.
+## Pending cleanup blocks new foreign admission until retry succeeds, so failed releases cannot
+## accumulate through fresh requests. The queue retains only maps already live at the first refusal.
+## One explicit binding-owned state survives foreign wrapper inlining across translation units.
+## Eligible64-bit profiles keep a24-byte cold owner and a16-byte synchronous length-first hot view.
 
 import std/assertions
 
@@ -13,24 +19,58 @@ const FreshRWProfileEnabled* = defined(nimNativeAlloc) and sizeof(int) == 8 and
   not defined(useLibc) and not defined(nimNoLibc)
 
 when FreshRWProfileEnabled:
-  # Ineligible profiles do not even bind the mapping header into generated code.
-  const ResidentHeader = "${path}/resident_os.h"
-  type RawAllocation {.importc: "pvm_resident_allocation", header: ResidentHeader,
-      bycopy.} = object
-    data: nil pointer
-    logical, backing: csize_t
-    status: cint
-  proc rawMap(logical: csize_t): RawAllocation {.
+  # Ineligible profiles never bind an OS header; syscall substitution is test-only.
+  when defined(linux):
+    # Standalone resident consumers also need the POSIX mutex library on pre-merged-libc systems.
+    {.passL: "-lpthread".}
+  when defined(pvmResidentWitness):
+    const ResidentHeader = "${path}/resident_os_proof.h"
+  else:
+    const ResidentHeader = "${path}/resident_os.h"
+  type
+    ResidentOwnerObj {.importc: "pvm_resident_owner", header: ResidentHeader,
+        incompleteStruct.} = object
+      ## Opaque original physical extent, owned either by one Nim value or by pending cleanup.
+    ResidentStateObj {.importc: "pvm_resident_state", header: ResidentHeader,
+        incompleteStruct.} = object
+      ## One process-lifetime binding state serializes factory admission and pending physical release.
+    RawAllocation {.importc: "pvm_resident_allocation", header: ResidentHeader, bycopy.} = object
+      ## Exactly one private admission consumes this transferred descriptor's release authority.
+      data: nil pointer
+      logical, backing: csize_t
+      status: cint
+      authority: nil ptr ResidentOwnerObj
+    RawResidentView {.importc: "pvm_resident_view", header: ResidentHeader, bycopy.} = object
+      ## A synchronous non-owning observation of the retained opaque record's original bounds.
+      data: nil pointer
+      logical, backing: csize_t
+  proc rawStateAddress(): ptr ResidentStateObj {.cdecl,
+      importc: "pvm_resident_state_address", header: ResidentHeader.}
+    ## This address is requested only through the canonical non-inline binding below.
+  proc residentState(): ptr ResidentStateObj {.noinline.} =
+    ## Preserve one binding-owned state even when Nimony inlines foreign operations into another module.
+    rawStateAddress()
+
+  proc rawMap(state: ptr ResidentStateObj, logical: csize_t): RawAllocation {.
     cdecl, importc: "pvm_resident_map", header: ResidentHeader.}
-    ## The C boundary owns actual platform constants and checked host-page rounding.
-  proc rawUnmap(data: pointer, backing: csize_t) {.
-    cdecl, importc: "pvm_resident_unmap", header: ResidentHeader.}
-    ## Exact whole-map release finishes before owner accounting can disappear.
+    ## Allocate cleanup authority before the actual map; pending cleanup blocks new admission.
+  proc rawDrop(state: ptr ResidentStateObj, owner: ptr ResidentOwnerObj) {.
+    cdecl, importc: "pvm_resident_drop", header: ResidentHeader.}
+    ## Consume authority into exact physical release or allocation-free pending cleanup.
+  proc rawBorrow(owner: ptr ResidentOwnerObj): RawResidentView {.
+    cdecl, importc: "pvm_resident_borrow", header: ResidentHeader.}
+    ## Read original physical bounds while this synchronous caller retains the exclusive record.
+  proc rawDrain(state: ptr ResidentStateObj): cint {.cdecl, importc: "pvm_resident_drain",
+      header: ResidentHeader.}
+    ## Retry retained physical releases without acquiring a new mapping.
+else:
+  type ResidentOwnerObj = object
+    ## No foreign authority can be constructed in an unsupported allocation profile.
 
 type
   ResidentBytes* = object
     ## Exclusive mapping authority; logical/backing extents follow active and idle ownership.
-    data: nil pointer
+    authority: nil ptr ResidentOwnerObj
     logical, backing: csize_t
   RWView* = object
     ## Plain synchronous borrow: intended length-first16-byte shape, requiring lowering proof.
@@ -67,16 +107,40 @@ type
     else: discard
 
 when defined(pvmResidentWitness):
-  # Test-only single-thread observations never become a production ledger or admission framework.
   type ResidentWitnessSnapshot* = object
-    ## Exact successful maps/releases and live full extents, separate from managed ARC/RSS.
+    ## Exact physical maps/releases and live extents, including cleanup retained after the final Nim drop.
     acquisitions*, releases*, refusals*, logicalBytes*, mappedBytes*: uint64
-  var witnessSnapshot {.threadvar.}: ResidentWitnessSnapshot
   var witnessRefuseNext {.threadvar.}: bool
+  when FreshRWProfileEnabled:
+    type RawWitnessSnapshot {.importc: "pvm_resident_snapshot", header: ResidentHeader,
+        bycopy.} = object
+      ## C physical counters are copied under the same explicit state's mutex.
+      acquisitions, releases, refusals, logicalBytes, mappedBytes: uint64
+    proc rawWitnessSnapshot(state: ptr ResidentStateObj): RawWitnessSnapshot {.cdecl,
+        importc: "pvm_resident_witness_snapshot", header: ResidentHeader.}
+      ## Snapshot the same serialized C owner used by map, drop and retry.
+    proc rawWitnessRefusal(state: ptr ResidentStateObj) {.cdecl,
+        importc: "pvm_resident_witness_note_refusal", header: ResidentHeader.}
+      ## Record the existing no-map test refusal in the physical witness.
+    proc rawRefuseReleases(state: ptr ResidentStateObj, count: cuint) {.cdecl,
+        importc: "pvm_resident_witness_refuse_releases", header: ResidentHeader.}
+      ## Test-only substitution refuses the actual OS release before any bytes are unmapped.
+    proc rawRefuseRecord(state: ptr ResidentStateObj) {.cdecl,
+        importc: "pvm_resident_witness_refuse_record", header: ResidentHeader.}
+      ## Refuse the actual cleanup-record allocation before the OS can acquire any mapping.
+    proc rawWitnessMapped(data: pointer): cint {.cdecl,
+        importc: "pvm_resident_witness_mapped", header: ResidentHeader.}
+      ## Both positive and negative mapping observations query the real OS.
 
   proc residentWitnessSnapshot*(): ResidentWitnessSnapshot =
-    ## Read primitive observations before allocating/printing diagnostics.
-    witnessSnapshot
+    ## Read primitive physical observations before allocating or printing diagnostics.
+    when FreshRWProfileEnabled:
+      let observed = rawWitnessSnapshot(residentState())
+      ResidentWitnessSnapshot(acquisitions: observed.acquisitions, releases: observed.releases,
+        refusals: observed.refusals, logicalBytes: observed.logicalBytes,
+        mappedBytes: observed.mappedBytes)
+    else:
+      default(ResidentWitnessSnapshot)
 
   proc refuseNextResidentAllocation*() =
     ## One selected request fails locally; declining the foreign factory does not consume it.
@@ -90,30 +154,16 @@ proc `=dup`*(source: ResidentBytes): ResidentBytes {.error.}
 
 proc `=wasMoved`*(owner: var ResidentBytes) {.nodestroy, inline.} =
   ## Disarm the source without retiring the destination's transferred extent.
-  owner.data = nil
+  owner.authority = nil
   owner.logical = 0
   owner.backing = 0
 
 proc `=destroy`*(owner: ResidentBytes) =
-  ## Default, failed and moved owners release nothing; live owners release exactly once.
-  let data = owner.data
-  if data != nil:
-    when FreshRWProfileEnabled:
-      when defined(pvmResidentWitness):
-        # Validate a real single-thread live charge before touching its backing.
-        assert witnessSnapshot.acquisitions > witnessSnapshot.releases
-        assert uint64(owner.logical) <= witnessSnapshot.logicalBytes
-        assert uint64(owner.backing) <= witnessSnapshot.mappedBytes
-      # The private OS routine treats a release failure as fatal, never a successful retirement.
-      rawUnmap(data, owner.backing)
-      when defined(pvmResidentWitness):
-        # Retirement is observed only after successful exact-span release.
-        inc witnessSnapshot.releases
-        witnessSnapshot.logicalBytes -= uint64(owner.logical)
-        witnessSnapshot.mappedBytes -= uint64(owner.backing)
-    else:
-      # This compile profile cannot construct a foreign owner.
-      assert false
+  ## Consume final authority without crashing or retiring physical accounting on an OS refusal.
+  ## The preallocated C record survives in pending cleanup until an exact release can succeed.
+  when FreshRWProfileEnabled:
+    let authority = owner.authority
+    if authority != nil: rawDrop(residentState(), authority)
 
 proc `=copy`*(destination: var RWStorage, source: RWStorage) {.error.}
   ## The actual tagged aggregate is directly noncopyable, independently of its child hooks.
@@ -152,6 +202,26 @@ func error*(allocation: ResidentAllocationResult): ResidentAllocationError =
   ## Read status without exposing or copying success storage.
   allocation.status
 
+when FreshRWProfileEnabled:
+  proc finishResidentAllocation(raw: RawAllocation, bytes: int): ResidentAllocationResult =
+    ## Validate every returned field before exposing an owner; malformed metadata never supplies release bounds.
+    var valid = raw.status == 0 and raw.logical == csize_t(bytes) and raw.backing >= raw.logical and
+      ((bytes == 0 and raw.data == nil and raw.backing == 0 and raw.authority == nil) or
+        (bytes > 0 and raw.data != nil and raw.authority != nil))
+    let authority = raw.authority
+    if valid and authority != nil:
+      let physical = rawBorrow(authority)
+      valid = physical.data == raw.data and physical.logical == raw.logical and
+        physical.backing == raw.backing
+    if not valid:
+      # Even a malformed returned record disposes only its original opaque authority, never cached extents.
+      if authority != nil: rawDrop(residentState(), authority)
+      return ResidentAllocationResult(status: (if raw.status == 1:
+        ResidentAllocationError.InvalidSize else: ResidentAllocationError.AllocationRefused))
+    ResidentAllocationResult(status: ResidentAllocationError.None,
+      completed: ResidentBytes(authority: raw.authority, logical: raw.logical,
+          backing: raw.backing))
+
 proc tryMapFreshZero*(bytes: int): ResidentAllocationResult =
   ## Internal factory primitive; profile ineligibility is handled before this function is called.
   if bytes < 0 or uint64(bytes) > uint64(high(csize_t)):
@@ -159,35 +229,11 @@ proc tryMapFreshZero*(bytes: int): ResidentAllocationResult =
   when FreshRWProfileEnabled:
     when defined(pvmResidentWitness):
       if bytes > 0 and witnessRefuseNext:
-        # Exercise actual selected-allocation error plumbing without an OS-dependent exhaustion size.
         witnessRefuseNext = false
-        assert witnessSnapshot.refusals < high(uint64)
-        inc witnessSnapshot.refusals
+        rawWitnessRefusal(residentState())
         return ResidentAllocationResult(status: ResidentAllocationError.AllocationRefused)
-    # A real selected OS refusal never triggers a retry through managed storage.
-    let raw = rawMap(csize_t(bytes))
-    if raw.status == 1:
-      return ResidentAllocationResult(status: ResidentAllocationError.InvalidSize)
-    if raw.status != 0:
-      when defined(pvmResidentWitness):
-        # OS/query refusal remains distinct from a bad-size preflight.
-        assert witnessSnapshot.refusals < high(uint64)
-        inc witnessSnapshot.refusals
-      return ResidentAllocationResult(status: ResidentAllocationError.AllocationRefused)
-    assert raw.logical == csize_t(bytes) and raw.backing >= raw.logical
-    assert (bytes == 0 and raw.data == nil and raw.backing == 0) or
-      (bytes > 0 and raw.data != nil)
-    when defined(pvmResidentWitness):
-      if bytes > 0:
-        # Exact full logical/backing observations never discount untouched or idle zero pages.
-        assert witnessSnapshot.acquisitions < high(uint64)
-        assert uint64(raw.logical) <= high(uint64)-witnessSnapshot.logicalBytes
-        assert uint64(raw.backing) <= high(uint64)-witnessSnapshot.mappedBytes
-        inc witnessSnapshot.acquisitions
-        witnessSnapshot.logicalBytes += uint64(raw.logical)
-        witnessSnapshot.mappedBytes += uint64(raw.backing)
-    ResidentAllocationResult(status: ResidentAllocationError.None,
-      completed: ResidentBytes(data: raw.data, logical: raw.logical, backing: raw.backing))
+    let raw = rawMap(residentState(), csize_t(bytes))
+    finishResidentAllocation(raw, bytes)
   else:
     # Factory selection must return NotSelected earlier; no OS allocation exists in this arm.
     ResidentAllocationResult(status: ResidentAllocationError.AllocationRefused)
@@ -210,17 +256,28 @@ proc takeResident*(bytes: var ResidentBytes): RWStorage =
   ## Transfer the completed foreign owner and its complete logical/backing charge.
   RWStorage(kind: RWStorageKind.Resident, resident: move(bytes))
 
+proc drainResidentRetirements*(): bool =
+  ## Retry pending OS release without acquiring bytes; false keeps every failed extent accounted and owned.
+  when FreshRWProfileEnabled: rawDrain(residentState()) != 0
+  else: true
+
 proc tryBorrowRW*(owner: var ResidentBytes, view: var RWView): bool =
-  ## Validate complete owner extents before exposing a synchronous view; refusal leaves output and owner unchanged.
+  ## Match cached extents to original opaque authority before publishing a synchronous view.
   if owner.logical > csize_t(high(int)) or owner.backing < owner.logical: return false
+  let authority = owner.authority
   if owner.logical == 0:
-    if owner.data != nil or owner.backing != 0: return false
+    if authority != nil or owner.backing != 0: return false
     view = default(RWView)
     return true
-  let data = owner.data
-  if data == nil: return false
-  view = RWView(length: int(owner.logical), data: cast[ptr UncheckedArray[byte]](data))
-  true
+  when FreshRWProfileEnabled:
+    if authority == nil: return false
+    let raw = rawBorrow(authority)
+    let data = raw.data
+    if data == nil or raw.logical != owner.logical or raw.backing != owner.backing: return false
+    view = RWView(length: int(owner.logical), data: cast[ptr UncheckedArray[byte]](data))
+    true
+  else:
+    false
 
 proc tryBorrowRW*(storage: var RWStorage, view: var RWView): bool =
   ## Select the final installed owner once; a failed selection cannot publish an empty replacement view.
@@ -441,3 +498,130 @@ when defined(pvmResidentWitness):
       int(cast[uint](addr owner.backing)-ownerBase),
       int(cast[uint](addr view.length)-viewBase),
       int(cast[uint](addr view.data)-viewBase)]
+
+when defined(pvmResidentWitness) and FreshRWProfileEnabled:
+  proc residentWitnessRetirement*(stage: var int): bool =
+    ## Real release refusal keeps the mapping and charge live; retry releases before admission can recover.
+    stage = 1
+    let before = residentWitnessSnapshot()
+    rawRefuseRecord(residentState())
+    let refusedRecord = tryMapFreshZero(4097)
+    if refusedRecord.error != ResidentAllocationError.AllocationRefused: return false
+    stage = 2
+    let afterRecord = residentWitnessSnapshot()
+    if afterRecord.acquisitions != before.acquisitions or afterRecord.releases != before.releases or
+        afterRecord.logicalBytes != before.logicalBytes or afterRecord.mappedBytes !=
+            before.mappedBytes or
+        afterRecord.refusals != before.refusals+1: return false
+    stage = 3
+    var allocation = tryMapFreshZero(4097)
+    if allocation.error != ResidentAllocationError.None: return false
+    var owner = takeOwned(allocation)
+    var view = default(RWView)
+    if not tryBorrowRW(owner, view): return false
+    var address: RWByteAddress = nil
+    if not tryBorrowedData(view, 0, view.len, address) or address == nil: return false
+    if rawWitnessMapped(address) != 1: return false
+    if not tryWriteScalar[4](view, 0, 0xa1b2c3d4'u64): return false
+    let backing = uint64(owner.backing)
+    rawRefuseReleases(residentState(), 2)
+    owner = default(ResidentBytes)
+    view = default(RWView)
+    stage = 4
+    let held = residentWitnessSnapshot()
+    if held.acquisitions != afterRecord.acquisitions+1 or held.releases != afterRecord.releases or
+        held.logicalBytes != afterRecord.logicalBytes+4097 or
+        held.mappedBytes != afterRecord.mappedBytes+backing or rawWitnessMapped(address) != 1:
+      return false
+    stage = 5
+    let paused = tryMapFreshZero(4097)
+    if paused.error != ResidentAllocationError.AllocationRefused: return false
+    let blocked = residentWitnessSnapshot()
+    if blocked.acquisitions != held.acquisitions or blocked.releases != held.releases or
+        blocked.logicalBytes != held.logicalBytes or blocked.mappedBytes != held.mappedBytes or
+        blocked.refusals != held.refusals+1 or rawWitnessMapped(address) != 1: return false
+    stage = 6
+    if not drainResidentRetirements() or rawWitnessMapped(address) != 0: return false
+    stage = 7
+    let released = residentWitnessSnapshot()
+    if released.releases != before.releases+1 or released.logicalBytes != before.logicalBytes or
+        released.mappedBytes != before.mappedBytes: return false
+    stage = 8
+    block:
+      # A new successful owner after cleanup still has ordinary exact map/drop behavior.
+      var recovered = tryMapFreshZero(4097)
+      if recovered.error != ResidentAllocationError.None: return false
+    stage = 9
+    let done = residentWitnessSnapshot()
+    if done.acquisitions != before.acquisitions+2 or done.releases != before.releases+2 or
+        done.logicalBytes != before.logicalBytes or done.mappedBytes != before.mappedBytes:
+      return false
+    block:
+      stage = 30
+      var firstResult = tryMapFreshZero(4097)
+      var secondResult = tryMapFreshZero(8193)
+      var thirdResult = tryMapFreshZero(12289)
+      if firstResult.error != ResidentAllocationError.None or
+          secondResult.error != ResidentAllocationError.None or
+          thirdResult.error != ResidentAllocationError.None: return false
+      var first = takeOwned(firstResult)
+      var second = takeOwned(secondResult)
+      var third = takeOwned(thirdResult)
+      let firstAuthority = first.authority
+      let secondAuthority = second.authority
+      let thirdAuthority = third.authority
+      if firstAuthority == nil or secondAuthority == nil or thirdAuthority == nil: return false
+      let firstAddress = rawBorrow(firstAuthority).data
+      if firstAddress == nil: return false
+      let secondAddress = rawBorrow(secondAuthority).data
+      if secondAddress == nil: return false
+      let thirdAddress = rawBorrow(thirdAuthority).data
+      if thirdAddress == nil: return false
+      let thirdBacking = uint64(third.backing)
+      let acquired = residentWitnessSnapshot()
+      rawRefuseReleases(residentState(), 4)
+      first = default(ResidentBytes)
+      second = default(ResidentBytes)
+      third = default(ResidentBytes)
+      stage = 31
+      let queued = residentWitnessSnapshot()
+      if queued.releases != acquired.releases or queued.logicalBytes != acquired.logicalBytes or
+          queued.mappedBytes != acquired.mappedBytes: return false
+      # The failed head remains linked while both older records release. Admission still refuses.
+      let paused = tryMapFreshZero(4097)
+      if paused.error != ResidentAllocationError.AllocationRefused: return false
+      stage = 32
+      let partial = residentWitnessSnapshot()
+      if partial.acquisitions != acquired.acquisitions or partial.releases != acquired.releases+2 or
+          partial.logicalBytes != done.logicalBytes+12289 or
+          partial.mappedBytes != done.mappedBytes+thirdBacking or
+          rawWitnessMapped(firstAddress) != 0 or rawWitnessMapped(secondAddress) != 0 or
+          rawWitnessMapped(thirdAddress) != 1: return false
+      stage = 33
+      if not drainResidentRetirements() or rawWitnessMapped(thirdAddress) != 0: return false
+      let allReleased = residentWitnessSnapshot()
+      if allReleased.releases != acquired.releases+3: return false
+      if allReleased.logicalBytes != done.logicalBytes: return false
+      if allReleased.mappedBytes != done.mappedBytes: return false
+    for damage in 0..<5:
+      # Every malformed descriptor starts from a real map and retains its original opaque release authority.
+      stage = 20+damage
+      let start = residentWitnessSnapshot()
+      var raw = rawMap(residentState(), 4097)
+      if raw.status != 0 or raw.authority == nil: return false
+      let original = raw.data
+      if original == nil or rawWitnessMapped(original) != 1: return false
+      case damage
+      of 0: raw.logical = 4096
+      of 1: raw.backing = 4096
+      of 2: raw.data = nil
+      of 3: raw.status = 2
+      else: raw.data = cast[pointer](cast[uint](original)+1)
+      let refused = finishResidentAllocation(raw, 4097)
+      if refused.error != ResidentAllocationError.AllocationRefused: return false
+      let endState = residentWitnessSnapshot()
+      if endState.acquisitions != start.acquisitions+1 or endState.releases != start.releases+1 or
+          endState.logicalBytes != start.logicalBytes or endState.mappedBytes !=
+              start.mappedBytes or
+          rawWitnessMapped(original) != 0: return false
+    true
