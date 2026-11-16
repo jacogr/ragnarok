@@ -4254,25 +4254,30 @@ when NativeReadCycleEnabled:
   proc runFlatMixedLoopSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Reconstruct exact selected proofs and borrow their shared immutable arena once.
     let source = f.mixedSource
+    if source.chosenCount > uint8(NativeMixedLoopEntryLimit):
+      f.reason = oracle.StepError.BackendFailure
+      return
     if source.chosenCount != 0:
       var requested = default(NativeMixedLoopSet)
       requested.count = source.chosenCount
       for index in 0..<int(source.chosenCount):
         requested.proofs[index] = buildFlatMixedLoop(f, source.chosen[index]-1, source.epoch)
       if requested.complete:
-        let borrowed = borrowFlatMixedLoopSegment(f, addr requested)
-        if f.mixedImage != nil:
-          defer: returnFlatMixedLoopSegment(f)
+        let segment = borrowFlatMixedLoopSegment(f, addr requested)
+        if segment.borrowed.image != nil:
+          defer: returnFlatMixedLoopSegment(f, segment)
+          if f.reason != oracle.StepError.None: return
           flatDispatchSegment(f, entry)
           return
-        if borrowed.refusedMask != 0:
+        if f.reason != oracle.StepError.None: return
+        if segment.borrowed.refusedMask != 0:
           for index in 0..<int(source.chosenCount):
-            if (borrowed.refusedMask and (1'u8 shl index)) == 0: continue
+            if (segment.borrowed.refusedMask and (1'u8 shl index)) == 0: continue
             for candidate in 0..<int(source.count):
               if source.candidates[candidate] == source.chosen[index]:
                 f.mixedSource.refused = f.mixedSource.refused or (1'u8 shl candidate)
           f.mixedSource.chosenCount = 0
-        elif not borrowed.settled or borrowed.pending:
+        elif not segment.borrowed.settled or segment.borrowed.pending:
           flatDispatchSegment(f, entry)
           return
     runFlatMixedProbeSegment(f, entry)
@@ -5809,8 +5814,8 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
     for address in addresses:
       let access = writableScalar(frame.sourceMemory, MemoryAddress(address), AccessWidth(1))
       assert access.error == MachineError.None
-      flatMaterializeStore[1](frame, address)
-      flatMarkStore[1](frame, address)
+      assert flatMaterializeStore[1](frame, address) == oracle.StepError.None
+      assert flatMarkStore[1](frame, address)
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   include ./handler_fusion_witness

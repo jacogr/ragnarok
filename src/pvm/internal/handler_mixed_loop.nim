@@ -269,50 +269,85 @@ when declared(FlatFrame):
         return enterFlatMixedLoop(f, off, requested[].proofs[index], image, selected)
     flatLocal(f, off, oracle.StepError.BackendFailure)
 
+  type FlatMixedSegment = object
+    ## A call-scoped cleanup token retains the admitted owner and exact patched headers independently of mutable frame views.
+    borrowed: NativeMixedLoopBorrow
+    owner: NativeSession
+    proofs: nil ptr NativeMixedLoopSet
+    headers: array[NativeMixedLoopEntryLimit, uint32]
+    count, installed: uint8
+
   proc borrowFlatMixedLoopSegment(f: var FlatFrame,
-      requested: ptr NativeMixedLoopSet): NativeMixedLoopBorrow =
-    ## Borrow the arena once, and patch only the proof slots the immutable image actually published.
-    assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
-    result = borrowNativeMixedLoops(f.nativeSession, requested[])
-    if result.image == nil: return
+      requested: nil ptr NativeMixedLoopSet): FlatMixedSegment =
+    ## Preflight every header before borrowing or publishing any temporary handler.
+    ## The returned token owns cleanup even when a refused image mask prevents handler installation.
+    result = default(FlatMixedSegment)
+    if f.mixedImage != nil or f.mixedProofs != nil or f.mixedMask != 0 or
+        requested == nil:
+      f.reason = oracle.StepError.BackendFailure
+      return
+    if requested[].count == 0 or requested[].count > uint8(NativeMixedLoopEntryLimit):
+      f.reason = oracle.StepError.BackendFailure
+      return
+    # The caller seals the complete source set; the native owner checks its exact installed identity.
+    result.count = requested[].count
+    for index in 0..<int(result.count):
+      let header = requested[].proofs[index].header
+      if uint64(header) >= uint64(f.handlers.len) or f.handlers[int(header)] != flatCharge:
+        f.reason = oracle.StepError.BackendFailure
+        return
+      result.headers[index] = header
+    result.owner = f.nativeSession
+    result.proofs = requested
+    result.borrowed = borrowNativeMixedLoops(result.owner, requested[])
+    if result.borrowed.image == nil: return
+    let valid = uint8((1'u32 shl int(result.count))-1)
+    if result.borrowed.mask == 0 or (result.borrowed.mask and not valid) != 0:
+      f.reason = oracle.StepError.BackendFailure
+      return
     f.mixedProofs = requested
-    f.mixedImage = result.image
-    f.mixedMask = result.mask
+    f.mixedImage = result.borrowed.image
+    f.mixedMask = result.borrowed.mask
+    result.installed = result.borrowed.mask
     when defined(pvmMixedLoopWitness):
       f.mixedArenaWitness = default(array[NativeMixedLoopEntryLimit, FlatMixedArenaWitness])
     when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness):
       f.mixedWitnessEntries = 0
       f.mixedWitnessVisits = 0
       f.mixedWitnessRefusals = 0
-    for index in 0..<int(requested[].count):
-      if (result.mask and (1'u8 shl index)) == 0: continue
-      let header = requested[].proofs[index].header
-      assert f.handlers[int(header)] == flatCharge
-      f.handlers[int(header)] = flatMixedLoopEntry
+    for index in 0..<int(result.count):
+      if (result.installed and (1'u8 shl index)) == 0: continue
+      f.handlers[int(result.headers[index])] = flatMixedLoopEntry
 
-  proc returnFlatMixedLoopSegment(f: var FlatFrame) =
-    ## Restore every original checked header before dropping either borrow or releasing the arena.
-    let requested = f.mixedProofs
-    let image = f.mixedImage
-    assert requested != nil and image != nil
-    for index in 0..<int(requested[].count):
-      if (f.mixedMask and (1'u8 shl index)) == 0: continue
-      let header = requested[].proofs[index].header
-      restoreFlatTemporaryHandler(f, header, flatMixedLoopEntry, flatCharge)
+  proc returnFlatMixedLoopSegment(f: var FlatFrame, segment: FlatMixedSegment) =
+    ## Restore the captured checked headers before releasing the captured session's image borrow.
+    ## Damaged frame views report BackendFailure without losing the original cleanup authority.
+    let image = segment.borrowed.image
+    if image == nil:
+      f.reason = oracle.StepError.BackendFailure
+      return
+    if f.nativeSession != segment.owner: f.reason = oracle.StepError.BackendFailure
+    if segment.installed != 0:
+      if f.mixedProofs != segment.proofs or f.mixedImage != image or
+          f.mixedMask != segment.installed:
+        f.reason = oracle.StepError.BackendFailure
+      for index in 0..<int(segment.count):
+        if (segment.installed and (1'u8 shl index)) == 0: continue
+        restoreFlatTemporaryHandler(f, segment.headers[index], flatMixedLoopEntry, flatCharge)
     when defined(pvmMixedLoopWitness):
-      for index in 0..<int(requested[].count):
-        if (f.mixedMask and (1'u8 shl index)) == 0: continue
-        let proof {.cursor.} = requested[].proofs[index]
+      for index in 0..<int(segment.count):
+        if (segment.installed and (1'u8 shl index)) == 0: continue
+        let header = segment.headers[index]
         let counts = f.mixedArenaWitness[index]
         let geometry = witnessNativeMixedLoopGeometry(image[], uint8(index))
         var fact = default(FlatFact)
-        if not tryReadFlatSite(f, proof.header, fact):
+        if not tryReadFlatSite(f, header, fact):
           f.reason = oracle.StepError.BackendFailure
           continue
         let pc = fact.pc
         echo "MIXED_ARENA_ENTRY,", pc, ",", index, ",", counts.entries, ",", counts.visits,
           ",", counts.refusals, ",", counts.paid, ",", counts.operations, ",", counts.branches,
-          ",", counts.repeatedHeaders, ",", image[].codeBytes, ",", f.mixedMask,
+          ",", counts.repeatedHeaders, ",", image[].codeBytes, ",", segment.installed,
           ",", geometry.offset, ",", geometry.length
     f.mixedImage = nil
     f.mixedProofs = nil
@@ -320,7 +355,88 @@ when declared(FlatFrame):
     when defined(pvmMixedLoopWitness):
       echo "MIXED_LOOP_SEGMENT,", f.mixedWitnessEntries, ",", f.mixedWitnessVisits, ",",
         f.mixedWitnessRefusals, ",", image[].codeBytes
-    if not returnNativeMixedLoop(f.nativeSession): f.reason = oracle.StepError.BackendFailure
+    if not returnNativeMixedLoop(segment.owner): f.reason = oracle.StepError.BackendFailure
+
+  when defined(pvmSharedAsyncWitness):
+    proc witnessFlatMixedSegmentBoundary*(session: NativeSession, original: NativeMixedLoopSet) =
+      ## Exercise header transactions against a real parked mailbox image without dispatching guest code.
+      ## The tiny decoded plan supplies a genuine frame; synthetic handler coordinates test only patch ownership.
+      assert original.complete
+      let wire = [0'u8, 0, 1, 0, 1]
+      let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(16), JumpCountLimit(0))
+      assert decoded.error == ProgramError.None
+      var prepared = prepareFlatPlan(decoded.value, GasCycleLimit(100000), defaultFlatLimits(), false)
+      assert prepared.error == FlatError.None
+      let plan = takeValue(prepared)
+      var extent = 2
+      for index in 0..<int(original.count):
+        extent = max(extent, int(original.proofs[index].header)+2)
+      assert extent <= 1024, "mailbox fixture handler coordinates must remain small"
+      for scenario in 0..<13:
+        var frame = newFlatFrame(plan, [], MachineInfo(gas: MachineGas(12345)))
+        frame.nativeSession = session
+        frame.remaining = 123
+        frame.handlers = newSeqOfCap[FlatHandler](extent)
+        for index in 0..<extent: frame.handlers.add(flatCharge)
+        var requested = original
+        let before = frame.info
+        let remaining = frame.remaining
+        var occupied = default(NativeMixedLoopBorrow)
+        case scenario
+        of 1: requested.count = 0
+        of 2: requested.count = uint8(NativeMixedLoopEntryLimit+1)
+        of 3:
+          # A bad later coordinate cannot leave the first valid header patched.
+          requested.count = 2
+          requested.proofs[1].header = high(uint32)
+        of 4:
+          requested.count = 2
+          requested.proofs[1].header = uint32(extent-1)
+          frame.handlers[extent-1] = flatBudget
+        of 5:
+          occupied = borrowNativeMixedLoops(session, original)
+          assert occupied.image != nil
+          frame.mixedImage = occupied.image
+        of 6: frame.mixedProofs = addr requested
+        of 7: frame.mixedMask = 1
+        else: discard
+        var selected: nil ptr NativeMixedLoopSet = addr requested
+        if scenario == 0: selected = nil
+        let segment = borrowFlatMixedLoopSegment(frame, selected)
+        if scenario < 8:
+          assert segment.borrowed.image == nil and segment.installed == 0
+          assert frame.reason == oracle.StepError.BackendFailure
+          for index in 0..<extent:
+            # Use direct symbol comparisons as in NIM-010's supported control.
+            if scenario == 4 and index == extent-1:
+              assert frame.handlers[index] == flatBudget
+            else:
+              assert frame.handlers[index] == flatCharge, "failed admission changed an earlier header"
+          if occupied.image != nil:
+            assert borrowNativeMixedLoops(session, original).image == nil,
+              "failed nested admission stole the existing borrow"
+            assert returnNativeMixedLoop(session)
+        else:
+          assert segment.borrowed.image != nil and segment.installed != 0
+          assert frame.reason == oracle.StepError.None
+          case scenario
+          of 9: frame.mixedProofs = nil
+          of 10: frame.mixedImage = nil
+          of 11: frame.mixedMask = 0
+          of 12: frame.nativeSession = default(NativeSession)
+          else: discard
+          returnFlatMixedLoopSegment(frame, segment)
+          assert frame.reason == (if scenario == 8: oracle.StepError.None
+            else: oracle.StepError.BackendFailure)
+          assert frame.mixedImage == nil and frame.mixedProofs == nil and frame.mixedMask == 0
+          for index in 0..<extent: assert frame.handlers[index] == flatCharge
+        assert frame.info == before and frame.remaining == remaining,
+          "native admission/cleanup changed guest CPU, gas or attempts"
+        # Every refusal and damaged-view return leaves the real owner borrowable again.
+        let recovered = borrowNativeMixedLoops(session, original)
+        let recoveredImage = recovered.image
+        assert recoveredImage != nil and recoveredImage[].ready
+        assert returnNativeMixedLoop(session)
 
   when defined(pvmSharedAsyncWitness) or defined(pvmMixedLoopEntryWitness):
     proc witnessFlatMixedDiscovery*(program: Program, checks, accepted: int,

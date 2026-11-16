@@ -25,6 +25,13 @@ constructors. Ordinary read qualification checks that the constructors remain un
 proof suites explicitly declare their separate profile. Keep production admission and execution on
 the fallible `NativeSession` path instead of reviving these legacy caches.
 
+Mixed-loop segments preflight all temporary header changes before taking an image borrow. A
+call-scoped cleanup token retains the admitted session, image identity and copied header
+coordinates independently of the frame's mutable views. Cleanup restores those checked headers
+before returning the original session's borrow, including when a frame view is damaged. Invalid
+local bookkeeping reports `BackendFailure`; an absent optional image still selects checked
+execution. Admission and cleanup do not invent guest work, gas charges or successful results.
+
 ## Reusable execution policy
 
 [Gas planning](../../src/pvm/gas/plan.nim), [checked dispatch](../../src/pvm/internal/handler_stream.nim)
