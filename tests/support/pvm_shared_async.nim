@@ -6,7 +6,8 @@
 import std/[assertions, syncio, envvars]
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
-import ../../src/pvm/internal/[handler_stream, metadata_store, native_pipeline, native_platform]
+import ../../src/pvm/internal/[handler_stream, metadata_store, native_pipeline, native_platform,
+  resident_bytes]
 import ./pvm_owner_record
 when NativeReadCycleEnabled:
   import ./pvm_static_fusion
@@ -2528,6 +2529,8 @@ proc runSharedAsync*() =
     assert probeDirectoryReadRefusals(), "directory reads must refuse damaged physical storage without output or guest absence"
     assert probeByteReadRefusals(), "byte reads must refuse missing backing without values, prefixes or wrong guest faults"
     assert probeMachineOwnerRefusals(loopOwner()), "machine owner refusal must preserve CPU, gas and full source memory"
+    assert probeRWViewRefusals(), "RW views must refuse invalid complete spans while preserving owner bytes and outputs"
+    assert probeFlatRWViewRefusals(hostOwner()), "lost RW views must refuse descriptors, host reads and publication without changing owners"
     memoryPublicationRefusals()
     memoryPayloadRefusals()
     unregisteredInvocationLease()

@@ -175,13 +175,17 @@ when declared(FlatFrame):
         f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
         f.reservation != (read.header or flatReservationHeaderFlag):
       return original(f, off)
-    if not f.readContextReady: prepareFlatReadContext(f)
+    if not f.readContextReady and not prepareFlatReadContext(f):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     var context = NativeCycleContext(read: f.readContext, gas: uint64(f.info.gas),
       remaining: f.remaining, lastCompleted: NativeCycleNoCompleted)
     context.writable[0] = NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len))
     context.writable[1] = NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))
     if f.stack.len > 0: context.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.writable[1].data = f.rw.borrowedData(0)
+    var rwData: nil ptr byte = nil
+    if not tryBorrowedData(f.rw, 0, f.rw.len, rwData):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
+    context.writable[1].data = rwData
     if f.dirtyPages.len > 0: context.dirty = addr f.dirtyPages[0]
     context.dirtyWords = uint64(f.dirtyPages.len)
     var lastHeader = read.header
