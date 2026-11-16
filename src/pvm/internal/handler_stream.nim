@@ -25,6 +25,10 @@
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
+## Input reset preflights the complete immutable source and every private destination before copying.
+## A damaged reset keeps the stopped CPU, host observation and bytes intact and poisons the private
+## frame against execution. Source identity and complete backing are checked before host-page copies;
+## the commit pass retains the same immutable source and performs no allocation or external calls.
 ## Source headers, operand payloads and rank lookups publish only complete original facts. A damaged
 ## derived catalogue refuses through the existing preparation error boundary; optional native classifiers
 ## cannot replace a failed source lookup with zero operands. Admission guards also precede quota subtraction.
@@ -954,12 +958,20 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.al
       if not flatRememberPage(f, last): return false
   true
 
-proc flatClearDirty(f: var FlatFrame) =
+func flatDirtyCoordinatesValid(f: FlatFrame): bool =
+  ## Preflight the complete retained index list before clearing any word or replacing its baseline.
+  for page in f.dirtyIndices:
+    if uint64(page shr 6) >= uint64(f.dirtyPages.len): return false
+  true
+
+proc flatClearDirty(f: var FlatFrame): bool =
   ## A successful host checkpoint or input reset makes private bytes equal their immutable base again.
+  if not flatDirtyCoordinatesValid(f): return false
   for page in f.dirtyIndices:
     # Several pages can share a word; repeated clearing is harmless and bounded by written pages.
     f.dirtyPages[int(page shr 6)] = 0
   f.dirtyIndices.setLen(0)
+  true
 
 func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   ## Captured maps contain only 32-bit-addressable pages; unknown bitmap shapes retain full publication.
@@ -971,16 +983,13 @@ func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
 proc flatTryCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
     output: var openArray[byte]): bool =
   ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
+  if slot < 0 or uint64(slot) > uint64(high(uint32)): return false
+  if validateMemoryPage(memory, MemoryPageSlot(uint32(slot)), expected) != MachineError.None:
+    return false
   let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
   if copied.error != MachineError.None: return false
   let actual = copied.value
   actual.index == expected.index and actual.access == expected.access
-
-proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
-    output: var openArray[byte]) =
-  ## Existing reset and publication callers require a previously matched owner and layout.
-  let copied = flatTryCopySourcePage(memory, slot, expected, output)
-  assert copied
 
 proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64): oracle.StepError =
   ## Whole-store preflight has succeeded. Materialize a complete extra run
@@ -2329,7 +2338,9 @@ proc flatSingleResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## At most two conditional arms add endpoint nodes; the same genuine target checks precede transfer.
   let decoded = instruction(f.plan.source, CodeAddress(uint64(pc)))
   if decoded.error != ProgramError.None: return flatStop
-  assert f.handlers.len < 5
+  if f.handlers.len >= 5:
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
   let offset = uint32(f.handlers.len)
   if not flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(pc), y: 0,
       slots: default(RegisterSlots)), 0): return flatStop
@@ -2966,9 +2977,73 @@ proc settledNativeWork*(f: FlatFrame, supplied: uint64): uint64 =
   if attempted == 0: return 0
   attempted-1
 
+proc flatRestoreSourcePage(f: var FlatFrame, page: int, apply: bool): bool =
+  ## The same destination proof serves reset preflight and its allocation-free commit.
+  ## An unmaterialized extra remains backed by the retained, fully validated immutable source.
+  if page < 0 or page >= f.sourcePages.len: return false
+  let image = f.sourcePages[page]
+  if validateMemoryPage(f.sourceMemory, MemoryPageSlot(uint32(page)), image) != MachineError.None:
+    return false
+  if image.access == PageAccess.Inaccessible: return true
+  let address = uint64(uint32(image.index))*4096
+  if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
+    if image.access != PageAccess.ReadWrite: return false
+    if not apply: return true
+    let offset = int(address-f.stackBase)
+    return flatTryCopySourcePage(f.sourceMemory, page, image,
+      f.stack.toOpenArray(offset, offset+4095))
+  if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+    if image.access != PageAccess.ReadWrite: return false
+    let offset = int(address-f.rwBase)
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(f.rw, offset, 4096, span): return false
+    if not apply: return true
+    return flatTryCopySourcePage(f.sourceMemory, page, image, span.toOpenArray)
+  if address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
+    if image.access != PageAccess.ReadOnly: return false
+    if not apply: return true
+    let offset = int(address-f.roBase)
+    return flatTryCopySourcePage(f.sourceMemory, page, image,
+      f.ro.toOpenArray(offset, offset+4095))
+  for i in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[i]
+    if region.size < 4096: continue
+    if address >= region.first and address-region.first+4096 <= uint64(region.size):
+      if region.access != image.access: return false
+      if region.bytes.len == 0: return true
+      if region.bytes.len != region.size: return false
+      if not apply: return true
+      let offset = int(address-region.first)
+      return flatTryCopySourcePage(f.sourceMemory, page, image,
+        f.extra[i].bytes.toOpenArray(offset, offset+4095))
+  false
+
+proc flatRefuseRestore(f: var FlatFrame) =
+  ## A damaged private frame cannot execute after an unsuccessful input restoration.
+  f.reason = oracle.StepError.BackendFailure
+  f.preparationFailure = FlatError.InvalidMemory
+
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
-  ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
-  flatClearDirty(f)
+  ## Preflight every source and destination before changing bytes, CPU, dirty membership or host readiness.
+  ## Both passes retain one immutable owner and allocate nothing. A refusal poisons only this private frame.
+  let count = memoryPageCount(f.sourceMemory)
+  if count.error != MachineError.None or uint64(uint32(count.value)) != uint64(f.sourcePages.len):
+    flatRefuseRestore(f)
+    return
+  if not flatDirtyCoordinatesValid(f):
+    flatRefuseRestore(f)
+    return
+  for page in 0..<f.sourcePages.len:
+    if not flatRestoreSourcePage(f, page, false):
+      flatRefuseRestore(f)
+      return
+  for page in 0..<f.sourcePages.len:
+    if not flatRestoreSourcePage(f, page, true):
+      flatRefuseRestore(f)
+      return
+  if not flatClearDirty(f):
+    flatRefuseRestore(f)
+    return
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.info = info
@@ -2976,39 +3051,6 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   f.exit = oracle.StepExit.Continued
   f.faultPage = PageAddress(0)
   f.hostCall = oracle.HostCallId(0)
-  let memory = f.sourceMemory
-  for page in 0..<f.sourcePages.len:
-    let image = f.sourcePages[page]
-    if image.access == PageAccess.Inaccessible: continue
-    let address = uint64(uint32(image.index))*4096
-    if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
-      let offset = int(address-f.stackBase)
-      flatCopySourcePage(memory, page, image, f.stack.toOpenArray(offset, offset+4095))
-    elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
-      let offset = int(address-f.rwBase)
-      var span = default(RWSpan)
-      if not tryBorrowRWSpan(f.rw, offset, 4096, span):
-        f.reason = oracle.StepError.BackendFailure
-        f.preparationFailure = FlatError.InvalidMemory
-        return
-      flatCopySourcePage(memory, page, image, span.toOpenArray)
-    elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
-      let offset = int(address-f.roBase)
-      flatCopySourcePage(memory, page, image, f.ro.toOpenArray(offset, offset+4095))
-    else:
-      var found = false
-      for i in 0..<f.extra.len:
-        let region {.cursor.} = f.extra[i]
-        if address >= region.first and address-region.first+4096 <= uint64(region.size):
-          if region.bytes.len != 0:
-            # A baseline-backed extra is already restored through this immutable source owner.
-            assert region.bytes.len == region.size
-            let offset = int(address-region.first)
-            flatCopySourcePage(memory, page, image,
-              f.extra[i].bytes.toOpenArray(offset, offset+4095))
-          found = true
-          break
-      assert found
 
 proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Memory,
     info: MachineInfo, pageCount, dirtyWordCount: int): FlatFrame =
@@ -3034,7 +3076,7 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
 
 proc flatRegionPast(images: openArray[PageDescription], first: int): int =
   ## Group only genuinely adjacent pages with equal permission before any region payload allocation.
-  assert first >= 0 and first < images.len
+  if first < 0 or first >= images.len: return first
   result = first+1
   while result < images.len and images[result].access == images[first].access and
       uint64(uint32(images[result].index)) == uint64(uint32(images[result-1].index))+1:
@@ -3064,7 +3106,9 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     if images[first].access == PageAccess.ReadWrite:
       if firstRW < 0: firstRW = ordinal
       lastRW = ordinal
-    first = flatRegionPast(images, first)
+    let past = flatRegionPast(images, first)
+    if past <= first: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
+    first = past
     inc ordinal
   # Reserve exact value storage so building a region needs no separate ref allocation.
   var regions = newSeqOfCap[FlatRegion](ordinal)
@@ -3078,6 +3122,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       inc first
       continue
     let after = flatRegionPast(images, first)
+    if after <= first: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
     let pages = after-first
     if pages > high(int) div 4096:
       return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
@@ -4678,8 +4723,13 @@ when defined(pvmMixedLoopEntryWitness) and NativeReadCycleEnabled:
 
 proc runFlatSingle*(f: var FlatFrame) =
   ## Reuse the ordinary charge and opcode workers with one source fact and scalar successor endpoints.
-  assert f.plan.singleStep and f.plan.facts.len == 1
-  assert f.handlers.len == 0 and f.arguments.len == 0 and f.sites.len == 0
+  if f.preparationFailure != FlatError.None:
+    f.reason = oracle.StepError.InvalidPreparedProgram
+    return
+  if f.plan == nil or not f.plan.singleStep or f.plan.facts.len != 1 or
+      f.handlers.len != 0 or f.arguments.len != 0 or f.sites.len != 0:
+    f.reason = oracle.StepError.BackendFailure
+    return
   f.remaining = 1
   f.reason = oracle.StepError.None
   f.exit = oracle.StepExit.Continued
@@ -4714,8 +4764,14 @@ proc runFlatSingle*(f: var FlatFrame) =
     return
   var offset = 0'u32
   while offset != flatStop:
-    assert int(offset) < f.handlers.len
+    if uint64(offset) >= uint64(f.handlers.len) or uint64(offset) >= uint64(f.arguments.len) or
+        uint64(offset) >= uint64(f.sites.len):
+      f.reason = oracle.StepError.BackendFailure
+      return
     let handler = f.handlers[int(offset)]
+    if handler == nil:
+      f.reason = oracle.StepError.BackendFailure
+      return
     offset = handler(f, offset)
 
 func flatPublicationError(error: MachineError): oracle.StepError =
@@ -5005,13 +5061,16 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
     apply: bool, copiedPages: var uint64): bool =
   ## Valid destination and physical copy count are distinct; preflight never changes bytes or the count.
   let page = int(uint32(slot))
+  if page >= f.sourcePages.len: return false
   let description = f.sourcePages[page]
   if description.access != PageAccess.ReadWrite: return false
+  if validateMemoryPage(posterior, slot, description) != MachineError.None: return false
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
     if apply:
-      flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
+      if not flatTryCopySourcePage(posterior, page, description,
+          f.stack.toOpenArray(offset, offset+4095)): return false
       inc copiedPages
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
@@ -5019,20 +5078,20 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
     var span = default(RWSpan)
     if not tryBorrowRWSpan(f.rw, offset, 4096, span): return false
     if apply:
-      flatCopySourcePage(posterior, page, description, span.toOpenArray)
+      if not flatTryCopySourcePage(posterior, page, description, span.toOpenArray): return false
       inc copiedPages
     return true
   for i in 0..<f.extra.len:
     # Fragmented mappings retain their own immutable access metadata and full-span checks.
     let region {.cursor.} = f.extra[i]
-    if region.access == PageAccess.ReadWrite and address >= region.first and
+    if region.size >= 4096 and region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.size):
-      assert region.bytes.len == 0 or region.bytes.len == region.size
+      if region.bytes.len != 0 and region.bytes.len != region.size: return false
       if apply and region.bytes.len != 0:
         # Baseline-backed extras accept the changed owner without allocating or physically copying bytes.
         let offset = int(address-region.first)
-        flatCopySourcePage(posterior, page, description,
-          f.extra[i].bytes.toOpenArray(offset, offset+4095))
+        if not flatTryCopySourcePage(posterior, page, description,
+            f.extra[i].bytes.toOpenArray(offset, offset+4095)): return false
         inc copiedPages
       return true
   false
@@ -5113,6 +5172,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var replace = delta.error != MachineError.None
   if not replace:
+    if not flatDirtyCoordinatesValid(f): return oracle.StepError.BackendFailure
     let changes = machine.takeValue(delta)
     var copiedPages = 0'u64
     for i in 0..<changes.len:
@@ -5120,10 +5180,13 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       if not flatHostPage(f, posterior, changes[i], false, copiedPages): replace = true
     if not replace:
       for i in 0..<changes.len:
-        let applied = flatHostPage(f, posterior, changes[i], true, copiedPages)
-        assert applied
+        if not flatHostPage(f, posterior, changes[i], true, copiedPages):
+          flatRefuseRestore(f)
+          return oracle.StepError.BackendFailure
       f.sourceMemory = posterior
-      flatClearDirty(f)
+      if not flatClearDirty(f):
+        flatRefuseRestore(f)
+        return oracle.StepError.BackendFailure
       flatCommitHostContinuation(f, info)
       f.hostCopiedPages+=copiedPages
       return oracle.StepError.None
@@ -5726,3 +5789,96 @@ when defined(pvmSharedAsyncWitness):
     for index, value in span.toOpenArray:
       if value != bytes[index]: return false
     recovered.info == info and pageImage(memory, page.index).value == page
+
+when defined(pvmSharedAsyncWitness):
+  proc probeFlatRestoreRefusals*(source: Program): bool =
+    ## Refuse late source/extra/dirty damage before resetting an earlier modified page or stopped CPU.
+    var pages = default(array[5, PageImage])
+    for slot in 0..<pages.len:
+      pages[slot].index = PageIndex(uint32(16+slot*16))
+      pages[slot].access = if slot == 0: PageAccess.ReadOnly else: PageAccess.ReadWrite
+      for at in 0..<4096: pages[slot].bytes[at] = byte((slot*37+at*11+7) and 255)
+    let captured = captureMemory(pages, PageLimit(5))
+    if captured.error != MachineError.None: return false
+    let memory = captured.value
+    var admitted = prepareFlatPlan(source, GasCycleLimit(10000), defaultFlatLimits())
+    if admitted.error != FlatError.None: return false
+    let plan = takeValue(admitted)
+    let initial = MachineInfo(gas: MachineGas(1000))
+    var output = default(array[4096, byte])
+    for at in 0..<output.len: output[at] = 0xa5
+    var wrong = PageDescription(index: PageIndex(999), access: PageAccess.ReadOnly)
+    if flatTryCopySourcePage(memory, 0, wrong, output) or
+        flatTryCopySourcePage(memory, -1, wrong, output): return false
+    for value in output:
+      if value != 0xa5: return false
+    for scenario in 0..<5:
+      # Every case starts from genuine host execution and writes in every private RW region.
+      var prepared = prepareFlatMemoryFrame(plan, memory, initial)
+      if prepared.error != FlatError.None: return false
+      var frame = takeValue(prepared)
+      runFlat(frame, 32)
+      if frame.reason != oracle.StepError.None or frame.exit != oracle.StepExit.Host: return false
+      for slot in 1..<pages.len:
+        if not flatStore[1](frame, 0, uint64(uint32(pages[slot].index))*4096, 0x5a): return false
+      var before = default(Memory)
+      if tryObserveFlatHostMemory(frame, before) != oracle.StepError.None: return false
+      let stopped = frame.info
+      let originalDescription = frame.sourcePages[4]
+      if frame.extra.len != 2: return false
+      let originalSize = frame.extra[1].size
+      let originalDirtyCount = frame.dirtyIndices.len
+      case scenario
+      of 0: frame.sourcePages[4].index = PageIndex(999)
+      of 1: frame.sourceMemory = default(Memory)
+      of 2: frame.extra[1].size += 4096
+      of 3: frame.dirtyIndices.add(high(uint32))
+      else: frame.sourcePages.setLen(4)
+      var copied = 99'u64
+      if flatHostPage(frame, memory, MemoryPageSlot(high(uint32)), false, copied) or
+          copied != 99: return false
+      if scenario == 0 and flatHostPage(frame, memory, MemoryPageSlot(4), true,
+          copied): return false
+      if scenario == 2 and flatHostPage(frame, memory, MemoryPageSlot(3), true,
+          copied): return false
+      if copied != 99: return false
+      var replacement = initial
+      replacement.gas = MachineGas(77)
+      resetFlatFrame(frame, replacement)
+      if frame.reason != oracle.StepError.BackendFailure or frame.preparationFailure !=
+          FlatError.InvalidMemory or frame.info != stopped or not frame.hostReady or
+          frame.hostSnapshot != before: return false
+      # Restore only deliberately damaged metadata, then observe every actual private byte.
+      frame.sourcePages.setLen(5)
+      frame.sourcePages[4] = originalDescription
+      frame.sourceMemory = memory
+      frame.extra[1].size = originalSize
+      frame.dirtyIndices.setLen(originalDirtyCount)
+      var after = default(Memory)
+      if tryFlatMemorySnapshot(frame, after) != oracle.StepError.None: return false
+      for page in pages:
+        let expected = pageImage(before, page.index)
+        let actual = pageImage(after, page.index)
+        if expected.error != MachineError.None or actual.error != MachineError.None or
+            expected.value != actual.value: return false
+        if pageImage(memory, page.index).value != page: return false
+      runFlat(frame, 8)
+      if frame.reason != oracle.StepError.InvalidPreparedProgram or frame.info !=
+          stopped: return false
+    # A valid reset restores all primary and materialized extra bytes and accepts the requested CPU.
+    var ready = prepareFlatMemoryFrame(plan, memory, initial)
+    if ready.error != FlatError.None: return false
+    var fresh = takeValue(ready)
+    for slot in 1..<pages.len:
+      if not flatStore[1](fresh, 0, uint64(uint32(pages[slot].index))*4096, 0x5a): return false
+    var replacement = initial
+    replacement.gas = MachineGas(77)
+    resetFlatFrame(fresh, replacement)
+    if fresh.reason != oracle.StepError.None or fresh.info != replacement or
+        fresh.dirtyIndices.len != 0: return false
+    var restored = default(Memory)
+    if tryFlatMemorySnapshot(fresh, restored) != oracle.StepError.None or restored != memory:
+      return false
+    # A normal plan cannot be used as a single-instruction stream, even with a genuine fact owner.
+    runFlatSingle(fresh)
+    fresh.reason == oracle.StepError.BackendFailure and fresh.info == replacement

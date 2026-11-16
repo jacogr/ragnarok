@@ -939,6 +939,22 @@ proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
     pages[slot] = PageDescription(index: entry[].index, access: entry[].access)
   MachineResult[seq[PageDescription]](status: MachineError.None, completed: pages)
 
+func validateMemoryPage*(memory: Memory, slot: MemoryPageSlot,
+    expected: PageDescription): MachineError =
+  ## Prove one exact immutable page's identity and complete byte backing without copying or allocating.
+  ## Callers may preflight a batch before its first write while retaining this unchanged owner.
+  let data = memory.data
+  if data == nil: return MachineError.InvalidOwner
+  if uint64(slot) >= uint64(data.pages.len): return MachineError.InvalidRange
+  let entry = borrowDirectoryPage(data.pages, int(uint32(slot)))
+  if entry == nil: return MachineError.InvalidOwner
+  let page {.cursor.} = entry[]
+  if page.index != expected.index or page.access != expected.access:
+    return MachineError.InvalidRange
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(page, spans): return MachineError.InvalidOwner
+  MachineError.None
+
 proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
     output: var openArray[byte]): MachineResult[PageDescription] =
   ## Copy one captured page directly into caller-owned storage, including retained inaccessible bytes.
