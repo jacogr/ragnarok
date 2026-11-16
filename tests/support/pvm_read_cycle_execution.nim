@@ -1103,8 +1103,20 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     let queuedImage = queuedBorrow.image
     assert queuedImage != nil and queuedImage[].ready, "optional work must resume after primary"
     assert nativeOwnerStatistics(renderer) == parked
-    returnNativeMixedLoop(renderer)
-    finishNativeInvocation(renderer, NativeInvocationFloor)
+    assert not returnNativeMixedLoop(other), "unleased owner cannot return another image"
+    assert beginNativeInvocation(queuedPriority, NativeInvocationFloor)
+    assert not returnNativeMixedLoop(queuedPriority), "another installed owner cannot return the image"
+    assert finishNativeInvocation(queuedPriority, 0)
+    let held = runtimeInfo(runtime)
+    assert not finishNativeInvocation(renderer, NativeInvocationFloor), "a live borrow retains its lease"
+    assert runtimeInfo(runtime).active == held.active and runtimeInfo(runtime).registered ==
+        held.registered
+    assert not close(runtime) and queuedImage[].ready
+    assert borrow(renderer, queuedProof).image == nil, "second borrow preserves the first"
+    assert nativeOwnerStatistics(renderer) == parked
+    assert returnNativeMixedLoop(renderer)
+    assert not returnNativeMixedLoop(renderer), "repeated return has no authority"
+    assert finishNativeInvocation(renderer, NativeInvocationFloor)
     invalidateNativeStream(queuedPriority)
     invalidateNativeStream(renderer)
     readyMixedLoopTestRenderer(runtime, renderer)

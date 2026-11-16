@@ -693,6 +693,16 @@ when defined(pvmSharedAsyncWitness):
       "unregistered lease: active invocation does not reserve image capacity"
     assert not runtime.close(), "unregistered lease: active checked call prevents close"
     recordNativeWork(session, 4)
+    assert not beginNativeInvocation(session, 999), "reentry refuses the second lease"
+    assert runtimeInfo(runtime).active == 1 and runtimeInfo(runtime).registered == 0
+    assert observedNativeWork(session) == 4, "reentry preserves original invocation work"
+    when NativeCheckedReadEnabled:
+      assert beginNativeReadDiscovery(session)
+      assert admitNativeReadDiscoveryHeader(session, 7)
+      assert not beginNativeReadDiscovery(session), "reentry cannot clear the discovery table"
+      assert not admitNativeReadDiscoveryHeader(session, 7)
+      assert not admitNativeReadDiscoveryHeader(session, high(uint32))
+      assert admitNativeReadDiscoveryHeader(session, 8)
     assert observedNativeWork(session) == 4, "unregistered lease: actual work accrues without credit"
     finishNativeInvocation(session, observedNativeWork(session))
     invalidateNativeStream(session)
@@ -1299,6 +1309,35 @@ when defined(pvmSharedAsyncWitness):
     proc unexpectedQuotaHost(calls: var int, suspension: StepOutcome): HostResponse =
       inc calls
       default(HostResponse)
+
+    proc invalidInvocationLease() =
+      ## Both public paths refuse a contradictory aggregate without publishing a tentative guest result.
+      let owner = loopOwner()
+      let source = input(owner, 2048)
+      let initial = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let quota = ExecutionStepLimit(6145)
+      for hosted in [false, true]:
+        # A later call on this same owner still uses checked execution after the compiler is stopped.
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        let code = prepared(owner, runtime)
+        loseNextNativeInvocationLease(runtime)
+        if hosted:
+          var calls = 0
+          let failed = executeWithHost(source, calls, unexpectedQuotaHost, quota, HostCallLimit(1), code)
+          assert failed.error == StepError.BackendFailure and calls == 0
+        else:
+          assert execute(source, quota, code).error == StepError.BackendFailure
+        waitNativeCompiler(runtime)
+        assert runtimeInfo(runtime).failure == NativeCompilerFailure.InvalidLease
+        assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+        assert runtimeInfo(runtime).submitted == 0
+        assert machineInfo(source).value == initial and memoryOf(source).value == memory
+        let recovered = execute(source, quota, code)
+        verify(recovered, source, 2048)
+        assert recovered.value.backend == PvmBackend.Interpreted
+        assert close(runtime)
 
     proc invalidQuotaPredecessor() =
       ## Both public owners must discard a damaged stream with an active observer.
@@ -2185,6 +2224,8 @@ proc runSharedAsync*() =
     diagnosticPhase("invalidCollectionOwnership")
     invalidCollectionOwnership()
     when NativeCheckedReadEnabled:
+      diagnosticPhase("invalidInvocationLease")
+      invalidInvocationLease()
       invalidQuotaPredecessor()
       invalidNativeInstallation()
     diagnosticPhase("purePrefixControl")

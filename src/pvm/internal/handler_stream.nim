@@ -3787,7 +3787,8 @@ when NativeReadCycleEnabled:
         flatDispatchSegment(f, entry)
       return
     f.fusionTraining = @[]
-    defer: returnNativeMixedLoop(f.nativeSession)
+    defer:
+      if not returnNativeMixedLoop(f.nativeSession): f.reason = oracle.StepError.BackendFailure
     runFlatFusionImage(f, entry, image, blocks)
 
   proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =

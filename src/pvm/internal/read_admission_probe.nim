@@ -180,7 +180,7 @@ when declared(FlatFrame):
     if f.handlers.len != 0 and not later: return
     f.readProbe.epoch = nativeReadAdmissionEpoch(f.nativeSession)
     if f.readProbe.epoch == 0: return
-    if later: beginNativeReadDiscovery(f.nativeSession)
+    if later and not beginNativeReadDiscovery(f.nativeSession): return
     f.readProbe.callActive = true
     f.readProbe.later = later
     f.readProbe.observing = true

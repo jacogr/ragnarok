@@ -297,7 +297,7 @@ when declared(FlatFrame):
     when defined(pvmMixedLoopWitness):
       echo "MIXED_LOOP_SEGMENT,", f.mixedWitnessEntries, ",", f.mixedWitnessVisits, ",",
         f.mixedWitnessRefusals, ",", image[].codeBytes
-    returnNativeMixedLoop(f.nativeSession)
+    if not returnNativeMixedLoop(f.nativeSession): f.reason = oracle.StepError.BackendFailure
 
   when defined(pvmSharedAsyncWitness) or defined(pvmMixedLoopEntryWitness):
     proc witnessFlatMixedDiscovery*(program: Program, checks, accepted: int,
