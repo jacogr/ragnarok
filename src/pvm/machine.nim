@@ -90,6 +90,10 @@ type
     blocks: seq[PageBlock]
   DirectoryPageBorrow = nil ptr PageData
     ## Private synchronous reference-slot borrow, bounded by its retained immutable directory owner.
+  PageByteBorrow = nil ptr byte
+    ## Private byte address used only while the unchanged page owner remains retained.
+  PageByteSpans = array[8, PageByteBorrow]
+    ## Complete effective page spans preflight external copies without owning or exporting source bytes.
   # Sorted sparse page references avoid allocating the entire 4 GiB guest address space.
   MemoryData = ref object
     pages: PageDirectory
@@ -341,18 +345,36 @@ func failure[T, U](r: MachineResult[U]): MachineResult[T] {.requires: r.status !
     return MachineResult[T](status: MachineError.Fault, failedPage: r.failedPage)
   MachineResult[T](status: r.status)
 
-func borrowPageChunk(page: PageData, slot: int, within = 0): ptr byte
-    {.inline, requires: slot >= 0 and slot < 8 and within >= 0 and within < 512.} =
+func borrowPageChunk(page: PageData, slot: int, within = 0): PageByteBorrow {.inline.} =
   ## Private read-only borrow: retain the unchanged page through the immediate byte read or copy.
   ## The offset names one initialized byte; a copying caller also proves count <= 512-within.
   ## This pointer owns nothing and is never stored or exported.
+  ## Missing backing/override or invalid coordinates refuse explicitly, never fabricate a byte address.
+  if slot < 0 or slot >= 8 or within < 0 or within >= 512: return nil
   let owned {.cursor.} = page.chunks[slot]
   if owned != nil:
     return unsafeAddr owned.bytes[within]
   let backing {.cursor.} = page.backing
-  assert backing != nil and slot < 7
+  if backing == nil or slot >= 7: return nil
   # The checked slot/within prove this real-array index is at most3583 before taking its address.
   unsafeAddr backing.bytes[slot*512+within]
+
+func borrowPageSpans(page: PageData, spans: var PageByteSpans): bool =
+  ## Stage every effective span before a copy to caller-owned storage; refusal preserves the supplied table.
+  var candidate = default(PageByteSpans)
+  for slot in 0..<candidate.len:
+    let source = borrowPageChunk(page, slot)
+    if source == nil: return false
+    candidate[slot] = source
+  spans = candidate
+  true
+
+func readablePageSpan(page: PageData, offset, count: int): bool {.inline.} =
+  ## A mapped permission is insufficient when effective payload backing is missing; no output changes during proof.
+  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset: return false
+  for slot in offset div 512..(offset+count-1) div 512:
+    if borrowPageChunk(page, slot) == nil: return false
+  true
 
 proc copiedChunk(input: openArray[byte], first: int): nil PageChunk {.requires:
     first >= 0 and first <= input.len and 512 <= input.len-first.} =
@@ -383,14 +405,15 @@ proc pageFromImage(image: PageImage): nil PageData =
   ## Caller-owned full images remain unknown even if all their copied bytes happen to be zero.
   fullPage(image.index, image.access, image.bytes)
 
-proc copiedPageChunk(page: PageData, slot: int): nil PageChunk {.requires:
-    slot >= 0 and slot < 8.} =
-  ## Allocate before borrowing, then copy exactly one effective span; never return an owning array temporary.
-  if refusedPayloadAllocation(): return nil
+proc copiedPageChunk(page: PageData, slot: int): MachineResult[PageChunk] =
+  ## Missing source is a local owner fault; allocation refusal is separate. No borrowed address escapes the new chunk.
+  let source = borrowPageChunk(page, slot)
+  if source == nil: return MachineResult[PageChunk](status: MachineError.InvalidOwner)
+  if refusedPayloadAllocation(): return MachineResult[PageChunk](status: MachineError.LimitExceeded)
   let chunk: nil PageChunk = PageChunk(bytes: default(array[512, byte]))
-  if chunk == nil: return nil
-  copyMem(addr chunk.bytes[0], borrowPageChunk(page, slot), 512)
-  chunk
+  if chunk == nil: return MachineResult[PageChunk](status: MachineError.LimitExceeded)
+  copyMem(addr chunk.bytes[0], source, 512)
+  MachineResult[PageChunk](status: MachineError.None, completed: chunk)
 
 proc dropCoveredBacking(page: PageData) =
   ## Only complete override coverage releases the base; nullable owners never certify writer privacy.
@@ -400,23 +423,28 @@ proc dropCoveredBacking(page: PageData) =
     if page.chunks[slot] == nil: return
   page.backing = nil
 
-proc pageFromReplacement(previous: PageData, image: PageImage): nil PageData =
+proc pageFromReplacement(previous: PageData, image: PageImage): MachineResult[PageData] =
   ## Preserve a fresh page identity and unknown provenance, sharing every unchanged effective span.
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(previous, spans): return MachineResult[PageData](
+      status: MachineError.InvalidOwner)
   var chunks = default(array[8, nil PageChunk])
   for slot in 0..<8:
     # The retained previous page owns this immediate borrow; allocation follows comparison.
-    if cmpMem(borrowPageChunk(previous, slot), unsafeAddr image.bytes[slot*512], 512) != 0:
+    let source = spans[slot]
+    if source == nil: return MachineResult[PageData](status: MachineError.InvalidOwner)
+    if cmpMem(source, unsafeAddr image.bytes[slot*512], 512) != 0:
       chunks[slot] = copiedChunk(image.bytes, slot*512)
-      if chunks[slot] == nil: return nil
+      if chunks[slot] == nil: return MachineResult[PageData](status: MachineError.LimitExceeded)
     else:
       # Retain unchanged overrides only; nil continues to select the same immutable backing.
       chunks[slot] = previous.chunks[slot]
-  if refusedPayloadAllocation(): return nil
+  if refusedPayloadAllocation(): return MachineResult[PageData](status: MachineError.LimitExceeded)
   let page: nil PageData = PageData(index: image.index, zeroChunks: 0, access: image.access,
     backing: previous.backing, chunks: move(chunks))
-  if page == nil: return nil
+  if page == nil: return MachineResult[PageData](status: MachineError.LimitExceeded)
   dropCoveredBacking(page)
-  page
+  MachineResult[PageData](status: MachineError.None, completed: page)
 
 proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[byte],
     offset, count: int, zero: var nil PageChunk): nil PageData =
@@ -582,49 +610,54 @@ proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: Pag
   directory = move(built)
   MachineError.None
 
-func pageByte(page: PageData, offset: int): byte {.inline.} =
-  ## Read one proven effective span without retaining a transient reference or exposing its borrow.
-  borrowPageChunk(page, offset div 512, offset mod 512)[]
-
-func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
-    requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
-        4096-offset.} =
-  ## Resolve one immutable span into a private initialized word; no borrowed address escapes.
-  result = 0
-  if count == 1: return uint64(pageByte(page, offset))
+func pageScalar(page: PageData, offset, count: int): MachineResult[uint64] {.inline.} =
+  ## Read into a private word; invalid extents or unavailable backing return only a local reason.
+  if offset < 0 or offset >= 4096 or count < 1 or count > 8 or count > 4096-offset:
+    return MachineResult[uint64](status: MachineError.InvalidRange)
   let chunk = offset div 512
   let within = offset mod 512
+  let source = borrowPageChunk(page, chunk, within)
+  if source == nil: return MachineResult[uint64](status: MachineError.InvalidOwner)
+  if count == 1: return MachineResult[uint64](status: MachineError.None, completed: uint64(source[]))
+  var word = 0'u64
   if within <= 512-count:
-    let source = borrowPageChunk(page, chunk, within)
-    # Disjoint stack and immutable heap storage permit an unaligned-safe copy only after proving the entire source extent.
+    # Contiguous little-endian transfers retain the fixed-width unaligned-safe fast path.
     var endian = 1'u16
     var tag = default(array[2, byte])
     copyMem(addr tag[0], addr endian, 2)
     if tag[0] == 1:
       case count
-      of 2:
-        # Fixed admitted widths lower to unaligned-safe native loads without a variable copy call.
-        copyMem(addr result, source, 2)
-      of 4:
-        # Copy the complete half-register span after the same permission and chunk preflight.
-        copyMem(addr result, source, 4)
-      of 8:
-        # A full register still reads exactly eight bytes, including unaligned offsets.
-        copyMem(addr result, source, 8)
-      else:
-        # Page-fragment widths retain the original bounded byte-count copy.
-        copyMem(addr result, source, count)
-      return # Little-endian hosts now hold the exact zero-extended guest word.
+      of 2: copyMem(addr word, source, 2)
+      of 4: copyMem(addr word, source, 4)
+      of 8: copyMem(addr word, source, 8)
+      else: copyMem(addr word, source, count)
+      return MachineResult[uint64](status: MachineError.None, completed: word)
   for index in 0..<count:
-    # Big-endian hosts and chunk-crossing spans retain the portable byte-wise equation.
-    result = result or (uint64(pageByte(page, offset+index)) shl (8*index))
+    # Portable/chunk-crossing reads may fill a private prefix, but publish no value until every byte exists.
+    let position = offset+index
+    let source = borrowPageChunk(page, position div 512, position mod 512)
+    if source == nil: return MachineResult[uint64](status: MachineError.InvalidOwner)
+    word = word or (uint64(source[]) shl (8*index))
+  MachineResult[uint64](status: MachineError.None, completed: word)
 
-proc imageFromPage(page: PageData): PageImage =
-  ## Materialize the public copied image; chunk sharing never escapes through observation.
-  result = PageImage(index: page.index, access: page.access, bytes: default(array[4096, byte]))
-  for slot in 0..<8:
-    # Resolve each effective span once and copy512 bytes into the fresh independent image.
-    copyMem(addr result.bytes[slot*512], borrowPageChunk(page, slot), 512)
+func pageRegisterValue(page: PageData, offset, count: int): MachineResult[
+    RegisterValue] {.inline.} =
+  ## Cached writer windows translate the same fallible scalar read without inventing a register on failure.
+  let word = pageScalar(page, offset, count)
+  if word.error != MachineError.None: return failure[RegisterValue, uint64](word)
+  MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(word.value))
+
+proc imageFromPage(page: PageData): MachineResult[PageImage] =
+  ## Materialize only complete effective pages; a failed borrow exposes no image prefix or mutable alias.
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(page, spans): return MachineResult[PageImage](
+      status: MachineError.InvalidOwner)
+  var image = PageImage(index: page.index, access: page.access)
+  for slot in 0..<spans.len:
+    let source = spans[slot]
+    if source == nil: return MachineResult[PageImage](status: MachineError.InvalidOwner)
+    copyMem(addr image.bytes[slot*512], source, 512)
+  MachineResult[PageImage](status: MachineError.None, completed: image)
 
 proc pageWithAccess(page: PageData, access: PageAccess): nil PageData =
   ## Permission-only successors share immutable payloads; refusal publishes no replacement header.
@@ -634,21 +667,22 @@ proc pageWithAccess(page: PageData, access: PageAccess): nil PageData =
     backing: page.backing, chunks: page.chunks)
   changed
 
-proc writablePageClone(page: PageData, offset, count: int): nil PageData =
+proc writablePageClone(page: PageData, offset, count: int): MachineResult[PageData] =
   ## Clone a complete admitted span before publication; a refused header/chunk drops only private work.
-  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset: return nil
+  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset:
+    return MachineResult[PageData](status: MachineError.InvalidRange)
   let changed = pageWithAccess(page, page.access)
-  if changed == nil: return nil
+  if changed == nil: return MachineResult[PageData](status: MachineError.LimitExceeded)
   changed.zeroChunks = 0
   let first = offset div 512
   let last = (offset+count-1) div 512
   for slot in first..last:
     # No missing override can enter the returned writable successor.
-    let chunk = copiedPageChunk(page, slot)
-    if chunk == nil: return nil
-    changed.chunks[slot] = chunk
+    var chunk = copiedPageChunk(page, slot)
+    if chunk.error != MachineError.None: return failure[PageData, PageChunk](chunk)
+    changed.chunks[slot] = takeValue(chunk)
   dropCoveredBacking(changed)
-  changed
+  MachineResult[PageData](status: MachineError.None, completed: changed)
 
 func privatePageSpan(page: PageData, offset, count: int): bool {.inline.} =
   ## Presence is necessary after COW privacy admission; prove the complete target before any byte changes.
@@ -768,7 +802,7 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
     let entry = borrowDirectoryPage(data.pages, at)
     if entry == nil: return MachineResult[PageImage](status: MachineError.InvalidOwner)
     if uint32(entry[].index) == uint32(index):
-      return MachineResult[PageImage](status: MachineError.None, completed: imageFromPage(entry[]))
+      return imageFromPage(entry[])
   MachineResult[PageImage](status: MachineError.None, completed: PageImage(index: index,
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
@@ -818,7 +852,9 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
       if different:
         let entry = borrowDirectoryPage(right.pages, index)
         if entry == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
-        changed.add(imageFromPage(entry[]))
+        let captured = imageFromPage(entry[])
+        if captured.error != MachineError.None: return failure[seq[PageImage], PageImage](captured)
+        changed.add(captured.value)
   if changed.len != count: return MachineResult[seq[PageImage]](status: MachineError.LimitExceeded)
   MachineResult[seq[PageImage]](status: MachineError.None, completed: move(changed))
 
@@ -880,7 +916,9 @@ proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   for index in 0..<data.pages.len:
     let entry = borrowDirectoryPage(data.pages, index)
     if entry == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
-    images.add(imageFromPage(entry[]))
+    let captured = imageFromPage(entry[])
+    if captured.error != MachineError.None: return failure[seq[PageImage], PageImage](captured)
+    images.add(captured.value)
   MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
 
 proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
@@ -913,9 +951,14 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
   let entry = borrowDirectoryPage(data.pages, int(uint32(slot)))
   if entry == nil: return MachineResult[PageDescription](status: MachineError.InvalidOwner)
   let page {.cursor.} = entry[]
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(page, spans): return MachineResult[PageDescription](
+      status: MachineError.InvalidOwner)
   for chunk in 0..<8:
+    let source = spans[chunk]
+    if source == nil: return MachineResult[PageDescription](status: MachineError.InvalidOwner)
     # Each effective512-byte span copies completely into its disjoint portion of the output page.
-    copyMem(addr output[chunk*512], borrowPageChunk(page, chunk), 512)
+    copyMem(addr output[chunk*512], source, 512)
   MachineResult[PageDescription](status: MachineError.None,
     completed: PageDescription(index: page.index, access: page.access))
 
@@ -947,8 +990,12 @@ proc matchesMemoryPageBytes*(memory: Memory, slot: MemoryPageSlot,
   let page {.cursor.} = entry[]
   if page.index != expected.index or page.access != expected.access:
     return MachineResult[bool](status: MachineError.InvalidRange)
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(page, spans): return MachineResult[bool](status: MachineError.InvalidOwner)
   for chunk in 0..<8:
-    if cmpMem(borrowPageChunk(page, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
+    let source = spans[chunk]
+    if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+    if cmpMem(source, unsafeAddr bytes[chunk*512], 512) != 0:
       return MachineResult[bool](status: MachineError.None, completed: false)
   MachineResult[bool](status: MachineError.None, completed: true)
 
@@ -1086,9 +1133,9 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     if matched != MachineError.None: return MachineResult[Memory](status: matched)
     if observed == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
     slots.add(cursor)
-    let replacement = pageFromReplacement(observed[], replacements[index])
-    if replacement == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
-    changed.add(replacement)
+    var replacement = pageFromReplacement(observed[], replacements[index])
+    if replacement.error != MachineError.None: return failure[Memory, PageData](replacement)
+    changed.add(takeValue(replacement))
     inc cursor
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
@@ -1131,9 +1178,17 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
     batch.status = MachineError.InvalidRange
     return batch.status
   # The matched extent and eight fixed offsets prove every compared and copied span.
+  var spans = default(PageByteSpans)
+  if not borrowPageSpans(previous, spans):
+    batch.status = MachineError.InvalidOwner
+    return batch.status
   var differences = 0'u8
   for chunk in 0..<8:
-    if cmpMem(borrowPageChunk(previous, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
+    let source = spans[chunk]
+    if source == nil:
+      batch.status = MachineError.InvalidOwner
+      return batch.status
+    if cmpMem(source, unsafeAddr bytes[chunk*512], 512) != 0:
       differences = differences or (1'u8 shl chunk)
   if differences != 0:
     let changed: nil PageData = PageData(index: previous.index, access: previous.access)
@@ -1451,13 +1506,16 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
   let span = checked.value
   let firstEntry = borrowDirectoryPage(data.pages, span.first)
   if firstEntry == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
-  var value = pageScalar(firstEntry[], span.offset, span.firstCount)
+  let firstWord = pageScalar(firstEntry[], span.offset, span.firstCount)
+  if firstWord.error != MachineError.None: return failure[RegisterValue, uint64](firstWord)
+  var value = firstWord.value
   if span.firstCount < span.count:
     # A remaining suffix proves the prefix is below eight bytes, keeping this shift below64.
     let lastEntry = borrowDirectoryPage(data.pages, span.last)
     if lastEntry == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
-    value = value or (pageScalar(lastEntry[], 0, span.count-span.firstCount) shl (
-        8*span.firstCount))
+    let lastWord = pageScalar(lastEntry[], 0, span.count-span.firstCount)
+    if lastWord.error != MachineError.None: return failure[RegisterValue, uint64](lastWord)
+    value = value or (lastWord.value shl (8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
 proc writableScalar*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[bool] =
@@ -1480,8 +1538,9 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   let span = checked.value
   let firstEntry = borrowDirectoryPage(data.pages, span.first)
   if firstEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
-  let firstPage = writablePageClone(firstEntry[], span.offset, span.firstCount)
-  if firstPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  var firstClone = writablePageClone(firstEntry[], span.offset, span.firstCount)
+  if firstClone.error != MachineError.None: return failure[Memory, PageData](firstClone)
+  let firstPage = takeValue(firstClone)
   var slots = @[span.first]
   var changed = newSeqOfCap[PageData](2)
   if changed.rawData == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
@@ -1492,8 +1551,9 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     # Complete both private successors before writing either half of a page-crossing scalar.
     let lastEntry = borrowDirectoryPage(data.pages, span.last)
     if lastEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
-    let lastPage = writablePageClone(lastEntry[], 0, span.count-span.firstCount)
-    if lastPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+    var lastClone = writablePageClone(lastEntry[], 0, span.count-span.firstCount)
+    if lastClone.error != MachineError.None: return failure[Memory, PageData](lastClone)
+    let lastPage = takeValue(lastClone)
     slots.add(span.last)
     changed.add(lastPage)
     if slots.len != 2 or changed.len != 2: return MachineResult[Memory](
@@ -1533,6 +1593,9 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
   var at = 0
   if not tryLowerBound(data, uint32(page), at): return MachineResult[bool](
       status: MachineError.InvalidOwner)
+  var remaining = size
+  var offset = int(start mod 4096)
+  var bytesAvailable = true
   while page <= lastPage:
     # Page permissions suffice for every byte in this nonwrapping interval, including low memory.
     if at == data.pages.len:
@@ -1546,8 +1609,14 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
     if access == PageAccess.Inaccessible or (writing and access != PageAccess.ReadWrite):
       # Retained inaccessible bytes are not readable; read-only pages cannot receive host writes.
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
+    # Keep canonical guest permission/fault precedence over a local byte-backing refusal on an earlier page.
+    let count = int(min(remaining, uint64(4096-offset)))
+    if bytesAvailable and not readablePageSpan(entry[], offset, count): bytesAvailable = false
+    remaining -= uint64(count)
+    offset = 0
     inc page
     inc at # Strictly ordered stored pages advance with the required contiguous physical interval.
+  if not bytesAvailable: return MachineResult[bool](status: MachineError.InvalidOwner)
   MachineResult[bool](status: MachineError.None, completed: true)
 
 proc readableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength): MachineResult[bool] =
@@ -1560,10 +1629,11 @@ proc writableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength
   ## Host dispatchers can establish permission precedence before ID lookup and independent local copying policy.
   inspectRange(memory, address, length, MemoryByteLimit(0x100000000'u64), true)
 
-proc copyPageOut(page: PageData, offset: int, output: var openArray[byte], first, count: int)
+proc copyPageOut(page: PageData, offset: int, output: var openArray[byte], first, count: int): bool
     {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
       first >= 0 and first < output.len and count <= output.len-first.} =
   ## Copy immutable owned chunks into a fresh independent result; no source byte pointer escapes.
+  if not readablePageSpan(page, offset, count): return false
   var copied = 0
   while copied < count:
     # Each batch stays inside one512-byte source allocation and the already-sized destination.
@@ -1571,8 +1641,11 @@ proc copyPageOut(page: PageData, offset: int, output: var openArray[byte], first
     let within = position mod 512
     let batch = min(count-copied, 512-within)
     let source = borrowPageChunk(page, position div 512, within)
+    if source == nil: return false
     copyMem(addr output[first+copied], source, batch)
     copied += batch
+
+  true
 
 proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, count: int): bool
     {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
@@ -1599,25 +1672,31 @@ when defined(pvmSharedAsyncWitness):
     for index in 0..<4096: image.bytes[index] = byte((index*17+29) and 255)
     let source = pageFromImage(image)
     if source == nil: return false
-    let changed = writablePageClone(source, 511, 8)
-    if changed == nil: return false
+    var cloned = writablePageClone(source, 511, 8)
+    if cloned.error != MachineError.None: return false
+    let changed = takeValue(cloned)
     changed.chunks[1] = nil
     if setPageScalar(changed, 511, 8, 0xfedcba9876543210'u64): return false
     let bytes = [1'u8, 2, 3, 4, 5, 6, 7, 8]
     if copyPageIn(changed, 511, bytes, 0, bytes.len): return false
-    if imageFromPage(changed) != image or imageFromPage(source) != image: return false
+    let observed = imageFromPage(changed)
+    let original = imageFromPage(source)
+    if observed.error != MachineError.None or original.error != MachineError.None: return false
+    if observed.value != image or original.value != image: return false
     for offset in [-1, 4096]:
       if setPageScalar(changed, offset, 1, 1): return false
     for count in [0, 9]:
       if setPageScalar(changed, 0, count, 1): return false
-    let tail = writablePageClone(source, 3583, 2)
-    if tail == nil: return false
+    var copiedTail = writablePageClone(source, 3583, 2)
+    if copiedTail.error != MachineError.None: return false
+    let tail = takeValue(copiedTail)
     let first {.cursor.} = tail.chunks[6]
     if first == nil: return false
     let saved = first.bytes[511]
     tail.chunks[7] = nil
     if setPageScalar(tail, 3583, 2, 0xabcd) or first.bytes[511] != saved: return false
-    imageFromPage(source) == image
+    let intact = imageFromPage(source)
+    intact.error == MachineError.None and intact.value == image
 
 proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var openArray[byte]): bool =
   ## Copy a preflighted interval of exactly output.len bytes from the immutable owner.
@@ -1633,7 +1712,7 @@ proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var ope
     let count = min(size - copied, 4096 - offset)
     let entry = borrowDirectoryPage(data.pages, at)
     if entry == nil: return false
-    copyPageOut(entry[], offset, output, copied, count)
+    if not copyPageOut(entry[], offset, output, copied, count): return false
     copied += count
     inc at # Complete preflight proved each consecutive physical page occupies the next sorted slot.
 
@@ -1703,7 +1782,9 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
       let privateChunk: nil PageChunk = PageChunk()
       if privateChunk == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
       if offset > chunk*512 or offset+count < (chunk+1)*512:
-        copyMem(addr privateChunk.bytes[0], borrowPageChunk(previous, chunk), 512)
+        let source = borrowPageChunk(previous, chunk)
+        if source == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+        copyMem(addr privateChunk.bytes[0], source, 512)
       page.chunks[chunk] = privateChunk
     dropCoveredBacking(page)
     when FromMemory:
@@ -1720,6 +1801,7 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
         let sourceEntry = borrowDirectoryPage(source.pages, sourceSlot)
         if sourceEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
         let origin = borrowPageChunk(sourceEntry[], sourceOffset div 512, sourceWithin)
+        if origin == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
         copyMem(addr target.bytes[destinationWithin], origin, batch)
         moved += batch
         sourceOffset += batch
@@ -1801,8 +1883,9 @@ proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int,
   else:
     # A current-epoch private header is stable through every cached window.
     changed = previous
-  let payload = copiedPageChunk(previous, chunk)
-  if payload == nil: return MachineError.LimitExceeded
+  var copied = copiedPageChunk(previous, chunk)
+  if copied.error != MachineError.None: return copied.error
+  let payload = takeValue(copied)
   if changed == nil: return MachineError.InvalidOwner
   writer.readPage = nil
   changed.chunks[chunk] = payload
@@ -1836,11 +1919,10 @@ func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
   if writer.active:
     if slot < 0 or slot >= writer.pages.len: return MachineResult[uint64](
         status: MachineError.InvalidOwner)
-    return MachineResult[uint64](status: MachineError.None, completed: pageScalar(writer.pages[
-        slot], offset, count))
+    return pageScalar(writer.pages[slot], offset, count)
   let entry = borrowDirectoryPage(source.pages, slot)
   if entry == nil: return MachineResult[uint64](status: MachineError.InvalidOwner)
-  MachineResult[uint64](status: MachineError.None, completed: pageScalar(entry[], offset, count))
+  pageScalar(entry[], offset, count)
 
 proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
   ## Only complete successful preflight supplies slots; epoch sealing retains their exact sorted page positions.
@@ -1892,16 +1974,13 @@ proc loadScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, addr
     let tag = start shr 12
     let writable {.cursor.} = writer.writePage
     if writable != nil and writer.writeTag == tag:
-      return MachineResult[RegisterValue](status: MachineError.None,
-        completed: RegisterValue(pageScalar(writable, within, count)))
+      return pageRegisterValue(writable, within, count)
     let spare {.cursor.} = writer.spareWritePage
     if spare != nil and writer.spareWriteTag == tag:
-      return MachineResult[RegisterValue](status: MachineError.None,
-        completed: RegisterValue(pageScalar(spare, within, count)))
+      return pageRegisterValue(spare, within, count)
     let readable {.cursor.} = writer.readPage
     if readable != nil and writer.readTag == tag:
-      return MachineResult[RegisterValue](status: MachineError.None,
-        completed: RegisterValue(pageScalar(readable, within, count)))
+      return pageRegisterValue(readable, within, count)
   loadWriterMiss(writer, source, address, width)
 
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
@@ -2057,6 +2136,7 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
 
 proc captureSnapshot(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
   ## Install immutable children only after the result owner exists.
+  if refusedPayloadAllocation(): return MachineResult[Machine](status: MachineError.LimitExceeded)
   let data: nil MachineData = MachineData(info: info)
   if data == nil: return MachineResult[Machine](status: MachineError.LimitExceeded)
   data.program = program
@@ -2107,10 +2187,10 @@ proc memoryOf*(machine: Machine): MachineResult[Memory] =
 proc withMemory*(machine: Machine, memory: Memory): MachineResult[Machine] =
   ## Replace only the memory owner after an environment repair; CPU state/program remain unchanged.
   # Neither parent nor replacement may be an uninitialized owner.
-  if machine.data == nil or memory.data == nil:
+  let data = machine.data
+  if data == nil or memory.data == nil:
     return MachineResult[Machine](status: MachineError.InvalidOwner)
-  MachineResult[Machine](status: MachineError.None, completed: Machine(data: MachineData(
-    program: machine.data.program, memory: memory, info: machine.data.info)))
+  captureSnapshot(data.program, memory, data.info)
 
 proc withRegister*(machine: Machine, index: RegisterIndex,
     value: RegisterValue): MachineResult[Machine] =
@@ -2123,8 +2203,7 @@ proc withRegister*(machine: Machine, index: RegisterIndex,
   let data = machine.data
   var info = data.info
   info.registers[int(byte(index))] = value
-  MachineResult[Machine](status: MachineError.None, completed: Machine(data: MachineData(
-    program: data.program, memory: data.memory, info: info)))
+  captureSnapshot(data.program, data.memory, info)
 
 proc store*(machine: Machine, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Machine] =
@@ -2228,4 +2307,143 @@ when defined(pvmSharedAsyncWitness):
         if value != 0xa5: return false
       for image in images:
         if pageImage(original, image.index).value != image: return false
+    true
+
+when defined(pvmSharedAsyncWitness):
+  proc probeByteReadRefusals*(): bool =
+    ## Missing backing and final chunks refuse complete public reads/COW without zero bytes or copied prefixes.
+    var images = default(array[2, PageImage])
+    for index in 0..<images.len:
+      images[index].index = PageIndex(uint32(32+index))
+      images[index].access = PageAccess.ReadWrite
+      for offset in 0..<4096: images[index].bytes[offset] = byte((index*37+offset*17+29) and 255)
+    let captured = captureMemory(images, PageLimit(2))
+    if captured.error != MachineError.None: return false
+    let original = captured.value
+    let source = original.data
+    if source == nil: return false
+    let first = borrowDirectoryPage(source.pages, 0)
+    if first == nil: return false
+    for slot in [-1, 8, high(int)]:
+      if borrowPageChunk(first[], slot) != nil: return false
+    for within in [-1, 512, high(int)]:
+      if borrowPageChunk(first[], 0, within) != nil: return false
+    for damage in 0..1:
+      # Independent captures make every original byte a genuine predecessor control.
+      let captured = captureMemory(images, PageLimit(2))
+      if captured.error != MachineError.None: return false
+      let broken = captured.value
+      let data = broken.data
+      if data == nil: return false
+      let slot = damage
+      let entry = borrowDirectoryPage(data.pages, slot)
+      if entry == nil: return false
+      let page {.cursor.} = entry[]
+      if damage == 0: page.backing = nil
+      else: page.chunks[7] = nil
+      var spans = default(PageByteSpans)
+      if not borrowPageSpans(first[], spans): return false
+      let saved = spans
+      if borrowPageSpans(page, spans) or spans != saved: return false
+      let offset = if damage == 0: 0 else: 3584
+      let address = MemoryAddress(uint64(uint32(images[slot].index))*4096+uint64(offset))
+      if pageScalar(page, offset, 8).error != MachineError.InvalidOwner: return false
+      if load(broken, address, AccessWidth(8)).error != MachineError.InvalidOwner: return false
+      if store(broken, address, AccessWidth(8), RegisterValue(1)).error !=
+          MachineError.InvalidOwner: return false
+      if pageImage(broken, images[slot].index).error != MachineError.InvalidOwner: return false
+      if memoryImages(broken).error != MachineError.InvalidOwner: return false
+      if withReplacedPages(broken, [images[slot]]).error != MachineError.InvalidOwner: return false
+      let made = newScalarMemoryWriter(broken)
+      if made.error != MachineError.None: return false
+      let writer = made.value
+      for attempt in 0..1:
+        # The second call reaches the admitted readable-window path and still publishes no register.
+        if load(writer, address, AccessWidth(8)).error != MachineError.InvalidOwner: return false
+      if store(writer, address, AccessWidth(8), RegisterValue(1)).error !=
+          MachineError.InvalidOwner: return false
+      var output = default(array[4096, byte])
+      for index in 0..<output.len: output[index] = 0xa5
+      if copyMemoryPage(broken, MemoryPageSlot(uint32(slot)), output).error !=
+          MachineError.InvalidOwner:
+        return false
+      for value in output:
+        if value != 0xa5: return false
+      let description = PageDescription(index: images[slot].index, access: PageAccess.ReadWrite)
+      if matchesMemoryPageBytes(broken, MemoryPageSlot(uint32(slot)), description,
+          images[slot].bytes).error != MachineError.InvalidOwner: return false
+      var batch = beginResidentReplacements(broken)
+      if stageResidentPage(batch, MemoryPageSlot(uint32(slot)), description,
+          images[slot].bytes) != MachineError.InvalidOwner: return false
+      if finishResidentReplacements(batch).error != MachineError.InvalidOwner: return false
+      var range = default(array[8192, byte])
+      for index in 0..<range.len: range[index] = 0xa5
+      if readBytesInto(broken, MemoryAddress(32*4096), range,
+          MemoryByteLimit(8192)).error != MachineError.InvalidOwner: return false
+      for value in range:
+        if value != 0xa5: return false
+      for image in images:
+        if pageImage(original, image.index).value != image: return false
+    for writing in [false, true]:
+      # A later canonical guest fault wins over an earlier missing backing span before any copy or COW.
+      var controlled = images
+      controlled[1].access = if writing: PageAccess.ReadOnly else: PageAccess.Inaccessible
+      let captured = captureMemory(controlled, PageLimit(2))
+      if captured.error != MachineError.None: return false
+      let memory = captured.value
+      let data = memory.data
+      if data == nil: return false
+      let entry = borrowDirectoryPage(data.pages, 0)
+      if entry == nil: return false
+      entry[].chunks[7] = nil
+      let checked = if writing: writableRange(memory, MemoryAddress(32*4096), MemoryLength(8192))
+        else: readableRange(memory, MemoryAddress(32*4096), MemoryLength(8192))
+      if checked.error != MachineError.Fault or checked.faultPage != PageAddress(
+          33*4096): return false
+      let address = MemoryAddress(32*4096+4095)
+      if writing:
+        let changed = store(memory, address, AccessWidth(8), RegisterValue(1))
+        if changed.error != MachineError.Fault or changed.faultPage != PageAddress(
+            33*4096): return false
+      else:
+        let word = load(memory, address, AccessWidth(8))
+        if word.error != MachineError.Fault or word.faultPage != PageAddress(33*4096): return false
+    true
+
+when defined(pvmSharedAsyncWitness):
+  proc probeMachineOwnerRefusals*(program: Program): bool =
+    ## Final CPU/memory replacement refuses before owner publication and preserves original gas, registers and every byte.
+    var page = PageImage(index: PageIndex(32), access: PageAccess.ReadWrite)
+    for index in 0..<4096: page.bytes[index] = byte((index*17+29) and 255)
+    let memory = captureMemory([page], PageLimit(1))
+    if memory.error != MachineError.None: return false
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(12345))
+    for index in 0..<13: info.registers[index] = RegisterValue(uint64(index)*111)
+    let captured = captureMachine(program, memory.value, info)
+    if captured.error != MachineError.None: return false
+    let original = captured.value
+    var replacement = page
+    replacement.bytes[0] = 0x5a
+    let changed = captureMemory([replacement], PageLimit(1))
+    if changed.error != MachineError.None: return false
+    for register in [false, true]:
+      refuseMemoryPayloadAllocationForWitness(1)
+      let refused = if register: withRegister(original, RegisterIndex(7), RegisterValue(999))
+        else: withMemory(original, changed.value)
+      if not finishMemoryPayloadRefusalForWitness() or refused.error != MachineError.LimitExceeded:
+        return false
+      if machineInfo(original).value != info or pageImage(memoryOf(original).value,
+          page.index).value != page:
+        return false
+      let recovered = if register: withRegister(original, RegisterIndex(7), RegisterValue(999))
+        else: withMemory(original, changed.value)
+      if recovered.error != MachineError.None: return false
+      if register:
+        var expected = info
+        expected.registers[7] = RegisterValue(999)
+        if machineInfo(recovered.value).value != expected: return false
+        if pageImage(memoryOf(recovered.value).value, page.index).value != page: return false
+      else:
+        if machineInfo(recovered.value).value != info: return false
+        if pageImage(memoryOf(recovered.value).value, page.index).value != replacement: return false
     true
