@@ -5321,6 +5321,13 @@ func discardedFlatStream*(f: FlatFrame): FlatStream =
   ## This scalar observation is safe even when source/overlay metadata cannot authorize ordinary handback.
   FlatStream(preparation: f.preparationUsed)
 
+when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+  var damageStreamHandback {.threadvar.}: bool
+
+  proc damageNextStreamHandbackForWitness*() =
+    ## Inject only at final cache handback, after the public wrapper has staged its tentative result.
+    damageStreamHandback = true
+
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Return the exclusive cache to the prepared owner with its admitted entries,
   ## cumulative preparation usage and native restoration state. Generated leaves
@@ -5330,6 +5337,10 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## no CPU, memory, callback or borrowed image. Repricing discards it with the executable cache.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
+  when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+    if damageStreamHandback:
+      damageStreamHandback = false
+      f.readProbe.observing = true
   if f.reason == oracle.StepError.BackendFailure or not flatObserverBoundaryReady(f):
     flatObserverFailure(f)
     invalidateNativeStream(f.nativeSession)

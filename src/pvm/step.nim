@@ -671,6 +671,11 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
       data.stream = discardedFlatStream(frame)
       return StepResult(status: StepError.BackendFailure)
   data.stream = takeFlatStream(frame)
+  if frame.reason == StepError.BackendFailure:
+    # Final handback can refuse after snapshot staging; no tentative guest result may escape.
+    retireFailedNativeInvocation(data.native)
+    data.stream = discardedFlatStream(frame)
+    return StepResult(status: StepError.BackendFailure)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
@@ -1130,6 +1135,11 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
       data.stream = discardedFlatStream(frame)
       return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   data.stream = takeFlatStream(frame)
+  if frame.reason == StepError.BackendFailure:
+    # The completed callback history cannot authorize a stream refused at the final ownership handoff.
+    retireFailedNativeInvocation(data.native)
+    data.stream = discardedFlatStream(frame)
+    return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
