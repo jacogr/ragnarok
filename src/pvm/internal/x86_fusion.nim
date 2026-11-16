@@ -20,6 +20,7 @@ when declared(X86Block):
 
   proc x86WindowPatch(code: var X86Block, at, target: int): bool =
     ## Patch a local staging displacement without consuming the enclosing label table.
+    if code.failure != X86EmissionError.None: return false
     if at < 0 or at > code.bytes.len-4 or target < 0 or target > code.bytes.len: return false
     let delta = int64(target)-int64(at+4)
     if delta < -int64(NativeImageByteLimit) or delta > int64(NativeImageByteLimit): return false
@@ -348,7 +349,7 @@ when declared(X86Block):
       readCycleContextOp(code, [0x66'u8, 0x45, 0x0f, 0xd6, 0x82], NativeFusionAddressOffset)
     endX86Fusion(code, access)
     put(code, [0xc3'u8]) # RET after the complete checked state is published.
-    if code.bytes.len > NativeImageByteLimit: return
+    if code.failure != X86EmissionError.None or code.bytes.len > NativeImageByteLimit: return
     for fix in fixes:
       let target = labels[int(fix.target)]
       if target <= 0 or target >= code.bytes.len or fix.at < 0 or fix.at > code.bytes.len-4:

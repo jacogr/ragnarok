@@ -223,7 +223,7 @@ when declared(X86Block):
     labels[int(finish)] = code.bytes.len
     put(code, [0x48'u8, 0x83, 0xc4, frameBytes, 0x41, 0x5d, 0x41, 0x5c, 0xc3])
 
-    if code.bytes.len > NativeImageByteLimit: return @[]
+    if code.failure != X86EmissionError.None or code.bytes.len > NativeImageByteLimit: return @[]
     for fix in fixes:
       # The single checked self-edge can patch backward. Every target is image-local.
       let target = labels[int(fix.target)]
@@ -320,7 +320,7 @@ when declared(X86Block):
         cycleWord(code, uint32(index+1) shl NativeMixedLoopGuardShift)
         put(code, [0xc3'u8])
 
-    if code.bytes.len > NativeImageByteLimit: return
+    if code.failure != X86EmissionError.None or code.bytes.len > NativeImageByteLimit: return
     for fix in fixes:
       # The self-edge may patch backward. All targets and fixups remain image-local.
       let target = labels[int(fix.target)]
