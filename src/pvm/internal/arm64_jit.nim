@@ -8,6 +8,8 @@
 ## A direct publisher does not grant admission to a prepared frame.
 ## Scalar bit counts use baseline integer instructions; zero-word CLZ/CTZ returns the width.
 ## Their scratch lane is separate from resident guest registers and the live budget/context lanes.
+## Cold scalar and branch builders retain the first refusal. Failed builders cannot expose words
+## or contribute a prefix to a larger image; source and execution certificates remain separate.
 
 import std/assertions
 import ../[program, machine]
@@ -103,10 +105,14 @@ type
     prefixSpan, tailSpan, prefixOperations, tailOperations: uint32
     prefixPrice, tailPrice: uint64
     calls, prefixBlocks, tailBlocks, dirtyBlocks, wordGroups, dirtyCalls: uint64
+  ArmEmissionError* {.pure.} = enum
+    ## A local lowering refusal invalidates the whole builder before any guest state executes.
+    None, UnsupportedOpcode, InvalidDestination
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
     compact: bool
+    failure: ArmEmissionError
   ArmReadGuard = object ## A code-relative refusal edge publishes no speculative register prefix.
     at: int
     conditional: bool
@@ -268,10 +274,21 @@ proc emitArmShiftPair*(fragment: var ArmBlock, first, second: RegisterSlots,
   fragment.words.add(0xd3400000'u32 or ((63'u32-amount) shl 10) or (source shl 5) or destination)
   true
 
+func error*(fragment: ArmBlock): ArmEmissionError =
+  ## Inspect only the first local refusal; partial words and mutable builder status stay private.
+  fragment.failure
+
+proc refuseArmEmission(fragment: var ArmBlock, failure: ArmEmissionError) =
+  ## A later append cannot turn a refused builder into a publishable program.
+  if fragment.failure == ArmEmissionError.None: fragment.failure = failure
+
 proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     immediate: uint64) =
   ## Each instruction consumes original operands before declaring its destination; native aliases obey GP ordering.
-  assert supportedArmOpcode(opcode)
+  if fragment.failure != ArmEmissionError.None: return
+  if not supportedArmOpcode(opcode):
+    refuseArmEmission(fragment, ArmEmissionError.UnsupportedOpcode)
+    return
   if opcode in [20'u8, 51]:
     # Immediate loads have no register live-in; their destination may previously be undefined in the leaf.
     let destination = armWrite(fragment, slots.destinationIndex)
@@ -421,7 +438,11 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
 proc armBranchCompare(fragment: var ArmBlock, opcode: byte, leftSlot,
     rightSlot: range[0..12], immediate: uint64): uint32 =
   ## Emit the original full-width comparison and return its A64 condition.
-  assert opcode in {81'u8..90'u8, 170'u8..175'u8}
+  ## A condition is usable only while the builder has no refusal; zero alone does not prove EQ.
+  if fragment.failure != ArmEmissionError.None: return 0
+  if opcode notin {81'u8..90'u8, 170'u8..175'u8}:
+    refuseArmEmission(fragment, ArmEmissionError.UnsupportedOpcode)
+    return 0
   let left = armRead(fragment, leftSlot)
   var right = 1'u32
   if opcode <= 90:
@@ -447,7 +468,13 @@ proc armBranchCompare(fragment: var ArmBlock, opcode: byte, leftSlot,
 proc emitArmBranchSlots(fragment: var ArmBlock, opcode: byte, leftSlot,
     rightSlot: range[0..12], immediate: uint64, yes, no: uint32) =
   ## Positive cached branch capabilities supply scalar destinations. MOV and STR preserve NZCV.
-  assert yes < 2147483646'u32 and no < 2147483646'u32
+  if fragment.failure != ArmEmissionError.None: return
+  if opcode notin {81'u8..90'u8, 170'u8..175'u8}:
+    refuseArmEmission(fragment, ArmEmissionError.UnsupportedOpcode)
+    return
+  if yes >= 2147483646'u32 or no >= 2147483646'u32:
+    refuseArmEmission(fragment, ArmEmissionError.InvalidDestination)
+    return
   let condition = armBranchCompare(fragment, opcode, leftSlot, rightSlot, immediate)
   fragment.terminal.add(0x52800001'u32 or ((yes and 65535) shl 5))
   fragment.terminal.add(0x72a00001'u32 or ((yes shr 16) shl 5))
@@ -463,6 +490,8 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
 
 proc armInstructions*(fragment: ArmBlock): seq[uint32] =
   ## Prologue loads only original values needed by this fragment; epilogue publishes every changed guest slot.
+  ## Refusal returns no words and remains visible through repeated extraction.
+  if fragment.failure != ArmEmissionError.None: return @[]
   result = @[]
   for slot in 0..<13:
     if (fragment.reads and (1'u32 shl int(slot))) != 0:
@@ -492,6 +521,7 @@ proc encodeArmLoop*(span: NativeSpan, control: LoopControl): seq[uint32] =
     # Reuse canonical scalar emission and its read-before-write tracking.
     let op = span.operation(index)
     emitArmOperation(body, op.opcode, op.slots, op.immediate)
+  if body.failure != ArmEmissionError.None: return @[]
   let left = armRead(body, loop.slots.aIndex)
   let right = if loop.rightKind == NativeLoopRightKind.Immediate: 1'u32
     else: armRead(body, loop.slots.bIndex)
@@ -789,6 +819,7 @@ func armMixedLowered*(mixed: ArmMixedBlock): uint32 = mixed.lowered
 
 proc armMixedInstructions*(mixed: ArmMixedBlock): seq[uint32] =
   ## One explicit result kind and a constant completed-prefix count certify each native exit.
+  if mixed.body.failure != ArmEmissionError.None: return @[]
   assert mixed.body.terminal.len > 0 and mixed.sites.len >= 2
   result = @[0xaa0103f1'u32] # MOV X17,X1, retaining only this call's context.
   var leading = 0
@@ -989,6 +1020,7 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
     conditional, residentMode: bool, refusalWord = 0x12800000'u32): ArmReadImage =
   ## Share guarded read emission while letting the cycle own guest publication.
   ## The default MOVN W0,#0 returns flatStop for stream-coordinate callers.
+  if span.body.failure != ArmEmissionError.None: return default(ArmReadImage)
   result = default(ArmReadImage)
   assert (span.body.terminal.len > 0) == conditional
   if residentMode: assert conditional
@@ -1085,6 +1117,7 @@ when NativeCheckedReadEnabled:
 
 proc armMacroReadImage(span: ArmReadSpan): ArmReadImage =
   ## A multi-read resident body branches to its caller's success or rollback continuation.
+  if span.body.failure != ArmEmissionError.None: return default(ArmReadImage)
   result = default(ArmReadImage)
   if span.body.terminal.len != 0 or span.body.words.len == 0 or span.guards.len == 0: return
   var words: seq[uint32] = @[0xaa0103f1'u32] # MOV X17,X1 retains fresh descriptors.
@@ -1114,6 +1147,7 @@ proc armMemoryInstructionsImpl(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32, opcode: range[124..130],
     clippedReads: bool): seq[uint32] =
   ## Emit one selected-width read with an owner-selected descriptor table.
+  if fragment.failure != ArmEmissionError.None: return @[]
   assert fragment.terminal.len == 0
   let destination = armWrite(fragment, slots.aIndex)
   let arithmetic = armInstructions(fragment)
@@ -1488,6 +1522,8 @@ proc armRegionSuccessor(words: var seq[uint32], fixes: var seq[ArmRegionFixup],
 proc armRegionWords(blocks: array[3, ArmRegionBlock], count: range[2..3],
     rotating: bool, round = default(NativeRingRoundBudget)): seq[uint32] =
   ## Emit guarded resident blocks and, for an eligible Ring, one reserved A/B/C path.
+  for index in 0..<int(count):
+    if blocks[index].body.failure != ArmEmissionError.None: return @[]
   assert not round.enabled or (rotating and count == 3)
   # D16..D19 are caller-saved SIMD lanes distinct from the X-register file; integer ADD preserves all 64 counter bits.
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
@@ -1735,6 +1771,7 @@ type ArmDirtyImage = object
 proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
     displacement: uint32, word: ArmDirtyWordShape, residentMode, windowCache: bool): ArmDirtyImage =
   ## Emit one validated dirty body with either a standalone ABI or a shared resident-bank exit.
+  if item.body.failure != ArmEmissionError.None: return default(ArmDirtyImage)
   assert not windowCache or residentMode
   var continuation = -1
   var words: seq[uint32] = @[]
@@ -2392,6 +2429,8 @@ proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
 
 func armResidentCycleSourceValid(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Validate one exact source-shaped recipe independently of its outer entry ABI.
+  if item.prefixBody.failure != ArmEmissionError.None or
+      item.dirty.body.failure != ArmEmissionError.None: return false
   if jit.dirtyLoop.status != 2: return false
   if item.prefixSpan == 0 or item.prefixSpan > 4095 or item.tailSpan == 0 or
       item.tailSpan > 4095 or item.prefixOperations == 0 or item.tailOperations == 0 or
@@ -2434,6 +2473,8 @@ type ArmResidentCycleCore = object
 proc armResidentCycleCore(item: ArmMemoryCycleBlock,
     windowCache: bool = false): ArmResidentCycleCore =
   ## Render an admitted core; the caller initializes/exports its bank and accounting ABI.
+  if item.prefixBody.failure != ArmEmissionError.None or
+      item.dirty.body.failure != ArmEmissionError.None: return default(ArmResidentCycleCore)
   result = default(ArmResidentCycleCore)
   let dirtyImage = armDirtyLoopImage(item.dirty, item.dirtyBaseSlot,
       item.dirtyDisplacement, item.dirtyWord, true, windowCache)
@@ -2885,6 +2926,7 @@ when NativeReadCycleEnabled:
       for i in first..<operation+int(span)-1:
         let op = loop.operations[i]
         emitArmOperation(body, op.opcode, op.slots, op.immediate)
+      if body.failure != ArmEmissionError.None: return @[]
       words = move(body.words)
       let branch = loop.operations[operation+int(span)-1]
       if role == BitmapBlock.Read:
@@ -2934,8 +2976,10 @@ when NativeReadCycleEnabled:
     ## Seven role edges, checked exits, and the Read, Store and Tail proof joins.
 
   proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
-      span: ArmReadSpan, refusal: int) =
+      span: ArmReadSpan, refusal: int): bool =
     ## Inline a true-length read bank with a caller-owned paid or unpaid refusal.
+    ## A refused body returns false before changing the destination; callers discard their whole image.
+    if span.body.failure != ArmEmissionError.None: return false
     cycleMove(words, 17, 20) # The shared read descriptors start at context byte zero.
     let start = words.len
     for instruction in span.body.words:
@@ -2944,6 +2988,7 @@ when NativeReadCycleEnabled:
       # The checked extent emitter uses an unconditional edge after all descriptors miss.
       assert not guard.conditional
       fixes.add(ArmMemoryCycleFixup(at: start+guard.at, target: refusal, condition: 16))
+    true
 
   proc emitArmEntryReadWindow(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       window: NativeReadWindow, done: int) =
@@ -3086,14 +3131,17 @@ when NativeReadCycleEnabled:
       labels[armStorePageCommit] = words.len
 
   proc armCycleBranch(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
-      op: NativeOperation, target: int) =
+      op: NativeOperation, target: int): bool =
     ## Emit the original predicate and branch directly to the certified true edge.
+    ## Refuse a failed comparison before appending its condition or edge to the destination.
     var branch = newArmRegionBody()
     let condition = armBranchCompare(branch, op.opcode, op.slots.aIndex,
         op.slots.bIndex, op.immediate)
+    if branch.failure != ArmEmissionError.None: return false
     for instruction in branch.terminal:
       words.add(instruction)
     cycleEdge(words, fixes, target, condition)
+    true
 
   proc armCycleStoreWord(words: var seq[uint32], value, byteReg, base, shift: uint32) =
     ## Commit a resolved four-visit Store and update its original guest lanes.
@@ -3201,6 +3249,13 @@ when NativeReadCycleEnabled:
       let op = cycle.outer[index]
       emitArmOperation(outer, op.opcode, op.slots, op.immediate)
 
+    if readBank.body.failure != ArmEmissionError.None or windowBank.body.failure !=
+        ArmEmissionError.None:
+      return @[]
+    if setupBank.failure != ArmEmissionError.None or tail.body.failure != ArmEmissionError.None:
+      return @[]
+    if tailStep.failure != ArmEmissionError.None or outer.failure !=
+        ArmEmissionError.None: return @[]
     let value = uint32(word.valueLane)+4
     let shift = uint32(word.shiftLane)+4
     let byteReg = uint32(word.byteLane)+4
@@ -3268,10 +3323,10 @@ when NativeReadCycleEnabled:
           words.add(0x9e6603e0'u32) # FMOV X0,D31.
           cycleCompareImmediate(words, 0, 0)
           cycleEdge(words, fixes, armReadWindowMiss, 0)
-          appendArmCycleRead(words, fixes, windowBank, readMiss)
+          if not appendArmCycleRead(words, fixes, windowBank, readMiss): return @[]
           labels[armReadWindowComplete] = words.len
         else:
-          appendArmCycleRead(words, fixes, readBank, readMiss)
+          if not appendArmCycleRead(words, fixes, readBank, readMiss): return @[]
       of NativeCycleRole.StoreSetup:
         for instruction in setupBank.words: words.add(instruction)
       of NativeCycleRole.Store:
@@ -3320,11 +3375,12 @@ when NativeReadCycleEnabled:
         cycleCompare(words, base, bound)
         cycleEdge(words, fixes, ord(NativeCycleRole.Store), 1)
       of NativeCycleRole.Tail:
-        armCycleBranch(words, fixes, cycle.tailBranch, ord(NativeCycleRole.StoreSetup))
+        if not armCycleBranch(words, fixes, cycle.tailBranch, ord(
+            NativeCycleRole.StoreSetup)): return @[]
       of NativeCycleRole.Outer:
-        armCycleBranch(words, fixes, cycle.outer[2], outside)
+        if not armCycleBranch(words, fixes, cycle.outer[2], outside): return @[]
       of NativeCycleRole.Gate:
-        armCycleBranch(words, fixes, cycle.gate, ord(NativeCycleRole.Outer))
+        if not armCycleBranch(words, fixes, cycle.gate, ord(NativeCycleRole.Outer)): return @[]
         cycleEdge(words, fixes, ord(NativeCycleRole.Read), 16)
       else:
         discard # The next emitted role is the original unconditional successor.
@@ -3360,7 +3416,7 @@ when NativeReadCycleEnabled:
     if hasWindow:
       # Share the checkpoint, paid refusal and Read completion accounting.
       labels[armReadWindowMiss] = words.len
-      appendArmCycleRead(words, fixes, readBank, readMiss)
+      if not appendArmCycleRead(words, fixes, readBank, readMiss): return @[]
       cycleEdge(words, fixes, armReadWindowComplete, 16)
     if words.len <= NativeImageByteLimit div 4 and armMacroPatch(words, fixes, labels):
       result = move(words)
@@ -3503,12 +3559,13 @@ when NativeReadCycleEnabled:
         scratch.guards.shrink(0)
         emitArmCheckedRead(scratch, op.slots, uint32(op.immediate and 0xffffffff'u64),
           range[124..130](encoding), encoding != op.opcode)
-        appendArmCycleRead(words, fixes, scratch, guard)
+        if not appendArmCycleRead(words, fixes, scratch, guard): return @[]
         emitted = emitted or (1'u32 shl index)
         written = written or scratch.body.writes
       elif supportedScalarOpcode(op.opcode):
         # A scalar result is available to every following operation in source order.
         emitArmOperation(scratch.body, op.opcode, op.slots, op.immediate)
+        if scratch.body.failure != ArmEmissionError.None: return @[]
         for instruction in scratch.body.words:
           words.add(instruction)
         written = written or scratch.body.writes
@@ -3602,7 +3659,7 @@ when NativeReadCycleEnabled:
       if (prefix.body.writes and (1'u32 shl slot)) != 0:
         # FMOV D(slot+18),X(slot+4) snapshots each prospective write.
         words.add(0x9e670000'u32 or (uint32(slot+4) shl 5) or uint32(slot+18))
-    appendArmCycleRead(words, fixes, prefix, restoreVisit)
+    if not appendArmCycleRead(words, fixes, prefix, restoreVisit): return @[]
 
     # Form the wrapped guest byte address and respect the checked stack/RW selection.
     let base = uint32(store.slots.bIndex)+4
@@ -3634,10 +3691,11 @@ when NativeReadCycleEnabled:
     # No refusal can follow the store before the current visit settles.
     words.add(0x9e660201'u32) # FMOV X1,D16.
     words.add(0x39000020'u32 or (uint32(store.slots.aIndex)+4))
+    if suffix.failure != ArmEmissionError.None: return @[]
     for instruction in suffix.words:
       words.add(instruction)
     cycleAddImmediate(words, 22, 22, 1)
-    armCycleBranch(words, fixes, branch, repeatVisit)
+    if not armCycleBranch(words, fixes, branch, repeatVisit): return @[]
     armCompactImmediate(words, 0, 0x80000000'u64)
     cycleAddRegister(words, 0, 0, 22)
     cycleEdge(words, fixes, commit, 16)
@@ -3674,6 +3732,7 @@ func armWindowInstructionSafe(instruction: uint32): bool =
 func armWindowScratchSafe(body: ArmBlock): bool =
   ## D3..D7 remain private only if every source-supplied word is in the
   ## audited integer emitter set or the one explicit D0 read.
+  if body.failure != ArmEmissionError.None: return false
   for instruction in body.words:
     if not armWindowInstructionSafe(instruction): return false
   for instruction in body.terminal:
@@ -3693,6 +3752,8 @@ proc armResidentMacroImage(shape: ArmMacroShape, cycle: ArmMemoryCycleBlock,
   ## refunds its full gas price and attempt span, and returns to the original Read
   ## header. Earlier committed stores and their receipts survive. The checkpoint
   ## lives only through the Read, which does not use those SIMD lanes.
+  if pure.failure != ArmEmissionError.None or branchBody.failure != ArmEmissionError.None or
+      read.body.failure != ArmEmissionError.None: return default(ArmResidentMacroImage)
   result = default(ArmResidentMacroImage)
   let readImage = armMacroReadImage(read)
   if readImage.words.len == 0: return
