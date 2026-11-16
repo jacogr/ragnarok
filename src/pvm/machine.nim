@@ -88,6 +88,8 @@ type
   PageDirectory = object
     len: int
     blocks: seq[PageBlock]
+  DirectoryPageBorrow = nil ptr PageData
+    ## Private synchronous reference-slot borrow, bounded by its retained immutable directory owner.
   # Sorted sparse page references avoid allocating the entire 4 GiB guest address space.
   MemoryData = ref object
     pages: PageDirectory
@@ -159,14 +161,30 @@ func `==`*(left, right: GasDeficit): bool {.inline.} =
   ## Compare terminal deficit magnitudes without mixing them with spendable gas balances.
   uint64(left) == uint64(right)
 
-func checkedPageBlock(pages: PageDirectory, index: int): int {.inline.} =
-  ## Every lookup retains the original complete sorted-slot bound, including the last partial block.
-  assert index >= 0 and index < pages.len
-  index div 64
+func completeDirectoryRoot(pages: PageDirectory): bool {.inline.} =
+  ## A complete logical root has exactly the admitted number of immutable reference blocks.
+  pages.len >= 0 and pages.len <= 0x100000 and
+    pages.blocks.len == pages.len div 64+int(pages.len mod 64 != 0)
 
-template `[]`(pages: PageDirectory, index: int): untyped =
-  ## Expand a borrowed indexed location; no owning PageData result is created by an accessor call.
-  pages.blocks[checkedPageBlock(pages, index)].entries[index and 63]
+func borrowDirectoryPage(pages: PageDirectory, index: int): nil ptr PageData {.inline.} =
+  ## Borrow one immutable reference slot only after logical and physical directory admission.
+  ## Retain the unchanged directory owner through the immediate use; this pointer is never stored/exported.
+  if index < 0 or index >= pages.len or not completeDirectoryRoot(pages): return nil
+  let group = index div 64
+  if pages.blocks[group].entries.len != min(64, pages.len-group*64): return nil
+  unsafeAddr pages.blocks[group].entries[index and 63]
+
+proc appendPageOwners(data: MemoryData, first, past: int, pages: var seq[PageData]): MachineError =
+  ## A private successor vector may retain only fully admitted source references; refusal publishes no owner.
+  if first < 0 or first > past or past > data.pages.len: return MachineError.InvalidRange
+  for index in first..<past:
+    let entry = borrowDirectoryPage(data.pages, index)
+    if entry == nil: return MachineError.InvalidOwner
+    if pages.len >= 0x100000: return MachineError.LimitExceeded
+    let previous = pages.len
+    pages.add(entry[])
+    if pages.len != previous+1: return MachineError.LimitExceeded
+  MachineError.None
 
 when defined(pvmSharedAsyncWitness):
   var publicationCountdown {.threadvar.}: int
@@ -718,19 +736,21 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
     owned.add(page)
   capturePageOwners(owned, limit)
 
-func lowerBound(data: MemoryData, index: uint32): int =
-  ## Locate the first stored page whose index is at least the requested ordinal.
+func tryLowerBound(data: MemoryData, index: uint32, found: var int): bool =
+  ## Publish an insertion coordinate only after every visited immutable directory cell exists.
+  ## Refusal preserves output and must not be confused with a valid absent guest page.
+  if not completeDirectoryRoot(data.pages): return false
   var first = 0
   var last = data.pages.len
-  # Difference-based midpoint arithmetic avoids overflowing endpoint sums.
   while first < last:
-    let middle = first + (last - first) div 2
-    # Discard the lower half only when its page precedes the requested one.
-    if uint32(data.pages[middle].index) < index: first = middle + 1
-    else:
-      # Equality stays in the retained interval so the result is an insertion position too.
-      last = middle
-  first
+    # Difference-based midpoints stay inside the retained logical extent.
+    let middle = first+(last-first) div 2
+    let entry = borrowDirectoryPage(data.pages, middle)
+    if entry == nil: return false
+    if uint32(entry[].index) < index: first = middle+1
+    else: last = middle
+  found = first
+  true
 
 proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
   ## Return a copied page, representing absent pages as inaccessible all-zero storage.
@@ -740,95 +760,127 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
   if uint32(index) >= 0x100000'u32:
     return MachineResult[PageImage](status: MachineError.InvalidPage)
   let data = memory.data
-  let at = lowerBound(data, uint32(index))
+  var at = 0
+  if not tryLowerBound(data, uint32(index), at): return MachineResult[PageImage](
+      status: MachineError.InvalidOwner)
   # A present page copies its bytes and permission; callers can mutate that copy safely.
-  if at < data.pages.len and uint32(data.pages[at].index) == uint32(index):
-    return MachineResult[PageImage](status: MachineError.None, completed: imageFromPage(data.pages[at]))
+  if at < data.pages.len:
+    let entry = borrowDirectoryPage(data.pages, at)
+    if entry == nil: return MachineResult[PageImage](status: MachineError.InvalidOwner)
+    if uint32(entry[].index) == uint32(index):
+      return MachineResult[PageImage](status: MachineError.None, completed: imageFromPage(entry[]))
   MachineResult[PageImage](status: MachineError.None, completed: PageImage(index: index,
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
+func directoryPageDifference(left, right: PageDirectory, index: int,
+    changed: var bool): MachineError {.inline.} =
+  ## Shared immutable page identity proves equality; distinct pages must preserve the same map before delta selection.
+  let before = borrowDirectoryPage(left, index)
+  let after = borrowDirectoryPage(right, index)
+  if before == nil or after == nil: return MachineError.InvalidOwner
+  if before[] == after[]:
+    changed = false
+    return MachineError.None
+  if before[].index != after[].index or before[].access != after[].access:
+    return MachineError.InvalidRange
+  changed = true
+  MachineError.None
+
 proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
-  ## Shared immutable directory blocks prove all their page identities and metadata equal at once.
+  ## Validate complete changed-block mappings before allocation; no partial image delta escapes a refused lookup.
   let left = before.data
   let right = after.data
   if left == nil or right == nil: return MachineResult[seq[PageImage]](
       status: MachineError.InvalidOwner)
+  if not completeDirectoryRoot(left.pages) or not completeDirectoryRoot(right.pages):
+    return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
+  if left.pages.len != right.pages.len: return MachineResult[seq[PageImage]](
+      status: MachineError.InvalidRange)
   if left == right: return MachineResult[seq[PageImage]](status: MachineError.None, completed: @[])
-  if left.pages.len != right.pages.len:
-    return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
+  var count = 0
   for group in 0..<left.pages.blocks.len:
-    # Equal lengths have the same fixed block partition; shared blocks require no page-by-page walk.
+    # Shared blocks retain exact immutable page owners, so they need no repeated per-page walk.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
-    let first = group*64
-    let past = min(first+64, left.pages.len)
-    for index in first..<past:
-      # Different page owners can still retain equal mappings; complete validation precedes delta allocation.
-      if left.pages[index] == right.pages[index]: continue
-      if left.pages[index].index != right.pages[index].index or
-          left.pages[index].access != right.pages[index].access:
-        return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
-  var changed: seq[PageImage] = @[]
+    for index in group*64..<min(group*64+64, left.pages.len):
+      var different = false
+      let compared = directoryPageDifference(left.pages, right.pages, index, different)
+      if compared != MachineError.None: return MachineResult[seq[PageImage]](status: compared)
+      if different: inc count
+  var changed = newSeqOfCap[PageImage](count)
+  if count > 0 and changed.rawData == nil: return MachineResult[seq[PageImage]](
+      status: MachineError.LimitExceeded)
   for group in 0..<left.pages.blocks.len:
-    # Only changed blocks can contain changed page owners, and ascending slots keep the output sorted.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
-    let first = group*64
-    let past = min(first+64, left.pages.len)
-    for index in first..<past:
-      if left.pages[index] != right.pages[index]: changed.add(imageFromPage(right.pages[index]))
-  MachineResult[seq[PageImage]](status: MachineError.None, completed: changed)
+    for index in group*64..<min(group*64+64, left.pages.len):
+      var different = false
+      let compared = directoryPageDifference(left.pages, right.pages, index, different)
+      if compared != MachineError.None: return MachineResult[seq[PageImage]](status: compared)
+      if different:
+        let entry = borrowDirectoryPage(right.pages, index)
+        if entry == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
+        changed.add(imageFromPage(entry[]))
+  if changed.len != count: return MachineResult[seq[PageImage]](status: MachineError.LimitExceeded)
+  MachineResult[seq[PageImage]](status: MachineError.None, completed: move(changed))
 
 proc changedMemoryPageSlots*(before, after: Memory): MachineResult[seq[MemoryPageSlot]] =
-  ## Validate the complete retained map, then return sorted positions whose immutable page owners differ.
-  ## Shared directory blocks need no scan; callers copy bytes through the validated after owner by slot.
-  ## A refused allocation returns no positions. A truncated delta would leave stale private bytes.
+  ## Copied sorted positions publish only after both complete changed-block passes succeed.
   let left = before.data
   let right = after.data
   if left == nil or right == nil: return MachineResult[seq[MemoryPageSlot]](
       status: MachineError.InvalidOwner)
-  if left == right: return MachineResult[seq[MemoryPageSlot]](
-      status: MachineError.None, completed: @[])
-  if left.pages.len != right.pages.len:
-    return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
+  if not completeDirectoryRoot(left.pages) or not completeDirectoryRoot(right.pages):
+    return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidOwner)
+  if left.pages.len != right.pages.len: return MachineResult[seq[MemoryPageSlot]](
+      status: MachineError.InvalidRange)
+  if left == right: return MachineResult[seq[MemoryPageSlot]](status: MachineError.None,
+      completed: @[])
   var count = 0
   for group in 0..<left.pages.blocks.len:
-    # Equal block owners certify every identity and permission in that group.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
-    let first = group*64
-    let past = min(first+64, left.pages.len)
-    for slot in first..<past:
-      # Refuse every map difference before allocating or returning any changed positions.
-      if left.pages[slot] == right.pages[slot]: continue
-      if left.pages[slot].index != right.pages[slot].index or
-          left.pages[slot].access != right.pages[slot].access:
-        return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
-      inc count
+    for slot in group*64..<min(group*64+64, left.pages.len):
+      var different = false
+      let compared = directoryPageDifference(left.pages, right.pages, slot, different)
+      if compared != MachineError.None: return MachineResult[seq[MemoryPageSlot]](status: compared)
+      if different: inc count
   var changed = newSeqUninit[MemoryPageSlot](count)
-  if changed.len != count:
-    return MachineResult[seq[MemoryPageSlot]](status: MachineError.AllocationRefused)
-  var index = 0
+  if changed.len != count: return MachineResult[seq[MemoryPageSlot]](
+      status: MachineError.AllocationRefused)
+  var at = 0
   for group in 0..<left.pages.blocks.len:
-    # Ascending groups and positions produce sorted slots without sorting or copying page payloads.
     if left.pages.blocks[group] == right.pages.blocks[group]: continue
-    let first = group*64
-    let past = min(first+64, left.pages.len)
-    for slot in first..<past:
-      if left.pages[slot] != right.pages[slot]:
-        changed[index] = MemoryPageSlot(uint32(slot))
-        inc index
-  MachineResult[seq[MemoryPageSlot]](status: MachineError.None, completed: changed)
+    for slot in group*64..<min(group*64+64, left.pages.len):
+      var different = false
+      let compared = directoryPageDifference(left.pages, right.pages, slot, different)
+      if compared != MachineError.None: return MachineResult[seq[MemoryPageSlot]](status: compared)
+      if different:
+        if at >= changed.len: return MachineResult[seq[MemoryPageSlot]](
+            status: MachineError.InvalidOwner)
+        changed[at] = MemoryPageSlot(uint32(slot))
+        inc at
+  if at != count: return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidOwner)
+  MachineResult[seq[MemoryPageSlot]](status: MachineError.None, completed: move(changed))
 
 func memoryPageCount*(memory: Memory): MachineResult[PageCount] =
   ## Inspect a genuine owner's mapping size without copying page payloads, for local admission before host deltas.
   let data = memory.data
   if data == nil: return MachineResult[PageCount](status: MachineError.InvalidOwner)
+  if not completeDirectoryRoot(data.pages): return MachineResult[PageCount](
+      status: MachineError.InvalidOwner)
   MachineResult[PageCount](status: MachineError.None, completed: PageCount(uint32(data.pages.len)))
 
 proc memoryImages*(memory: Memory): MachineResult[seq[PageImage]] =
   ## Copy every retained page for a genuine mapping/permission replacement; no private reference escapes.
   let data = memory.data
   if data == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
+  if not completeDirectoryRoot(data.pages): return MachineResult[seq[PageImage]](
+      status: MachineError.InvalidOwner)
   var images = newSeqOfCap[PageImage](data.pages.len)
-  for i in 0..<data.pages.len: images.add(imageFromPage(data.pages[i]))
+  if data.pages.len > 0 and images.rawData == nil: return MachineResult[seq[PageImage]](
+      status: MachineError.LimitExceeded)
+  for index in 0..<data.pages.len:
+    let entry = borrowDirectoryPage(data.pages, index)
+    if entry == nil: return MachineResult[seq[PageImage]](status: MachineError.InvalidOwner)
+    images.add(imageFromPage(entry[]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: images)
 
 proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
@@ -837,12 +889,16 @@ proc memoryLayout*(memory: Memory): MachineResult[seq[PageDescription]] =
   let data = memory.data
   if data == nil:
     return MachineResult[seq[PageDescription]](status: MachineError.InvalidOwner)
+  if not completeDirectoryRoot(data.pages): return MachineResult[seq[PageDescription]](
+      status: MachineError.InvalidOwner)
   var pages = newSeq[PageDescription](data.pages.len)
   if pages.len != data.pages.len:
     return MachineResult[seq[PageDescription]](status: MachineError.AllocationRefused)
   for slot in 0..<pages.len:
     # The immutable owner's validated order and permissions remain authoritative for every copied description.
-    pages[slot] = PageDescription(index: data.pages[slot].index, access: data.pages[slot].access)
+    let entry = borrowDirectoryPage(data.pages, slot)
+    if entry == nil: return MachineResult[seq[PageDescription]](status: MachineError.InvalidOwner)
+    pages[slot] = PageDescription(index: entry[].index, access: entry[].access)
   MachineResult[seq[PageDescription]](status: MachineError.None, completed: pages)
 
 proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
@@ -854,7 +910,9 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
     return MachineResult[PageDescription](status: MachineError.InvalidOwner)
   if uint64(slot) >= uint64(data.pages.len) or output.len != 4096:
     return MachineResult[PageDescription](status: MachineError.InvalidRange)
-  let page {.cursor.} = data.pages[int(uint32(slot))]
+  let entry = borrowDirectoryPage(data.pages, int(uint32(slot)))
+  if entry == nil: return MachineResult[PageDescription](status: MachineError.InvalidOwner)
+  let page {.cursor.} = entry[]
   for chunk in 0..<8:
     # Each effective512-byte span copies completely into its disjoint portion of the output page.
     copyMem(addr output[chunk*512], borrowPageChunk(page, chunk), 512)
@@ -869,7 +927,9 @@ func memoryPageIsKnownZero*(memory: Memory, slot: MemoryPageSlot,
   if uint64(slot) >= uint64(data.pages.len):
     # The complete sorted-slot check precedes narrowing or any directory access.
     return MachineResult[bool](status: MachineError.InvalidRange)
-  let page {.cursor.} = data.pages[int(uint32(slot))]
+  let entry = borrowDirectoryPage(data.pages, int(uint32(slot)))
+  if entry == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let page {.cursor.} = entry[]
   if page.index != expected.index or page.access != expected.access:
     # Match coordinates/access, then read the zero fact only from this supplied immutable owner.
     return MachineResult[bool](status: MachineError.InvalidRange)
@@ -882,7 +942,9 @@ proc matchesMemoryPageBytes*(memory: Memory, slot: MemoryPageSlot,
   if data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   if uint64(slot) >= uint64(data.pages.len) or bytes.len != 4096:
     return MachineResult[bool](status: MachineError.InvalidRange)
-  let page {.cursor.} = data.pages[int(uint32(slot))]
+  let entry = borrowDirectoryPage(data.pages, int(uint32(slot)))
+  if entry == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let page {.cursor.} = entry[]
   if page.index != expected.index or page.access != expected.access:
     return MachineResult[bool](status: MachineError.InvalidRange)
   for chunk in 0..<8:
@@ -894,9 +956,15 @@ proc pageIndices*(memory: Memory): MachineResult[seq[PageIndex]] =
   ## Copy only retained sorted page identities; sparse holes and snapshot storage remain private.
   let data = memory.data
   if data == nil: return MachineResult[seq[PageIndex]](status: MachineError.InvalidOwner)
+  if not completeDirectoryRoot(data.pages): return MachineResult[seq[PageIndex]](
+      status: MachineError.InvalidOwner)
   var indices = newSeq[PageIndex](data.pages.len)
+  if indices.len != data.pages.len: return MachineResult[seq[PageIndex]](
+      status: MachineError.LimitExceeded)
   for index in 0..<data.pages.len:
-    indices[index] = data.pages[index].index # Copying ordinals grants no mutable page access.
+    let entry = borrowDirectoryPage(data.pages, index)
+    if entry == nil: return MachineResult[seq[PageIndex]](status: MachineError.InvalidOwner)
+    indices[index] = entry[].index # Copied ordinals grant no mutable page access.
   MachineResult[seq[PageIndex]](status: MachineError.None, completed: indices)
 
 proc samePage*(left, right: Memory, index: PageIndex): bool =
@@ -904,12 +972,25 @@ proc samePage*(left, right: Memory, index: PageIndex): bool =
   let a = left.data
   let b = right.data
   if a == nil or b == nil or uint32(index) >= 0x100000'u32: return false
-  let ai = lowerBound(a, uint32(index))
-  let bi = lowerBound(b, uint32(index))
-  let ap = ai < a.pages.len and uint32(a.pages[ai].index) == uint32(index)
-  let bp = bi < b.pages.len and uint32(b.pages[bi].index) == uint32(index)
-  if not ap or not bp: return not ap and not bp # Two absent pages have the same inaccessible content.
-  a.pages[ai] == b.pages[bi]
+  var ai = 0
+  if not tryLowerBound(a, uint32(index), ai): return false
+  var bi = 0
+  if not tryLowerBound(b, uint32(index), bi): return false
+  var ap = false
+  var bp = false
+  var leftPage: nil ptr PageData = nil
+  var rightPage: nil ptr PageData = nil
+  if ai < a.pages.len:
+    leftPage = borrowDirectoryPage(a.pages, ai)
+    if leftPage == nil: return false
+    ap = uint32(leftPage[].index) == uint32(index)
+  if bi < b.pages.len:
+    rightPage = borrowDirectoryPage(b.pages, bi)
+    if rightPage == nil: return false
+    bp = uint32(rightPage[].index) == uint32(index)
+  if not ap or not bp: return not ap and not bp
+  if leftPage == nil or rightPage == nil: return false
+  leftPage[] == rightPage[]
 
 proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   ## Replace or insert one environment-owned page, preserving all other pages and the prior snapshot.
@@ -920,22 +1001,50 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
     # No out-of-domain ordinal may enter a validated memory owner.
     return MachineResult[Memory](status: MachineError.InvalidPage)
   let data = memory.data
-  let at = lowerBound(data, uint32(page.index))
-  let replacing = at < data.pages.len and uint32(data.pages[at].index) == uint32(page.index)
+  var at = 0
+  if not tryLowerBound(data, uint32(page.index), at): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
+  var replacing = false
+  if at < data.pages.len:
+    let entry = borrowDirectoryPage(data.pages, at)
+    if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+    replacing = uint32(entry[].index) == uint32(page.index)
   # Replacing a page at the ceiling is permitted; inserting another is not.
   if not replacing and uint64(data.pages.len) >= uint64(uint32(data.limit)):
     return MachineResult[Memory](status: MachineError.LimitExceeded)
   var pages = newSeqOfCap[PageData](data.pages.len + int(not replacing))
   if pages.rawData == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   # Reuse immutable page references outside the one replacement/insertion slot.
-  for i in 0..<at: pages.add(data.pages[i])
+  let prefix = appendPageOwners(data, 0, at, pages)
+  if prefix != MachineError.None: return MachineResult[Memory](status: prefix)
   let captured = pageFromImage(page)
   if captured == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   pages.add(captured)
   # Insertion shifts the suffix; replacement leaves its positions unchanged.
-  for i in at + int(replacing)..<data.pages.len:
-    pages.add(data.pages[i])
+  let suffix = appendPageOwners(data, at+int(replacing), data.pages.len, pages)
+  if suffix != MachineError.None: return MachineResult[Memory](status: suffix)
   capturePageOwners(pages, data.limit)
+
+func matchReplacementPage(data: MemoryData, requested: PageDescription, sparse: bool,
+    cursor: var int, matched: var DirectoryPageBorrow): MachineError =
+  ## Both replacement passes use the same exact original mapping; failed lookup preserves their output coordinates.
+  var at = cursor
+  if sparse:
+    if not tryLowerBound(data, uint32(requested.index), at): return MachineError.InvalidOwner
+  else:
+    while at < data.pages.len:
+      let entry = borrowDirectoryPage(data.pages, at)
+      if entry == nil: return MachineError.InvalidOwner
+      if uint32(entry[].index) >= uint32(requested.index): break
+      inc at
+  if at >= data.pages.len: return MachineError.InvalidRange
+  let entry = borrowDirectoryPage(data.pages, at)
+  if entry == nil: return MachineError.InvalidOwner
+  if entry[].index != requested.index or entry[].access !=
+      requested.access: return MachineError.InvalidRange
+  cursor = at
+  matched = entry
+  MachineError.None
 
 proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): MachineResult[Memory] =
   ## Atomically replace sorted existing pages, preserving physical-index and ordering refusal.
@@ -950,18 +1059,16 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
       return MachineResult[Memory](status: MachineError.InvalidPage)
     if index > 0 and uint32(replacements[index-1].index) >= uint32(replacements[index].index):
       return MachineResult[Memory](status: MachineError.UnsortedPages)
+  if not completeDirectoryRoot(data.pages): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
   let sparse = replacements.len < data.pages.len div 8
   var cursor = 0
   for index in 0..<replacements.len:
-    # Sparse far-apart updates use bounded searches; dense replacements retain the linear merge.
-    if sparse:
-      cursor = lowerBound(data, uint32(replacements[index].index))
-    else:
-      while cursor < data.pages.len and uint32(data.pages[cursor].index) < uint32(replacements[index].index):
-        inc cursor
-    if cursor >= data.pages.len or data.pages[cursor].index != replacements[index].index or
-        data.pages[cursor].access != replacements[index].access:
-      return MachineResult[Memory](status: MachineError.InvalidRange)
+    # Complete map validation still precedes all replacement-vector and payload allocation.
+    var observed: nil ptr PageData = nil
+    let matched = matchReplacementPage(data, PageDescription(index: replacements[index].index,
+        access: replacements[index].access), sparse, cursor, observed)
+    if matched != MachineError.None: return MachineResult[Memory](status: matched)
     inc cursor
   if replacements.len == 0:
     # An empty observation retains the exact original owner and policy without allocation.
@@ -973,12 +1080,13 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
   cursor = 0
   for index in 0..<replacements.len:
     # Every input has passed; collect exact slots and new immutable byte owners only now.
-    if sparse:
-      cursor = lowerBound(data, uint32(replacements[index].index))
-    else:
-      while uint32(data.pages[cursor].index) < uint32(replacements[index].index): inc cursor
+    var observed: nil ptr PageData = nil
+    let matched = matchReplacementPage(data, PageDescription(index: replacements[index].index,
+        access: replacements[index].access), sparse, cursor, observed)
+    if matched != MachineError.None: return MachineResult[Memory](status: matched)
+    if observed == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
     slots.add(cursor)
-    let replacement = pageFromReplacement(data.pages[cursor], replacements[index])
+    let replacement = pageFromReplacement(observed[], replacements[index])
     if replacement == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
     changed.add(replacement)
     inc cursor
@@ -1013,7 +1121,11 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
   if at <= batch.lastSlot:
     batch.status = MachineError.UnsortedPages
     return batch.status
-  let previous {.cursor.} = data.pages[at]
+  let entry = borrowDirectoryPage(data.pages, at)
+  if entry == nil:
+    batch.status = MachineError.InvalidOwner
+    return batch.status
+  let previous {.cursor.} = entry[]
   if previous.index != expected.index or previous.access != expected.access or
       previous.access != PageAccess.ReadWrite:
     batch.status = MachineError.InvalidRange
@@ -1089,12 +1201,18 @@ proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[P
   if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
     # Ordered endpoints prove both are in range before any lookup or subtraction.
     return MachineResult[PageCount](status: MachineError.InvalidRange)
-  let start = lowerBound(data, uint32(first))
-  let stop = lowerBound(data, uint32(past))
+  var start = 0
+  if not tryLowerBound(data, uint32(first), start): return MachineResult[PageCount](
+      status: MachineError.InvalidOwner)
+  var stop = 0
+  if not tryLowerBound(data, uint32(past), stop): return MachineResult[PageCount](
+      status: MachineError.InvalidOwner)
   var count = 0'u32
   for i in start..<stop:
     # Only writable retained pages contribute; read-only and inaccessible pages do not.
-    if data.pages[i].access == PageAccess.ReadWrite:
+    let entry = borrowDirectoryPage(data.pages, i)
+    if entry == nil: return MachineResult[PageCount](status: MachineError.InvalidOwner)
+    if entry[].access == PageAccess.ReadWrite:
       inc count # Unique ordinals bound the count by the physical page domain.
   MachineResult[PageCount](status: MachineError.None, completed: PageCount(count))
 
@@ -1109,8 +1227,12 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
   if uint32(first) > uint32(past) or uint32(past) > 0x100000'u32:
     # Validate the exclusive endpoint before subtraction and native-int conversion.
     return MachineResult[Memory](status: MachineError.InvalidRange)
-  let start = lowerBound(data, uint32(first))
-  let stop = lowerBound(data, uint32(past))
+  var start = 0
+  if not tryLowerBound(data, uint32(first), start): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
+  var stop = 0
+  if not tryLowerBound(data, uint32(past), stop): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
   let added = uint64(uint32(past)-uint32(first)) - uint64(stop-start)
   let total = uint64(data.pages.len) + added
   if total > uint64(uint32(data.limit)) or total > uint64(high(int) div sizeof(PageData)):
@@ -1119,27 +1241,32 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
   var changed = added != 0
   for i in start..<stop:
     # Permission-only changes still need a successor, even when no page is added.
-    if data.pages[i].access != PageAccess.ReadWrite:
-      changed = true
+    let entry = borrowDirectoryPage(data.pages, i)
+    if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+    if entry[].access != PageAccess.ReadWrite: changed = true
   if not changed:
     # Empty and already-writable intervals retain the original immutable owner without allocation.
     return MachineResult[Memory](status: MachineError.None, completed: memory)
   var pages = newSeqOfCap[PageData](int(total))
   if total > 0 and pages.rawData == nil:
     return MachineResult[Memory](status: MachineError.LimitExceeded)
-  for i in 0..<start:
-    pages.add(data.pages[i]) # Retain the untouched prefix, including permissions and nonzero bytes.
+  let prefix = appendPageOwners(data, 0, start, pages)
+  if prefix != MachineError.None: return MachineResult[Memory](status: prefix)
   var zero: nil PageChunk = nil # Keep a lazy payload only until this operation has published all immutable children.
   var at = start
   var ordinal = uint32(first)
   while ordinal < uint32(past):
     # Merge the validated interval with the sorted retained vector exactly once.
-    if at < stop and uint32(data.pages[at].index) == ordinal:
-      if data.pages[at].access == PageAccess.ReadWrite:
-        pages.add(data.pages[at]) # Already-writable page storage stays shared and immutable.
+    var entry: nil ptr PageData = nil
+    if at < stop:
+      entry = borrowDirectoryPage(data.pages, at)
+      if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+    if entry != nil and uint32(entry[].index) == ordinal:
+      if entry[].access == PageAccess.ReadWrite:
+        pages.add(entry[]) # Retain the unchanged immutable page.
       else:
         # Retain immutable chunks only after the replacement permission header exists.
-        let page = pageWithAccess(data.pages[at], PageAccess.ReadWrite)
+        let page = pageWithAccess(entry[], PageAccess.ReadWrite)
         if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
         pages.add(page)
       inc at
@@ -1149,8 +1276,8 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
       if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
       pages.add(page)
     inc ordinal
-  for i in stop..<data.pages.len:
-    pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
+  let suffix = appendPageOwners(data, stop, data.pages.len, pages)
+  if suffix != MachineError.None: return MachineResult[Memory](status: suffix)
   capturePageOwners(pages, data.limit)
 
 proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
@@ -1164,8 +1291,12 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   if uint32(first) == uint32(past):
     return MachineResult[Memory](status: MachineError.None,
         completed: memory) # Empty intervals preserve the exact owner.
-  let start = lowerBound(data, uint32(first))
-  let stop = lowerBound(data, uint32(past))
+  var start = 0
+  if not tryLowerBound(data, uint32(first), start): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
+  var stop = 0
+  if not tryLowerBound(data, uint32(past), stop): return MachineResult[Memory](
+      status: MachineError.InvalidOwner)
   let dropped = access == PageAccess.Inaccessible and content == PageContent.Zeroed
   let interval = if dropped: 0'u64 else: uint64(uint32(past)-uint32(first))
   let total = uint64(data.pages.len-(stop-start))+interval
@@ -1180,15 +1311,22 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   var pages = newSeqOfCap[PageData](int(total))
   if total > 0 and pages.rawData == nil:
     return MachineResult[Memory](status: MachineError.LimitExceeded)
-  for index in 0..<start: pages.add(data.pages[index]) # Preserve immutable outside prefix owners.
+  let prefix = appendPageOwners(data, 0, start, pages)
+  if prefix != MachineError.None: return MachineResult[Memory](status: prefix)
   if not dropped:
     var zero: nil PageChunk = nil # Dropping zero/inaccessible storage never allocates a replacement payload.
     var ordinal = uint32(first)
     var at = start
     while ordinal < uint32(past):
-      if at < stop and uint32(data.pages[at].index) == ordinal and content == PageContent.Preserved:
+      var entry: nil ptr PageData = nil
+      if at < stop:
+        entry = borrowDirectoryPage(data.pages, at)
+        if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+      let present = entry != nil and uint32(entry[].index) == ordinal
+      if present and content == PageContent.Preserved:
+        if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
         # Permission changes preserve retained bytes and refuse an absent header.
-        let page = pageWithAccess(data.pages[at], access)
+        let page = pageWithAccess(entry[], access)
         if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
         pages.add(page)
       else:
@@ -1196,11 +1334,11 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
         let page = zeroPage(PageIndex(ordinal), access, zero)
         if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
         pages.add(page)
-      if at < stop and uint32(data.pages[at].index) == ordinal:
+      if present:
         inc at # Each present old page is consumed exactly once in the ordered interval.
       inc ordinal # The validated exclusive endpoint bounds every ordinal below 2^20.
-  for index in stop..<data.pages.len: pages.add(data.pages[
-      index]) # Dropped zero/inaccessible pages become implicit sparse zeros.
+  let suffix = appendPageOwners(data, stop, data.pages.len, pages)
+  if suffix != MachineError.None: return MachineResult[Memory](status: suffix)
   capturePageOwners(pages, data.limit)
 
 type ScalarSpan = object
@@ -1209,27 +1347,32 @@ type ScalarSpan = object
 
 proc scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
     recent: array[2, int], hints: nil ptr array[64, uint32]): int {.inline.} =
-  ## Immutable calls compile without hint probes; writer calls accept only exact bounded physical-page matches.
+  ## Hints never grant authority; -1 reports a failed physical lookup, distinct from a valid absent page.
   when Cached:
     for slot in recent:
-      if slot >= 0 and slot < data.pages.len and uint32(data.pages[slot].index) == page:
-        return slot
-  when Cached:
+      if slot >= 0 and slot < data.pages.len:
+        let entry = borrowDirectoryPage(data.pages, slot)
+        if entry == nil: return -1
+        if uint32(entry[].index) == page: return slot
     if hints != nil:
-      # Coordinates are never capabilities: reject empty, displaced and out-of-range slots by exact original page identity.
       let bucket = int((page xor (page shr 8)) and 63'u32)
       let encoded = hints[][bucket]
       if encoded != 0:
         let slot = int(encoded-1)
-        if slot >= 0 and slot < data.pages.len and uint32(data.pages[slot].index) == page:
-          return slot
-  let found = lowerBound(data, page)
+        if slot >= 0 and slot < data.pages.len:
+          let entry = borrowDirectoryPage(data.pages, slot)
+          if entry == nil: return -1
+          if uint32(entry[].index) == page: return slot
+  var found = 0
+  if not tryLowerBound(data, page, found): return -1
   when Cached:
-    if hints != nil and found >= 0 and found < data.pages.len and
-        uint32(data.pages[found].index) == page and uint64(found) < uint64(high(uint32)):
-      # Only actual physical presence is remembered; the caller still checks permissions before byte access.
-      let bucket = int((page xor (page shr 8)) and 63'u32)
-      hints[][bucket] = uint32(found)+1
+    if hints != nil and found < data.pages.len and uint64(found) < uint64(high(uint32)):
+      let entry = borrowDirectoryPage(data.pages, found)
+      if entry == nil: return -1
+      if uint32(entry[].index) == page:
+        # Remember only actual physical presence; the caller still checks permissions.
+        let bucket = int((page xor (page shr 8)) and 63'u32)
+        hints[][bucket] = uint32(found)+1
   found
 
 proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAddress,
@@ -1249,9 +1392,12 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
   if start > uint64(high(uint32)) - uint64(byte(width)):
     # Exclusive-end overflow retains the approved final-page presence rule before permissions.
     let at = scalarSlot[Cached](data, 0xfffff'u32, recent, hints)
-    if at < data.pages.len and uint32(data.pages[at].index) == 0xfffff'u32 and
-        data.pages[at].access != PageAccess.Inaccessible:
-      return MachineResult[ScalarSpan](status: MachineError.Panic)
+    if at < 0: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
+    if at < data.pages.len:
+      let entry = borrowDirectoryPage(data.pages, at)
+      if entry == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
+      if uint32(entry[].index) == 0xfffff'u32 and entry[].access != PageAccess.Inaccessible:
+        return MachineResult[ScalarSpan](status: MachineError.Panic)
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
   if start < 0x10000'u64:
     # A nonwrapping access starting in the protected prefix panics before any page inspection.
@@ -1259,9 +1405,12 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
   let firstPage = uint32(start div 4096)
   let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
   let first = scalarSlot[Cached](data, firstPage, recent, hints)
+  if first < 0: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   var firstAccess = PageAccess.Inaccessible
-  if first < data.pages.len and uint32(data.pages[first].index) == firstPage:
-    firstAccess = data.pages[first].access # Missing sparse slots never grant byte access.
+  if first < data.pages.len:
+    let entry = borrowDirectoryPage(data.pages, first)
+    if entry == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
+    if uint32(entry[].index) == firstPage: firstAccess = entry[].access
   if firstPage == lastPage:
     # A complete single-page scalar needs one presence/permission decision and no second-page ordering.
     if firstAccess == PageAccess.Inaccessible or (Writing and firstAccess != PageAccess.ReadWrite):
@@ -1272,9 +1421,12 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
       first: first, last: first, offset: int(start mod 4096), firstCount: count, count: count))
   # The remaining access crosses exactly two pages; complete presence checks still precede write permissions.
   let last = scalarSlot[Cached](data, lastPage, recent, hints)
+  if last < 0: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   var lastAccess = PageAccess.Inaccessible
-  if last < data.pages.len and uint32(data.pages[last].index) == lastPage:
-    lastAccess = data.pages[last].access
+  if last < data.pages.len:
+    let entry = borrowDirectoryPage(data.pages, last)
+    if entry == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
+    if uint32(entry[].index) == lastPage: lastAccess = entry[].access
   if firstAccess == PageAccess.Inaccessible:
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
   if Writing and lastAccess == PageAccess.Inaccessible:
@@ -1297,10 +1449,14 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
   if memory.data == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let data = memory.data
   let span = checked.value
-  var value = pageScalar(data.pages[span.first], span.offset, span.firstCount)
+  let firstEntry = borrowDirectoryPage(data.pages, span.first)
+  if firstEntry == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
+  var value = pageScalar(firstEntry[], span.offset, span.firstCount)
   if span.firstCount < span.count:
     # A remaining suffix proves the prefix is below eight bytes, keeping this shift below64.
-    value = value or (pageScalar(data.pages[span.last], 0, span.count-span.firstCount) shl (
+    let lastEntry = borrowDirectoryPage(data.pages, span.last)
+    if lastEntry == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
+    value = value or (pageScalar(lastEntry[], 0, span.count-span.firstCount) shl (
         8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
@@ -1322,7 +1478,9 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
   let span = checked.value
-  let firstPage = writablePageClone(data.pages[span.first], span.offset, span.firstCount)
+  let firstEntry = borrowDirectoryPage(data.pages, span.first)
+  if firstEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  let firstPage = writablePageClone(firstEntry[], span.offset, span.firstCount)
   if firstPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   var slots = @[span.first]
   var changed = newSeqOfCap[PageData](2)
@@ -1332,7 +1490,9 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
       status: MachineError.LimitExceeded)
   if span.firstCount < span.count:
     # Complete both private successors before writing either half of a page-crossing scalar.
-    let lastPage = writablePageClone(data.pages[span.last], 0, span.count-span.firstCount)
+    let lastEntry = borrowDirectoryPage(data.pages, span.last)
+    if lastEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+    let lastPage = writablePageClone(lastEntry[], 0, span.count-span.firstCount)
     if lastPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
     slots.add(span.last)
     changed.add(lastPage)
@@ -1370,13 +1530,19 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
   let lastPage = (start + size - 1) div 4096
   var page = start div 4096
   let data = memory.data
-  var at = lowerBound(data, uint32(page))
+  var at = 0
+  if not tryLowerBound(data, uint32(page), at): return MachineResult[bool](
+      status: MachineError.InvalidOwner)
   while page <= lastPage:
     # Page permissions suffice for every byte in this nonwrapping interval, including low memory.
-    if at == data.pages.len or uint32(data.pages[at].index) != uint32(page):
+    if at == data.pages.len:
+      return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page*4096)))
+    let entry = borrowDirectoryPage(data.pages, at)
+    if entry == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+    if uint32(entry[].index) != uint32(page):
       # Absent sparse pages are inaccessible; report the first failing physical page in range order.
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
-    let access = data.pages[at].access
+    let access = entry[].access
     if access == PageAccess.Inaccessible or (writing and access != PageAccess.ReadWrite):
       # Retained inaccessible bytes are not readable; read-only pages cannot receive host writes.
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
@@ -1453,20 +1619,25 @@ when defined(pvmSharedAsyncWitness):
     if setPageScalar(tail, 3583, 2, 0xabcd) or first.bytes[511] != saved: return false
     imageFromPage(source) == image
 
-proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var openArray[byte]) =
+proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var openArray[byte]): bool =
   ## Copy a preflighted interval of exactly output.len bytes from the immutable owner.
   let size = output.len
-  if size == 0: return # Empty intervals never inspect or narrow their ignored pointer.
+  if size == 0: return true # Empty intervals never inspect or narrow their ignored pointer.
   var copied = 0
-  var at = lowerBound(data, uint32(uint64(address) div 4096))
+  var at = 0
+  if not tryLowerBound(data, uint32(uint64(address) div 4096), at): return false
   while copied < size:
     # The preflight proved all addresses and native index conversions before allocation.
     let physical = uint64(address) + uint64(copied)
     let offset = int(physical mod 4096)
     let count = min(size - copied, 4096 - offset)
-    copyPageOut(data.pages[at], offset, output, copied, count)
+    let entry = borrowDirectoryPage(data.pages, at)
+    if entry == nil: return false
+    copyPageOut(entry[], offset, output, copied, count)
     copied += count
     inc at # Complete preflight proved each consecutive physical page occupies the next sorted slot.
+
+  true
 
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit): MachineResult[seq[byte]] =
@@ -1481,7 +1652,8 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
   # The preflighted copy initializes every byte before the result can be published.
   var bytes = newSeqUninit[byte](size)
   if bytes.len != size: return MachineResult[seq[byte]](status: MachineError.LimitExceeded)
-  copyReadableRange(data, address, bytes)
+  if not copyReadableRange(data, address, bytes):
+    return MachineResult[seq[byte]](status: MachineError.InvalidOwner)
   MachineResult[seq[byte]](status: MachineError.None, completed: move(bytes))
 
 proc readBytesInto*(memory: Memory, address: MemoryAddress, output: var openArray[byte],
@@ -1492,28 +1664,35 @@ proc readBytesInto*(memory: Memory, address: MemoryAddress, output: var openArra
   if checked.error != MachineError.None: return checked
   let data = memory.data
   if data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
-  copyReadableRange(data, address, output)
+  if not copyReadableRange(data, address, output): return MachineResult[bool](
+      status: MachineError.InvalidOwner)
   checked
 
 proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
     destination: MemoryAddress, size: int, bytes: openArray[byte],
     source: MemoryData, sourceAddress: MemoryAddress): MachineResult[Memory] =
   ## Stage each affected page and publish one immutable directory after filling every chunk.
-  var sourceSlot = when FromMemory: lowerBound(source, uint32(uint64(sourceAddress) div 4096))
-    else: 0
+  var sourceSlot = 0
+  when FromMemory:
+    if not tryLowerBound(source, uint32(uint64(sourceAddress) div 4096), sourceSlot):
+      return MachineResult[Memory](status: MachineError.InvalidOwner)
   var sourceOffset = when FromMemory: int(uint64(sourceAddress) mod 4096) else: 0
   var slots = newSeqOfCap[int](size div 4096+2)
   var changed = newSeqOfCap[PageData](size div 4096+2)
   if slots.rawData == nil or changed.rawData == nil:
     return MachineResult[Memory](status: MachineError.LimitExceeded)
   var copied = 0
-  var at = lowerBound(data, uint32(uint64(destination) div 4096))
+  var at = 0
+  if not tryLowerBound(data, uint32(uint64(destination) div 4096), at): return MachineResult[
+      Memory](status: MachineError.InvalidOwner)
   while copied < size:
     # Preflight proved a nonwrapping readable/writable sequence; each page gets one private header.
     let physical = uint64(destination)+uint64(copied)
     let offset = int(physical mod 4096)
     let count = min(size-copied, 4096-offset)
-    let previous {.cursor.} = data.pages[at]
+    let entry = borrowDirectoryPage(data.pages, at)
+    if entry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+    let previous {.cursor.} = entry[]
     let page: nil PageData = PageData(index: previous.index, access: previous.access,
         backing: previous.backing, chunks: previous.chunks)
     if page == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
@@ -1538,7 +1717,9 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
         let batch = min(count-moved, min(512-sourceWithin, 512-destinationWithin))
         let target {.cursor.} = page.chunks[destinationOffset div 512]
         if target == nil: return MachineResult[Memory](status: MachineError.AllocationRefused)
-        let origin = borrowPageChunk(source.pages[sourceSlot], sourceOffset div 512, sourceWithin)
+        let sourceEntry = borrowDirectoryPage(source.pages, sourceSlot)
+        if sourceEntry == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+        let origin = borrowPageChunk(sourceEntry[], sourceOffset div 512, sourceWithin)
         copyMem(addr target.bytes[destinationWithin], origin, batch)
         moved += batch
         sourceOffset += batch
@@ -1650,10 +1831,16 @@ proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int): Ma
   MachineError.None
 
 func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
-    count: int): uint64 {.inline.} =
-  ## Read the latest epoch's selected page, or the unchanged immutable base before activation.
-  if writer.active: pageScalar(writer.pages[slot], offset, count)
-  else: pageScalar(source.pages[slot], offset, count)
+    count: int): MachineResult[uint64] {.inline.} =
+  ## Read the selected epoch only from a complete directory/vector; failure never substitutes a zero scalar.
+  if writer.active:
+    if slot < 0 or slot >= writer.pages.len: return MachineResult[uint64](
+        status: MachineError.InvalidOwner)
+    return MachineResult[uint64](status: MachineError.None, completed: pageScalar(writer.pages[
+        slot], offset, count))
+  let entry = borrowDirectoryPage(source.pages, slot)
+  if entry == nil: return MachineResult[uint64](status: MachineError.InvalidOwner)
+  MachineResult[uint64](status: MachineError.None, completed: pageScalar(entry[], offset, count))
 
 proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
   ## Only complete successful preflight supplies slots; epoch sealing retains their exact sorted page positions.
@@ -1676,12 +1863,18 @@ proc loadWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: Mem
     # Only complete preflight can admit a new readable owner; permission changes require a new writer.
     writer.readTag = start shr 12
     if writer.active: writer.readPage = writer.pages[span.first]
-    else: writer.readPage = source.pages[span.first]
-  var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
+    else:
+      let entry = borrowDirectoryPage(source.pages, span.first)
+      if entry == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
+      writer.readPage = entry[]
+  let firstWord = writerScalar(writer, source, span.first, span.offset, span.firstCount)
+  if firstWord.error != MachineError.None: return failure[RegisterValue, uint64](firstWord)
+  var value = firstWord.value
   if span.firstCount < span.count:
     # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
-    value = value or (writerScalar(writer, source, span.last, 0, span.count-span.firstCount) shl (
-        8*span.firstCount))
+    let lastWord = writerScalar(writer, source, span.last, 0, span.count-span.firstCount)
+    if lastWord.error != MachineError.None: return failure[RegisterValue, uint64](lastWord)
+    value = value or (lastWord.value shl (8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
 proc loadScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, address: MemoryAddress,
@@ -1738,7 +1931,8 @@ proc storeWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: Me
     if refusedPayloadAllocation(): return MachineResult[bool](status: MachineError.LimitExceeded)
     var dirty = newSeq[byte](source.pages.len)
     if dirty.len != source.pages.len: return MachineResult[bool](status: MachineError.LimitExceeded)
-    for index in 0..<source.pages.len: pages.add(source.pages[index])
+    let retained = appendPageOwners(source, 0, source.pages.len, pages)
+    if retained != MachineError.None: return MachineResult[bool](status: retained)
     writer.pages = move(pages)
     writer.dirty = move(dirty)
     writer.active = true
@@ -1948,3 +2142,90 @@ proc programOf*(machine: Machine): MachineResult[Program] =
   # Default handles have no program identity to expose.
   if machine.data == nil: return MachineResult[Program](status: MachineError.InvalidOwner)
   MachineResult[Program](status: MachineError.None, completed: machine.data.program)
+
+when defined(pvmSharedAsyncWitness):
+  proc probeDirectoryReadRefusals*(): bool =
+    ## Real captured roots with missing/short/oversized physical blocks refuse without fabricated absence or copied prefixes.
+    var images = newSeq[PageImage](65)
+    if images.len != 65: return false
+    for index in 0..<images.len:
+      images[index].index = PageIndex(uint32(32+index))
+      images[index].access = PageAccess.ReadWrite
+      for offset in 0..<4096: images[index].bytes[offset] = byte((index*37+offset*17+29) and 255)
+    let intact = captureMemory(images, PageLimit(65))
+    if intact.error != MachineError.None: return false
+    let original = intact.value
+    let good = original.data
+    if good == nil: return false
+    for index in [-1, 65, high(int)]:
+      if borrowDirectoryPage(good.pages, index) != nil: return false
+    if borrowDirectoryPage(good.pages, 0) == nil or borrowDirectoryPage(good.pages, 64) == nil:
+      return false
+    var found = 99
+    if not tryLowerBound(good, 96, found) or found != 64: return false
+    if not tryLowerBound(good, 200, found) or found != 65: return false
+    for damage in 0..3:
+      # A separate real capture keeps the complete original owner available for independent full-byte checks.
+      let captured = captureMemory(images, PageLimit(65))
+      if captured.error != MachineError.None: return false
+      let broken = captured.value
+      let data = broken.data
+      if data == nil: return false
+      var slot = 0
+      case damage
+      of 0: data.pages.blocks = @[]
+      of 1:
+        let first = data.pages.blocks[0].entries[0]
+        data.pages.blocks[0].entries = @[first]
+      of 2:
+        slot = 64
+        let last = data.pages.blocks[1].entries[0]
+        data.pages.blocks[1].entries.add(last)
+      else: data.pages.len = -1
+      found = 99
+      if tryLowerBound(data, uint32(images[slot].index), found) or found != 99: return false
+      if borrowDirectoryPage(data.pages, slot) != nil: return false
+      if pageImage(broken, images[slot].index).error != MachineError.InvalidOwner: return false
+      if memoryImages(broken).error != MachineError.InvalidOwner: return false
+      if memoryLayout(broken).error != MachineError.InvalidOwner: return false
+      if pageIndices(broken).error != MachineError.InvalidOwner: return false
+      if changedMemoryPages(original, broken).error != MachineError.InvalidOwner: return false
+      if changedMemoryPageSlots(original, broken).error != MachineError.InvalidOwner: return false
+      if samePage(broken, original, images[slot].index): return false
+      let description = PageDescription(index: images[slot].index, access: PageAccess.ReadWrite)
+      var output = default(array[4096, byte])
+      for index in 0..<output.len: output[index] = 0xa5
+      if copyMemoryPage(broken, MemoryPageSlot(uint32(slot)), output).error !=
+          MachineError.InvalidOwner:
+        return false
+      for value in output:
+        if value != 0xa5: return false
+      if damage == 2:
+        # The valid preceding block must not leak a copied prefix before the next physical leaf refuses.
+        var crossing = default(array[8192, byte])
+        for index in 0..<crossing.len: crossing[index] = 0xa5
+        let address = MemoryAddress(uint64(uint32(images[63].index))*4096)
+        if readBytesInto(broken, address, crossing, MemoryByteLimit(8192)).error !=
+            MachineError.InvalidOwner:
+          return false
+        for value in crossing:
+          if value != 0xa5: return false
+      if matchesMemoryPageBytes(broken, MemoryPageSlot(uint32(slot)), description,
+          images[slot].bytes).error != MachineError.InvalidOwner: return false
+      if memoryPageIsKnownZero(broken, MemoryPageSlot(uint32(slot)), description).error !=
+          MachineError.InvalidOwner:
+        return false
+      let address = MemoryAddress(uint64(uint32(images[slot].index))*4096)
+      if load(broken, address, AccessWidth(8)).error != MachineError.InvalidOwner: return false
+      if store(broken, address, AccessWidth(8), RegisterValue(1)).error !=
+          MachineError.InvalidOwner: return false
+      if withPage(broken, images[slot]).error != MachineError.InvalidOwner: return false
+      if withReplacedPages(broken, [images[slot]]).error != MachineError.InvalidOwner: return false
+      if readBytesInto(broken, address, output, MemoryByteLimit(4096)).error !=
+          MachineError.InvalidOwner:
+        return false
+      for value in output:
+        if value != 0xa5: return false
+      for image in images:
+        if pageImage(original, image.index).value != image: return false
+    true
