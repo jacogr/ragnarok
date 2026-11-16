@@ -11,10 +11,14 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
     ## Record the original decoded lane, including saturated aliases.
     1'u32 shl int(slot)
 
-  func ringLaneUse(ring: NativeRegisterRing): tuple[used, written: uint32] =
+  type X86RingLanes = tuple[used, written: uint32]
+    ## Copied register requirements are published only for a complete Ring certificate.
+
+  proc tryRingLaneUse(ring: NativeRegisterRing, lanes: var X86RingLanes): bool =
     ## The complete shape contains ADD64, SHR32, ADDW and both 64-bit shifts.
     ## Every immediate body reads B; ADD64 reads A too. All predicates read A.
-    assert ring.complete
+    ## False preserves the caller's prior requirements when the certificate is incomplete.
+    if not ring.complete: return false
     var used = 0'u32
     var written = 0'u32
     for item in ring.blocks:
@@ -27,12 +31,16 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
         if op.opcode == 200:
           used = used or ringLane(op.slots.aIndex)
         written = written or ringLane(op.slots.destinationIndex)
-    (used or written, written)
+    lanes = (used or written, written)
+    true
 
-  func ringHardware(bank: X86ResidentAccess, slot: range[0..12]): uint8 =
+  proc ringHardware(code: var X86Block, bank: X86ResidentAccess, slot: range[0..12]): uint8 =
     ## A preflight bank covers every original operand. Zero cannot name hardware.
+    ## Missing mappings refuse the entire cold builder instead of inventing a scratch register.
     let encoded = bank.registers[slot]
-    assert encoded != 0
+    if bank.failure != X86EmissionError.None or encoded == 0:
+      refuseX86Emission(code, X86EmissionError.InvalidRegister)
+      return 0
     encoded-1
 
   proc ringModRm(code: var X86Block, opcode, reg, rm: uint8, wide: bool) =
@@ -45,11 +53,12 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
 
   proc emitRingOperand(code: var X86Block, bank: X86ResidentAccess, op: NativeOperation) =
     ## Use preflight hardware operands and preserve signed low-word results.
-    let b = ringHardware(bank, op.slots.bIndex)
-    let dst = ringHardware(bank, op.slots.destinationIndex)
+    let b = ringHardware(code, bank, op.slots.bIndex)
+    let dst = ringHardware(code, bank, op.slots.destinationIndex)
+    if code.failure != X86EmissionError.None: return
     case op.opcode
     of 200:
-      let a = ringHardware(bank, op.slots.aIndex)
+      let a = ringHardware(code, bank, op.slots.aIndex)
       if dst == b:
         # The old B value is already in the destination of this commutative ADD.
         ringModRm(code, 0x01, a, dst, true)
@@ -83,7 +92,9 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
         put(code, [count])
     else:
       # The admitted wide shifts each consume the current B and overwrite the original destination.
-      assert op.opcode in [151'u8, 152]
+      if op.opcode notin [151'u8, 152]:
+        refuseX86Emission(code, X86EmissionError.UnsupportedOpcode)
+        return
       let count = byte(op.immediate and 63)
       if dst != b:
         ringModRm(code, 0x89, b, dst, true)
@@ -98,8 +109,9 @@ when declared(X86ResidentAccess) and declared(NativeRegisterRing):
     if not matchesNativeRingShiftPair(first, second): return false
     let count = int(first.immediate and 63)
     if count in 1..31: return false
-    let source = ringHardware(bank, first.slots.bIndex)
-    let dst = ringHardware(bank, first.slots.destinationIndex)
+    let source = ringHardware(code, bank, first.slots.bIndex)
+    let dst = ringHardware(code, bank, first.slots.destinationIndex)
+    if code.failure != X86EmissionError.None: return false
     if count == 0:
       # A zero pair is a full-width copy, which can be omitted for an alias.
       if dst != source:

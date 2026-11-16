@@ -9,21 +9,32 @@ when declared(X86Block):
   type X86ResidentAccess* = object
     ## Zero selects the canonical array; other bytes encode one of six saved hardware GPRs plus one.
     registers: array[13, uint8]
+    failure: X86EmissionError
+
+  func error*(bank: X86ResidentAccess): X86EmissionError =
+    ## Invalid masks retain a reason instead of exposing a partially assigned hardware map.
+    bank.failure
 
   func x86ResidentAccess*(mask: uint32): X86ResidentAccess =
     ## Ascending guest lanes map deterministically; invalid masks never produce partial machine code.
-    assert (mask and not 0x1fff'u32) == 0
     result = default(X86ResidentAccess)
+    if (mask and not 0x1fff'u32) != 0:
+      result.failure = X86EmissionError.InvalidRegister
+      return
     var count = 0
     for slot in 0..<13:
       if (mask and (1'u32 shl slot)) != 0:
-        assert count < X86ResidentHardware.len
+        if count >= X86ResidentHardware.len:
+          return X86ResidentAccess(failure: X86EmissionError.InvalidRegister)
         result.registers[slot] = X86ResidentHardware[count]+1
         inc count
 
   proc readAccess(fragment: var X86Block, access: X86ResidentAccess,
       slot: range[0..12], right: bool) =
     ## RAX/RCX scratch consume current resident values; unmapped lanes keep original array loads.
+    if access.failure != X86EmissionError.None:
+      refuseX86Emission(fragment, access.failure)
+      return
     let encoded = access.registers[int(slot)]
     if encoded == 0:
       readSlot(fragment, slot, right)
@@ -34,6 +45,9 @@ when declared(X86Block):
 
   proc writeAccess(fragment: var X86Block, access: X86ResidentAccess, slot: range[0..12]) =
     ## Only the destination changes after old aliased operands have been consumed into scratch.
+    if access.failure != X86EmissionError.None:
+      refuseX86Emission(fragment, access.failure)
+      return
     let encoded = access.registers[int(slot)]
     if encoded == 0:
       put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slot)*8)]) # MOV [RDI+slot*8],RAX.
@@ -51,13 +65,18 @@ when declared(X86Block):
       slot: range[0..12]) =
     ## Load one mapped lane from the canonical file at RDI.
     let encoded = bank.registers[slot]
-    assert encoded != 0
+    if bank.failure != X86EmissionError.None or encoded == 0:
+      refuseX86Emission(code, X86EmissionError.InvalidRegister)
+      return
     let hardware = encoded-1
     put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
       byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
 
   proc restoreX86ResidentRegisters(code: var X86Block, bank: X86ResidentAccess) =
     ## Restore every selected SysV register in reverse save order.
+    if bank.failure != X86EmissionError.None:
+      refuseX86Emission(code, bank.failure)
+      return
     for index in 0..12:
       let encoded = bank.registers[12-index]
       if encoded != 0:
@@ -68,6 +87,9 @@ when declared(X86Block):
   proc commitX86ResidentRegisters(code: var X86Block, bank: X86ResidentAccess,
       mask = 0x1fff'u32) =
     ## Store selected mapped lanes without disturbing the context or return lanes.
+    if bank.failure != X86EmissionError.None:
+      refuseX86Emission(code, bank.failure)
+      return
     for slot in 0..12:
       let encoded = bank.registers[slot]
       if encoded != 0 and (mask and (1'u32 shl slot)) != 0:
@@ -77,6 +99,7 @@ when declared(X86Block):
 
   func fitsX86ResidentBank(mask: uint32): bool =
     ## The cold allocator may assign at most six canonical guest lanes.
+    if (mask and not 0x1fff'u32) != 0: return false
     var count = 0
     for slot in 0..12:
       if (mask and (1'u32 shl slot)) != 0: inc count
