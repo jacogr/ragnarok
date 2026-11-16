@@ -25,7 +25,9 @@ when declared(FlatFrame):
         opcodes.len > part.operations.len: return false
     let first = f.sites[int(header)]
     if int(first) >= f.plan.facts.len: return false
-    let pc = f.plan.facts[int(first)].pc
+    var root = default(FlatFact)
+    if not tryReadFlatFact(f, int(first), root): return false
+    let pc = root.pc
     var resolved = 0'u32
     var source = default(FlatSourceInterval)
     if not flatCompleteOriginalHeader(f, pc, uint32(opcodes.len), resolved, source) or
@@ -35,11 +37,12 @@ when declared(FlatFrame):
     part = default(FlatCyclePart)
     part.site = NativeCycleSite(header: header, first: first, price: source.price)
     part.terminal = walk.terminal
-    let priceIndex = f.plan.facts[int(first)].priceIndex
+    let priceIndex = root.priceIndex
     var node = header + 1
     for index in 0..<opcodes.len:
       # The immutable fact is the opcode authority, including an original folded noop.
-      let fact = f.plan.facts[int(first) + index]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(first)+index, fact): return false
       if fact.opcode != opcodes[index] or fact.priceIndex != priceIndex:
         return false
       if fact.opcode == 2: continue
@@ -65,7 +68,8 @@ when declared(FlatFrame):
     let cached: FlatHandler = flatCachedJump[Code]
     let unresolved: FlatHandler = flatJump[Code]
     if f.handlers[int(part.terminal)] != cached: return false
-    let fact = f.plan.facts[int(f.sites[int(part.terminal)])]
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, part.terminal, fact): return false
     var original = default(FlatSourcePayload)
     if not tryFlatSourcePayload(f.plan, fact, original): return false
     original.handler == unresolved and flatCycleHeader(f, original.args.y, target) and
@@ -77,7 +81,8 @@ when declared(FlatFrame):
     let cached: FlatHandler = flatBranch[Code]
     let unresolved: FlatHandler = flatUnresolvedBranch[Code]
     if f.handlers[int(part.terminal)] != cached: return false
-    let fact = f.plan.facts[int(f.sites[int(part.terminal)])]
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, part.terminal, fact): return false
     var original = default(FlatSourcePayload)
     if not tryFlatSourcePayload(f.plan, fact, original): return false
     let args = f.arguments[int(part.terminal)]
@@ -199,7 +204,11 @@ when declared(FlatFrame):
     if int(info.first) >= f.plan.facts.len:
       invalidateNativeStream(f.nativeSession)
       return
-    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(info.first), first):
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, first.pc, info.epoch)
     if not extendFlatReadBody(f, body) or
         not matchesNativeReadCycle(f.nativeSession, buildFlatReadCycle(f, body)):
       invalidateNativeStream(f.nativeSession)

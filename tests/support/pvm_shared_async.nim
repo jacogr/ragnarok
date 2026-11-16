@@ -6,7 +6,7 @@
 import std/[assertions, syncio, envvars]
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
-import ../../src/pvm/internal/[handler_stream, native_pipeline, native_platform]
+import ../../src/pvm/internal/[handler_stream, metadata_store, native_pipeline, native_platform]
 import ./pvm_owner_record
 when NativeReadCycleEnabled:
   import ./pvm_static_fusion
@@ -720,6 +720,69 @@ when defined(pvmSharedAsyncWitness):
     assert not runtime.close(), "unregistered lease: restarted active call prevents close"
     finishNativeInvocation(session, 0)
     assert runtime.close(), "unregistered lease: final joined close"
+
+  type MetadataHostContext = object
+    ## One real runtime proves callback-time lease exclusion and source-owner recovery after a metadata fault.
+    runtime: NativeRuntime
+    calls: int
+    damaged: bool
+
+  proc metadataHostOwned(context: var MetadataHostContext, stopped: StepOutcome): HostResponse =
+    ## Return the original owned state; fault injection happens only after this real callback completes.
+    inc context.calls
+    assert not close(context.runtime)
+    if context.damaged: damageNextHostMetadataForWitness()
+    let cpu = machineInfo(stopped.machine).value
+    HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
+      memory: memoryOf(stopped.machine).value)
+
+  proc metadataHostScalar(context: var MetadataHostContext, call: HostCallId,
+      cpu: MachineInfo): ScalarHostResponse =
+    ## Exercise the read-only continuation's returned failure without materializing an owned host reply.
+    inc context.calls
+    assert not close(context.runtime)
+    if context.damaged: damageNextHostMetadataForWitness()
+    ScalarHostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers)
+
+  func metadataHostSelected(call: HostCallId): bool =
+    ## Both genuine host identifiers use the explicit scalar capability in its selected test arm.
+    true
+
+  proc metadataHostFailure() =
+    ## Both public host paths drop damaged metadata, retain charged preparation, release leases and recover.
+    let owner = hostOwner()
+    let source = input(owner, 1)
+    let original = machineInfo(source).value
+    let page = pageImage(memoryOf(source).value, PageIndex(32)).value
+    for scalar in [false, true]:
+      # A cold owner ensures the refused call's newly charged preparation work must survive its cleanup.
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      let code = prepared(owner, runtime)
+      var context = MetadataHostContext(runtime: runtime, damaged: true)
+      let failed = if scalar:
+        executeWithHost(source, context, metadataHostOwned, ExecutionStepLimit(32), HostCallLimit(2),
+          code, metadataHostSelected, metadataHostScalar)
+      else:
+        executeWithHost(source, context, metadataHostOwned, ExecutionStepLimit(32), HostCallLimit(
+            2), code)
+      assert failed.error == StepError.BackendFailure and context.calls == 1
+      assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+      let held = preparedInfo(code).value
+      assert held.streamNodes == 0 and held.preparationUnits > 0
+      assert machineInfo(source).value == original
+      assert pageImage(memoryOf(source).value, PageIndex(32)).value == page
+      context.damaged = false
+      context.calls = 0
+      let recovered = executeWithHost(source, context, metadataHostOwned, ExecutionStepLimit(32),
+        HostCallLimit(2), code)
+      assert recovered.error == StepError.None and recovered.value.exit == StepExit.Halt
+      assert context.calls == 2 and preparedInfo(code).value.preparationUnits >=
+          held.preparationUnits
+      assert uint64(machineInfo(recovered.value.machine).value.registers[7]) == 6
+      assert uint64(machineInfo(recovered.value.machine).value.registers[10]) == 2
+      assert pageImage(memoryOf(recovered.value.machine).value, PageIndex(32)).value == page
+      assert close(runtime)
 
   proc abandonedNativeOwners() =
     ## Final-session cancellation releases its lease; final-runtime cancellation joins a gated mapped worker.
@@ -2225,6 +2288,8 @@ proc runSharedAsync*() =
   ## Both ISA mains execute this same policy/lifetime/correctness contract on their supported host.
   when defined(pvmSharedAsyncWitness):
     assert probeRegisterDispatchBounds(), "register dispatch bounds must refuse without mutation"
+    assert probeMetadataReadRefusals(), "metadata reads must refuse invalid storage without replacing outputs"
+    assert probeMetadataExecutionRefusals(loopOwner()), "metadata execution must refuse damaged maps and unsealed exit facts"
     assert probeSourceAdmissionRefusals(loopOwner()), "source admission must refuse stale facts without publishing code"
     assert probeScalarTransferRefusals(), "scalar transfers must preserve outputs, bytes and dirty state on refusal"
     assert probeMemoryDispatchBounds(), "memory dispatch bounds must refuse without mutation"
@@ -2261,6 +2326,8 @@ proc runSharedAsync*() =
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
     unregisteredInvocationLease()
+    diagnosticPhase("metadataHostFailure")
+    metadataHostFailure()
     diagnosticPhase("abandonedNativeOwners")
     abandonedNativeOwners()
     deferredCreditProgress()

@@ -637,6 +637,7 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   if frame.reason == StepError.BackendFailure:
     # Invalid retained native patches never enter the dispatcher or return to the prepared cache.
     retireFailedNativeInvocation(data.native)
+    data.stream = discardedFlatStream(frame)
     return StepResult(status: StepError.BackendFailure)
   when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
     if data.mixedDirtyCount != 0:
@@ -650,6 +651,7 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   if frame.reason == StepError.BackendFailure:
     # Segment borrows have returned. Probe cleanup would inspect the damaged handler table.
     retireFailedNativeInvocation(data.native)
+    data.stream = discardedFlatStream(frame)
     return StepResult(status: StepError.BackendFailure)
   when NativeCheckedReadEnabled:
     endReadProbeSegment(frame)
@@ -666,6 +668,7 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
     if frame.reason == StepError.BackendFailure:
       # Late restoration refusal also invalidates the tentative, still-private published snapshot.
       retireFailedNativeInvocation(data.native)
+      data.stream = discardedFlatStream(frame)
       return StepResult(status: StepError.BackendFailure)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
@@ -1098,6 +1101,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   if frame.reason == StepError.BackendFailure:
     # The retained overlay is validated before any host callback or guest execution.
     retireFailedNativeInvocation(data.native)
+    data.stream = discardedFlatStream(frame)
     return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
     if data.mixedDirtyCount != 0:
@@ -1107,15 +1111,20 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
     beginReadProbe(frame, uint64(steps))
   let answer = driveHostFrame[Context, Reason, Fallible, ScalarCapable, Callbacks](frame, owner,
       context, callbacks, steps, calls, data.limits.resources.pages)
-  if frame.reason == StepError.BackendFailure:
+  let returnedBackend = answer.error == HostExecutionError.ExecutionFailure and
+    answer.executionError == StepError.BackendFailure
+  if frame.reason == StepError.BackendFailure or returnedBackend:
+    # Read-only host continuation checks report through their typed result, not the mutable frame reason.
     retireFailedNativeInvocation(data.native)
-    return answer
+    data.stream = discardedFlatStream(frame)
+    return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
     if frame.reason == StepError.BackendFailure:
       # A completed callback history cannot authorize an invalid final stream or guest snapshot.
       retireFailedNativeInvocation(data.native)
+      data.stream = discardedFlatStream(frame)
       return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))

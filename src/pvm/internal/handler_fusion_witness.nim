@@ -223,7 +223,8 @@ when declared(FlatFrame):
       if branch == 88:
         # A folded noop has no physical node, but its source geometry still belongs to the proof.
         let ordinal = int(blocks[0].first)
-        let original = native.plan.facts[ordinal]
+        var original = default(FlatFact)
+        assert tryReadFlatFact(native, ordinal, original)
         var damaged = original
         inc damaged.next
         assert writeMetadata(native.plan.facts, ordinal, damaged)
@@ -302,8 +303,9 @@ when declared(FlatFrame):
       assertFusionFrame(native, checked)
       assert native.reason == oracle.StepError.StepLimitExceeded and native.info.blockCharged
       assert uint64(native.info.registers[2]) == 1 and uint64(native.info.gas) == 1000000-blocks[0].price
-      assert native.info.pc == CodeAddress(uint64(native.plan.facts[int(blocks[0].first)+int(blocks[
-          0].span)-1].pc))
+      var stopped = default(FlatFact)
+      assert tryReadFlatFact(native, int(blocks[0].first)+int(blocks[0].span)-1, stopped)
+      assert native.info.pc == CodeAddress(uint64(stopped.pc))
       let snapshot = flatMemorySnapshot(native)
       let baseline = flatMemorySnapshot(checked)
       var resumedResult = prepareFlatMemoryFrame(plan, snapshot, native.info)

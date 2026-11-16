@@ -548,22 +548,66 @@ proc restoreFlatPrefixProbe(f: var FlatFrame)
 func flatPlanIdentity(plan: FlatPlan): FlatPlan
   ## Dynamic targets use the admission owner's immutable table.
 
+when defined(pvmSharedAsyncWitness):
+  var damageHostMetadata {.threadvar.}: bool
+
+  proc damageNextHostMetadataForWitness*() =
+    ## Fault only the next real owned/scalar host resume, after its callback has returned.
+    damageHostMetadata = true
+
+  proc applyHostMetadataDamage(f: var FlatFrame) =
+    ## Preserve the original Program and stream while removing its derived sealed source facts.
+    if not damageHostMetadata: return
+    damageHostMetadata = false
+    assert f.plan != nil and f.plan.facts.len > 0 and f.exit == oracle.StepExit.Host
+    f.plan.facts = initMetadataStore[FlatFact](f.plan.facts.len)
+
+func tryReadFlatFact(f: FlatFrame, ordinal: int, fact: var FlatFact): bool {.inline.} =
+  ## Execution/certificates require a sealed source fact, not an unwritten implicit metadata zero.
+  if f.plan == nil: return false
+  var candidate = default(FlatFact)
+  if not tryReadMetadata(f.plan.facts, ordinal, candidate) or candidate.sourceCount ==
+      0: return false
+  fact = candidate
+  true
+
+proc tryReadAdmissionFact(f: var FlatFrame, ordinal: int, fact: var FlatFact): bool {.inline.} =
+  ## Checked emission records the first missing sealed fact instead of treating it as an optional shape miss.
+  if tryReadFlatFact(f, ordinal, fact): return true
+  if f.preparationFailure == FlatError.None: f.preparationFailure = FlatError.InvalidProgram
+  false
+
+func tryReadFlatSite(f: FlatFrame, off: uint32, fact: var FlatFact): bool {.inline.} =
+  ## A handler exit may consult only an admitted site and complete original source fact.
+  if uint64(off) >= uint64(f.sites.len): return false
+  tryReadFlatFact(f, int(f.sites[int(off)]), fact)
+
+proc flatBackendFailure(f: var FlatFrame, off: uint32): uint32 {.inline.} =
+  ## Refuse without consulting the damaged metadata again or inventing a causing guest PC.
+  f.reason = oracle.StepError.BackendFailure
+  f.stoppedAt = off
+  f.attemptedExit = false
+  flatStop
+
 proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
     attempted: bool = true): uint32 =
   ## Rare exits materialize the exact source PC; ordinary handlers never publish physical PCs.
+  var fact = default(FlatFact)
+  if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
   f.exit = kind
   f.stoppedAt = off
   f.attemptedExit = attempted
-  let fact = f.plan.facts[int(f.sites[int(off)])]
   f.info.pc = if kind in [oracle.StepExit.Halt, oracle.StepExit.Panic]: CodeAddress(
       0) else: CodeAddress(fact.pc)
   flatStop
 
 proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
   ## A local refusal selects no successful snapshot; the caller restores any temporary budget barrier.
-  f.reason = error
   if error != oracle.StepError.StepLimitExceeded:
-    f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
+    f.info.pc = CodeAddress(fact.pc)
+  f.reason = error
   f.stoppedAt = off
   f.attemptedExit = false
   flatStop
@@ -573,7 +617,9 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   if uint64(f.barrierFact) >= uint64(f.plan.facts.len):
     f.reason = oracle.StepError.BackendFailure
     return flatStop
-  f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
+  var fact = default(FlatFact)
+  if not tryReadFlatFact(f, int(f.barrierFact), fact): return flatBackendFailure(f, off)
+  f.info.pc = CodeAddress(fact.pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
 proc installFlatBudget(f: var FlatFrame, first, limit, fact: uint32): bool =
@@ -612,7 +658,9 @@ template flatReserveImpl(f: var FlatFrame, off: uint32,
     observeProtected, observeLater: static[bool]) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
   if f.remaining == 0:
-    f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
+    f.info.pc = CodeAddress(fact.pc)
     return flatLocal(f, off, oracle.StepError.StepLimitExceeded)
   let a = f.arguments[int(off)]
   if not f.info.blockCharged:
@@ -682,7 +730,9 @@ proc flatChargeFailure[Error: static[oracle.StepError]](f: var FlatFrame, off: u
   ## Preserve attempt-limit precedence and allow already-paid blocks past unused price failures.
   if f.remaining == 0:
     # Source-attempt exhaustion wins before a failed unused price on a newly reached header.
-    f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
+    f.info.pc = CodeAddress(fact.pc)
     return flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
   ## An already-paid resumed block may execute despite a failed unused pricing computation.
@@ -1211,10 +1261,12 @@ proc flatJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   when NativeReadCycleEnabled and Code == 40:
     # Observe only the cold backward edge of a complete read block with the bitmap source shape.
     let last = f.sites[int(off)]
+    var earlier = default(FlatFact)
+    var later = default(FlatFact)
     if f.bitmapCandidate == 0 and target < NativeEntryLimit and last >= 6 and
-        f.plan.facts[int(last)-4].opcode == 130 and f.plan.facts[int(last)-6].opcode == 151 and
-        f.plan.facts[int(last)-6].sourceCount == 7 and f.plan.facts[int(last)-6].pc > a.y and
-        bitmapAdmissionEpoch(f.nativeSession) != 0:
+        tryReadFlatFact(f, int(last)-4, later) and later.opcode == 130 and
+        tryReadFlatFact(f, int(last)-6, earlier) and earlier.opcode == 151 and
+        earlier.sourceCount == 7 and earlier.pc > a.y and bitmapAdmissionEpoch(f.nativeSession) != 0:
       # The first trip can reach Read from a source suffix. The backedge may only now resolve Advance.
       f.bitmapCandidate = target+1
   f.info.blockCharged = false
@@ -2256,7 +2308,8 @@ proc flatPrice(f: var FlatFrame, start: CodeAddress, cost: var uint64): oracle.S
 proc flatMemoCharge(f: var FlatFrame, off: uint32): uint32 =
   ## Preparation alone must not populate a caller's lazy memo; only an attempted unpaid entry queries it.
   if f.remaining > 0 and not f.info.blockCharged:
-    let fact = f.plan.facts[int(f.sites[int(off)])]
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
     var cost = 0'u64
     let priced = flatPrice(f, f.plan.pricePcs[int(fact.priceIndex)], cost)
     if priced != oracle.StepError.None: return flatLocal(f, off, priced)
@@ -2313,7 +2366,11 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
   if uint64(pc) >= uint64(owner.factAt.len):
     f.preparationFailure = FlatError.InvalidProgram
     return false
-  if owner.factAt[int(pc)] != 0: return true
+  var requestedIndex = 0'u32
+  if not tryReadMetadata(owner.factAt, int(pc), requestedIndex):
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
+  if requestedIndex != 0: return true
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
   if containing.error != ProgramError.None:
     f.preparationFailure = FlatError.InvalidProgram
@@ -2336,14 +2393,18 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     return false
   while true:
     # Immutable validation guarantees complete marked headers through the block terminator.
+    var existing = 0'u32
     if at >= uint64(owner.codeBytes) or at >= uint64(owner.factAt.len) or
-        owner.factAt[int(at)] != 0 or past >= owner.facts.len or
+        not tryReadMetadata(owner.factAt, int(at), existing) or existing != 0 or past >=
+            owner.facts.len or
         owner.materialized >= owner.admittedFacts:
       f.preparationFailure = FlatError.InvalidProgram
       return false
     let decoded = instructionHeader(owner.source, CodeAddress(at))
     var fact = default(FlatFact)
-    if not tryFlatFact(decoded, priceIndex, fact) or owner.facts[past].sourceCount != 0:
+    var previous = default(FlatFact)
+    if not tryFlatFact(decoded, priceIndex, fact) or
+        not tryReadMetadata(owner.facts, past, previous) or previous.sourceCount != 0:
       f.preparationFailure = FlatError.InvalidProgram
       return false
     if not writeMetadata(owner.factAt, int(at), uint32(past+1)) or
@@ -2361,14 +2422,17 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     # Within-block ordinals stay contiguous and immutable after this complete publication.
     dec index
     inc count
-    if owner.facts[index].opcode != 2: inc nodes
-    var fact = owner.facts[index]
+    var fact = default(FlatFact)
+    if not tryReadMetadata(owner.facts, index, fact):
+      f.preparationFailure = FlatError.InvalidProgram
+      return false
+    if fact.opcode != 2: inc nodes
     fact.sourceCount = count
     fact.nodeCount = nodes
     if not writeMetadata(owner.facts, index, fact):
       f.preparationFailure = FlatError.StreamAllocationRefused
       return false
-  if owner.factAt[int(pc)] == 0:
+  if not tryReadMetadata(owner.factAt, int(pc), requestedIndex) or requestedIndex == 0:
     f.preparationFailure = FlatError.InvalidProgram
     return false
   true
@@ -2382,14 +2446,28 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   if f.plan.singleStep: return flatSingleResolve(f, pc)
   if pc >= f.plan.codeBytes: return flatStop
   if f.compiledForPc.len > 0:
-    let packed = f.compiledForPc[int(pc)]
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(pc), packed):
+      f.preparationFailure = FlatError.InvalidProgram
+      return flatStop
     if packed != 0:
       let value = packed-1
-      if (value and 0x80000000'u32) != 0: return value and 0x7fffffff'u32
+      if (value and 0x80000000'u32) != 0:
+        let cached = value and 0x7fffffff'u32
+        if uint64(cached) >= uint64(f.handlers.len) or uint64(cached) >= uint64(f.arguments.len) or
+            uint64(cached) >= uint64(f.sites.len):
+          f.preparationFailure = FlatError.InvalidProgram
+          return flatStop
+        return cached
   if not flatAdmitBlock(f, pc): return flatStop
-  let packedStart = f.plan.factAt[int(pc)]
+  var packedStart = 0'u32
+  if not tryReadMetadata(f.plan.factAt, int(pc), packedStart):
+    f.preparationFailure = FlatError.InvalidProgram
+    return flatStop
   if packedStart == 0: return flatStop
   let start = int(packedStart - 1)
+  var startFact = default(FlatFact)
+  if not tryReadAdmissionFact(f, start, startFact): return flatStop
   # The source catalogue is already populated. These quotas guard executable nodes and compiled-PC entries.
   let ceiling = uint64(f.plan.limits.nodes)
   let occupied = uint64(f.handlers.len)
@@ -2398,19 +2476,26 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     return flatStop
   let available = ceiling-occupied
   # Sealed non-noop suffix counts make admission constant-time, independently of guest source quotas.
-  let required = 1'u64+uint64(f.plan.facts[start].nodeCount)
+  let required = 1'u64+uint64(startFact.nodeCount)
   if required > available:
     f.preparationFailure = FlatError.StreamLimitExceeded
     return flatStop
   # Node folding does not erase preparation cost: reserve both the emitted suffix span and its whole containing price span.
-  let pricePc = f.plan.pricePcs[int(f.plan.facts[start].priceIndex)]
-  let packedPrice = f.plan.factAt[int(uint64(pricePc))]
+  if uint64(startFact.priceIndex) >= uint64(f.plan.pricePcs.len):
+    f.preparationFailure = FlatError.InvalidProgram
+    return flatStop
+  let pricePc = f.plan.pricePcs[int(startFact.priceIndex)]
+  var packedPrice = 0'u32
+  if not tryReadMetadata(f.plan.factAt, int(uint64(pricePc)), packedPrice):
+    f.preparationFailure = FlatError.InvalidProgram
+    return flatStop
   if packedPrice == 0:
     f.preparationFailure = FlatError.InvalidProgram
     return flatStop
   let priceFact = int(packedPrice - 1)
-  let neededWork = uint64(f.plan.facts[start].sourceCount)+uint64(f.plan.facts[
-      priceFact].sourceCount)
+  var pricedFact = default(FlatFact)
+  if not tryReadAdmissionFact(f, priceFact, pricedFact): return flatStop
+  let neededWork = uint64(startFact.sourceCount)+uint64(pricedFact.sourceCount)
   let workLimit = uint64(f.plan.limits.preparation)
   if f.preparationUsed > workLimit:
     f.preparationFailure = FlatError.PreparationLimitExceeded
@@ -2431,10 +2516,17 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   when defined(pvmX86Jit):
     if f.plan.allowNative: chainLimit = 2 # Keep the unmeasured x86 native fallback layout.
   var continuations = 0
+  var ending = false
+  var finalOpcode = 0'u8
   while index < f.plan.facts.len:
-    let fact = f.plan.facts[index]
+    var fact = default(FlatFact)
+    if not tryReadAdmissionFact(f, index, fact): return flatStop
+    finalOpcode = fact.opcode
     let coordinate = uint32(f.handlers.len)
-    let packed = f.compiledForPc[int(fact.pc)]
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(fact.pc), packed):
+      f.preparationFailure = FlatError.InvalidProgram
+      return flatStop
     if packed == 0 or ((packed-1) and 0x80000000'u32) == 0:
       # An overlapping suffix may replace an interior coordinate, never an already published complete entry header.
       let packed = (coordinate or (if first: 0x80000000'u32 else: 0'u32))+1
@@ -2453,15 +2545,21 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
         case priced
         of oracle.StepError.None:
           # Only these measured complete shapes specialize normal headers; folded prefixes and failed prices stay ordinary.
-          if fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 131 and
-              f.plan.facts[index+1].opcode == 88:
-            charge = flatChargedShapeCold[131, -1, 88]
-          elif fact.sourceCount == 2 and index+1 < f.plan.facts.len and fact.opcode == 132 and
-              f.plan.facts[index+1].opcode == 81 and not f.plan.allowNative:
-            charge = flatChargedShapeCold[132, -1, 81]
+          if fact.sourceCount == 2 and index+1 < f.plan.facts.len and
+              (fact.opcode == 131 or (fact.opcode == 132 and not f.plan.allowNative)):
+            var second = default(FlatFact)
+            if not tryReadAdmissionFact(f, index+1, second): return flatStop
+            if fact.opcode == 131 and second.opcode == 88:
+              charge = flatChargedShapeCold[131, -1, 88]
+            elif fact.opcode == 132 and second.opcode == 81:
+              charge = flatChargedShapeCold[132, -1, 81]
           elif fact.sourceCount == 3 and index+2 < f.plan.facts.len:
-            let second = f.plan.facts[index+1].opcode
-            let last = f.plan.facts[index+2].opcode
+            var secondFact = default(FlatFact)
+            var lastFact = default(FlatFact)
+            if not tryReadAdmissionFact(f, index+1, secondFact) or
+                not tryReadAdmissionFact(f, index+2, lastFact): return flatStop
+            let second = secondFact.opcode
+            let last = lastFact.opcode
             if fact.opcode == 200 and second == 139 and last == 82:
               charge = flatChargedShapeCold[200, 139, 82]
             elif fact.opcode == 151 and second == 152 and last == 173:
@@ -2470,9 +2568,16 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
               charge = flatChargedShapeCold[149, 200, 170]
           elif fact.sourceCount == 5 and index+4 < f.plan.facts.len and f.pricingKind == 0:
             # Only this sealed adjacent shape is selected; native x86 has no store publisher for it.
-            if fact.opcode == 198 and f.plan.facts[index+1].opcode == 120 and
-                f.plan.facts[index+2].opcode == 149 and f.plan.facts[index+3].opcode == 149 and
-                f.plan.facts[index+4].opcode == 171:
+            var shape = fact.opcode == 198
+            if shape:
+              const expected = [120'u8, 149, 149, 171]
+              for offset in 0..<expected.len:
+                var next = default(FlatFact)
+                if not tryReadAdmissionFact(f, index+offset+1, next): return flatStop
+                if next.opcode != expected[offset]:
+                  shape = false
+                  break
+            if shape:
               when defined(pvmArm64Jit) and not defined(pvmX86Jit):
                 # ARM native publication owns this store-loop entry; explicit interpretation keeps the checked worker.
                 if not f.plan.allowNative:
@@ -2505,7 +2610,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           selected = first
           # Only these trace-selected adjacent genuine register opcodes fuse; folded noops and other families retain existing dispatch.
           if index+1 < f.plan.facts.len:
-            let second = f.plan.facts[index+1].opcode
+            var next = default(FlatFact)
+            if not tryReadAdmissionFact(f, index+1, next): return flatStop
+            let second = next.opcode
             let fused = flatFusedRegisterHandler(fact.opcode, second)
             if fused != nil: selected = fused
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
@@ -2517,14 +2624,18 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
         else: continuations = 0
       else: continuations = 0
       if selected != nil and not flatEmit(f, selected, payload.args, uint32(index)): return flatStop
-    if fact.ending: break
+    if fact.ending:
+      ending = true
+      break
     inc index
+  if not ending:
+    f.preparationFailure = FlatError.InvalidProgram
+    return flatStop
   flatConsiderNative(f, origin)
   when NativeCheckedReadEnabled:
     # Only a newly emitted canonical-looking noop block can reach bounded discovery.
-    if f.readProbe.observing and f.plan.facts[start].opcode == 2 and
-        f.plan.facts[start].sourceCount in 4'u32..NativeReadFactLimit and
-        f.plan.facts[index].opcode == 1:
+    if f.readProbe.observing and startFact.opcode == 2 and
+        startFact.sourceCount in 4'u32..NativeReadFactLimit and finalOpcode == 1:
       discoverReadProbe(f, origin, pc)
   if f.prefixProbeOriginal == nil and nativePrefixObservation(f.nativeSession):
     installFlatPrefixProbe(f)
@@ -2555,10 +2666,13 @@ func flatSourceHeader(f: FlatFrame, header, pc: uint32): bool =
   if header >= NativeEntryLimit or uint64(header) >= uint64(f.handlers.len) or
       uint64(header) >= uint64(f.sites.len) or uint64(pc) >= uint64(f.compiledForPc.len):
     return false
-  if f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
+  var packed = 0'u32
+  if not tryReadMetadata(f.compiledForPc, int(pc), packed) or
+      packed != (header or flatReservationHeaderFlag)+1: return false
   let ordinal = f.sites[int(header)]
   if uint64(ordinal) >= uint64(f.plan.facts.len): return false
-  let fact = f.plan.facts[int(ordinal)]
+  var fact = default(FlatFact)
+  if not tryReadFlatFact(f, int(ordinal), fact): return false
   fact.pc == pc and uint64(fact.priceIndex) < uint64(f.plan.pricePcs.len) and
     uint64(f.plan.pricePcs[int(fact.priceIndex)]) == uint64(pc)
 
@@ -2582,8 +2696,10 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
       uint64(span.last)+1 >= uint64(f.plan.facts.len) or int(span.past) >= f.handlers.len or
       int(span.past) >= f.arguments.len or int(span.past) >= f.sites.len: return
   let header = span.entry-1
-  let first = f.plan.facts[int(span.first)]
-  let terminal = f.plan.facts[int(span.last)+1]
+  var first = default(FlatFact)
+  var terminal = default(FlatFact)
+  if not tryReadFlatFact(f, int(span.first), first) or
+      not tryReadFlatFact(f, int(span.last)+1, terminal): return
   let rightKind = case terminal.opcode
     of 83: NativeLoopRightKind.Immediate
     of 172: NativeLoopRightKind.Register
@@ -2612,10 +2728,13 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
     # Each original scalar fact has exactly one body node, with no folded or crossing instruction.
     let ordinal = span.first+uint32(index)
     let node = int(span.entry)+index
-    let fact = f.plan.facts[int(ordinal)]
+    var fact = default(FlatFact)
+    var successor = default(FlatFact)
+    if not tryReadFlatFact(f, int(ordinal), fact) or
+        not tryReadFlatFact(f, int(ordinal)+1, successor): return
     let args = f.arguments[node]
     if f.sites[node] != ordinal or fact.ending or not fact.fallthrough or
-        fact.priceIndex != first.priceIndex or fact.next != f.plan.facts[int(ordinal)+1].pc: return
+        fact.priceIndex != first.priceIndex or fact.next != successor.pc: return
     var payload = default(FlatSourcePayload)
     if not tryFlatSourcePayload(f.plan, fact, payload): return
     if args.x != payload.args.x or args.slots != payload.args.slots or
@@ -2723,7 +2842,10 @@ proc installNative(f: var FlatFrame) =
     if int(span.last) >= f.plan.facts.len: return
     var operation = 0
     for ordinal in span.first..span.last:
-      let fact = f.plan.facts[int(ordinal)]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(ordinal), fact):
+        invalidateNativeStream(f.nativeSession)
+        return
       # Folded noops remain original attempts but emit no register operation.
       if fact.opcode == 2: continue
       if fact.ending or not fact.fallthrough:
@@ -2770,11 +2892,13 @@ proc installFlatPrefixProbe(f: var FlatFrame) =
         original != adjacentFirst and original != adjacentSecond: return
   let first = f.sites[int(header)]
   if first > span.first or uint64(first) >= uint64(f.plan.facts.len): return
-  let fact = f.plan.facts[int(first)]
-  if fact.priceIndex != f.plan.facts[int(span.first)].priceIndex or
-      f.arguments[int(header)].y != fact.sourceCount or
-      uint64(fact.pc) >= uint64(f.compiledForPc.len) or
-      f.compiledForPc[int(fact.pc)] != (header or flatReservationHeaderFlag)+1: return
+  var fact = default(FlatFact)
+  var body = default(FlatFact)
+  var packed = 0'u32
+  if not tryReadFlatFact(f, int(first), fact) or not tryReadFlatFact(f, int(span.first), body): return
+  if fact.priceIndex != body.priceIndex or f.arguments[int(header)].y != fact.sourceCount or
+      not tryReadMetadata(f.compiledForPc, int(fact.pc), packed) or
+      packed != (header or flatReservationHeaderFlag)+1: return
   f.prefixProbeHeader = header
   f.prefixProbeOriginal = original
   f.prefixProbeBody = span.entry
@@ -2805,9 +2929,12 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
     if uint64(index) >= uint64(f.sites.len): return
     let site = f.sites[int(index)]
     if uint64(site) >= uint64(f.plan.facts.len): return
-    let pc = f.plan.facts[int(site)].pc
-    if uint64(pc) < uint64(f.compiledForPc.len) and
-        f.compiledForPc[int(pc)] == (index or flatReservationHeaderFlag)+1:
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(site), first): return
+    let pc = first.pc
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(pc), packed): return
+    if packed == (index or flatReservationHeaderFlag)+1:
       header = index
     # Synthetic charge headers duplicate the next source site and never belong to a pure body.
     if int(index)+1 < f.sites.len and f.sites[int(index)] == f.sites[int(index)+1]:
@@ -2817,7 +2944,8 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
     var at = index
     while int(at) < f.handlers.len and span.len < NativeSpanOperations:
       if int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(at)])]
+      var fact = default(FlatFact)
+      if not tryReadFlatSite(f, at, fact): return
       if fact.ending or not fact.fallthrough: break
       var payload = default(FlatSourcePayload)
       if not tryFlatSourcePayload(f.plan, fact, payload): return
@@ -3038,7 +3166,8 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
   if span == 0 or span > maxSpan or uint64(first)+uint64(span) > uint64(f.plan.facts.len):
     return false
   let last = first+(span-1)
-  if not f.plan.facts[int(last)].ending: return false
+  var lastFact = default(FlatFact)
+  if not tryReadFlatFact(f, int(last), lastFact) or not lastFact.ending: return false
   # Failure leaves the output untouched; this value does not certify any handler or priced-block identity.
   found = FlatSourceInterval(first: first, last: last, span: span,
     price: f.arguments[int(header)].x)
@@ -3063,7 +3192,8 @@ when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
       fields: var array[5, uint64]): bool =
     ## Read only an already captured complete entry; this adapter's map proof is not the interval's contract.
     if uint64(pc) >= uint64(f.compiledForPc.len): return false
-    let packed = f.compiledForPc[int(pc)]
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(pc), packed): return false
     if packed == 0: return false
     let entry = packed-1
     if (entry and 0x80000000'u32) == 0: return false
@@ -3077,7 +3207,9 @@ when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
 when defined(pvmX86Jit):
   func flatX86CachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original worker identity certifies that both scalar destinations passed checked source/target admission.
-    let opcode = f.plan.facts[int(f.sites[int(offset)])].opcode
+    var fact = default(FlatFact)
+    if not tryReadFlatSite(f, offset, fact): return false
+    let opcode = fact.opcode
     case opcode
     of 81: f.handlers[int(offset)] == flatBranch[81]
     of 82: f.handlers[int(offset)] == flatBranch[82]
@@ -3117,9 +3249,10 @@ when defined(pvmX86Jit):
       let kind = if handler == flatCharge: X86MemoryCycleHandlerKind.Ordinary
         elif handler == flatChargedWordLoop: X86MemoryCycleHandlerKind.CheckedWord
         else: X86MemoryCycleHandlerKind.Other
+      var ending = default(FlatFact)
+      if not tryReadFlatFact(f, int(last), ending): return false
       found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: source.span,
-        terminal: summary.terminal, price: source.price,
-        opcode: f.plan.facts[int(last)].opcode, kind: kind)
+        terminal: summary.terminal, price: source.price, opcode: ending.opcode, kind: kind)
       true
 
     func flatX86CompleteTarget(f: FlatFrame, offset: uint32,
@@ -3129,7 +3262,9 @@ when defined(pvmX86Jit):
       if int(offset) >= f.sites.len: return false
       let ordinal = f.sites[int(offset)]
       if int(ordinal) >= f.plan.facts.len: return false
-      let pc = f.plan.facts[int(ordinal)].pc
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(ordinal), fact): return false
+      let pc = fact.pc
       flatX86CompleteSource(f, pc, found) and found.header == offset
 
     func flatX86SealMemoryCycle*(f: FlatFrame, prefixPc: uint32,
@@ -3152,7 +3287,9 @@ when defined(pvmX86Jit):
           dirty.kind != X86MemoryCycleHandlerKind.CheckedWord or
           not flatX86CachedBranch(f, dirty.terminal): return false
       for i in 0..<5:
-        if f.plan.facts[int(dirty.ordinal)+i].opcode != [198'u8, 120, 149, 149, 171][i]:
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, int(dirty.ordinal)+i, fact) or
+            fact.opcode != [198'u8, 120, 149, 149, 171][i]:
           return false
       if not flatWordShape(f, dirty.header): return false
       let dirtyArms = f.arguments[int(dirty.terminal)]
@@ -3165,25 +3302,29 @@ when defined(pvmX86Jit):
           not flatX86CachedBranch(f, tail.terminal): return false
       var prefixOps = default(array[4, uint32])
       var prefixCount = 0
+      var prefixCodes = default(array[4, byte])
       for at in prefix.ordinal..<prefix.ordinal+prefix.span:
-        if f.plan.facts[int(at)].opcode != 2:
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, int(at), fact): return false
+        if fact.opcode != 2:
           if prefixCount >= prefixOps.len: return false
           prefixOps[prefixCount] = at
+          prefixCodes[prefixCount] = fact.opcode
           inc prefixCount
-      if prefixCount != 4 or f.plan.facts[int(prefixOps[0])].opcode != 51 or
-          f.plan.facts[int(prefixOps[1])].opcode != 200 or
-          f.plan.facts[int(prefixOps[2])].opcode != 149 or
-          f.plan.facts[int(prefixOps[3])].opcode != 1: return false
+      if prefixCount != 4 or prefixCodes != [51'u8, 200, 149, 1]: return false
       var tailOps = default(array[3, uint32])
       var tailCount = 0
+      var tailCodes = default(array[3, byte])
       for at in tail.ordinal..<tail.ordinal+tail.span:
-        if f.plan.facts[int(at)].opcode != 2:
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, int(at), fact): return false
+        if fact.opcode != 2:
           if tailCount >= tailOps.len: return false
           tailOps[tailCount] = at
+          tailCodes[tailCount] = fact.opcode
           inc tailCount
-      if tailCount != 3 or f.plan.facts[int(tailOps[0])].opcode notin {52'u8..58} or
-          f.plan.facts[int(tailOps[1])].opcode != 131 or
-          f.plan.facts[int(tailOps[2])].opcode != 173: return false
+      if tailCount != 3 or tailCodes[0] notin {52'u8..58} or
+          tailCodes[1] != 131 or tailCodes[2] != 173: return false
       let tailArms = f.arguments[int(tail.terminal)]
       if uint32(tailArms.x shr 32) != prefix.header: return false
       tail.yes = prefix.header
@@ -3221,7 +3362,7 @@ when defined(pvmX86Jit):
           pStep.slots.destinationIndex != bound or pStep.x != 1 or
           tStep.slots.bIndex != counter or tStep.slots.destinationIndex != counter or
           tStep.x != 1 or tBranch.slots.bIndex != readResult: return false
-      let readOpcode = f.plan.facts[int(tailOps[0])].opcode
+      let readOpcode = tailCodes[0]
       let width = case readOpcode
         of 52, 53: 1'u8
         of 54, 55: 2'u8
@@ -3250,12 +3391,15 @@ when defined(pvmX86Jit):
             f.handlers[int(found.terminal)] != flatCachedJump[1] or
             f.arguments[int(found.terminal)].y != cycle.prefix.header:
           return false
-        if f.plan.facts[int(found.ordinal)].opcode != 2 or
-            f.plan.facts[int(found.ordinal)+1].opcode notin
-              {52'u8..58'u8, 124'u8..130'u8}:
+        var first = default(FlatFact)
+        var second = default(FlatFact)
+        if not tryReadFlatFact(f, int(found.ordinal), first) or
+            not tryReadFlatFact(f, int(found.ordinal)+1, second) or first.opcode != 2 or
+            second.opcode notin {52'u8..58'u8, 124'u8..130'u8}:
           return false
         for ordinal in found.ordinal+1..<found.ordinal+found.span-1:
-          let fact = f.plan.facts[int(ordinal)]
+          var fact = default(FlatFact)
+          if not tryReadFlatFact(f, int(ordinal), fact): return false
           if fact.opcode == 2 or fact.ending or not fact.fallthrough:
             return false
           if fact.opcode in {52'u8..58'u8, 124'u8..130'u8}:
@@ -3305,7 +3449,9 @@ when defined(pvmX86Jit):
             guard.kind != X86MemoryCycleHandlerKind.Ordinary or
             not flatX86CachedBranch(f, guard.terminal): return false
         for index, opcode in [131'u8, 149, 81]:
-          if f.plan.facts[int(guard.ordinal)+index].opcode != opcode: return false
+          var fact = default(FlatFact)
+          if not tryReadFlatFact(f, int(guard.ordinal)+index, fact) or fact.opcode !=
+              opcode: return false
         let arms = f.arguments[int(guard.terminal)]
         let yes = uint32(arms.x shr 32)
         let no = arms.y
@@ -3352,7 +3498,8 @@ when defined(pvmX86Jit):
         let guard = candidate.loopGuard
         if guard.span != 3 or guard.terminal != guard.header+3: return false
         for index in 0..<2:
-          let fact = f.plan.facts[int(guard.ordinal)+index]
+          var fact = default(FlatFact)
+          if not tryReadFlatFact(f, int(guard.ordinal)+index, fact): return false
           if not supportedX86Opcode(fact.opcode): return false
           var payload = default(FlatSourcePayload)
           if not tryFlatSourcePayload(f.plan, fact, payload): return false
@@ -3367,7 +3514,8 @@ when defined(pvmX86Jit):
         var count = 0'u32
         for current in candidate.readBlock.header+1..<candidate.readBlock.terminal:
           if int(current) >= f.sites.len: return false
-          let fact = f.plan.facts[int(f.sites[int(current)])]
+          var fact = default(FlatFact)
+          if not tryReadFlatSite(f, current, fact): return false
           if fact.opcode notin {52'u8..58'u8, 124'u8..130'u8} and
               not supportedX86Opcode(fact.opcode): return false
           if count >= uint32(emission.readOperations.len): return false
@@ -3389,7 +3537,8 @@ when defined(pvmX86Jit):
       func flatX86InteriorSourceWitness*(f: FlatFrame, pc: uint32): bool =
         ## A present interior coordinate has no complete-header authority for a source seal.
         if int(pc) >= f.compiledForPc.len: return false
-        let packed = f.compiledForPc[int(pc)]
+        var packed = 0'u32
+        if not tryReadMetadata(f.compiledForPc, int(pc), packed): return false
         packed != 0 and ((packed-1) and 0x80000000'u32) == 0
 
       func flatX86UncachedTailWitness*(f: FlatFrame, pc: uint32): bool =
@@ -3735,7 +3884,9 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
       uint64(body) >= uint64(min(f.handlers.len, f.sites.len)):
     f.reason = oracle.StepError.BackendFailure
     return flatStop
-  let count = f.plan.facts[start].sourceCount
+  var fact = default(FlatFact)
+  if not tryReadFlatFact(f, start, fact): return flatBackendFailure(f, body)
+  let count = fact.sourceCount
   let past = uint64(start)+uint64(count)
   let site = uint64(f.sites[int(body)])
   if count == 0 or past > uint64(f.plan.facts.len) or site < uint64(start) or site >= past:
@@ -4141,7 +4292,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   var offset = flatStop
   if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
     # Only real entry/resumption may reserve a paid interior body; branch prelinking keeps the original resolver.
-    let packed = f.compiledForPc[int(pc)]
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(pc), packed):
+      discard flatBackendFailure(f, flatStop)
+      return
     if packed != 0:
       let target = packed-1
       if (target and 0x80000000'u32) != 0:
@@ -4149,7 +4303,11 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
         offset = target and 0x7fffffff'u32
       else:
         # The original admitted body has every source operation already; neither emission nor pricing is needed.
-        let start = int(f.plan.factAt[int(pc)]) - 1
+        var source = 0'u32
+        if not tryReadMetadata(f.plan.factAt, int(pc), source) or source == 0:
+          discard flatBackendFailure(f, flatStop)
+          return
+        let start = int(source-1)
         offset = flatResumePaid(f, target, start)
         if offset == flatStop: return
   if offset == flatStop:
@@ -4209,6 +4367,29 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   flatPromoteNativeLoop(f)
 
 when defined(pvmSharedAsyncWitness):
+  proc probeMetadataExecutionRefusals*(source: Program): bool =
+    ## A genuine interior entry refuses a short map and cannot turn an unsealed exit fact into guest OOG.
+    var prepared = prepareFlatPlan(source, GasCycleLimit(1000000), defaultFlatLimits(), false)
+    if prepared.error != FlatError.None: return false
+    let plan = takeValue(prepared)
+    let info = MachineInfo(pc: CodeAddress(3), gas: MachineGas(0))
+    block:
+      # The logical source PC is valid, but a physically shorter derived map grants no executable entry.
+      var frame = newFlatFrame(plan, [], info)
+      frame.compiledForPc = initMetadataStore[uint32](1)
+      runFlat(frame, 64)
+      if frame.reason != oracle.StepError.InvalidPreparedProgram or frame.info != info or
+          frame.handlers.len != 0: return false
+    block:
+      # Cached dispatch reaches the real zero-gas exit; missing sealed facts are local failure, not PC0 OOG.
+      var frame = newFlatFrame(plan, [], info)
+      if flatResolve(frame, 3) == flatStop: return false
+      frame.plan.facts = initMetadataStore[FlatFact](frame.plan.facts.len)
+      runFlat(frame, 64)
+      if frame.reason != oracle.StepError.BackendFailure or frame.info != info or
+          frame.attemptedExit: return false
+    true
+
   proc probeSourceAdmissionRefusals*(source: Program): bool =
     ## Missing facts/ranks and stale original operands refuse without replacing outputs or running partial code.
     var fact = FlatFact(pc: 17, next: 18, opcode: 1)
@@ -4257,7 +4438,8 @@ when defined(pvmSharedAsyncWitness):
       # Corrupt only the exclusive derived catalogue, never the retained immutable admission.
       var frame = newFlatFrame(plan, [], info)
       if not flatAdmitBlock(frame, 0): return false
-      var changed = frame.plan.facts[0]
+      var changed = default(FlatFact)
+      if not tryReadFlatFact(frame, 0, changed): return false
       changed.opcode = changed.opcode xor 1
       if not writeMetadata(frame.plan.facts, 0, changed): return false
       if flatResolve(frame, 0) != flatStop or frame.preparationFailure != FlatError.InvalidProgram:
@@ -4478,7 +4660,10 @@ proc runFlatSingle*(f: var FlatFrame) =
   f.remaining = 1
   f.reason = oracle.StepError.None
   f.exit = oracle.StepExit.Continued
-  let fact = f.plan.facts[0]
+  var fact = default(FlatFact)
+  if not tryReadFlatFact(f, 0, fact):
+    f.reason = oracle.StepError.BackendFailure
+    return
   var cost = 0'u64
   if not f.info.blockCharged:
     # Prepaid stepping does not query an unused price; unpaid entry still charges the genuine containing block.
@@ -4766,19 +4951,27 @@ proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: Ma
   assert error == FlatError.None
 
 proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: MachineGas,
-    registers: RegisterFile) =
-  ## The decoder-owned successor, not host-supplied PC/charged metadata, resumes an already paid block.
-  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+    registers: RegisterFile): oracle.StepError {.discardable.} =
+  ## Legacy image-based witnesses use the same decoder-owned successor and explicit refusal contract.
+  ## Refused source lookup or replacement leaves the stopped CPU and memory unchanged.
+  if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host:
+    return oracle.StepError.InvalidHostSuspension
   let pc = uint64(f.info.pc)
-  assert pc < uint64(f.plan.factAt.len)
-  let packed = f.plan.factAt[int(pc)]
-  assert packed != 0
-  let at = int(packed - 1)
+  if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
+  var packed = 0'u32
+  if not tryReadMetadata(f.plan.factAt, int(pc), packed): return oracle.StepError.BackendFailure
+  if packed == 0: return oracle.StepError.InvalidHostSuspension
+  var fact = default(FlatFact)
+  if not tryReadFlatFact(f, int(packed-1), fact): return oracle.StepError.BackendFailure
   var info = f.info
-  info.pc = CodeAddress(f.plan.facts[at].next)
+  info.pc = CodeAddress(fact.next)
   info.gas = gas
   info.registers = registers
-  replaceFlatMemory(f, images, info)
+  let changed = replaceFlatMemoryChecked(f, images, info)
+  if changed in {FlatError.ResidentAllocationRefused, FlatError.StreamAllocationRefused}:
+    return oracle.StepError.ResidentAllocationRefused
+  if changed != FlatError.None: return oracle.StepError.InvalidHostResponse
+  oracle.StepError.None
 
 proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
     apply: bool, copiedPages: var uint64): bool =
@@ -4814,24 +5007,24 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
       return true
   false
 
-template requireFlatHostFact(f: FlatFrame, fact: var int) =
+template requireFlatHostFact(f: FlatFrame, fact: var FlatFact) =
   ## Bind both host observations to the original stopped node and its immutable source PC.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
     return oracle.StepError.InvalidHostSuspension
   if f.plan.singleStep or int(f.stoppedAt) >= f.sites.len:
     return oracle.StepError.InvalidHostSuspension
-  fact = int(f.sites[int(f.stoppedAt)])
-  if uint64(f.info.pc) != uint64(f.plan.facts[fact].pc):
+  if not tryReadFlatSite(f, f.stoppedAt, fact): return oracle.StepError.BackendFailure
+  if uint64(f.info.pc) != uint64(fact.pc):
     return oracle.StepError.InvalidHostSuspension
 
 func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
     info: var MachineInfo): oracle.StepError {.noinline.} =
   ## Keep the owned CPU stage separate from the mutable memory transaction.
-  var fact = 0
+  var fact = default(FlatFact)
   requireFlatHostFact(f, fact)
   info = f.info
-  info.pc = CodeAddress(f.plan.facts[fact].next)
+  info.pc = CodeAddress(fact.next)
   info.gas = gas
   info.registers = registers
   oracle.StepError.None
@@ -4862,9 +5055,10 @@ proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
 proc resumeFlatHostScalars*(f: var FlatFrame, gas: MachineGas,
     registers: RegisterFile): oracle.StepError =
   ## Commit the scalar reply while retaining dirty membership against the old baseline.
-  var fact = 0
+  when defined(pvmSharedAsyncWitness): applyHostMetadataDamage(f)
+  var fact = default(FlatFact)
   requireFlatHostFact(f, fact)
-  let nextPc = CodeAddress(f.plan.facts[fact].next)
+  let nextPc = CodeAddress(fact.next)
   f.info.pc = nextPc
   f.info.gas = gas
   f.info.registers = registers
@@ -4875,6 +5069,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
     registers: RegisterFile): oracle.StepError =
   ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
   ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
+  when defined(pvmSharedAsyncWitness): applyHostMetadataDamage(f)
   var info = default(MachineInfo)
   let checked = flatHostContinuation(f, gas, registers, info)
   if checked != oracle.StepError.None: return checked
@@ -4946,6 +5141,11 @@ proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
 proc `=dup`*(source: FlatStream): FlatStream {.error.}
   ## Reject duplication of exclusive native resources or a privately mutable lazy catalogue.
 
+func discardedFlatStream*(f: FlatFrame): FlatStream =
+  ## A failed private frame retains only cumulative preparation work, never handlers, facts or borrowed code.
+  ## This scalar observation is safe even when source/overlay metadata cannot authorize ordinary handback.
+  FlatStream(preparation: f.preparationUsed)
+
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Return the exclusive cache to the prepared owner with its admitted entries,
   ## cumulative preparation usage and native restoration state. Generated leaves
@@ -4959,9 +5159,7 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     # A partial catalogue or node sequence cannot be leased again. Invalidate
     # its source epoch before another invocation can install its native image.
     invalidateNativeStream(f.nativeSession)
-    result = default(FlatStream)
-    result.preparation = f.preparationUsed
-    return
+    return discardedFlatStream(f)
   let savedFailure = if f.preparationFailure in {FlatError.StreamLimitExceeded,
       FlatError.PreparationLimitExceeded}: FlatError.Uninitialized else: f.preparationFailure
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
@@ -5091,7 +5289,9 @@ func materializedFacts*(frame: FlatFrame): uint64 =
 func materializedOrdinal*(frame: FlatFrame, pc: CodeAddress): uint32 =
   ## Copied global ordinal tag; zero means this instruction has no materialized fact.
   if frame.plan == nil or uint64(pc) >= uint64(frame.plan.factAt.len): return 0
-  frame.plan.factAt[int(uint64(pc))]
+  var packed = 0'u32
+  if not tryReadMetadata(frame.plan.factAt, int(uint64(pc)), packed): return 0
+  packed
 
 func materializedFacts*(stream: FlatStream): uint64 =
   ## Observe the saved catalogue without exporting its mutable owner or coordinates.
@@ -5321,8 +5521,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert observed.reason == oracle.StepError.StepLimitExceeded and observed.reason == checked.reason
     assert observed.info == checked.info and observed.info.blockCharged
     # The active frame owns materialized facts; the original admission plan stays immutable.
-    assert observed.info.pc == CodeAddress(uint64(observed.plan.facts[int(proof.first)+int(
-        proof.span)-1].pc))
+    var stopped = default(FlatFact)
+    assert tryReadFlatFact(observed, int(proof.first)+int(proof.span)-1, stopped)
+    assert observed.info.pc == CodeAddress(uint64(stopped.pc))
     assert observed.mixedProbe == nil and observed.barrier == flatStop and observed.savedHandler == nil
     assert observed.handlers[int(terminal)] == flatBranch[171]
     assert observed.remaining == checked.remaining and observed.dirtyPages == checked.dirtyPages
@@ -5403,7 +5604,9 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopEntryWitness):
       if scenario == 1:
         assert native.reason == oracle.StepError.StepLimitExceeded and native.info.blockCharged
         # Resolve the original instruction in this frame's private block catalogue.
-        assert uint64(native.info.pc) == uint64(native.plan.facts[int(proof.first)+4].pc)
+        var stopped = default(FlatFact)
+        assert tryReadFlatFact(native, int(proof.first)+4, stopped)
+        assert uint64(native.info.pc) == uint64(stopped.pc)
       echo "MIXED_FUSED_ENTRY,", pc, ",", scenario, ",", native.mixedWitnessVisits
 
 when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):

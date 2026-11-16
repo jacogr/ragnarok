@@ -62,7 +62,9 @@ when declared(FlatFrame):
         not fusionHeaderWorker(f.handlers[int(off)]): return false
     let ordinal = f.sites[int(off)]
     if uint64(ordinal) >= uint64(f.plan.facts.len): return false
-    let pc = f.plan.facts[int(ordinal)].pc
+    var entry = default(FlatFact)
+    if not tryReadFlatFact(f, int(ordinal), entry): return false
+    let pc = entry.pc
     var originalSource = default(FusionSourceBlock)
     if not decodeFusionSource(f.plan, CodeAddress(uint64(pc)), originalSource): return false
     var header = 0'u32
@@ -70,15 +72,19 @@ when declared(FlatFrame):
     var summary = default(FlatSourceSummary)
     if not flatCompleteOriginalHeader(f, pc, NativeReadFactLimit, header, source): return false
     if header != off or not flatWalkCompleteSource(f, header, source, summary): return false
+    var first = default(FlatFact)
+    var terminal = default(FlatFact)
+    if not tryReadFlatFact(f, int(source.first), first) or
+        not tryReadFlatFact(f, int(source.last), terminal): return false
     if originalSource.first != source.first or originalSource.span != source.span or
         originalSource.bodyCount+1 != summary.operations or originalSource.price != source.price or
-        uint64(originalSource.terminalPc) != uint64(f.plan.facts[int(source.last)].pc): return false
+        uint64(originalSource.terminalPc) != uint64(terminal.pc): return false
     if f.handlers[int(off)] != flatCharge:
       # The adjacent worker hard-codes these two source operations. Its identity alone
       # cannot grant native authority to a different otherwise valid original block.
       if source.span != 2 or source.last != source.first+1 or
-          f.plan.facts[int(source.first)].opcode != 132 or
-          f.plan.facts[int(source.last)].opcode != 81: return false
+          first.opcode != 132 or
+          terminal.opcode != 81: return false
       if f.handlers[int(summary.terminal)] != flatBranch[81]: return false
     if nativeReadObservationOverlaps(f.nativeSession, NativeReadBodyInfo(header: off,
         terminal: summary.terminal, first: source.first, last: source.last,
@@ -87,10 +93,11 @@ when declared(FlatFrame):
       first: originalSource.first,
       span: originalSource.span, price: originalSource.price, operations: originalSource.operations,
       guards: originalSource.guards, targets: [NativeEntryFailure, NativeEntryFailure])
-    let priceIndex = f.plan.facts[int(source.first)].priceIndex
+    let priceIndex = first.priceIndex
     var node = off+1
     for index in source.first..source.last:
-      let fact = f.plan.facts[int(index)]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(index), fact): return false
       if fact.priceIndex != priceIndex or uint64(fact.pc) != uint64(
           originalSource.locations[int(index-source.first)]): return false
       let decoded = instruction(f.plan.source, CodeAddress(uint64(fact.pc)))
@@ -114,7 +121,9 @@ when declared(FlatFrame):
             if index+1 == source.last and node+1 == summary.terminal and fact.opcode == 131:
               # Both workers retain the original terminal record, which is checked below.
               # Direct comparisons avoid the typed-local lowering failure tracked as NIM-010.
-              let branch = f.plan.facts[int(index+1)].opcode
+              var successor = default(FlatFact)
+              if not tryReadFlatFact(f, int(index+1), successor): return false
+              let branch = successor.opcode
               if branch == 83:
                 combinedBranch = worker == flatRegisterBranchCold[131, 83] or
                     worker == flatFusedRegisterBranch[131, 83]
@@ -128,7 +137,9 @@ when declared(FlatFrame):
             if not combinedBranch:
               if index >= source.last or node+1 >= summary.terminal or
                   f.sites[int(node+1)] != index+1: return false
-              let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
+              var successor = default(FlatFact)
+              if not tryReadFlatFact(f, int(index+1), successor): return false
+              let fused = flatFusedRegisterHandler(fact.opcode, successor.opcode)
               if fused == nil or worker != fused: return false
       elif fact.opcode in [1'u8, 40]:
         # The sealed original destination proves the edge once the cached operand
@@ -226,12 +237,14 @@ when declared(FlatFrame):
       f.preparationFailure == FlatError.None and probe.taken < FlatFusionSampleLimit and
       segments < FlatFusionTrainingSegments
 
-  proc markFlatIndirectEntries(f: FlatFrame, blocks: var seq[NativeFusionBlock]) =
+  proc markFlatIndirectEntries(f: FlatFrame, blocks: var seq[NativeFusionBlock]): bool =
     ## One pass over the already admitted jump table marks source-backed entry permission.
     ## A fixed half-full PC map avoids multiplying table length by graph size; no guest execution occurs.
     var map = default(array[NativeFusionSlotLimit, uint64])
     for index in 0..<blocks.len:
-      let pc = f.plan.facts[int(blocks[index].first)].pc
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(blocks[index].first), fact): return false
+      let pc = fact.pc
       if pc == high(uint32): continue
       let token = pc+1
       var at = nativeFusionSlot(token)
@@ -250,6 +263,7 @@ when declared(FlatFrame):
           blocks[int(uint32(value and 0xffffffff'u64)-1)].indirectEntry = true
           break
         at = (at+1) and (NativeFusionSlotLimit-1)
+    true
 
   proc offerFlatFusion(f: FlatFrame, probe: FlatFusionProbe) =
     ## Rank at most the fixed sample table. Only candidates with real observed reuse
@@ -281,7 +295,7 @@ when declared(FlatFrame):
     if requested.len < 2: return
     if hasIndirect:
       # Static-only candidates need neither a temporary target map nor a scan of the original table.
-      markFlatIndirectEntries(f, requested)
+      if not markFlatIndirectEntries(f, requested): return
     discard offerNativeFusion(f.nativeSession, requested)
 
   proc flatFusionEntry(f: var FlatFrame, off: uint32): uint32 =

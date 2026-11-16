@@ -39,7 +39,8 @@ when declared(FlatFrame):
         if (charged != shapeC and charged != checkedC) or ending != branchC: return
       let first = f.sites[int(header)]
       if uint64(first)+uint64(span) > uint64(f.plan.facts.len): return
-      let root = f.plan.facts[int(first)]
+      var root = default(FlatFact)
+      if not tryReadFlatFact(f, int(first), root): return
       let charge = f.arguments[int(header)]
       if charge.y != span or root.sourceCount != span or not flatSourceHeader(f, header, root.pc):
         return
@@ -47,7 +48,8 @@ when declared(FlatFrame):
       for position in 0..<int(span):
         let node = int(header)+position+1
         let ordinal = first+uint32(position)
-        let fact = f.plan.facts[int(ordinal)]
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, int(ordinal), fact): return
         if f.sites[node] != ordinal or fact.priceIndex != root.priceIndex: return
         var original = default(FlatSourcePayload)
         if not tryFlatSourcePayload(f.plan, fact, original): return
@@ -69,8 +71,10 @@ when declared(FlatFrame):
               immediate: immediate)
         else:
           # Every original body instruction has an addressable node before the terminal branch.
+          var successor = default(FlatFact)
+          if not tryReadFlatFact(f, int(ordinal)+1, successor): return
           if fact.ending or not fact.fallthrough or cached.x != original.args.x or
-              fact.next != f.plan.facts[int(ordinal)+1].pc: return
+              fact.next != successor.pc: return
           item.body[position] = NativeOperation(opcode: fact.opcode, slots: cached.slots,
             immediate: cached.x)
       ring.blocks[index] = item
