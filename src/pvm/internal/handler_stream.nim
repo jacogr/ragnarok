@@ -1005,12 +1005,13 @@ proc flatMemoryCold[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   ## Keep only complete fallback outside hot workers; direct store callers remain eligible for inlining.
 
 proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateStore,
-    Fast, Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 =
+    Fast, Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 {.alwaysInline.} =
   ## Shared selected access equation; only the cold load worker preserves state across full preflight.
   ## Prove current arguments and a paired continuation before publishing registers, bytes or dirty bits.
   ## Admitted streams bound coordinates below 2^31, so a valid current slot proves off+1 cannot wrap.
   ## Freeze the actual next entry before scalar work; its enclosing reservation has already patched
   ## any partial-budget barrier. Memory operations never patch handlers or invoke host callbacks.
+  ## Direct combined workers inline this same equation; ordinary table dispatch retains callable entries.
   if int(off) >= f.arguments.len:
     f.reason = oracle.StepError.BackendFailure
     return flatStop
@@ -1800,6 +1801,155 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 130: flatMemoryWorker[8, true, false, true, false, true, true]
   else: nil
 
+proc flatMemoryContinuation[Code: static[int]; Pair: static[bool]](f: var FlatFrame,
+    off: uint32): uint32 {.alwaysInline.} =
+  ## A source-bound combined worker calls the existing memory equation directly. Static opcode
+  ## selection permits inlining; callable table entries continue to use the same scalar implementation.
+  ## Each alternative fixes only the genuine width/address/sign/data form, never runtime operands.
+  when Code == 30: flatMemoryWorker[1, false, false, false, true, true, Pair](f, off)
+  elif Code == 31: flatMemoryWorker[2, false, false, false, true, true, Pair](f, off)
+  elif Code == 32: flatMemoryWorker[4, false, false, false, true, true, Pair](f, off)
+  elif Code == 33: flatMemoryWorker[8, false, false, false, true, true, Pair](f, off)
+  elif Code == 52: flatMemoryWorker[1, true, false, false, false, true, Pair](f, off)
+  elif Code == 53: flatMemoryWorker[1, true, true, false, false, true, Pair](f, off)
+  elif Code == 54: flatMemoryWorker[2, true, false, false, false, true, Pair](f, off)
+  elif Code == 55: flatMemoryWorker[2, true, true, false, false, true, Pair](f, off)
+  elif Code == 56: flatMemoryWorker[4, true, false, false, false, true, Pair](f, off)
+  elif Code == 57: flatMemoryWorker[4, true, true, false, false, true, Pair](f, off)
+  elif Code == 58: flatMemoryWorker[8, true, false, false, false, true, Pair](f, off)
+  elif Code == 59: flatMemoryWorker[1, false, false, false, false, true, Pair](f, off)
+  elif Code == 60: flatMemoryWorker[2, false, false, false, false, true, Pair](f, off)
+  elif Code == 61: flatMemoryWorker[4, false, false, false, false, true, Pair](f, off)
+  elif Code == 62: flatMemoryWorker[8, false, false, false, false, true, Pair](f, off)
+  elif Code == 70: flatMemoryWorker[1, false, false, true, true, true, Pair](f, off)
+  elif Code == 71: flatMemoryWorker[2, false, false, true, true, true, Pair](f, off)
+  elif Code == 72: flatMemoryWorker[4, false, false, true, true, true, Pair](f, off)
+  elif Code == 73: flatMemoryWorker[8, false, false, true, true, true, Pair](f, off)
+  elif Code == 120: flatMemoryWorker[1, false, false, true, false, true, Pair](f, off)
+  elif Code == 121: flatMemoryWorker[2, false, false, true, false, true, Pair](f, off)
+  elif Code == 122: flatMemoryWorker[4, false, false, true, false, true, Pair](f, off)
+  elif Code == 123: flatMemoryWorker[8, false, false, true, false, true, Pair](f, off)
+  elif Code == 124: flatMemoryWorker[1, true, false, true, false, true, Pair](f, off)
+  elif Code == 125: flatMemoryWorker[1, true, true, true, false, true, Pair](f, off)
+  elif Code == 126: flatMemoryWorker[2, true, false, true, false, true, Pair](f, off)
+  elif Code == 127: flatMemoryWorker[2, true, true, true, false, true, Pair](f, off)
+  elif Code == 128: flatMemoryWorker[4, true, false, true, false, true, Pair](f, off)
+  elif Code == 129: flatMemoryWorker[4, true, true, true, false, true, Pair](f, off)
+  elif Code == 130: flatMemoryWorker[8, true, false, true, false, true, Pair](f, off)
+  else:
+    # Only the memory factory's declared opcode alternatives may construct a combined worker.
+    f.reason = oracle.StepError.BackendFailure
+    flatStop
+
+proc flatFusedAddMemory[First, Second: static[int]; Pair: static[bool]](
+    f: var FlatFrame, off: uint32): uint32 =
+  ## Complete one original64-bit add before its checked memory continuation. Both source nodes
+  ## remain addressable, and a partial reservation stops at the second node before memory access.
+  ## The emitter binds the direct continuation to its genuine paired/unpaired memory worker;
+  ## it preserves the existing chain bound and every scalar preflight, fault and dirty-bit rule.
+  if int(off) >= f.arguments.len:
+    # Refuse a damaged current coordinate before reading operands or publishing registers.
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
+  let next = off+1
+  if int(next) >= f.handlers.len:
+    # Match the paired add's pre-mutation continuation proof.
+    f.reason = oracle.StepError.BackendFailure
+    return flatStop
+  let a = f.arguments[int(off)]
+  var index: range[0..12] = 0
+  var value = RegisterValue(0)
+  if not computeRegisterOperands(a.slots, a.x, byte(First), f.info.registers, index, value, First):
+    return flatLocal(f, off, oracle.StepError.UnsupportedInstruction)
+  f.info.registers[index] = value
+  if f.barrier == next:
+    # The original second-instruction boundary precedes its operand reads and byte mutation.
+    return flatBudget(f, next)
+  flatMemoryContinuation[Second, Pair](f, next)
+
+func flatFusedAddMemoryChoice[First: static[int]](second: byte, paired: bool): nil FlatHandler =
+  ## Fix only an add family and a genuine memory opcode; runtime operands and access shape stay general.
+  case second
+  of 30: return (if paired: flatFusedAddMemory[First, 30, true]
+    else: flatFusedAddMemory[First, 30, false])
+  of 31: return (if paired: flatFusedAddMemory[First, 31, true]
+    else: flatFusedAddMemory[First, 31, false])
+  of 32: return (if paired: flatFusedAddMemory[First, 32, true]
+    else: flatFusedAddMemory[First, 32, false])
+  of 33: return (if paired: flatFusedAddMemory[First, 33, true]
+    else: flatFusedAddMemory[First, 33, false])
+  of 52: return (if paired: flatFusedAddMemory[First, 52, true]
+    else: flatFusedAddMemory[First, 52, false])
+  of 53: return (if paired: flatFusedAddMemory[First, 53, true]
+    else: flatFusedAddMemory[First, 53, false])
+  of 54: return (if paired: flatFusedAddMemory[First, 54, true]
+    else: flatFusedAddMemory[First, 54, false])
+  of 55: return (if paired: flatFusedAddMemory[First, 55, true]
+    else: flatFusedAddMemory[First, 55, false])
+  of 56: return (if paired: flatFusedAddMemory[First, 56, true]
+    else: flatFusedAddMemory[First, 56, false])
+  of 57: return (if paired: flatFusedAddMemory[First, 57, true]
+    else: flatFusedAddMemory[First, 57, false])
+  of 58: return (if paired: flatFusedAddMemory[First, 58, true]
+    else: flatFusedAddMemory[First, 58, false])
+  of 59: return (if paired: flatFusedAddMemory[First, 59, true]
+    else: flatFusedAddMemory[First, 59, false])
+  of 60: return (if paired: flatFusedAddMemory[First, 60, true]
+    else: flatFusedAddMemory[First, 60, false])
+  of 61: return (if paired: flatFusedAddMemory[First, 61, true]
+    else: flatFusedAddMemory[First, 61, false])
+  of 62: return (if paired: flatFusedAddMemory[First, 62, true]
+    else: flatFusedAddMemory[First, 62, false])
+  of 70: return (if paired: flatFusedAddMemory[First, 70, true]
+    else: flatFusedAddMemory[First, 70, false])
+  of 71: return (if paired: flatFusedAddMemory[First, 71, true]
+    else: flatFusedAddMemory[First, 71, false])
+  of 72: return (if paired: flatFusedAddMemory[First, 72, true]
+    else: flatFusedAddMemory[First, 72, false])
+  of 73: return (if paired: flatFusedAddMemory[First, 73, true]
+    else: flatFusedAddMemory[First, 73, false])
+  of 120: return (if paired: flatFusedAddMemory[First, 120, true]
+    else: flatFusedAddMemory[First, 120, false])
+  of 121: return (if paired: flatFusedAddMemory[First, 121, true]
+    else: flatFusedAddMemory[First, 121, false])
+  of 122: return (if paired: flatFusedAddMemory[First, 122, true]
+    else: flatFusedAddMemory[First, 122, false])
+  of 123: return (if paired: flatFusedAddMemory[First, 123, true]
+    else: flatFusedAddMemory[First, 123, false])
+  of 124: return (if paired: flatFusedAddMemory[First, 124, true]
+    else: flatFusedAddMemory[First, 124, false])
+  of 125: return (if paired: flatFusedAddMemory[First, 125, true]
+    else: flatFusedAddMemory[First, 125, false])
+  of 126: return (if paired: flatFusedAddMemory[First, 126, true]
+    else: flatFusedAddMemory[First, 126, false])
+  of 127: return (if paired: flatFusedAddMemory[First, 127, true]
+    else: flatFusedAddMemory[First, 127, false])
+  of 128: return (if paired: flatFusedAddMemory[First, 128, true]
+    else: flatFusedAddMemory[First, 128, false])
+  of 129: return (if paired: flatFusedAddMemory[First, 129, true]
+    else: flatFusedAddMemory[First, 129, false])
+  of 130: return (if paired: flatFusedAddMemory[First, 130, true]
+    else: flatFusedAddMemory[First, 130, false])
+  else: return nil # Control, host, folded noops and other scalar families retain their own workers.
+
+func flatFusedAddMemoryHandler(first, second: byte, paired: bool): nil FlatHandler =
+  ## Add-immediate64 and add64 commonly feed guest addresses across independent applications.
+  ## Restrict the first family to bound code size, with no PC, immediate or workload-specific test.
+  case first
+  of 149: flatFusedAddMemoryChoice[149](second, paired)
+  of 200: flatFusedAddMemoryChoice[200](second, paired)
+  else: nil # Other scalar families keep the existing checked continuation.
+
+func flatFusedAddMemoryAt(f: FlatFrame, node: uint32, first, second: byte): nil FlatHandler =
+  ## Recognize the direct continuation only with the actual next memory worker's original chain mode.
+  ## Source binders independently prove adjacency, operands, price and source ownership.
+  if node == high(uint32) or uint64(node+1) >= uint64(f.handlers.len): return nil
+  let following = f.handlers[int(node+1)]
+  let paired = flatMemoryPairHandler(second)
+  if following != flatHandler(second, true, true) and
+      (paired == nil or following != paired): return nil
+  flatFusedAddMemoryHandler(first, second, following == paired)
+
 when defined(pvmSharedAsyncWitness):
   proc probeRegisterDispatchBounds*(): bool =
     ## Test-only internal damage preserves CPU on a refused current slot or missing continuation.
@@ -2343,7 +2493,19 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           inc continuations
         else: continuations = 0
       else: continuations = 0
-      if selected != nil and not flatEmit(f, selected, payload.args, uint32(index)): return flatStop
+      if selected != nil:
+        let current = uint32(f.handlers.len)
+        if not flatEmit(f, selected, payload.args, uint32(index)): return flatStop
+        if current > origin+1 and index > start and f.sites[int(current-1)] == uint32(index-1):
+          # Patch only an adjacent original paired add after the memory node's real chain mode is known.
+          # No node, argument, source site or reservation is removed; suffix entries stay unchanged.
+          let previous = f.plan.facts[index-1].opcode
+          if previous in [149'u8, 200'u8] and
+              f.handlers[int(current-1)] == flatRegisterPairHandler(previous):
+            let paired = flatMemoryPairHandler(fact.opcode)
+            if selected == payload.handler or (paired != nil and selected == paired):
+              let fused = flatFusedAddMemoryHandler(previous, fact.opcode, selected == paired)
+              if fused != nil: f.handlers[int(current-1)] = fused
     if fact.ending: break
     inc index
   flatConsiderNative(f, origin)

@@ -61,9 +61,41 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert loaded.error == ProgramError.None
     CompositionFixture(owner: loaded.value, second: second)
 
+  proc addMemoryGuest(first: byte, leading: int): Program =
+    ## Literal register loads shift the original add/memory pair across the bounded chain modes.
+    var code: seq[byte] = @[]
+    var starts: seq[int] = @[]
+    for index in 0..<leading:
+      starts.add(code.len)
+      for value in [20'u8, 0, 0]: code.add(value)
+    starts.add(code.len)
+    if first == 149:
+      for value in [149'u8, 17, 1]: code.add(value)
+    else:
+      for value in [200'u8, 33, 1]: code.add(value)
+    starts.add(code.len)
+    for value in [124'u8, 17, 0]: code.add(value)
+    starts.add(code.len)
+    code.add(0)
+    var wire = @[0'u8, 0]
+    let size = encode(JamNatural(uint64(code.len)))
+    for index in 0..<size.len: wire.add(size.bytes[index])
+    for value in code: wire.add(value)
+    var mask = newSeq[byte]((code.len+7) div 8)
+    for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
+    for value in mask: wire.add(value)
+    let loaded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(1))
+    assert loaded.error == ProgramError.None
+    loaded.value
+
   proc runFusionComposition*() =
     ## Both original arithmetic/branch predicates and both external exits share the actual scoped bridge.
     witnessFlatFusionSampling()
+    for first in [149'u8, 200'u8]:
+      for leading in [0, 2]:
+        for native in [false, true]:
+          # Original operands and actual memory chain mode are checked in both lowering profiles.
+          witnessFlatAddMemoryBinding(addMemoryGuest(first, leading), native)
     for leading in [30, 31]:
       # ADD plus branch makes exactly 32 or 33 original instructions despite the same dense body.
       let fixture = compositionGuest(83, false, leading)

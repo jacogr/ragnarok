@@ -127,8 +127,13 @@ when declared(FlatFrame):
             if not combinedBranch:
               if index >= source.last or node+1 >= summary.terminal or
                   f.sites[int(node+1)] != index+1: return false
-              let fused = flatFusedRegisterHandler(fact.opcode, f.plan.facts[int(index+1)].opcode)
-              if fused == nil or worker != fused: return false
+              let second = f.plan.facts[int(index+1)].opcode
+              let fused = flatFusedRegisterHandler(fact.opcode, second)
+              if fused == nil or worker != fused:
+                # A direct add/memory continuation is compatible only with the actual original
+                # memory worker's chain mode. The next walk iteration checks its operands as usual.
+                let combined = flatFusedAddMemoryAt(f, node, fact.opcode, second)
+                if combined == nil or worker != combined: return false
       elif fact.opcode in [1'u8, 40]:
         # The sealed original destination proves the edge once the cached operand
         # is a positive node for that exact original source. Unresolved workers

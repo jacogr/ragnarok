@@ -154,3 +154,71 @@ proc memoryPrefixMatrix(initialRegisters: RegisterFile) =
 memoryPrefixMatrix(registers)
 
 echo "PASS 25020 memory-first pairs / budgets 0..3 / alias+permission+cross-page / fresh+reused"
+
+proc addMemoryMatrix(initialRegisters: RegisterFile) =
+  ## Compare add/memory chains with individual Psi_1 calls, which never select combined workers.
+  ## Aliased address/value/destination1 must observe the completed add, including on second-node
+  ## permission or cross-page faults. Full and partial budgets preserve the original source boundary.
+  let memoryCodes = [30'u8, 31, 32, 33, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
+    70, 71, 72, 73, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130]
+  for first in [149'u8, 200'u8]:
+    for second in memoryCodes:
+      for address in [65536'u64, 69631, 73727]:
+        # Both independently encoded adds write register1 from the same original address-7 and7.
+        let prefix = if first == 149: @[149'u8, 17, 7, 0, 0, 0] else: @[200'u8, 33, 1]
+        let memoryPart = firstMemoryPart(second, address)
+        let program = owner([prefix, memoryPart, @[0'u8]])
+        let prepared = cache(program)
+        for access in [PageAccess.ReadWrite, PageAccess.ReadOnly]:
+          # A writable first page and a possibly protected second page expose atomic scalar preflight.
+          var pages = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
+          pages[1].access = access
+          let memory = captureMemory(pages, PageLimit(2)).value
+          for gas in [0'u64, 1, 100000]:
+            var initial = initialRegisters
+            initial[1] = RegisterValue(address-7)
+            initial[2] = RegisterValue(7)
+            let info = MachineInfo(gas: MachineGas(gas), registers: initial)
+            let input = captureMachine(program, memory, info).value
+            for steps in 0..3:
+              var wanted = input
+              var kind = StepExit.Continued
+              var fault = PageAddress(0)
+              for attempt in 0..<steps:
+                # Each reference call has single-instruction admission, preventing add/memory fusion.
+                let one = stepOnce(wanted, GasCycleLimit(100000))
+                assert one.error == StepError.None
+                let outcome = one.value
+                wanted = outcome.machine
+                kind = outcome.exit
+                if kind == StepExit.Fault: fault = outcome.faultPage
+                if attempt == 0 and kind == StepExit.Continued:
+                  assert uint64(machineInfo(wanted).value.registers[1]) == address
+                if kind != StepExit.Continued: break
+              var frame = newFlatFrame(prepared, pages, info)
+              for repeat in 0..<2:
+                # Reused emitted code must reset private bytes and keep the independently stepped result.
+                resetFlatFrame(frame, info)
+                runFlat(frame, uint64(steps))
+                if kind == StepExit.Continued:
+                  assert frame.reason == StepError.StepLimitExceeded
+                else:
+                  assert frame.reason == StepError.None and frame.exit == kind
+                  if kind == StepExit.Fault: assert uint32(frame.faultPage) == uint32(fault)
+                var expectedInfo = machineInfo(wanted).value
+                if kind == StepExit.Panic:
+                  # Psi_1 advances past trap; recursive execution normalizes terminal PC to zero.
+                  assert uint64(expectedInfo.pc) == uint64(prefix.len+memoryPart.len+1)
+                  expectedInfo.pc = CodeAddress(0)
+                sameCpu(frame.info, expectedInfo)
+                let actual = flatMemorySnapshot(frame)
+                let expected = memoryOf(wanted).value
+                for page in [16'u32, 17'u32]:
+                  # Check complete permission/byte images, including every untouched lane of a refused store.
+                  let left = pageImage(actual, PageIndex(page)).value
+                  let right = pageImage(expected, PageIndex(page)).value
+                  assert left.access == right.access and left.bytes == right.bytes
+                checkFlatSource(frame, pages)
+
+addMemoryMatrix(registers)
+echo "PASS add-memory pairs / individual-step oracle / gas+quota+alias+permission+cross-page / fresh+reused"

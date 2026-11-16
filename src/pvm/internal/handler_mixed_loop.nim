@@ -55,8 +55,11 @@ when declared(FlatFrame):
             if ordinal >= source.last or node+1 >= walk.terminal or
                 f.sites[int(node+1)] != ordinal+1: return
             let nextFact = f.plan.facts[int(ordinal+1)]
+            if nextFact.priceIndex != priceIndex: return
             let fused = flatFusedRegisterHandler(fact.opcode, nextFact.opcode)
-            if fused == nil or worker != fused or nextFact.priceIndex != priceIndex: return
+            if fused == nil or worker != fused:
+              let combined = flatFusedAddMemoryAt(f, node, fact.opcode, nextFact.opcode)
+              if combined == nil or worker != combined: return
       proof.operations[int(node-header-1)] = NativeOperation(opcode: fact.opcode,
         slots: original.args.slots, immediate: (if node ==
             walk.terminal: 0'u64 else: original.args.x))

@@ -56,6 +56,61 @@ when declared(FlatFrame):
       assert source == before
     assert plan.facts.len == 0 and plan.pricePcs.len == 0
 
+  proc witnessFlatAddMemoryBinding*(program: Program, native: bool) =
+    ## Bind a real emitted add/memory pair, then reject independently damaged operands, sites
+    ## and chain modes. Source reconstruction and failed output publication remain independent.
+    let plan = newFlatPlan(program, GasCycleLimit(100000))
+    plan.allowNative = native
+    var frame = newFlatFrame(plan, [], MachineInfo(gas: MachineGas(10000)))
+    let header = flatResolve(frame, 0)
+    assert header != flatStop
+    var original = default(NativeFusionBlock)
+    assert bindFlatFusion(frame, header, original)
+    var found = false
+    for node in int(header)+1..<int(original.terminal)-1:
+      let first = frame.plan.facts[int(frame.sites[node])].opcode
+      let second = frame.plan.facts[int(frame.sites[node+1])].opcode
+      let worker = flatFusedAddMemoryAt(frame, uint32(node), first, second)
+      if worker == nil or frame.handlers[node] != worker: continue
+      found = true
+      let firstArgs = frame.arguments[node]
+      let secondArgs = frame.arguments[node+1]
+      let secondSite = frame.sites[node+1]
+      let secondWorker = frame.handlers[node+1]
+      let paired = secondWorker == flatMemoryPairHandler(second)
+      for mutation in 0..6:
+        # Neither a plausible worker nor matching first operands authorize a changed second operation.
+        case mutation
+        of 0: frame.arguments[node].x = firstArgs.x xor 1
+        of 1: frame.arguments[node+1].x = secondArgs.x xor 1
+        of 2: frame.sites[node+1] = secondSite+1
+        of 3:
+          let different = flatFusedAddMemoryHandler(first, second, not paired)
+          assert different != nil
+          frame.handlers[node] = different
+        of 4:
+          let different = if paired: flatHandler(second, true, true)
+            else: flatMemoryPairHandler(second)
+          assert different != nil
+          frame.handlers[node+1] = different
+        of 5: frame.handlers[node+1] = flatBudget
+        else:
+          let different = flatFusedAddMemoryHandler(
+            (if first == 149: 200'u8 else: 149'u8), second, paired)
+          assert different != nil
+          frame.handlers[node] = different
+        var rejected = NativeFusionBlock(header: 123, span: 77)
+        let untouched = rejected
+        assert not bindFlatFusion(frame, header, rejected) and rejected == untouched
+        frame.arguments[node] = firstArgs
+        frame.arguments[node+1] = secondArgs
+        frame.sites[node+1] = secondSite
+        frame.handlers[node] = worker
+        frame.handlers[node+1] = secondWorker
+        var rebound = default(NativeFusionBlock)
+        assert bindFlatFusion(frame, header, rebound) and rebound == original
+    assert found, "add/memory binding positive control must use the combined worker"
+
   proc fusionWitnessOperations(session: NativeSession): uint64 {.noinline.} =
     ## Keep the established NIM-005 counter observation boundary across mutable frame calls.
     nativeOperationCount(session)
