@@ -18,6 +18,8 @@
 ## An invalid native return instead reports BackendFailure without publishing
 ## CPU, memory or gas. The segment returns its image borrows before the prepared
 ## owner retires the image and discards the invocation's frame and stream.
+## Retained native overlays are checked before dispatch, and final restoration is checked
+## before returning even an already captured tentative outcome. Neither failure publishes state.
 ##
 ## A nominated fixed read can copy stopped RAM into a scalar callback. The
 ## callback receives only values, while continuing replies keep dirty RAM local.
@@ -622,6 +624,10 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
     frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
+  if frame.reason == StepError.BackendFailure:
+    # Invalid retained native patches never enter the dispatcher or return to the prepared cache.
+    retireFailedNativeInvocation(data.native)
+    return StepResult(status: StepError.BackendFailure)
   when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
     if data.mixedDirtyCount != 0:
       seedFlatMixedDirtyPages(frame, data.mixedDirtyPages.toOpenArray(0, int(
@@ -647,6 +653,10 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == StepError.None)
     finishNativeReadObservation(frame, answer.error == StepError.None)
+    if frame.reason == StepError.BackendFailure:
+      # Late restoration refusal also invalidates the tentative, still-private published snapshot.
+      retireFailedNativeInvocation(data.native)
+      return StepResult(status: StepError.BackendFailure)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
@@ -1063,6 +1073,10 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
     frame.mixedPairMode = data.mixedPairMode
   restoreFlatStream(frame, data.stream)
+  if frame.reason == StepError.BackendFailure:
+    # The retained overlay is validated before any host callback or guest execution.
+    retireFailedNativeInvocation(data.native)
+    return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
     if data.mixedDirtyCount != 0:
       seedFlatMixedDirtyPages(frame, data.mixedDirtyPages.toOpenArray(0, int(
@@ -1077,6 +1091,10 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
   when NativeCheckedReadEnabled:
     finishReadProbe(frame, answer.error == HostExecutionError.None)
     finishNativeReadObservation(frame, answer.error == HostExecutionError.None)
+    if frame.reason == StepError.BackendFailure:
+      # A completed callback history cannot authorize an invalid final stream or guest snapshot.
+      retireFailedNativeInvocation(data.native)
+      return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer

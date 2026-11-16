@@ -1223,6 +1223,43 @@ when defined(pvmSharedAsyncWitness):
         verify(execute(source, quota, code), source, 2048)
         assert runtimeInfo(runtime).submitted == 0 and close(runtime)
 
+    proc invalidNativeInstallation() =
+      ## Both public APIs refuse damaged overlays before dispatch or final publication and remain reusable.
+      let owner = loopOwner()
+      witnessFlatNativeInstallation(owner)
+      let source = input(owner, 2048)
+      let initial = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let quota = ExecutionStepLimit(6145)
+      for hosted in [false, true]:
+        for afterExecution in [false, true]:
+          # Real compilation/collection is a positive control for the installed image's lifetime.
+          let runtime = newNativeRuntime()
+          assert launch(runtime)
+          let code = prepared(owner, runtime)
+          let cold = execute(source, quota, code)
+          verify(cold, source, 2048)
+          waitNativeCompiler(runtime)
+          assert runtimeInfo(runtime).registered == 1
+          damageNextNativeInstallation(afterExecution)
+          if hosted:
+            var calls = 0
+            let failed = executeWithHost(source, calls, unexpectedQuotaHost, quota, HostCallLimit(
+                1), code)
+            assert failed.error == StepError.BackendFailure and calls == 0
+          else:
+            assert execute(source, quota, code).error == StepError.BackendFailure
+          assert preparedInfo(code).value.streamNodes == 0
+          assert preparedNativeState(code).value == NativeState.Unavailable
+          assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+          assert machineInfo(source).value == initial and memoryOf(source).value == memory
+          let recovered = execute(source, quota, code)
+          verify(recovered, source, 2048)
+          assert recovered.value.backend == PvmBackend.Interpreted
+          assert machineInfo(recovered.value.machine).value == machineInfo(cold.value.machine).value
+          assert memoryOf(recovered.value.machine).value == memoryOf(cold.value.machine).value
+          assert runtimeInfo(runtime).submitted == 1 and close(runtime)
+
   proc purePrefixControl() =
     ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
     if not nativePlatformSupported(): return
@@ -2036,6 +2073,7 @@ proc runSharedAsync*() =
     invalidNativeReceipt()
     when NativeCheckedReadEnabled:
       invalidQuotaPredecessor()
+      invalidNativeInstallation()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
     diagnosticPhase("adjacentNativePrefix")

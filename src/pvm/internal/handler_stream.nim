@@ -25,6 +25,9 @@
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
+## Native bridge installation and restoration preflight the complete bounded patch set.
+## An invalid predecessor or image key refuses locally before any handler changes. The public
+## boundary discards that stream and any tentative outcome before returning BackendFailure.
 
 import std/[assertions, bitops]
 import ../[program, machine]
@@ -146,6 +149,9 @@ type
   FlatNativePatch = object ## One exact installed slot and its original checked handler.
     offset: uint32
     checked, installed: nil FlatHandler
+  FlatNativePatchRequest = object ## A cold batch names only desired entries; predecessors come from the frame.
+    offset: uint32
+    handler: nil FlatHandler
   FlatNativeInstallation = object ## At most three bridge patches belong to one full immutable image key.
     key: NativeImageKey
     patches: array[3, FlatNativePatch]
@@ -419,22 +425,39 @@ when NativeCheckedReadEnabled:
   proc observeReadProbeHeader(f: var FlatFrame, header: uint32)
     ## Replacement discovery also sees cached checked headers under fixed whole-call budgets.
 
-proc flatRestoreNativeInstallation(f: var FlatFrame) =
-  ## Restore every old bridge and control field before source revalidation or physical retirement.
-  when NativeCheckedReadEnabled:
-    assert not f.readProbe.observing
-  assert int(f.nativeInstallation.count) <= f.nativeInstallation.patches.len
+func flatNativeInstallationValid(f: FlatFrame): bool =
+  ## Prove the complete retained patch set before any slot is read or changed.
+  ## A stale image may still be restored: its copied key identifies predecessors, not entry authority.
+  if int(f.nativeInstallation.count) > f.nativeInstallation.patches.len: return false
+  if f.nativeInstallation.count != 0:
+    let key = f.nativeInstallation.key
+    if key.slot < 0 or key.slot >= NativeSessionLimit or key.ticket == 0 or
+        key.generation == 0 or key.epoch == 0: return false
   for index in 0..<int(f.nativeInstallation.count):
     let patch = f.nativeInstallation.patches[index]
+    if uint64(patch.offset) >= uint64(f.handlers.len) or patch.checked == nil or
+        patch.installed == nil: return false
+    if f.handlers[int(patch.offset)] != patch.installed: return false
+    for earlier in 0..<index:
+      # One slot has exactly one captured predecessor, including a multi-header ring.
+      if f.nativeInstallation.patches[earlier].offset == patch.offset: return false
+  true
+
+proc flatRestoreNativeInstallation(f: var FlatFrame): bool =
+  ## Validate every predecessor before restoring any. Refusal preserves all handlers and marks
+  ## a local backend failure; the invocation boundary discards this stream without a guest snapshot.
+  when NativeCheckedReadEnabled:
+    if f.readProbe.observing:
+      f.reason = oracle.StepError.BackendFailure
+      return false
+  if not flatNativeInstallationValid(f):
+    f.reason = oracle.StepError.BackendFailure
+    return false
+  for index in 0..<int(f.nativeInstallation.count):
+    # Complete preflight proves each captured checked worker is available.
+    let patch = f.nativeInstallation.patches[index]
     let checked = patch.checked
-    let installed = patch.installed
-    assert int(patch.offset) < f.handlers.len
-    if checked != nil and installed != nil:
-      assert f.handlers[int(patch.offset)] == installed
-      f.handlers[int(patch.offset)] = checked
-    else:
-      # A default slot has no authority; only fully captured entries may be restored.
-      assert false, "native installation contains an empty patch"
+    if checked != nil: f.handlers[int(patch.offset)] = checked
   f.nativeInstallation = default(FlatNativeInstallation)
   f.nativeOriginal = nil
   f.nativeEntry = 0
@@ -443,27 +466,69 @@ proc flatRestoreNativeInstallation(f: var FlatFrame) =
     f.nativeRingInstalled = false
     f.readContext = default(NativeReadContext)
     f.readContextReady = false
+  true
 
-proc flatInstallNativePatch(f: var FlatFrame, offset: uint32, selected: FlatHandler) =
-  ## Capture an original once; repeated same-key installation never overwrites its checked fallback.
+proc planFlatNativePatches(f: FlatFrame, key: NativeImageKey,
+    requests: openArray[FlatNativePatchRequest], planned: var FlatNativeInstallation): bool =
+  ## Build one complete POD replacement without touching the frame or failed output.
+  ## The caller obtains the key from its installed image; this planner grants no native entry authority.
+  if requests.len == 0 or requests.len > f.nativeInstallation.patches.len or
+      key.slot < 0 or key.slot >= NativeSessionLimit or key.ticket == 0 or
+      key.generation == 0 or key.epoch == 0 or not flatNativeInstallationValid(f): return false
+  if f.nativeInstallation.count != 0 and f.nativeInstallation.key != key: return false
+  var candidate = f.nativeInstallation
+  candidate.key = key
+  for index in 0..<requests.len:
+    # Every requested worker and source slot is proved before capturing its predecessor.
+    let request = requests[index]
+    if uint64(request.offset) >= uint64(f.handlers.len) or request.handler == nil: return false
+    for earlier in 0..<index:
+      if requests[earlier].offset == request.offset: return false
+    var found = false
+    for slot in 0..<int(candidate.count):
+      if candidate.patches[slot].offset == request.offset:
+        if candidate.patches[slot].installed != request.handler: return false
+        found = true
+        break
+    if found: continue
+    let count = int(candidate.count)
+    let checked: nil FlatHandler = f.handlers[int(request.offset)]
+    if count == candidate.patches.len or checked == nil: return false
+    candidate.patches[count] = FlatNativePatch(offset: request.offset,
+      checked: checked, installed: request.handler)
+    inc candidate.count
+  planned = candidate
+  true
+
+proc flatInstallNativePatches(f: var FlatFrame,
+    requests: openArray[FlatNativePatchRequest]): bool =
+  ## Commit a fully checked batch atomically, including all three register-ring headers.
+  ## Invalid installation changes only the local reason and cannot authorize later dispatch.
   let key = nativeInstalledKey(f.nativeSession)
-  assert key.ticket != 0 and key.epoch == nativeEpoch(f.nativeSession)
-  assert int(offset) < f.handlers.len
-  if f.nativeInstallation.count != 0:
-    assert f.nativeInstallation.key == key
-  else:
-    f.nativeInstallation.key = key
-  for index in 0..<int(f.nativeInstallation.count):
-    if f.nativeInstallation.patches[index].offset == offset:
-      assert f.nativeInstallation.patches[index].installed == selected
-      f.handlers[int(offset)] = selected
-      return
-  let count = int(f.nativeInstallation.count)
-  assert count < f.nativeInstallation.patches.len
-  f.nativeInstallation.patches[count] = FlatNativePatch(offset: offset,
-    checked: f.handlers[int(offset)], installed: selected)
-  f.nativeInstallation.count += 1'u8
-  f.handlers[int(offset)] = selected
+  var planned = default(FlatNativeInstallation)
+  if key.epoch != nativeEpoch(f.nativeSession) or
+      not planFlatNativePatches(f, key, requests, planned):
+    f.reason = oracle.StepError.BackendFailure
+    return false
+  for request in requests:
+    # The planner proved each worker; no allocation or fallible operation remains during commit.
+    let selected = request.handler
+    if selected != nil: f.handlers[int(request.offset)] = selected
+  f.nativeInstallation = planned
+  true
+
+proc flatInstallNativePatch(f: var FlatFrame, offset: uint32, selected: FlatHandler): bool =
+  ## Single-entry images share the same transactional planner and predecessor rules as rings.
+  flatInstallNativePatches(f, [FlatNativePatchRequest(offset: offset, handler: selected)])
+
+when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+  var damageNativeInstallationBeforeDispatch {.threadvar.}: bool
+  var damageNativeInstallationBeforePublication {.threadvar.}: bool
+
+  proc damageNextNativeInstallation*(afterExecution = false) =
+    ## Damage only the next witness frame's private ledger at either public refusal boundary.
+    if afterExecution: damageNativeInstallationBeforePublication = true
+    else: damageNativeInstallationBeforeDispatch = true
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -2493,10 +2558,17 @@ when NativeReadCycleEnabled:
 
 proc installNative(f: var FlatFrame) =
   ## Only the caller mutates its exclusively held stream; each image uses its own certificate.
+  when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+    if damageNativeInstallationBeforeDispatch:
+      damageNativeInstallationBeforeDispatch = false
+      f.nativeInstallation.count = byte(f.nativeInstallation.patches.len+1)
+  if not flatNativeInstallationValid(f):
+    f.reason = oracle.StepError.BackendFailure
+    return
   if f.pricingKind != 0: return
   if f.nativeInstallation.count != 0 and
       f.nativeInstallation.key != nativeInstalledKey(f.nativeSession):
-    flatRestoreNativeInstallation(f)
+    if not flatRestoreNativeInstallation(f): return
   if f.nativeOriginal != nil: return
   when NativeReadCycleEnabled:
     let bitmap = nativeBitmapInfo(f.nativeSession)
@@ -2528,10 +2600,11 @@ proc installNative(f: var FlatFrame) =
         loop.rightImmediate != candidate.rightImmediate:
       invalidateNativeStream(f.nativeSession)
       return
-    f.nativeOriginal = f.handlers[int(span.entry)]
+    let original = f.handlers[int(span.entry)]
+    if not flatInstallNativePatch(f, span.entry, flatNativeLoop): return
+    f.nativeOriginal = original
     f.nativeEntry = span.entry
     f.nativeInstalledEpoch = span.epoch
-    flatInstallNativePatch(f, span.entry, flatNativeLoop)
     return
   if span.epoch != nativeEpoch(f.nativeSession) or int(span.entry) >= f.handlers.len or
       int(span.past) >= f.handlers.len or span.past <= span.entry: return
@@ -2555,10 +2628,11 @@ proc installNative(f: var FlatFrame) =
     if operation != span.len:
       invalidateNativeStream(f.nativeSession)
       return
-    f.nativeOriginal = f.handlers[int(span.entry)]
+    let original = f.handlers[int(span.entry)]
+    if not flatInstallNativePatch(f, span.entry, flatNativePure): return
+    f.nativeOriginal = original
     f.nativeEntry = span.entry
     f.nativeInstalledEpoch = span.epoch
-    flatInstallNativePatch(f, span.entry, flatNativePure)
 
 proc installFlatPrefixProbe(f: var FlatFrame) =
   ## Ordinary and adjacent-pair headers share the same reservation/body fallback.
@@ -5074,3 +5148,6 @@ when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   include ./handler_fusion_witness
+
+when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+  include ./handler_native_installation_witness
