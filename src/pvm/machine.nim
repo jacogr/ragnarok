@@ -12,6 +12,8 @@
 ## shared backing range or an explicit chunk owner. Absent slots are inaccessible,
 ## while a retained inaccessible page can keep bytes for remapping. Writers copy
 ## the affected spans and directory paths only after complete preflight.
+## Directory publication allocates every block and root before consuming page owners. Its local
+## LimitExceeded refusal preserves the previous snapshot and a scalar writer's pending epoch.
 ##
 ## Scalar access uses the scoped PolkaVM overflow and presence precedence recorded
 ## in spec/pvm-machine.md. Host range inspection has its own typed bounds and errors.
@@ -166,27 +168,75 @@ template `[]`(pages: PageDirectory, index: int): untyped =
   ## Expand a borrowed indexed location; no owning PageData result is created by an accessor call.
   pages.blocks[checkedPageBlock(pages, index)].entries[index and 63]
 
-proc pageDirectory(pages: sink seq[PageData]): PageDirectory =
-  ## Transfer an admitted sorted vector into immutable blocks without another per-page retain/release pass.
-  var owned = move(pages)
-  # Quotient and remainder count the last partial block without adding to the admitted page count.
-  let blockCount = owned.len div 64 + int(owned.len mod 64 != 0)
-  result = PageDirectory(len: owned.len, blocks: newSeqOfCap[PageBlock](blockCount))
-  var first = 0
-  while first < owned.len:
-    # The final block contains only its initialized references.
-    let count = min(64, owned.len-first)
-    var group = PageBlock(entries: newSeqOfCap[PageData](count))
+when defined(pvmSharedAsyncWitness):
+  var publicationCountdown {.threadvar.}: int
+  var publicationRefused {.threadvar.}: bool
+
+  proc refuseMemoryPublicationAllocationForWitness*(after: int) =
+    ## Refuse one actual directory/root allocation after earlier real allocations have succeeded.
+    assert after > 0
+    publicationCountdown = after
+    publicationRefused = false
+
+  proc finishMemoryPublicationRefusalForWitness*(): bool =
+    ## Clear an unconsumed request before unrelated operations and report whether its allocation was reached.
+    result = publicationRefused
+    publicationCountdown = 0
+    publicationRefused = false
+
+  proc takeMemoryPublicationRefusal(): bool =
+    ## Only the selected test allocation refuses; subsequent recovery uses the real allocator again.
+    if publicationCountdown == 0: return false
+    dec publicationCountdown
+    if publicationCountdown != 0: return false
+    publicationRefused = true
+    true
+
+template refusedPublicationAllocation(): bool =
+  ## Production construction has no test gate or additional allocation policy.
+  when defined(pvmSharedAsyncWitness): takeMemoryPublicationRefusal()
+  else: false
+
+proc pageDirectory(pages: var seq[PageData], directory: var PageDirectory): MachineError =
+  ## Allocate every block and its complete capacity before moving the first source page.
+  ## Refusal preserves both arguments, including a writer's pending epoch. The final transfer
+  ## performs only moves into reserved capacity, so it cannot require an allocation or partial rollback.
+  if pages.len > 0x100000: return MachineError.InvalidRange
+  let length = pages.len
+  let blockCount = length div 64 + int(length mod 64 != 0)
+  if blockCount > 0 and refusedPublicationAllocation(): return MachineError.LimitExceeded
+  var built = PageDirectory(blocks: newSeqOfCap[PageBlock](blockCount))
+  if blockCount > 0 and built.blocks.rawData == nil: return MachineError.LimitExceeded
+  for index in 0..<blockCount:
+    # Empty private blocks reserve their complete final extent before they can consume any page owner.
+    let count = min(64, length-index*64)
+    if refusedPublicationAllocation(): return MachineError.LimitExceeded
+    var entries = newSeqOfCap[PageData](count)
+    if entries.rawData == nil: return MachineError.LimitExceeded
+    if refusedPublicationAllocation(): return MachineError.LimitExceeded
+    let group: nil PageBlock = PageBlock()
+    if group == nil: return MachineError.LimitExceeded
+    group.entries = move(entries)
+    built.blocks.add(group)
+  for index in 0..<blockCount:
+    # Reserved append capacity makes this ownership-transfer phase allocation-free.
+    let first = index*64
+    let count = min(64, length-first)
     for offset in 0..<count:
-      # Moving empties the old vector slot; its destructor cannot release the transferred page again.
-      group.entries.add(move(owned[first+offset]))
-    result.blocks.add(move(group))
-    first += count
+      built.blocks[index].entries.add(move(pages[first+offset]))
+  pages = @[]
+  built.len = length
+  directory = move(built)
+  MachineError.None
 
 proc replacedDirectory(pages: PageDirectory, slots: openArray[int],
     replacements: openArray[PageData], directory: var PageDirectory): MachineError =
   ## All callers preflight before construction; copy the root and clone each affected block exactly once.
   if slots.len != replacements.len: return MachineError.InvalidRange
+  if pages.len < 0 or pages.len > 0x100000 or
+      pages.blocks.len != pages.len div 64+int(pages.len mod 64 != 0):
+    return MachineError.InvalidOwner
+  if pages.blocks.len > 0 and refusedPublicationAllocation(): return MachineError.LimitExceeded
   var built = PageDirectory(len: pages.len, blocks: newSeqOfCap[PageBlock](pages.blocks.len))
   if pages.blocks.len > 0 and built.blocks.rawData == nil: return MachineError.LimitExceeded
   for index in 0..<pages.blocks.len:
@@ -199,13 +249,17 @@ proc replacedDirectory(pages: PageDirectory, slots: openArray[int],
     let slot = slots[index]
     if slot < 0 or slot >= pages.len or slot <= previous: return MachineError.InvalidRange
     let group = slot div 64
+    if pages.blocks[group].entries.len != min(64, pages.len-group*64):
+      return MachineError.InvalidOwner
     if group != previousGroup:
       # The old block remains immutable through its retained source root.
+      if refusedPublicationAllocation(): return MachineError.LimitExceeded
       var entries = newSeqOfCap[PageData](pages.blocks[group].entries.len)
       if entries.rawData == nil: return MachineError.LimitExceeded
       for offset in 0..<pages.blocks[group].entries.len:
         # Copy only this block's initialized references; no mutable sequence is shared.
         entries.add(pages.blocks[group].entries[offset])
+      if refusedPublicationAllocation(): return MachineError.LimitExceeded
       let copied: nil PageBlock = PageBlock()
       if copied == nil: return MachineError.LimitExceeded
       copied.entries = move(entries)
@@ -304,21 +358,6 @@ proc pageFromReplacement(previous: PageData, image: PageImage): PageData =
     backing: previous.backing, chunks: move(chunks))
   dropCoveredBacking(result)
 
-proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
-  ## Lazily retain one immutable known-zero payload within this mapping operation; no process-global pool exists.
-  let current = seed
-  if current != nil:
-    return current # Permission-only changes need no seed, and later new pages share this immutable payload.
-  let fresh = PageChunk(bytes: default(array[512, byte]))
-  seed = fresh
-  fresh
-
-proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): PageData =
-  ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
-  let chunk = sharedZeroChunk(seed)
-  PageData(index: index, zeroChunks: 255, access: access, backing: nil,
-    chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
-
 proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[byte],
     offset, count: int, zero: var nil PageChunk): nil PageData =
   ## The admitted source span fits in one page. Publish it only after every payload owner exists.
@@ -353,6 +392,10 @@ proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[b
         copyMem(addr chunk.bytes[0], unsafeAddr input[offset+start], min(512, count-start))
         page.chunks[slot] = chunk
   page
+
+proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): nil PageData =
+  ## Reuse complete fallible initialization; no page can publish a missing shared-zero payload.
+  initializationPage(index, access, [], 0, 0, seed)
 
 proc appendInitializationRegion(directory: var PageDirectory, total: int,
     region: InitializationRegion, input: openArray[byte], zero: var nil PageChunk): bool =
@@ -415,44 +458,69 @@ proc captureInitializationMemory*(regions: openArray[InitializationRegion],
       of InitializationSource.Second: appendInitializationRegion(directory, int(total), region,
           second, zero)
     if not captured: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  if directory.len != int(total) or directory.blocks.len != blockCount:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   let owner: nil MemoryData = MemoryData(limit: limit)
   if owner == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   owner.pages = move(directory)
   MachineResult[Memory](status: MachineError.None, completed: Memory(data: owner))
 
 proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: PageAccess,
-    total: int): PageDirectory =
-  ## An admitted append shares complete immutable blocks and privately fills only the old partial tail.
-  assert uint32(first) < uint32(past) and uint32(past) <= 0x100000'u32
-  assert total >= pages.len and total <= 0x100000
-  assert uint32(total-pages.len) == uint32(past)-uint32(first)
+    total: int, directory: var PageDirectory): MachineError =
+  ## Share complete prefix blocks and fill a private tail; refusal never changes source or output.
+  if uint32(first) >= uint32(past) or uint32(past) > 0x100000'u32 or
+      pages.len < 0 or total < pages.len or total > 0x100000:
+    return MachineError.InvalidRange
+  if uint32(total-pages.len) != uint32(past)-uint32(first): return MachineError.InvalidRange
   let complete = pages.len div 64
   let remainder = pages.len mod 64
+  if pages.blocks.len != complete+int(remainder != 0): return MachineError.InvalidOwner
+  if remainder != 0 and pages.blocks[complete].entries.len != remainder:
+    return MachineError.InvalidOwner
   let blockCount = total div 64 + int(total mod 64 != 0)
-  result = PageDirectory(len: total, blocks: newSeqOfCap[PageBlock](blockCount))
+  if refusedPublicationAllocation(): return MachineError.LimitExceeded
+  var built = PageDirectory(blocks: newSeqOfCap[PageBlock](blockCount))
+  if built.blocks.rawData == nil: return MachineError.LimitExceeded
   for group in 0..<complete:
     # Sharing a block retains one owner without retaining its sixty-four page children again.
-    result.blocks.add(pages.blocks[group])
+    built.blocks.add(pages.blocks[group])
+  if refusedPublicationAllocation(): return MachineError.LimitExceeded
   var entries = newSeqOfCap[PageData](min(64, total-complete*64))
+  if entries.rawData == nil: return MachineError.LimitExceeded
   for offset in 0..<remainder:
     # Only initialized final-block references enter the private replacement tail.
     entries.add(pages.blocks[complete].entries[offset])
   var zero: nil PageChunk = nil
   var ordinal = uint32(first)
   while ordinal < uint32(past):
-    # The caller proves every new ordinal follows all old pages; existing chunks stay immutable.
-    entries.add(zeroPage(PageIndex(ordinal), access, zero))
+    # Every appended page and shared zero payload must exist before the private directory can publish.
+    let page = zeroPage(PageIndex(ordinal), access, zero)
+    if page == nil: return MachineError.LimitExceeded
+    entries.add(page)
     inc ordinal
     if entries.len == 64:
-      # Publish a complete private block once; an exact fill must not allocate an empty final block.
-      result.blocks.add(PageBlock(entries: move(entries)))
+      # A complete private block enters only the unpublished root; the original partial tail stays intact.
+      if refusedPublicationAllocation(): return MachineError.LimitExceeded
+      let group: nil PageBlock = PageBlock()
+      if group == nil: return MachineError.LimitExceeded
+      group.entries = move(entries)
+      built.blocks.add(group)
       if ordinal < uint32(past):
         # The validated remaining ordinal count bounds this final capacity and its native conversion.
+        if refusedPublicationAllocation(): return MachineError.LimitExceeded
         entries = newSeqOfCap[PageData](min(64, int(uint32(past)-ordinal)))
+        if entries.rawData == nil: return MachineError.LimitExceeded
   if entries.len != 0:
     # A partial final block exposes exactly its initialized entries, never spare capacity.
-    result.blocks.add(PageBlock(entries: move(entries)))
-  assert result.blocks.len == blockCount
+    if refusedPublicationAllocation(): return MachineError.LimitExceeded
+    let group: nil PageBlock = PageBlock()
+    if group == nil: return MachineError.LimitExceeded
+    group.entries = move(entries)
+    built.blocks.add(group)
+  if built.blocks.len != blockCount: return MachineError.LimitExceeded
+  built.len = total
+  directory = move(built)
+  MachineError.None
 
 func pageByte(page: PageData, offset: int): byte {.inline.} =
   ## Read one proven effective span without retaining a transient reference or exposing its borrow.
@@ -555,6 +623,25 @@ proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
     # Big-endian and chunk-crossing writes retain byte-wise little-endian semantics.
     setPageByte(page, offset+index, byte((value shr (8*index)) and 255))
 
+proc capturePageOwners(pages: var seq[PageData], limit: PageLimit): MachineResult[Memory] =
+  ## Allocate the final root before consuming any page; failed publication preserves a live writer epoch.
+  if refusedPublicationAllocation(): return MachineResult[Memory](
+      status: MachineError.LimitExceeded)
+  let owner: nil MemoryData = MemoryData(limit: limit)
+  if owner == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  let captured = pageDirectory(pages, owner.pages)
+  if captured != MachineError.None: return MachineResult[Memory](status: captured)
+  MachineResult[Memory](status: MachineError.None, completed: Memory(data: owner))
+
+proc captureDirectory(directory: var PageDirectory, limit: PageLimit): MachineResult[Memory] =
+  ## The private directory moves only after the final immutable root allocation succeeds.
+  if refusedPublicationAllocation(): return MachineResult[Memory](
+      status: MachineError.LimitExceeded)
+  let owner: nil MemoryData = MemoryData(limit: limit)
+  if owner == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  owner.pages = move(directory)
+  MachineResult[Memory](status: MachineError.None, completed: Memory(data: owner))
+
 proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResult[Memory] =
   ## Validate sorted unique physical page ordinals and the allocation limit before capturing any page.
   # A local resource ceiling is not a consensus memory size or gas limit.
@@ -569,10 +656,11 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
     if i > 0 and uint32(pages[i - 1].index) >= uint32(pages[i].index):
       return MachineResult[Memory](status: MachineError.UnsortedPages)
   var owned = newSeqOfCap[PageData](pages.len)
+  if pages.len > 0 and owned.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   # Final private backing/tail owners copy every byte; no caller-owned pointer survives this call.
   for i in 0..<pages.len: owned.add(pageFromImage(pages[i]))
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
+  capturePageOwners(owned, limit)
 
 func lowerBound(data: MemoryData, index: uint32): int =
   ## Locate the first stored page whose index is at least the requested ordinal.
@@ -782,14 +870,14 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   if not replacing and uint64(data.pages.len) >= uint64(uint32(data.limit)):
     return MachineResult[Memory](status: MachineError.LimitExceeded)
   var pages = newSeqOfCap[PageData](data.pages.len + int(not replacing))
+  if pages.rawData == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   # Reuse immutable page references outside the one replacement/insertion slot.
   for i in 0..<at: pages.add(data.pages[i])
   pages.add(pageFromImage(page))
   # Insertion shifts the suffix; replacement leaves its positions unchanged.
   for i in at + int(replacing)..<data.pages.len:
     pages.add(data.pages[i])
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
+  capturePageOwners(pages, data.limit)
 
 proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): MachineResult[Memory] =
   ## Atomically replace sorted existing pages, preserving physical-index and ordering refusal.
@@ -837,8 +925,7 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
   if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+  captureDirectory(directory, data.limit)
 
 proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
   ## Bind one unpublished prepared-frame observation to its immutable source owner.
@@ -978,6 +1065,8 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
     # Empty and already-writable intervals retain the original immutable owner without allocation.
     return MachineResult[Memory](status: MachineError.None, completed: memory)
   var pages = newSeqOfCap[PageData](int(total))
+  if total > 0 and pages.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   for i in 0..<start:
     pages.add(data.pages[i]) # Retain the untouched prefix, including permissions and nonzero bytes.
   var zero: nil PageChunk = nil # Keep a lazy payload only until this operation has published all immutable children.
@@ -993,12 +1082,13 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
       inc at
     else:
       # An absent page has implicit zero storage; materialization must preserve those bytes.
-      pages.add(zeroPage(PageIndex(ordinal), PageAccess.ReadWrite, zero))
+      let page = zeroPage(PageIndex(ordinal), PageAccess.ReadWrite, zero)
+      if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+      pages.add(page)
     inc ordinal
   for i in stop..<data.pages.len:
     pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
+  capturePageOwners(pages, data.limit)
 
 proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
     content: PageContent): MachineResult[Memory] =
@@ -1020,10 +1110,13 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
     return MachineResult[Memory](status: MachineError.LimitExceeded) # All prospective pages count before any private allocation.
   if not dropped and start == data.pages.len:
     # Ordered endpoints imply stop == start: append new pages without rebuilding complete prefix blocks.
-    var directory = appendedDirectory(data.pages, first, past, access, int(total))
-    return MachineResult[Memory](status: MachineError.None,
-      completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+    var directory = default(PageDirectory)
+    let appended = appendedDirectory(data.pages, first, past, access, int(total), directory)
+    if appended != MachineError.None: return MachineResult[Memory](status: appended)
+    return captureDirectory(directory, data.limit)
   var pages = newSeqOfCap[PageData](int(total))
+  if total > 0 and pages.rawData == nil:
+    return MachineResult[Memory](status: MachineError.LimitExceeded)
   for index in 0..<start: pages.add(data.pages[index]) # Preserve immutable outside prefix owners.
   if not dropped:
     var zero: nil PageChunk = nil # Dropping zero/inaccessible storage never allocates a replacement payload.
@@ -1033,15 +1126,16 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
       if at < stop and uint32(data.pages[at].index) == ordinal and content == PageContent.Preserved:
         pages.add(pageWithAccess(data.pages[at], access)) # Retain inaccessible/read-only bytes without copying payloads.
       else:
-        pages.add(zeroPage(PageIndex(ordinal), access,
-            zero)) # New headers share only known immutable zero bytes, never an old nonzero payload.
+        # New headers share only known immutable zero bytes, never an old nonzero payload.
+        let page = zeroPage(PageIndex(ordinal), access, zero)
+        if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+        pages.add(page)
       if at < stop and uint32(data.pages[at].index) == ordinal:
         inc at # Each present old page is consumed exactly once in the ordered interval.
       inc ordinal # The validated exclusive endpoint bounds every ordinal below 2^20.
   for index in stop..<data.pages.len: pages.add(data.pages[
       index]) # Dropped zero/inaccessible pages become implicit sparse zeros.
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
+  capturePageOwners(pages, data.limit)
 
 type ScalarSpan = object
   ## Private validated slots and byte extents belong only to the immutable memory inspected in this call.
@@ -1177,8 +1271,7 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
   if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
-  MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+  captureDirectory(directory, data.limit)
 
 proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit, writing: bool): MachineResult[bool] =
@@ -1589,9 +1682,14 @@ proc store*[Width: static[int]](writer: nil ScalarMemoryWriter, address: MemoryA
 
 proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   ## Seal the current epoch by transferring its private vector; all writer aliases resume from this immutable owner on later writes.
+  ## Allocate the complete directory/root before transfer. LimitExceeded keeps pending writes usable
+  ## through every alias; cached windows may retire, but neither the epoch nor its privacy facts are lost.
   if writer == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let source = writer.base.data
   if source == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if writer.active and (writer.pages.len != source.pages.len or writer.dirty.len !=
+      source.pages.len):
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
   writer.readPage = nil # All cached aliases retire before an immutable snapshot becomes observable.
   writer.writePage = nil
   writer.spareWritePage = nil # No cached private capability survives sealing through any alias.
@@ -1600,8 +1698,9 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   if not writer.active:
     return MachineResult[Memory](status: MachineError.None,
         completed: writer.base) # No new write means no new snapshot allocation.
-  let frozen = Memory(data: MemoryData(pages: pageDirectory(move(writer.pages)),
-      limit: source.limit))
+  let captured = capturePageOwners(writer.pages, source.limit)
+  if captured.error != MachineError.None: return captured
+  let frozen = captured.value
   writer.base = frozen
   writer.dirty = @[]
   writer.active = false # No mutable chunk/vector alias survives the transfer; future stores clone a new epoch.
