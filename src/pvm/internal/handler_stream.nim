@@ -38,6 +38,9 @@
 ## Native bridge installation and restoration preflight the complete bounded patch set.
 ## An invalid predecessor or image key refuses locally before any handler changes. The public
 ## boundary discards that stream and any tentative outcome before returning BackendFailure.
+## Admission observers likewise preflight bounded coordinates and predecessors before patch-set changes.
+## Their failures stay sticky across run entry. Host/cache handoff rejects live temporary handlers
+## and stack-borrowed native descriptors before moving any owning state.
 
 import std/[assertions, bitops]
 import ../[program, machine]
@@ -122,7 +125,7 @@ when NativeCheckedReadEnabled:
       count, inspected: int
       epoch, segmentBudget: uint64
       priorWork: uint64
-      observing, callActive, later: bool
+      observing, callActive, later, failed: bool
       when NativeReadCycleEnabled:
         protectedTried, protectedInstalled, protectedActive, protectedCountable: bool
         protectedRemainingLimit: uint64
@@ -593,6 +596,12 @@ proc flatBackendFailure(f: var FlatFrame, off: uint32): uint32 {.inline.} =
   f.attemptedExit = false
   flatStop
 
+proc flatObserverFailure(f: var FlatFrame) =
+  ## Failed temporary-handler authority is sticky until the private stream is discarded.
+  ## Entry must not clear this failure and execute handlers left under an invalid observation.
+  f.reason = oracle.StepError.BackendFailure
+  when NativeCheckedReadEnabled: f.readProbe.failed = true
+
 proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
     attempted: bool = true): uint32 =
   ## Rare exits materialize the exact source PC; ordinary handlers never publish physical PCs.
@@ -675,6 +684,7 @@ template flatReserveImpl(f: var FlatFrame, off: uint32,
     when NativeCheckedReadEnabled and observeLater:
       # Only the selected observing dispatcher reaches this complete ordinary reservation.
       observeReadProbeHeader(f, off)
+      if f.readProbe.failed: return flatBackendFailure(f, off)
     f.remaining-=uint64(a.y)
     # Whole-block exits are rare: retain its stable header instead of reading the source index on every entry.
     # Emitted offsets are below2^31; raw source ends are at most the four-MiB fact ceiling.
@@ -1250,6 +1260,7 @@ proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
 
 proc flatResolutionFailure(f: var FlatFrame, off: uint32): uint32 =
   ## Invalid guest destinations panic; local policy exhaustion has no successful guest outcome.
+  if f.reason == oracle.StepError.BackendFailure: return flatBackendFailure(f, off)
   if f.preparationFailure != FlatError.None: return flatLocal(f, off,
       oracle.StepError.InvalidPreparedProgram)
   flatStopExit(f, off, oracle.StepExit.Panic)
@@ -2648,6 +2659,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     if f.readProbe.observing and startFact.opcode == 2 and
         startFact.sourceCount in 4'u32..NativeReadFactLimit and finalOpcode == 1:
       discoverReadProbe(f, origin, pc)
+      if f.readProbe.failed: return flatBackendFailure(f, origin)
   if f.prefixProbeOriginal == nil and nativePrefixObservation(f.nativeSession):
     installFlatPrefixProbe(f)
   origin
@@ -3966,8 +3978,14 @@ template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[
   ## The checked loop is shared by the ordinary and observed segments. Only the latter can discover.
   var node = entry
   while node != flatStop:
-    assert int(node) < f.handlers.len
+    if uint64(node) >= uint64(f.handlers.len) or uint64(node) >= uint64(f.arguments.len) or
+        uint64(node) >= uint64(f.sites.len):
+      discard flatBackendFailure(f, node)
+      break
     let selected = f.handlers[int(node)]
+    if selected == nil:
+      discard flatBackendFailure(f, node)
+      break
     when NativeReadCycleEnabled:
       when SampleFusion:
         # Sample candidate headers at actual dispatcher entry; checked peer rounds remain internal.
@@ -3979,8 +3997,12 @@ template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[
       else:
         node = flatReserveHeader[false](f, node)
       if node != flatStop:
-        let body = f.handlers[int(node)]
-        node = body(f, node)
+        if uint64(node) >= uint64(f.handlers.len) or uint64(node) >= uint64(f.arguments.len) or
+            uint64(node) >= uint64(f.sites.len):
+          node = flatBackendFailure(f, node)
+        else:
+          let body = f.handlers[int(node)]
+          node = if body == nil: flatBackendFailure(f, node) else: body(f, node)
     else:
       # Specialized charged/native/failure workers retain their existing entry and complete fallback behavior.
       node = selected(f, node)
@@ -3993,7 +4015,9 @@ when NativeCheckedReadEnabled:
 
 template flatDispatchSegment(f: var FlatFrame, entry: uint32) =
   when NativeCheckedReadEnabled:
-    if f.readProbe.observing and f.readProbe.later:
+    if f.readProbe.failed:
+      discard flatBackendFailure(f, entry)
+    elif f.readProbe.observing and f.readProbe.later:
       runFlatObservedLoop(f, entry)
     else:
       flatDispatchLoop(f, entry, false)
@@ -4127,10 +4151,18 @@ when NativeReadCycleEnabled:
   proc flatProbeMixedLoop(f: var FlatFrame, terminal: uint32): uint32 =
     ## A completed original BNE counts one full checked visit, including folded source facts.
     let probe = f.mixedProbe
-    assert probe != nil
+    if probe == nil:
+      flatObserverFailure(f)
+      return flatStop
+    if probe[].count < 0 or probe[].count > probe[].terminals.len:
+      flatObserverFailure(f)
+      return flatStop
     var index = 0
     while index < probe[].count and probe[].terminals[index] != terminal: inc index
-    assert index < probe[].count
+    if index >= probe[].count or uint64(terminal) >= uint64(f.handlers.len) or
+        f.handlers[int(terminal)] != flatProbeMixedLoop:
+      flatObserverFailure(f)
+      return flatStop
     result = flatBranch[171](f, terminal)
     if f.reason == oracle.StepError.None: inc probe[].visits[index]
 
@@ -4138,11 +4170,18 @@ when NativeReadCycleEnabled:
     ## Rank actual complete checked work across this callback-free segment, bounded by its public quota.
     var probe = default(FlatMixedLoopProbe)
     let source = f.mixedSource
+    if int(source.count) > source.candidates.len:
+      flatObserverFailure(f)
+      return
     for index in 0..<int(source.count):
       if (source.refused and (1'u8 shl index)) != 0: continue
       let token = source.candidates[index]
       let proof = buildFlatMixedLoop(f, token-1, source.epoch)
       if not proof.complete or not mixedLoopDisjoint(f.nativeSession, proof): continue
+      var repeated = false
+      for prior in 0..<probe.count:
+        if probe.terminals[prior] == proof.terminal: repeated = true
+      if repeated: continue
       let slot = probe.count
       probe.terminals[slot] = proof.terminal
       probe.tokens[slot] = token
@@ -4151,6 +4190,12 @@ when NativeReadCycleEnabled:
     if probe.count == 0:
       flatDispatchSegment(f, entry)
       return
+    for index in 0..<probe.count:
+      let terminal = probe.terminals[index]
+      if uint64(terminal) >= uint64(min(f.handlers.len, min(f.arguments.len, f.sites.len))) or
+          f.handlers[int(terminal)] != flatBranch[171]:
+        flatObserverFailure(f)
+        return
     f.mixedProbe = addr probe
     for index in 0..<probe.count: f.handlers[int(probe.terminals[index])] = flatProbeMixedLoop
     defer:
@@ -4331,6 +4376,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
           f.exit != oracle.StepExit.Host or not liveFlatFusionTraining(f)):
         # Failed, exhausted, completed or invalidated calls cannot retain unfinished profiling.
         f.fusionTraining = @[]
+  when NativeCheckedReadEnabled:
+    if f.readProbe.failed:
+      f.reason = oracle.StepError.BackendFailure
+      return
   f.hostReady = false
   f.hostSnapshot = default(Memory)
   f.remaining = limit
@@ -4381,6 +4430,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   if offset == flatStop:
     # Unpaid, missing and invalid entries retain their existing admission, pricing and refusal order.
     offset = flatResolve(f, pc)
+  if f.reason == oracle.StepError.BackendFailure: return
   if offset == flatStop:
     f.reason = if f.preparationFailure == FlatError.None: oracle.StepError.InvalidMachine else: oracle.StepError.InvalidPreparedProgram
     return
@@ -4428,6 +4478,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when NativeReadCycleEnabled:
     # Boundary classifiers require the original handler identity, including on exit edges.
     settleProtectedReadSegment(f)
+    if f.reason == oracle.StepError.BackendFailure: return
     if f.bitmapCandidate != 0 and settledNativeWork(f, limit) >= NativeInvocationFloor:
       let root = f.bitmapCandidate-1
       f.bitmapCandidate = 0
@@ -4928,13 +4979,25 @@ proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimi
   output = bytes
   MachineError.None
 
-proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
-  ## Bind a genuine host stop without publishing memory; the callback receives only copied CPU state.
-  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+proc tryObserveFlatHostScalars*(f: var FlatFrame, info: var MachineInfo): oracle.StepError =
+  ## Bind only a genuine source-matched host stop; refusal preserves both output and stopped observation.
+  if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host:
+    return oracle.StepError.InvalidHostSuspension
+  var fact = default(FlatFact)
+  if not tryReadFlatSite(f, f.stoppedAt, fact): return oracle.StepError.BackendFailure
+  if f.info.pc != CodeAddress(uint64(fact.pc)) or fact.opcode != 10:
+    return oracle.StepError.InvalidHostSuspension
+  info = f.info
   f.hostSnapshot = default(Memory)
   f.hostSnapshotPc = f.info.pc
   f.hostReady = true
-  f.info
+  oracle.StepError.None
+
+proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
+  ## Witness convenience; production host routing checks the typed scalar observation.
+  result = default(MachineInfo)
+  let checked = tryObserveFlatHostScalars(f, result)
+  assert checked == oracle.StepError.None
 
 func flatNodes*(f: FlatFrame): int =
   ## A copied observation reports stream size without exposing mutable cache arrays.
@@ -4982,12 +5045,28 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
   var retained = machine.takeValue(layout)
   buildFlatFrame(plan, retained, info, memory)
 
-proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
+func flatObserverBoundaryReady(f: FlatFrame): bool =
+  ## No temporary handler owner or stack-borrowed native descriptor may cross a host/cache handoff.
+  if f.prefixProbeOriginal != nil: return false
+  when NativeCheckedReadEnabled:
+    if f.readProbe.observing or f.readProbe.failed: return false
+  when NativeReadCycleEnabled:
+    if f.readProbe.protectedActive: return false
+    if f.mixedImage != nil or f.mixedProofs != nil or f.mixedMask != 0 or f.mixedProbe != nil or
+        f.fusionImage != nil or f.fusionContext != nil or f.fusionSlots != nil or
+        f.fusionBlocks != nil or f.fusionReceipts != nil: return false
+    when defined(pvmPaidMixedLoopWitness):
+      if f.mixedPair != nil: return false
+  true
+
+proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame): bool =
   ## Both callers fully validate a fresh same-plan frame before moving the code-only cache and policies.
   ## Short host-training windows move only source counters and their immutable plan/epoch identity.
+  if not flatObserverBoundaryReady(f):
+    flatObserverFailure(f)
+    return false
   when NativeCheckedReadEnabled:
     # The prior segment always restores its terminal handlers before any host transition.
-    assert not f.readProbe.observing
     replacement.readProbe = f.readProbe
     replacement.nativeRingInstalled = f.nativeRingInstalled
   replacement.preparationFailure = f.preparationFailure
@@ -5006,10 +5085,10 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.nativeEntry = f.nativeEntry
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
   when NativeReadCycleEnabled:
-    assert f.mixedImage == nil
     replacement.mixedSource = f.mixedSource
     replacement.fusionTraining = move(f.fusionTraining)
   f = move(replacement)
+  true
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
     info: MachineInfo): FlatError =
@@ -5017,7 +5096,7 @@ proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
   var prepared = prepareFlatFrame(f.plan, images, info)
   if prepared.error != FlatError.None: return prepared.error
   var replacement = takeValue(prepared)
-  flatCommitMemoryReplacement(f, replacement)
+  if not flatCommitMemoryReplacement(f, replacement): return FlatError.InvalidMemory
   FlatError.None
 
 proc flatReplaceMemoryOwner(f: var FlatFrame, memory: Memory,
@@ -5026,7 +5105,7 @@ proc flatReplaceMemoryOwner(f: var FlatFrame, memory: Memory,
   var prepared = prepareFlatMemoryFrame(f.plan, memory, info)
   if prepared.error != FlatError.None: return prepared.error
   var replacement = takeValue(prepared)
-  flatCommitMemoryReplacement(f, replacement)
+  if not flatCommitMemoryReplacement(f, replacement): return FlatError.InvalidMemory
   FlatError.None
 
 proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: MachineInfo) =
@@ -5054,7 +5133,9 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   let changed = replaceFlatMemoryChecked(f, images, info)
   if changed in {FlatError.ResidentAllocationRefused, FlatError.StreamAllocationRefused}:
     return oracle.StepError.ResidentAllocationRefused
-  if changed != FlatError.None: return oracle.StepError.InvalidHostResponse
+  if changed != FlatError.None:
+    if f.reason == oracle.StepError.BackendFailure: return oracle.StepError.BackendFailure
+    return oracle.StepError.InvalidHostResponse
   oracle.StepError.None
 
 proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
@@ -5196,6 +5277,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let pages = f.hostCopiedPages
   let replacementError = flatReplaceMemoryOwner(f, posterior, info)
   if replacementError != FlatError.None:
+    if f.reason == oracle.StepError.BackendFailure: return oracle.StepError.BackendFailure
     if replacementError == FlatError.ResidentAllocationRefused:
       return oracle.StepError.ResidentAllocationRefused
     return oracle.StepError.InvalidHostResponse
@@ -5248,6 +5330,10 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## no CPU, memory, callback or borrowed image. Repricing discards it with the executable cache.
   ## Omit node and preparation-work refusals from the saved cache so a fresh frame
   ## can use those entries. The active frame keeps its failure.
+  if f.reason == oracle.StepError.BackendFailure or not flatObserverBoundaryReady(f):
+    flatObserverFailure(f)
+    invalidateNativeStream(f.nativeSession)
+    return discardedFlatStream(f)
   if f.preparationFailure == FlatError.StreamAllocationRefused:
     # A partial catalogue or node sequence cannot be leased again. Invalidate
     # its source epoch before another invocation can install its native image.
@@ -5266,8 +5352,6 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     result.catalogue = move(f.plan)
     f.plan = original # The emptied frame cannot retain mutable metadata now leased to the stream.
   when NativeReadCycleEnabled:
-    assert f.mixedImage == nil and f.mixedProofs == nil and f.mixedMask == 0
-    when defined(pvmPaidMixedLoopWitness): assert f.mixedPair == nil
     result.bitmapCandidate = f.bitmapCandidate
     f.bitmapCandidate = 0
     result.mixedSource = f.mixedSource
@@ -5882,3 +5966,148 @@ when defined(pvmSharedAsyncWitness):
     # A normal plan cannot be used as a single-instruction stream, even with a genuine fact owner.
     runFlatSingle(fresh)
     fresh.reason == oracle.StepError.BackendFailure and fresh.info == replacement
+
+when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
+  proc probeFlatObserverRefusals*(source: Program): bool =
+    ## Exercise bounded temporary ledgers on genuine stopped frames; no synthetic native nomination is executed.
+    var page = PageImage(index: PageIndex(32), access: PageAccess.ReadWrite)
+    for at in 0..<4096: page.bytes[at] = byte((at*17+29) and 255)
+    let captured = captureMemory([page], PageLimit(1))
+    if captured.error != MachineError.None: return false
+    let memory = captured.value
+    var admitted = prepareFlatPlan(source, GasCycleLimit(10000), defaultFlatLimits())
+    if admitted.error != FlatError.None: return false
+    let plan = takeValue(admitted)
+    let initial = MachineInfo(gas: MachineGas(1000))
+    for scenario in 0..<18:
+      var prepared = prepareFlatMemoryFrame(plan, memory, initial)
+      if prepared.error != FlatError.None: return false
+      var frame = takeValue(prepared)
+      runFlat(frame, 32)
+      if frame.reason != oracle.StepError.None or frame.exit != oracle.StepExit.Host or
+          frame.handlers.len < 4: return false
+      let stopped = frame.info
+      let original = frame.handlers[0]
+      let nodes = frame.handlers.len
+      frame.readProbe.observing = true
+      frame.readProbe.segmentBudget = 32
+      frame.readProbe.count = 2
+      frame.readProbe.candidates[0] = ReadProbeCandidate(header: 0, terminal: 0)
+      frame.readProbe.candidates[1] = ReadProbeCandidate(header: 0, terminal: 1)
+      frame.handlers[0] = readProbeTerminal
+      frame.handlers[1] = readProbeTerminal
+      case scenario
+      of 0:
+        frame.readProbe.count = ReadProbeSlots+1
+        endReadProbeSegment(frame)
+      of 1:
+        # A bad final predecessor cannot restore the earlier valid observer first.
+        frame.handlers[1] = flatSingleEnd
+        endReadProbeSegment(frame)
+      of 2:
+        frame.readProbe.candidates[1].terminal = high(uint32)
+        endReadProbeSegment(frame)
+      of 3:
+        frame.readProbe.count = -1
+        endReadProbeSegment(frame)
+      of 4:
+        frame.readProbe.observing = false
+        if readProbeTerminal(frame, 0) != flatStop: return false
+      of 5:
+        frame.remaining = 33
+        if readProbeTerminal(frame, 0) != flatStop: return false
+      of 6:
+        if readProbeTerminal(frame, 3) != flatStop: return false
+      of 7:
+        when NativeReadCycleEnabled:
+          frame.mixedProbe = nil
+          if flatProbeMixedLoop(frame, 0) != flatStop: return false
+        else:
+          frame.readProbe.count = -1
+          endReadProbeSegment(frame)
+      of 8:
+        when NativeReadCycleEnabled:
+          var probe = default(FlatMixedLoopProbe)
+          probe.count = probe.terminals.len+1
+          frame.mixedProbe = addr probe
+          if flatProbeMixedLoop(frame, 0) != flatStop: return false
+          frame.mixedProbe = nil
+        else:
+          frame.readProbe.count = -1
+          endReadProbeSegment(frame)
+      of 9:
+        # Handback refuses before moving any arrays or preserving temporary authority in a stream.
+        let stream = takeFlatStream(frame)
+        if stream.handlers.len != 0 or frame.handlers.len != nodes: return false
+      of 10:
+        if replaceFlatMemoryChecked(frame, [page], initial) != FlatError.InvalidMemory or
+            frame.handlers.len != nodes or frame.sourceMemory != memory: return false
+      of 11:
+        flatDispatchSegment(frame, uint32(nodes))
+      of 12:
+        frame.arguments.setLen(2)
+        flatDispatchSegment(frame, 2)
+      of 13:
+        when NativeReadCycleEnabled:
+          # The caller's real second host block supplies distinct protected coordinates.
+          if flatResolve(frame, 8) == flatStop or frame.handlers.len < 8: return false
+          frame.readProbe.count = ReadProbeSlots
+          for index in 2..<ReadProbeSlots:
+            frame.readProbe.candidates[index] = ReadProbeCandidate(header: 0, terminal: uint32(index))
+            frame.handlers[index] = readProbeTerminal
+          frame.readProbe.protectedInstalled = true
+          frame.readProbe.protectedActive = true
+          frame.readProbe.candidates[ReadProbeSlots] = ReadProbeCandidate(header: 4, terminal: 7)
+          frame.handlers[4] = flatSingleEnd
+          settleProtectedReadSegment(frame)
+        else:
+          frame.readProbe.count = -1
+          endReadProbeSegment(frame)
+      of 14:
+        finishReadProbe(frame, true)
+      of 15:
+        when NativeReadCycleEnabled:
+          discoverProtectedRead(frame, 0, 0)
+        else:
+          frame.readProbe.count = -1
+          endReadProbeSegment(frame)
+      of 16:
+        when NativeReadCycleEnabled:
+          frame.mixedSource.count = high(uint8)
+          runFlatMixedProbeSegment(frame, 0)
+        else:
+          frame.readProbe.count = -1
+          endReadProbeSegment(frame)
+      else:
+        # A failed cold classifier remains local when resolution unwinds through a guest jump.
+        flatObserverFailure(frame)
+        if flatResolutionFailure(frame, 0) != flatStop: return false
+      if frame.reason != oracle.StepError.BackendFailure or frame.info != stopped or
+          frame.handlers[0] != readProbeTerminal or pageImage(memory, page.index).value != page:
+        return false
+      if scenario != 11 and scenario != 12:
+        # A failed observer cannot become executable when runFlat normally clears per-run errors.
+        runFlat(frame, 32)
+        if frame.reason != oracle.StepError.BackendFailure or frame.info != stopped: return false
+      frame.handlers[0] = original
+    # A valid bounded restoration and real scalar host observation retain their ordinary behavior.
+    var prepared = prepareFlatMemoryFrame(plan, memory, initial)
+    if prepared.error != FlatError.None: return false
+    var frame = takeValue(prepared)
+    runFlat(frame, 32)
+    let stopped = frame.info
+    var cpu = initial
+    if tryObserveFlatHostScalars(frame, cpu) != oracle.StepError.None or cpu != stopped or
+        not frame.hostReady: return false
+    frame.exit = oracle.StepExit.Continued
+    cpu = initial
+    if tryObserveFlatHostScalars(frame, cpu) != oracle.StepError.InvalidHostSuspension or
+        cpu != initial: return false
+    frame.readProbe.observing = true
+    frame.readProbe.count = 1
+    frame.readProbe.candidates[0] = ReadProbeCandidate(header: 0, terminal: 0, resolved: true)
+    frame.handlers[0] = readProbeTerminal
+    endReadProbeSegment(frame)
+    not frame.readProbe.observing and not frame.readProbe.failed and
+      frame.handlers[0] == flatCachedJump[1] and frame.info == stopped and
+      pageImage(memory, page.index).value == page

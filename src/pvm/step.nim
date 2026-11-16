@@ -967,7 +967,10 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
         const readCall = false
       if scalar or readCall:
         let call = frame.hostCall
-        let cpu = observeFlatHostScalars(frame)
+        var cpu = default(MachineInfo)
+        let observed = tryObserveFlatHostScalars(frame, cpu)
+        if observed != StepError.None:
+          return executionResult[Reason](StepResult(status: observed))
         var response = default(ScalarHostResponse)
         when Fallible:
           # The selected scalar signature owns no memory and preserves the caller's typed refusal.

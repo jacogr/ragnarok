@@ -2532,6 +2532,8 @@ proc runSharedAsync*() =
     assert probeRWViewRefusals(), "RW views must refuse invalid complete spans while preserving owner bytes and outputs"
     assert probeFlatRWViewRefusals(hostOwner()), "lost RW views must refuse descriptors, host reads and publication without changing owners"
     assert probeFlatRestoreRefusals(hostOwner()), "reset refusal must preserve all private bytes, stopped CPU and immutable sources"
+    when NativeCheckedReadEnabled:
+      assert probeFlatObserverRefusals(hostOwner()), "observer refusal must preserve prior handlers, CPU, source memory and discard unsafe cache authority"
     memoryPublicationRefusals()
     memoryPayloadRefusals()
     unregisteredInvocationLease()
