@@ -1340,6 +1340,41 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert close(runtime)
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
 
+  proc runAbandonedMixedOwner*() =
+    ## Dropping the final session cancels its exact live auxiliary borrow before releasing either credit.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread startup failed"
+    var executable = 0'u64
+    var writable = 0'u64
+    block:
+      # Only copied addresses survive the session; no raw executable view is used after final drop.
+      let renderer = newNativeSession(runtime)
+      readyMixedLoopTestRenderer(runtime, renderer)
+      let proof = mixedLoopTestProof(nativeEpoch(renderer))
+      assert beginNativeInvocation(renderer, NativeInvocationFloor)
+      assert offerNativeMixedLoop(renderer, proof)
+      assert finishNativeInvocation(renderer, NativeInvocationFloor)
+      waitNativeCompiler(runtime)
+      assert beginNativeInvocation(renderer, NativeInvocationFloor)
+      let borrowed = borrowNativeMixedLoop(renderer, proof)
+      let image = borrowed.image
+      assert image != nil and image[].ready
+      executable = nativeImageMappingAddress(image[])
+      writable = nativeImageWritableAddress(image[])
+      assert executable != 0 and writable != 0
+      assert runtimeInfo(runtime).active == 1 and runtimeInfo(runtime).registered == 2
+    assert nativeImageMappingUnmapped(executable) and nativeImageMappingUnmapped(writable)
+    assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+    assert close(runtime)
+    try:
+      assert start(runtime), "last owner cancellation permits clean runtime reuse"
+    except:
+      assert false, "native compiler thread restart failed"
+    assert close(runtime)
+
   proc runMixedCompilerFailure*() =
     ## Auxiliary claims use the same failure boundary without reviving or losing their primary's image.
     for point in [NativeCompilerPoint.None, NativeCompilerPoint.AfterClaim,

@@ -721,6 +721,58 @@ when defined(pvmSharedAsyncWitness):
     finishNativeInvocation(session, 0)
     assert runtime.close(), "unregistered lease: final joined close"
 
+  proc abandonedNativeOwners() =
+    ## Final-session cancellation releases its lease; final-runtime cancellation joins a gated mapped worker.
+    if not nativePlatformSupported(): return
+    block:
+      # Final session drop cancels its unregistered lease without scheduling observed work.
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      block:
+        let session = newNativeSession(runtime)
+        assert beginNativeInvocation(session, NativeInvocationFloor)
+        recordNativeWork(session, NativeInvocationFloor)
+        assert runtimeInfo(runtime).active == 1
+      assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+      assert runtimeInfo(runtime).submitted == 0, "abandoned work never queues a compiler request"
+      assert close(runtime)
+    block:
+      # The session retains the open anchor after the caller drops every runtime handle.
+      var session = default(NativeSession)
+      block:
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        session = newNativeSession(runtime)
+        assert beginNativeInvocation(session, NativeInvocationFloor)
+      recordNativeWork(session, 7)
+      assert observedNativeWork(session) == 7 and finishNativeInvocation(session, 7)
+      session = default(NativeSession)
+    var observation = default(NativeCompilerObservation)
+    block:
+      # The actual sole local image is gated before publication. Last-anchor cleanup must release it.
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      block:
+        let owner = loopOwner()
+        let source = input(owner, 2048)
+        let code = prepared(owner, runtime)
+        armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+        verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+        observation = waitNativeCompilerGate(runtime)
+        assert observation.hasImage and observation.mappingAddress != 0 and
+          observation.writableAddress != 0
+      assert not nativeImageMappingUnmapped(observation.mappingAddress)
+      assert not nativeImageMappingUnmapped(observation.writableAddress)
+    assert nativeImageMappingUnmapped(observation.mappingAddress)
+    assert nativeImageMappingUnmapped(observation.writableAddress)
+    block:
+      # Moving the last runtime handle cannot bypass final-anchor join or double-destroy its locks.
+      var runtime = newNativeRuntime()
+      assert launch(runtime)
+      let transferred = move(runtime)
+      assert runtime.close()
+      discard transferred
+
   proc deferredCreditProgress() =
     ## Four retained short-call owners cannot starve a fifth real long source or aggregate tiny proofs.
     if not nativePlatformSupported(): return
@@ -2198,6 +2250,8 @@ proc runSharedAsync*() =
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
     unregisteredInvocationLease()
+    diagnosticPhase("abandonedNativeOwners")
+    abandonedNativeOwners()
     deferredCreditProgress()
     exhaustedCreditNamespace()
     asyncLifecycle()
@@ -2242,6 +2296,7 @@ proc runSharedAsync*() =
       runDeferredReadContinuation()
       runMixedLoopMailbox()
       runMixedCompilerFailure()
+      runAbandonedMixedOwner()
       diagnosticPhase("staticFusion")
       runStaticFusion()
     when NativeCheckedReadEnabled:
