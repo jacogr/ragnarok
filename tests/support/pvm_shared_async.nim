@@ -690,6 +690,104 @@ when defined(pvmSharedAsyncWitness):
         for offset in 0..<8: expected.bytes[511+offset] = byte(0xfedcba9876543210'u64 shr (8*offset))
       assert pageImage(memory, images[index].index).value == expected
 
+  proc putPayloadWord(images: var array[2, PageImage], offset: int, value: uint64) =
+    ## The test's independent literal byte equation covers chunk and page crossings.
+    assert offset >= 0 and offset <= 8192-8
+    for index in 0..<8:
+      let position = offset+index
+      images[position div 4096].bytes[position mod 4096] = byte(value shr (8*index))
+
+  proc memoryPayloadRefusals() =
+    ## Refused payload/COW work preserves every predecessor byte, previous writer writes and shared aliases.
+    var images = default(array[2, PageImage])
+    for index in 0..<images.len:
+      images[index].index = PageIndex(uint32(32+index))
+      images[index].access = PageAccess.ReadWrite
+      for offset in 0..<4096: images[index].bytes[offset] = byte((index*37+offset*17+29) and 255)
+    let source = captureMemory(images, PageLimit(2)).value
+    refuseMemoryPayloadAllocationForWitness(1)
+    let refusedWriter = newScalarMemoryWriter(source)
+    assert finishMemoryPayloadRefusalForWitness() and refusedWriter.error ==
+        MachineError.LimitExceeded
+    assert probePrivatePageWriteRefusals()
+    var replacement = images[0]
+    for chunk in 0..<8: replacement.bytes[chunk*512] = replacement.bytes[chunk*512] xor 255
+    for mode in 0..2:
+      var completed = false
+      var refusals = 0
+      for allocation in 1..16:
+        # Actual prior private allocations are released when a later payload/header refuses.
+        refuseMemoryPayloadAllocationForWitness(allocation)
+        let changed = case mode
+          of 0: captureMemory(images, PageLimit(2))
+          of 1: store(source, MemoryAddress(32*4096+4095), AccessWidth(8),
+              RegisterValue(0xfedcba9876543210'u64))
+          else: withReplacedPages(source, [replacement])
+        let refused = finishMemoryPayloadRefusalForWitness()
+        verifyPublicationPages(source, images)
+        if refused:
+          inc refusals
+          assert changed.error == MachineError.LimitExceeded
+        else:
+          assert changed.error == MachineError.None and refusals > 0
+          var expected = images
+          if mode == 1: putPayloadWord(expected, 4095, 0xfedcba9876543210'u64)
+          elif mode == 2: expected[0] = replacement
+          verifyPublicationPages(changed.value, expected)
+          completed = true
+          break
+      assert completed
+    for mode in 0..3:
+      var completed = false
+      var refusals = 0
+      for allocation in 1..16:
+        # Fresh activation, primary-window, spare-window and two-page misses use the real public writer.
+        let writer = newScalarMemoryWriter(source).value
+        let alias = writer
+        var expected = images
+        if mode in [1, 2]:
+          assert store(writer, MemoryAddress(32*4096+10), AccessWidth(8), RegisterValue(7)).error ==
+              MachineError.None
+          putPayloadWord(expected, 10, 7)
+        if mode == 2:
+          assert store(writer, MemoryAddress(33*4096+10), AccessWidth(8), RegisterValue(9)).error ==
+              MachineError.None
+          putPayloadWord(expected, 4106, 9)
+        let target = if mode == 0: 511 elif mode == 3: 4095 else: 1023
+        var before = 0'u64
+        for index in 0..<8:
+          let position = target+index
+          before = before or (uint64(expected[position div 4096].bytes[position mod 4096]) shl (8*index))
+        refuseMemoryPayloadAllocationForWitness(allocation)
+        let changed = store(alias, MemoryAddress(uint64(32*4096+target)), AccessWidth(8),
+            RegisterValue(0xfedcba9876543210'u64))
+        let refused = finishMemoryPayloadRefusalForWitness()
+        verifyPublicationPages(source, images)
+        if refused:
+          # Observe the failed target and older successful writes before any recovery can hide partial bytes.
+          inc refusals
+          assert changed.error == MachineError.LimitExceeded
+          assert uint64(load(writer, MemoryAddress(uint64(32*4096+target)), AccessWidth(
+              8)).value) == before
+          if mode in [1, 2]: assert uint64(load(writer, MemoryAddress(32*4096+10), AccessWidth(
+              8)).value) == 7
+          if mode == 2: assert uint64(load(writer, MemoryAddress(33*4096+10), AccessWidth(
+              8)).value) == 9
+          assert store(alias, MemoryAddress(uint64(32*4096+target)), AccessWidth(8),
+              RegisterValue(0xfedcba9876543210'u64)).error == MachineError.None
+        else:
+          assert changed.error == MachineError.None and refusals > 0
+          completed = true
+        putPayloadWord(expected, target, 0xfedcba9876543210'u64)
+        let frozen = snapshotMemory(writer).value
+        verifyPublicationPages(frozen, expected)
+        assert store(alias, MemoryAddress(32*4096+10), AccessWidth(8), RegisterValue(1)).error ==
+            MachineError.None
+        verifyPublicationPages(frozen, expected)
+        verifyPublicationPages(source, images)
+        if completed: break
+      assert completed
+
   proc memoryPublicationRefusals() =
     ## Refuse every directory/root allocation in real immutable updates and a live aliased writer epoch.
     var images = newSeq[PageImage](65)
@@ -2428,6 +2526,7 @@ proc runSharedAsync*() =
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
     memoryPublicationRefusals()
+    memoryPayloadRefusals()
     unregisteredInvocationLease()
     diagnosticPhase("metadataHostFailure")
     metadataHostFailure()

@@ -171,6 +171,28 @@ template `[]`(pages: PageDirectory, index: int): untyped =
 when defined(pvmSharedAsyncWitness):
   var publicationCountdown {.threadvar.}: int
   var publicationRefused {.threadvar.}: bool
+  var payloadCountdown {.threadvar.}: int
+  var payloadRefused {.threadvar.}: bool
+
+  proc refuseMemoryPayloadAllocationForWitness*(after: int) =
+    ## Refuse one real payload/writer allocation after earlier private construction succeeds.
+    assert after > 0
+    payloadCountdown = after
+    payloadRefused = false
+
+  proc finishMemoryPayloadRefusalForWitness*(): bool =
+    ## Reset an unconsumed gate before recovery and report whether the allocation was reached.
+    result = payloadRefused
+    payloadCountdown = 0
+    payloadRefused = false
+
+  proc takeMemoryPayloadRefusal(): bool =
+    ## Fault only the selected private allocation; recovery uses the actual allocator.
+    if payloadCountdown == 0: return false
+    dec payloadCountdown
+    if payloadCountdown != 0: return false
+    payloadRefused = true
+    true
 
   proc refuseMemoryPublicationAllocationForWitness*(after: int) =
     ## Refuse one actual directory/root allocation after earlier real allocations have succeeded.
@@ -195,6 +217,11 @@ when defined(pvmSharedAsyncWitness):
 template refusedPublicationAllocation(): bool =
   ## Production construction has no test gate or additional allocation policy.
   when defined(pvmSharedAsyncWitness): takeMemoryPublicationRefusal()
+  else: false
+
+template refusedPayloadAllocation(): bool =
+  ## Production page construction retains its existing allocator and policy.
+  when defined(pvmSharedAsyncWitness): takeMemoryPayloadRefusal()
   else: false
 
 proc pageDirectory(pages: var seq[PageData], directory: var PageDirectory): MachineError =
@@ -309,32 +336,43 @@ func borrowPageChunk(page: PageData, slot: int, within = 0): ptr byte
   # The checked slot/within prove this real-array index is at most3583 before taking its address.
   unsafeAddr backing.bytes[slot*512+within]
 
-proc copiedChunk(input: openArray[byte], first: int): PageChunk {.requires:
+proc copiedChunk(input: openArray[byte], first: int): nil PageChunk {.requires:
     first >= 0 and first <= input.len and 512 <= input.len-first.} =
   ## Capture one complete borrowed span; no caller pointer survives the initialized owner.
-  result = PageChunk(bytes: default(array[512, byte]))
-  copyMem(addr result.bytes[0], unsafeAddr input[first], 512)
+  if refusedPayloadAllocation(): return nil
+  let chunk: nil PageChunk = PageChunk(bytes: default(array[512, byte]))
+  if chunk == nil: return nil
+  copyMem(addr chunk.bytes[0], unsafeAddr input[first], 512)
+  chunk
 
-proc fullPage(index: PageIndex, access: PageAccess, input: openArray[byte]): PageData
+proc fullPage(index: PageIndex, access: PageAccess, input: openArray[byte]): nil PageData
     {.requires: input.len == 4096.} =
   ## Copy a complete unknown page into a seven-span backing and a final chunk.
   ## Optional overrides keep later writes at 512-byte copy granularity. A backing
   ## remains alive until every covered span has its own complete override.
-  let backing = PageBacking(bytes: default(array[3584, byte]))
+  if refusedPayloadAllocation(): return nil
+  let backing: nil PageBacking = PageBacking(bytes: default(array[3584, byte]))
+  if backing == nil: return nil
   copyMem(addr backing.bytes[0], unsafeAddr input[0], 3584)
   let tail = copiedChunk(input, 3584)
-  PageData(index: index, zeroChunks: 0, access: access, backing: backing,
+  if tail == nil: return nil
+  if refusedPayloadAllocation(): return nil
+  let page: nil PageData = PageData(index: index, zeroChunks: 0, access: access, backing: backing,
     chunks: [nil, nil, nil, nil, nil, nil, nil, tail])
+  page
 
-proc pageFromImage(image: PageImage): PageData =
+proc pageFromImage(image: PageImage): nil PageData =
   ## Caller-owned full images remain unknown even if all their copied bytes happen to be zero.
   fullPage(image.index, image.access, image.bytes)
 
-proc copiedPageChunk(page: PageData, slot: int): PageChunk {.requires:
+proc copiedPageChunk(page: PageData, slot: int): nil PageChunk {.requires:
     slot >= 0 and slot < 8.} =
   ## Allocate before borrowing, then copy exactly one effective span; never return an owning array temporary.
-  result = PageChunk(bytes: default(array[512, byte]))
-  copyMem(addr result.bytes[0], borrowPageChunk(page, slot), 512)
+  if refusedPayloadAllocation(): return nil
+  let chunk: nil PageChunk = PageChunk(bytes: default(array[512, byte]))
+  if chunk == nil: return nil
+  copyMem(addr chunk.bytes[0], borrowPageChunk(page, slot), 512)
+  chunk
 
 proc dropCoveredBacking(page: PageData) =
   ## Only complete override coverage releases the base; nullable owners never certify writer privacy.
@@ -344,19 +382,23 @@ proc dropCoveredBacking(page: PageData) =
     if page.chunks[slot] == nil: return
   page.backing = nil
 
-proc pageFromReplacement(previous: PageData, image: PageImage): PageData =
+proc pageFromReplacement(previous: PageData, image: PageImage): nil PageData =
   ## Preserve a fresh page identity and unknown provenance, sharing every unchanged effective span.
   var chunks = default(array[8, nil PageChunk])
   for slot in 0..<8:
     # The retained previous page owns this immediate borrow; allocation follows comparison.
     if cmpMem(borrowPageChunk(previous, slot), unsafeAddr image.bytes[slot*512], 512) != 0:
       chunks[slot] = copiedChunk(image.bytes, slot*512)
+      if chunks[slot] == nil: return nil
     else:
       # Retain unchanged overrides only; nil continues to select the same immutable backing.
       chunks[slot] = previous.chunks[slot]
-  result = PageData(index: image.index, zeroChunks: 0, access: image.access,
+  if refusedPayloadAllocation(): return nil
+  let page: nil PageData = PageData(index: image.index, zeroChunks: 0, access: image.access,
     backing: previous.backing, chunks: move(chunks))
-  dropCoveredBacking(result)
+  if page == nil: return nil
+  dropCoveredBacking(page)
+  page
 
 proc initializationPage(index: PageIndex, access: PageAccess, input: openArray[byte],
     offset, count: int, zero: var nil PageChunk): nil PageData =
@@ -566,62 +608,72 @@ proc imageFromPage(page: PageData): PageImage =
     # Resolve each effective span once and copy512 bytes into the fresh independent image.
     copyMem(addr result.bytes[slot*512], borrowPageChunk(page, slot), 512)
 
-proc pageWithAccess(page: PageData, access: PageAccess): PageData =
-  ## Permission-only successors share base/override owners without changing predecessor access or bytes.
-  PageData(index: page.index, zeroChunks: page.zeroChunks, access: access,
+proc pageWithAccess(page: PageData, access: PageAccess): nil PageData =
+  ## Permission-only successors share immutable payloads; refusal publishes no replacement header.
+  if refusedPayloadAllocation(): return nil
+  let changed: nil PageData = PageData(index: page.index, zeroChunks: page.zeroChunks,
+    access: access,
     backing: page.backing, chunks: page.chunks)
+  changed
 
-proc writablePageClone(page: PageData, offset, count: int): PageData =
-  ## Callers preflight a nonempty interval within this page; clone its header and only touched chunks before mutation.
-  result = pageWithAccess(page, page.access)
-  result.zeroChunks = 0 # Private mutation clears all inherited zero claims before the first byte store.
+proc writablePageClone(page: PageData, offset, count: int): nil PageData =
+  ## Clone a complete admitted span before publication; a refused header/chunk drops only private work.
+  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset: return nil
+  let changed = pageWithAccess(page, page.access)
+  if changed == nil: return nil
+  changed.zeroChunks = 0
   let first = offset div 512
   let last = (offset+count-1) div 512
   for slot in first..last:
-    result.chunks[slot] = copiedPageChunk(page, slot) # Untouched effective spans remain shared.
-  dropCoveredBacking(result)
+    # No missing override can enter the returned writable successor.
+    let chunk = copiedPageChunk(page, slot)
+    if chunk == nil: return nil
+    changed.chunks[slot] = chunk
+  dropCoveredBacking(changed)
+  changed
 
-proc setPageByte(page: PageData, offset: int, value: byte) {.inline.} =
-  ## Only private writable clones reach this helper, and their touched chunk was copied before the first write.
-  let target {.cursor.} = page.chunks[offset div 512]
-  assert target != nil # Complete clone/epoch preflight, not this owner test, grants write authority.
-  target.bytes[offset mod 512] = value
+func privatePageSpan(page: PageData, offset, count: int): bool {.inline.} =
+  ## Presence is necessary after COW privacy admission; prove the complete target before any byte changes.
+  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset: return false
+  for slot in offset div 512..(offset+count-1) div 512:
+    if page.chunks[slot] == nil: return false
+  true
 
-proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
-    requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
-        4096-offset.} =
-  ## Callers exclusively own every touched chunk after clone/prepare; no immutable snapshot storage is modified.
-  if count == 1:
-    setPageByte(page, offset, byte(value and 255))
-    return
+proc setPageScalar(page: PageData, offset, count: int, value: uint64): bool {.inline.} =
+  ## Callers establish exclusive ownership. Refuse invalid extents/missing targets before the first write.
+  if offset < 0 or offset >= 4096 or count < 1 or count > 8 or count > 4096-offset: return false
   let chunk = offset div 512
   let within = offset mod 512
+  let target {.cursor.} = page.chunks[chunk]
+  if target == nil: return false
+  if count == 1:
+    target.bytes[within] = byte(value and 255)
+    return true
   if within <= 512-count:
-    let target {.cursor.} = page.chunks[chunk]
-    assert target != nil # The caller proved exclusive ownership before entering this helper.
-    # Copy only a complete admitted span from a disjoint initialized stack word into the private chunk.
+    # A complete same-chunk target permits the original unaligned-safe little-endian copy.
     var endian = 1'u16
     var tag = default(array[2, byte])
     copyMem(addr tag[0], addr endian, 2)
     if tag[0] == 1:
       var word = value
       case count
-      of 2:
-        # Fixed admitted widths permit native unaligned-safe stores after private-chunk preparation.
-        copyMem(addr target.bytes[within], addr word, 2)
-      of 4:
-        # Only the low four little-endian bytes replace this proven private extent.
-        copyMem(addr target.bytes[within], addr word, 4)
-      of 8:
-        # The full register replaces exactly the admitted eight-byte span.
-        copyMem(addr target.bytes[within], addr word, 8)
-      else:
-        # Cross-page fragments retain their original exact-width copy.
-        copyMem(addr target.bytes[within], addr word, count)
-      return
-  for index in 0..<count:
-    # Big-endian and chunk-crossing writes retain byte-wise little-endian semantics.
-    setPageByte(page, offset+index, byte((value shr (8*index)) and 255))
+      of 2: copyMem(addr target.bytes[within], addr word, 2)
+      of 4: copyMem(addr target.bytes[within], addr word, 4)
+      of 8: copyMem(addr target.bytes[within], addr word, 8)
+      else: copyMem(addr target.bytes[within], addr word, count)
+    else:
+      # Portable hosts use the same proven target for every low-order byte.
+      for index in 0..<count: target.bytes[within+index] = byte((value shr (8*index)) and 255)
+    return true
+  let tail {.cursor.} = page.chunks[chunk+1]
+  if tail == nil: return false
+  let firstCount = 512-within
+  for index in 0..<firstCount:
+    # Both retained targets are complete before either half of a chunk-crossing scalar changes.
+    target.bytes[within+index] = byte((value shr (8*index)) and 255)
+  for index in firstCount..<count:
+    tail.bytes[index-firstCount] = byte((value shr (8*index)) and 255)
+  true
 
 proc capturePageOwners(pages: var seq[PageData], limit: PageLimit): MachineResult[Memory] =
   ## Allocate the final root before consuming any page; failed publication preserves a live writer epoch.
@@ -659,7 +711,11 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
   if pages.len > 0 and owned.rawData == nil:
     return MachineResult[Memory](status: MachineError.LimitExceeded)
   # Final private backing/tail owners copy every byte; no caller-owned pointer survives this call.
-  for i in 0..<pages.len: owned.add(pageFromImage(pages[i]))
+  for i in 0..<pages.len:
+    # A refused payload cannot become a missing page in an otherwise complete directory.
+    let page = pageFromImage(pages[i])
+    if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+    owned.add(page)
   capturePageOwners(owned, limit)
 
 func lowerBound(data: MemoryData, index: uint32): int =
@@ -873,7 +929,9 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   if pages.rawData == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   # Reuse immutable page references outside the one replacement/insertion slot.
   for i in 0..<at: pages.add(data.pages[i])
-  pages.add(pageFromImage(page))
+  let captured = pageFromImage(page)
+  if captured == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  pages.add(captured)
   # Insertion shifts the suffix; replacement leaves its positions unchanged.
   for i in at + int(replacing)..<data.pages.len:
     pages.add(data.pages[i])
@@ -920,7 +978,9 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     else:
       while uint32(data.pages[cursor].index) < uint32(replacements[index].index): inc cursor
     slots.add(cursor)
-    changed.add(pageFromReplacement(data.pages[cursor], replacements[index]))
+    let replacement = pageFromReplacement(data.pages[cursor], replacements[index])
+    if replacement == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+    changed.add(replacement)
     inc cursor
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
@@ -1078,7 +1138,10 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
       if data.pages[at].access == PageAccess.ReadWrite:
         pages.add(data.pages[at]) # Already-writable page storage stays shared and immutable.
       else:
-        pages.add(pageWithAccess(data.pages[at], PageAccess.ReadWrite)) # Retain all immutable chunks when changing only access.
+        # Retain immutable chunks only after the replacement permission header exists.
+        let page = pageWithAccess(data.pages[at], PageAccess.ReadWrite)
+        if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+        pages.add(page)
       inc at
     else:
       # An absent page has implicit zero storage; materialization must preserve those bytes.
@@ -1124,7 +1187,10 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
     var at = start
     while ordinal < uint32(past):
       if at < stop and uint32(data.pages[at].index) == ordinal and content == PageContent.Preserved:
-        pages.add(pageWithAccess(data.pages[at], access)) # Retain inaccessible/read-only bytes without copying payloads.
+        # Permission changes preserve retained bytes and refuse an absent header.
+        let page = pageWithAccess(data.pages[at], access)
+        if page == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+        pages.add(page)
       else:
         # New headers share only known immutable zero bytes, never an old nonzero payload.
         let page = zeroPage(PageIndex(ordinal), access, zero)
@@ -1256,18 +1322,28 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
   let span = checked.value
+  let firstPage = writablePageClone(data.pages[span.first], span.offset, span.firstCount)
+  if firstPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
   var slots = @[span.first]
-  var changed = @[writablePageClone(data.pages[span.first], span.offset, span.firstCount)]
+  var changed = newSeqOfCap[PageData](2)
+  if changed.rawData == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
+  changed.add(firstPage)
   if slots.len != 1 or changed.len != 1: return MachineResult[Memory](
       status: MachineError.LimitExceeded)
-  setPageScalar(changed[0], span.offset, span.firstCount, uint64(value))
   if span.firstCount < span.count:
-    # Both permissions were validated before either private write; a crossing clones its second page once.
+    # Complete both private successors before writing either half of a page-crossing scalar.
+    let lastPage = writablePageClone(data.pages[span.last], 0, span.count-span.firstCount)
+    if lastPage == nil: return MachineResult[Memory](status: MachineError.LimitExceeded)
     slots.add(span.last)
-    changed.add(writablePageClone(data.pages[span.last], 0, span.count-span.firstCount))
+    changed.add(lastPage)
     if slots.len != 2 or changed.len != 2: return MachineResult[Memory](
         status: MachineError.LimitExceeded)
-    setPageScalar(changed[1], 0, span.count-span.firstCount, uint64(value) shr (8*span.firstCount))
+  if not setPageScalar(firstPage, span.offset, span.firstCount, uint64(value)):
+    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if span.firstCount < span.count:
+    if not setPageScalar(changed[1], 0, span.count-span.firstCount, uint64(value) shr (
+        8*span.firstCount)):
+      return MachineResult[Memory](status: MachineError.InvalidOwner)
   var directory = default(PageDirectory)
   let replaced = replacedDirectory(data.pages, slots, changed, directory)
   if replaced != MachineError.None: return MachineResult[Memory](status: replaced)
@@ -1332,10 +1408,11 @@ proc copyPageOut(page: PageData, offset: int, output: var openArray[byte], first
     copyMem(addr output[first+copied], source, batch)
     copied += batch
 
-proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, count: int)
+proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, count: int): bool
     {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
       first >= 0 and first < input.len and count <= input.len-first.} =
   ## The caller cloned every touched chunk; borrowed public input cannot alias private snapshot storage.
+  if not privatePageSpan(page, offset, count): return false
   var copied = 0
   while copied < count:
     # Disjoint raw byte copies have no endian conversion and never cross an allocation boundary.
@@ -1343,9 +1420,38 @@ proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, coun
     let within = position mod 512
     let batch = min(count-copied, 512-within)
     let target {.cursor.} = page.chunks[position div 512]
-    assert target != nil # Every target span was cloned before the host operation's first write.
+    if target == nil: return false # The complete stable private span was proved before the first copy.
     copyMem(addr target.bytes[within], unsafeAddr input[first+copied], batch)
     copied += batch
+
+  true
+
+when defined(pvmSharedAsyncWitness):
+  proc probePrivatePageWriteRefusals*(): bool =
+    ## Missing second targets refuse the entire scalar/copy, including its otherwise valid first chunk.
+    var image = PageImage(index: PageIndex(32), access: PageAccess.ReadWrite)
+    for index in 0..<4096: image.bytes[index] = byte((index*17+29) and 255)
+    let source = pageFromImage(image)
+    if source == nil: return false
+    let changed = writablePageClone(source, 511, 8)
+    if changed == nil: return false
+    changed.chunks[1] = nil
+    if setPageScalar(changed, 511, 8, 0xfedcba9876543210'u64): return false
+    let bytes = [1'u8, 2, 3, 4, 5, 6, 7, 8]
+    if copyPageIn(changed, 511, bytes, 0, bytes.len): return false
+    if imageFromPage(changed) != image or imageFromPage(source) != image: return false
+    for offset in [-1, 4096]:
+      if setPageScalar(changed, offset, 1, 1): return false
+    for count in [0, 9]:
+      if setPageScalar(changed, 0, count, 1): return false
+    let tail = writablePageClone(source, 3583, 2)
+    if tail == nil: return false
+    let first {.cursor.} = tail.chunks[6]
+    if first == nil: return false
+    let saved = first.bytes[511]
+    tail.chunks[7] = nil
+    if setPageScalar(tail, 3583, 2, 0xabcd) or first.bytes[511] != saved: return false
+    imageFromPage(source) == image
 
 proc copyReadableRange(data: MemoryData, address: MemoryAddress, output: var openArray[byte]) =
   ## Copy a preflighted interval of exactly output.len bytes from the immutable owner.
@@ -1441,7 +1547,8 @@ proc writeCheckedRange[FromMemory: static[bool]](data: MemoryData,
           sourceOffset = 0
           inc sourceSlot
     else:
-      copyPageIn(page, offset, bytes, copied, count)
+      if not copyPageIn(page, offset, bytes, copied, count):
+        return MachineResult[Memory](status: MachineError.InvalidOwner)
     slots.add(at)
     changed.add(page)
     copied += count
@@ -1490,30 +1597,57 @@ proc copyMemoryBytes*(source: Memory, sourceAddress: MemoryAddress, destination:
       sourceAddress)
 
 proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
-  ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
+  ## Retain a genuine base; a refused writer identity is a local resource error, never a success with no owner.
   if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
-  MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
-    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1],
-        pageSlots: default(array[64, uint32]), writePrivate: 0, spareWritePrivate: 0))
+  if refusedPayloadAllocation(): return MachineResult[ScalarMemoryWriter](
+      status: MachineError.LimitExceeded)
+  let writer: nil ScalarMemoryWriter = ScalarMemoryWriter(base: memory, pages: @[], dirty: @[],
+    active: false, recent: [-1, -1], pageSlots: default(array[64, uint32]), writePrivate: 0,
+    spareWritePrivate: 0)
+  if writer == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.LimitExceeded)
+  MachineResult[ScalarMemoryWriter](status: MachineError.None, completed: writer)
 
-proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) {.noinline.} =
-  ## Keep allocator/TLS work on the first-write path; callers prove this chunk is not yet private.
-  writer.readPage = nil # A prior readable header may be the immutable page being replaced.
+proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int,
+    mask: byte): MachineError {.noinline.} =
+  ## Stage the complete header/chunk before replacing either owner or its privacy bit.
+  ## Earlier private bytes remain usable when any allocation refuses; no partial chunk gains write authority.
+  let previous {.cursor.} = writer.pages[slot]
+  var changed: nil PageData = nil
   if writer.dirty[slot] == 0:
-    writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[slot].access)
-    writer.pages[slot].zeroChunks = 0 # Every writable cached header starts without inherited zero claims.
-  writer.pages[slot].chunks[chunk] = copiedPageChunk(writer.pages[slot], chunk)
-  dropCoveredBacking(writer.pages[slot])
+    changed = pageWithAccess(previous, previous.access)
+    if changed == nil: return MachineError.LimitExceeded
+    changed.zeroChunks = 0
+  else:
+    # A current-epoch private header is stable through every cached window.
+    changed = previous
+  let payload = copiedPageChunk(previous, chunk)
+  if payload == nil: return MachineError.LimitExceeded
+  if changed == nil: return MachineError.InvalidOwner
+  writer.readPage = nil
+  changed.chunks[chunk] = payload
+  dropCoveredBacking(changed)
+  if writer.dirty[slot] == 0: writer.pages[slot] = changed
   writer.dirty[slot] = writer.dirty[slot] or mask
+  MachineError.None
 
-proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =
-  ## Already-private chunks need only a bounded dirty-bit check; clone before the first byte mutation.
+proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int): MachineError =
+  ## Admit the complete private target before writing; refused preparation may only retain byte-identical COW work.
+  if not writer.active or writer.pages.len != writer.dirty.len or slot < 0 or slot >=
+      writer.pages.len:
+    return MachineError.InvalidOwner
+  if offset < 0 or offset >= 4096 or count <= 0 or count > 4096-offset:
+    return MachineError.InvalidRange
   let first = offset div 512
   let last = (offset+count-1) div 512
   for chunk in first..last:
     let mask = 1'u8 shl chunk
     if (writer.dirty[slot] and mask) == 0:
-      cloneWriterChunk(writer, slot, chunk, mask) # No immutable header/chunk is ever changed in place.
+      let cloned = cloneWriterChunk(writer, slot, chunk, mask)
+      if cloned != MachineError.None: return cloned
+    elif writer.pages[slot].chunks[chunk] == nil:
+      # A privacy bit cannot authorize a missing payload.
+      return MachineError.InvalidOwner
+  MachineError.None
 
 func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
     count: int): uint64 {.inline.} =
@@ -1596,17 +1730,30 @@ proc storeWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: Me
       addr writer.pageSlots)
   if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
   if not writer.active:
-    # Page count and vector extent already belong to the admitted base; no write can insert pages or change permissions.
-    writer.pages = newSeqOfCap[PageData](source.pages.len)
-    writer.dirty = newSeq[byte](source.pages.len)
-    for index in 0..<source.pages.len: writer.pages.add(source.pages[
-        index]) # Retain immutable source pages through checked indexed reads.
+    # Construct both complete vectors privately; refusal cannot publish an active truncated epoch.
+    if refusedPayloadAllocation(): return MachineResult[bool](status: MachineError.LimitExceeded)
+    var pages = newSeqOfCap[PageData](source.pages.len)
+    if source.pages.len > 0 and pages.rawData == nil: return MachineResult[bool](
+        status: MachineError.LimitExceeded)
+    if refusedPayloadAllocation(): return MachineResult[bool](status: MachineError.LimitExceeded)
+    var dirty = newSeq[byte](source.pages.len)
+    if dirty.len != source.pages.len: return MachineResult[bool](status: MachineError.LimitExceeded)
+    for index in 0..<source.pages.len: pages.add(source.pages[index])
+    writer.pages = move(pages)
+    writer.dirty = move(dirty)
     writer.active = true
   let span = checked.value
   rememberScalarSpan(writer, span)
-  prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
+  let firstPrepared = prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
+  if firstPrepared != MachineError.None: return MachineResult[bool](status: firstPrepared)
   if span.firstCount < span.count:
-    prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
+    # Both pages complete COW admission before either page receives new bytes.
+    let lastPrepared = prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
+    if lastPrepared != MachineError.None: return MachineResult[bool](status: lastPrepared)
+    if not privatePageSpan(writer.pages[span.last], 0, span.count-span.firstCount):
+      return MachineResult[bool](status: MachineError.InvalidOwner)
+  if not privatePageSpan(writer.pages[span.first], span.offset, span.firstCount):
+    return MachineResult[bool](status: MachineError.InvalidOwner)
   if span.first == span.last:
     # First-write preparation established the private header before retaining it for later accesses.
     writer.spareWritePrivate = writer.writePrivate
@@ -1617,11 +1764,13 @@ proc storeWriterMiss(writer: ScalarMemoryWriter, source: MemoryData, address: Me
     writer.writeSlot = span.first
     writer.writePage = writer.pages[span.first]
     writer.writePrivate = writer.dirty[span.first]
-  setPageScalar(writer.pages[span.first], span.offset, span.firstCount, uint64(value))
+  if not setPageScalar(writer.pages[span.first], span.offset, span.firstCount, uint64(value)):
+    return MachineResult[bool](status: MachineError.InvalidOwner)
   if span.firstCount < span.count:
     # Both private page spans were prepared before mutation; source/snapshot aliases remain immutable.
-    setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
-        8*span.firstCount))
+    if not setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
+        8*span.firstCount)):
+      return MachineResult[bool](status: MachineError.InvalidOwner)
   MachineResult[bool](status: MachineError.None, completed: true)
 
 func privateMaskCovers(mask: byte, offset, count: int): bool {.inline,
@@ -1648,11 +1797,14 @@ proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, add
     # Only a mask bound to this exact retained header/epoch can prove every touched chunk already private.
     if count == 1:
       # Byte stores retain their cheaper original dirty-vector check; any newly private bits remain safe underclaims here.
-      prepareWriterSpan(writer, writer.writeSlot, within, count)
+      let prepared = prepareWriterSpan(writer, writer.writeSlot, within, count)
+      if prepared != MachineError.None: return MachineResult[bool](status: prepared)
     elif not privateMaskCovers(writer.writePrivate, within, count):
-      prepareWriterSpan(writer, writer.writeSlot, within, count)
+      let prepared = prepareWriterSpan(writer, writer.writeSlot, within, count)
+      if prepared != MachineError.None: return MachineResult[bool](status: prepared)
       writer.writePrivate = writer.dirty[writer.writeSlot]
-    setPageScalar(writable, within, count, uint64(value))
+    if not setPageScalar(writable, within, count, uint64(value)):
+      return MachineResult[bool](status: MachineError.InvalidOwner)
     return MachineResult[bool](status: MachineError.None, completed: true)
   let spare {.cursor.} = writer.spareWritePage
   if spare != nil and (count == 1 or count == 2 or count == 4 or count == 8) and
@@ -1661,11 +1813,14 @@ proc storeScalar[selectedWidth: static[int]](writer: nil ScalarMemoryWriter, add
     # Spare facts travel with the same private header; unknown bits still take the original complete-span COW path.
     if count == 1:
       # Byte stores retain their cheaper original dirty-vector check; any newly private bits remain safe underclaims here.
-      prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+      let prepared = prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+      if prepared != MachineError.None: return MachineResult[bool](status: prepared)
     elif not privateMaskCovers(writer.spareWritePrivate, within, count):
-      prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+      let prepared = prepareWriterSpan(writer, writer.spareWriteSlot, within, count)
+      if prepared != MachineError.None: return MachineResult[bool](status: prepared)
       writer.spareWritePrivate = writer.dirty[writer.spareWriteSlot]
-    setPageScalar(spare, within, count, uint64(value))
+    if not setPageScalar(spare, within, count, uint64(value)):
+      return MachineResult[bool](status: MachineError.InvalidOwner)
     return MachineResult[bool](status: MachineError.None, completed: true)
   storeWriterMiss(writer, source, address, width, value)
 
