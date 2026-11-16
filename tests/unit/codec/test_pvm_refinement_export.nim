@@ -36,6 +36,18 @@ proc limits(items = 3072'u64, bytes = 12607488'u64): ExportLimits =
   ## Local policy is distinct from the package-wide protocol capacity.
   ExportLimits(items: ElementLimit(items), bytes: ByteLimit(bytes))
 
+proc checkedCount(owner: RefinementExports): ExportCount =
+  ## Existing success controls extract counts only after proving that inspection succeeded.
+  let observed = owner.count
+  assert observed.error == RefinementExportError.None
+  observed.value
+
+proc checkedSegment(owner: RefinementExports, index: ExportCount): FetchSegment =
+  ## Inspect and copy a real retained segment before checking its independent expected bytes.
+  let observed = owner.segment(index)
+  assert observed.error == RefinementExportError.None
+  observed.value
+
 proc run(owner: RefinementExports, regs: RegisterFile, memory: Memory,
     credit = 10000'u64, cap = limits()): RefinementExportResult =
   ## Direct evaluation leaves host selection to the invocation dispatcher.
@@ -62,34 +74,43 @@ proc respond(owner: var RefinementExports, stopped: StepOutcome): HostResult[
 
 let memory = source()
 let empty = captureRefinementExports(ExportOffset(7))
-assert uint64(empty.count) == 0
+block inspectionRefusals:
+  # A missing owner is distinct from initialized empty; full-width indices never reach narrowing or indexing.
+  let absent = default(RefinementExports)
+  assert absent.count.error == RefinementExportError.InvalidContext
+  assert empty.count.error == RefinementExportError.None and uint64(empty.count.value) == 0
+  for index in [0'u64, 1, high(uint64)]:
+    assert absent.segment(ExportCount(index)).error == RefinementExportError.InvalidContext
+    assert empty.segment(ExportCount(index)).error == RefinementExportError.InvalidIndex
+  assert default(ExportInspectionResult[ExportCount]).error == RefinementExportError.Uninitialized
+assert uint64(checkedCount(empty)) == 0
 # Every length uses independent expected octets, including clipping of a full-width oversized request.
 for length in [0'u64, 1, 4095, 4096, 4103, 4104, 4105, high(uint64)]:
   let regs = registers(length)
   let done = run(empty, regs, memory).value
   assert done.response.action == HostAction.Continue and uint64(done.response.gas) == 6479
-  assert uint64(done.response.registers[7]) == 7 and uint64(done.exports.count) == 1
-  let segment = array[4104, byte](done.exports.segment(ExportCount(0)))
+  assert uint64(done.response.registers[7]) == 7 and uint64(checkedCount(done.exports)) == 1
+  let segment = array[4104, byte](checkedSegment(done.exports, ExportCount(0)))
   for index in 0..<4104:
     let expected = if uint64(index) < min(length, 4104'u64): byte(index mod 251+1) else: 0'u8
     assert segment[index] == expected # All bytes, including the complete zero tail, must match.
   checkUnchanged(done.response, regs, memory)
-  assert uint64(empty.count) == 0 # Successful append cannot mutate an earlier owner.
+  assert uint64(checkedCount(empty)) == 0 # Successful append cannot mutate an earlier owner.
 # A read can span both pages; inaccessible later bytes panic without exposing a partially appended segment.
 let cross = run(empty, registers(20, 69626), memory).value
-let crossBytes = array[4104, byte](cross.exports.segment(ExportCount(0)))
+let crossBytes = array[4104, byte](checkedSegment(cross.exports, ExportCount(0)))
 for index in 0..<20: assert crossBytes[index] == byte((4090+index) mod 251+1)
 for index in 20..<4104: assert crossBytes[index] == 0
 for address in [0'u64, 73722, 0x100000000'u64, 0x100010000'u64, high(uint64)]:
   let regs = registers(12, address)
   let done = run(empty, regs, memory).value
   assert done.response.action == HostAction.Panic and uint64(done.response.gas) == 6479
-  assert uint64(done.response.registers[7]) == address and uint64(done.exports.count) == 0
+  assert uint64(done.response.registers[7]) == address and uint64(checkedCount(done.exports)) == 0
   checkUnchanged(done.response, regs, memory)
 # An empty natural input interval permits every pointer, yet appends a complete zero-filled segment.
 let zero = run(empty, registers(0, high(uint64)), memory).value
 assert uint64(zero.response.registers[7]) == 7
-for octet in array[4104, byte](zero.exports.segment(ExportCount(0))): assert octet == 0
+for octet in array[4104, byte](checkedSegment(zero.exports, ExportCount(0))): assert octet == 0
 # Exact gas succeeds; every underfunded call preserves all registers/exports before reading bad memory.
 for credit in [0'u64, 1, 3520, 3521, 3522]:
   let regs = registers(12, if credit < 3521: high(uint64) else: 65536'u64)
@@ -97,17 +118,17 @@ for credit in [0'u64, 1, 3520, 3521, 3522]:
   if credit < 3521:
     assert done.response.action == HostAction.OutOfGas
     assert uint64(done.response.gas) == 0 and uint64(done.response.gasDeficit) == 0
-    assert uint64(done.exports.count) == 0
+    assert uint64(checkedCount(done.exports)) == 0
     for index in 0..<13: assert uint64(done.response.registers[index]) == uint64(regs[index])
   else:
     assert done.response.action == HostAction.Continue and uint64(done.response.gas) == credit-3521
-    assert uint64(done.exports.count) == 1
+    assert uint64(checkedCount(done.exports)) == 1
 # Protocol capacity is checked after input readability and before local policy, without offset overflow.
 for offset in [3072'u64, 3073, high(uint64)]:
   let full = captureRefinementExports(ExportOffset(offset))
   let done = run(full, registers(), memory, cap = limits(0, 0)).value
   assert uint64(done.response.registers[7]) == high(uint64)-4
-  assert done.response.action == HostAction.Continue and uint64(done.exports.count) == 0
+  assert done.response.action == HostAction.Continue and uint64(checkedCount(done.exports)) == 0
   assert run(full, registers(1, high(uint64)), memory, cap = limits(0, 0)).value.response.action ==
       HostAction.Panic
   assert run(full, registers(1, high(uint64)), memory, 3520).value.response.action ==
@@ -118,9 +139,10 @@ let first = run(near, registers(1), memory).value
 let second = run(first.exports, registers(2), memory).value
 assert uint64(first.response.registers[7]) == 3070 and uint64(second.response.registers[7]) == 3071
 let full = run(second.exports, registers(), memory, cap = limits(0, 0)).value
-assert uint64(full.response.registers[7]) == high(uint64)-4 and uint64(full.exports.count) == 2
-assert array[4104, byte](full.exports.segment(ExportCount(0)))[1] == 0
-assert array[4104, byte](full.exports.segment(ExportCount(1)))[1] == 2
+assert uint64(full.response.registers[7]) == high(uint64)-4 and uint64(checkedCount(
+    full.exports)) == 2
+assert array[4104, byte](checkedSegment(full.exports, ExportCount(0)))[1] == 0
+assert array[4104, byte](checkedSegment(full.exports, ExportCount(1)))[1] == 2
 # Local limits cover the complete padded successor, even for zero guest bytes; exact caps succeed.
 for cap in [limits(0, 4104), limits(1, 4103)]:
   assert run(empty, registers(0), memory, cap = cap).error == RefinementExportError.LimitExceeded
@@ -137,13 +159,16 @@ assert run(default(RefinementExports), registers(), memory).error ==
     RefinementExportError.InvalidContext
 assert run(empty, registers(), default(Memory)).error == RefinementExportError.InvalidMemory
 # Mutating copies and forking an earlier successor cannot change any existing export sequence.
-var copied = array[4104, byte](second.exports.segment(ExportCount(0)))
+var copied = array[4104, byte](checkedSegment(second.exports, ExportCount(0)))
 copied[0] = 255
 let fork = run(first.exports, registers(3, 65537), memory).value
-assert uint64(first.exports.count) == 1 and uint64(fork.exports.count) == 2
-assert array[4104, byte](second.exports.segment(ExportCount(0)))[0] == 1
-assert array[4104, byte](second.exports.segment(ExportCount(1)))[0] == 1
-assert array[4104, byte](fork.exports.segment(ExportCount(1)))[0] == 2
+for index in [2'u64, high(uint64)]:
+  # Rejected inspection cannot mutate the retained successor or change later valid access.
+  assert second.exports.segment(ExportCount(index)).error == RefinementExportError.InvalidIndex
+assert uint64(checkedCount(first.exports)) == 1 and uint64(checkedCount(fork.exports)) == 2
+assert array[4104, byte](checkedSegment(second.exports, ExportCount(0)))[0] == 1
+assert array[4104, byte](checkedSegment(second.exports, ExportCount(1)))[0] == 1
+assert array[4104, byte](checkedSegment(fork.exports, ExportCount(1)))[0] == 2
 
 # A genuine ecalli-8/halt retains the host output after the temporary callback context is gone.
 proc hosted(): RefinementExports =
@@ -161,7 +186,8 @@ proc hosted(): RefinementExports =
   assert uint64(done.value.machine.machineInfo.value.registers[7]) == 29
   owner
 let detached = hosted()
-assert uint64(detached.count) == 1 and array[4104, byte](detached.segment(ExportCount(0)))[0] == 1
+assert uint64(checkedCount(detached)) == 1 and array[4104, byte](checkedSegment(detached,
+    ExportCount(0)))[0] == 1
 
 # Fresh roots, immutable forks and refused successor allocations retire on every ARC cycle.
 proc cycle() =
@@ -169,7 +195,7 @@ proc cycle() =
   let root = captureRefinementExports(ExportOffset(0))
   let one = run(root, registers(), memory).value.exports
   let two = run(one, registers(4104), memory).value.exports
-  assert uint64(two.count) == 2 and uint64(one.count) == 1
+  assert uint64(checkedCount(two)) == 2 and uint64(checkedCount(one)) == 1
   assert run(two, registers(), memory, cap = limits(2)).error == RefinementExportError.LimitExceeded
 cycle()
 let before = getOccupiedMem()

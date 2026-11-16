@@ -130,7 +130,9 @@ assert uint64(cpu.registers[7]) == 0xfeff0000'u64 and uint64(cpu.registers[8]) =
 assert readBytes(initial.memoryOf.value, MemoryAddress(0xfeff0000'u64), MemoryLength(39),
     MemoryByteLimit(39)).value == expected
 let done = run(hosts(prepared).value).value
-assert done.outcome.exit == StepExit.Halt and uint64(done.exports.count) == 0
+let emptyCount = done.exports.count
+assert emptyCount.error == RefinementExportError.None
+assert done.outcome.exit == StepExit.Halt and uint64(emptyCount.value) == 0
 assert captureOutput(done.outcome, OutputByteLimit(39)).value == expected
 # Compact core/payload framing and the second work item's gas/service remain distinct.
 let other = prepare(item = 1).value
@@ -267,8 +269,12 @@ assert prepared.bootstrapArguments.value == expected
 assert captureOutput(run(hosts(prepared).value).value.outcome, OutputByteLimit(39)).value == expected
 let exporting = prepare(code(true)).value
 let exported = run(hosts(exporting).value).value
-assert exported.outcome.exit == StepExit.Halt and uint64(exported.exports.count) == 1
-let segment = array[4104, byte](exported.exports.segment(ExportCount(0)))
+let exportedCount = exported.exports.count
+assert exportedCount.error == RefinementExportError.None
+assert exported.outcome.exit == StepExit.Halt and uint64(exportedCount.value) == 1
+let inspected = exported.exports.segment(ExportCount(0))
+assert inspected.error == RefinementExportError.None
+let segment = array[4104, byte](inspected.value)
 let arguments = exporting.bootstrapArguments.value
 for index in 0..<arguments.len: assert segment[index] == arguments[index]
 for index in arguments.len..<4104: assert segment[index] == 0

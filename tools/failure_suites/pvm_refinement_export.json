@@ -34,7 +34,7 @@
         "default-count"
       ],
       "name": "pvm-refinement-export-default-count",
-      "diagnostic": "not exports.data == nil",
+      "diagnostic": "outcome.status == None",
       "description": "Refinement export default-count"
     },
     {
@@ -45,7 +45,7 @@
         "default-segment"
       ],
       "name": "pvm-refinement-export-default-segment",
-      "diagnostic": "not exports.data == nil",
+      "diagnostic": "outcome.status == None",
       "description": "Refinement export default-segment"
     },
     {
@@ -57,7 +57,7 @@
         "huge"
       ],
       "name": "pvm-refinement-export-index",
-      "diagnostic": "uint64(index) < uint64(len(exports.data.segments))",
+      "diagnostic": "outcome.status == None",
       "description": "Refinement export index"
     },
     {
@@ -68,7 +68,7 @@
         "index-empty"
       ],
       "name": "pvm-refinement-export-index-empty",
-      "diagnostic": "uint64(index) < uint64(len(exports.data.segments))",
+      "diagnostic": "outcome.status == None",
       "description": "Refinement export empty sequence index"
     }
   ]

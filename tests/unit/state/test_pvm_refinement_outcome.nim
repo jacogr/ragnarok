@@ -26,7 +26,9 @@ proc check(invocation: RefinementInvocation, kind: WorkKind, used: uint64, expor
   let info = invocation.refinementInfo.value
   assert info.kind == kind and uint64(info.gasUsed) == used
   assert uint32(info.service) == 42 and uint64(info.core) == 5 and uint64(info.item) == 0
-  assert uint64(info.exports) == exports and uint64(invocation.refinementExports.value.count) == exports
+  let count = invocation.refinementExports.value.count
+  assert count.error == RefinementExportError.None
+  assert uint64(info.exports) == exports and uint64(count.value) == exports
   if kind != WorkKind.Success:
     assert info.outputBytes == 0 and invocation.refinementOutput.error ==
         RefinementInvocationError.NotSuccess
@@ -85,7 +87,9 @@ let exportPrice = refinementPrice(exporting)
 let exported = run(exporting).value
 check(exported, WorkKind.Success, exportPrice+3521, 1)
 assert exported.refinementOutput.value == @[21'u8, 22, 23]
-let segment = array[4104, byte](exported.refinementExports.value.segment(ExportCount(0)))
+let inspected = exported.refinementExports.value.segment(ExportCount(0))
+assert inspected.error == RefinementExportError.None
+let segment = array[4104, byte](inspected.value)
 assert segment[0] == 11 and segment[1] == 12 and segment[2] == 13
 for index in 3..<4104: assert segment[index] == 0
 let emptyExportInstructions = @[prefix[0], prefix[1], prefix[2], refinementImmediate(7, high(
