@@ -2239,6 +2239,7 @@ proc runSharedAsync*() =
       when defined(pvmPaidMixedLoopWitness):
         # Both maintained native profiles include deterministic paid fault and retry coverage.
         runPaidMixedLoopSource()
+      runDeferredReadContinuation()
       runMixedLoopMailbox()
       runMixedCompilerFailure()
       diagnosticPhase("staticFusion")

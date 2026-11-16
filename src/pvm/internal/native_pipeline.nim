@@ -2225,9 +2225,11 @@ when NativeCheckedReadEnabled:
     readCertificate(data.readProof).info
 
   func nativeReadContinuation*(session: NativeSession): NativeReadContinuation {.inline.} =
-    ## The caller has already verified the ready read image through nativeReadInfo.
+    ## Copy geometry for deferred source revalidation as well as ready-image installation.
+    ## The active source epoch binds this certificate; only separate ready/image checks grant entry.
     let data {.cursor.} = session.data
-    if data == nil or nativeReadInfo(session).epoch == 0: return default(NativeReadContinuation)
+    if data == nil or not data.invocation or readCertificate(data.readProof).info.epoch != data.epoch:
+      return default(NativeReadContinuation)
     readCertificate(data.readProof).continuationInfo
 
   func matchesNativeReadBody*(session: NativeSession, body: NativeReadBody): bool =

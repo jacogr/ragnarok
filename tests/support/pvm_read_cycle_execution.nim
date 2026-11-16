@@ -895,6 +895,31 @@ proc runReadCycleExecution*() =
   echo "PASS shared native read cycle execution"
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
+  proc runDeferredReadContinuation*() =
+    ## Deferred nomination revalidation needs its exact source continuation before any ready image exists.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "native compiler thread startup failed"
+    let session = newNativeSession(runtime)
+    let body = cycleFixture().read
+    assert body.continuationInfo.terminal != 0
+    assert beginNativeInvocation(session, NativeInvocationFloor)
+    nominateNativeRead(session, body)
+    assert nativeState(session) == NativeState.Deferred and nativeReadInfo(session).epoch == 0
+    assert deferredNativeReadInfo(session).epoch == nativeEpoch(session)
+    assert nativeReadContinuation(session) == body.continuationInfo,
+      "deferred continuation must remain available for source revalidation"
+    assert finishNativeInvocation(session, 0)
+    assert nativeReadContinuation(session) == default(NativeReadContinuation)
+    assert beginNativeInvocation(session, NativeInvocationFloor)
+    invalidateNativeStream(session)
+    assert nativeReadContinuation(session) == default(NativeReadContinuation)
+    assert finishNativeInvocation(session, 0)
+    assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+    assert close(runtime)
+
   proc finishMailboxRead(runtime: NativeRuntime, session: NativeSession,
       kind: NativeKind): NativeCompilerObservation =
     ## Collect the real image through its exact registration before checking its certificate.
