@@ -1288,7 +1288,12 @@ when defined(pvmX86Jit):
       restoreX86ResidentRegisters(code, access.bank)
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
+    when defined(pvmX86ResidentProof):
+      # The private proof profile can corrupt a real producer relocation before sealing.
+      var x86ReadInvalidFixupWitness {.threadvar.}: bool
+
     proc checkedReadResidentInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
+      ## Seal the entire body before constructing its entry; a refused child never publishes a prologue.
       var access = X86CheckedReadAccess(bank: x86ResidentAccess(dirty), liveIns: 0, written: 0)
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
@@ -1302,11 +1307,17 @@ when defined(pvmX86Jit):
       labels[0] = code.bytes.len # Late refusal skips every guest-file store.
       emitCheckedReadResidentReturn(code, access, NativeReadRefusal)
 
+      when defined(pvmX86ResidentProof):
+        # This mutation is absent from production and exercises the actual complete-body producer.
+        if x86ReadInvalidFixupWitness and fixes.len > 0:
+          fixes[0].at = -1
+      let sealed = sealCheckedRead(code, fixes, labels)
+      if code.failure != X86EmissionError.None or sealed.len == 0: return @[]
       var entry = default(X86Block)
       emitCheckedReadResidentEntry(entry, access)
-      if entry.bytes.len + code.bytes.len > NativeImageByteLimit: return @[]
+      if entry.bytes.len > NativeImageByteLimit-sealed.len: return @[]
       # A prepended prologue shifts each branch and its target equally.
-      put(entry, sealCheckedRead(code, fixes, labels))
+      put(entry, sealed)
       takeX86Instructions(entry)
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =

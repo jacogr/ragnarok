@@ -31,6 +31,15 @@ proc witnessX86ReadGuards*() =
     assert addReadBodyOperation(body, position, position,
       NativeOperation(opcode: 130, slots: default(RegisterSlots), immediate: 0))
   assert body.complete and x86CheckedReadInstructions(body).len > 0
+  block producerRelocation:
+    # Corrupt a real guard relocation after complete request lowering, then recover on the same request.
+    let valid = x86CheckedReadInstructions(body)
+    assert valid.len > 0
+    x86ReadInvalidFixupWitness = true
+    let refused = x86CheckedReadInstructions(body)
+    x86ReadInvalidFixupWitness = false
+    assert refused.len == 0, "resident read published an entry after refusing its body"
+    assert x86CheckedReadInstructions(body) == valid
   assert checkedReadStackInstructions(default(NativeReadBody), 0).len == 0
   assert checkedReadResidentInstructions(body, 0).len == 0
   assert checkedReadResidentInstructions(body, 3).len == 0
