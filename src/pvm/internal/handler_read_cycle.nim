@@ -43,7 +43,8 @@ when declared(FlatFrame):
       if fact.opcode != opcodes[index] or fact.priceIndex != priceIndex:
         return false
       if fact.opcode == 2: continue
-      let decoded = flatSourcePayload(f.plan, fact)
+      var decoded = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, decoded): return false
       let args = f.arguments[int(node)]
       if node != walk.terminal and (args.x != decoded.args.x or args.y != decoded.args.y or
           args.slots != decoded.args.slots): return false
@@ -65,7 +66,8 @@ when declared(FlatFrame):
     let unresolved: FlatHandler = flatJump[Code]
     if f.handlers[int(part.terminal)] != cached: return false
     let fact = f.plan.facts[int(f.sites[int(part.terminal)])]
-    let original = flatSourcePayload(f.plan, fact)
+    var original = default(FlatSourcePayload)
+    if not tryFlatSourcePayload(f.plan, fact, original): return false
     original.handler == unresolved and flatCycleHeader(f, original.args.y, target) and
       f.arguments[int(part.terminal)].y == target
 
@@ -76,7 +78,8 @@ when declared(FlatFrame):
     let unresolved: FlatHandler = flatUnresolvedBranch[Code]
     if f.handlers[int(part.terminal)] != cached: return false
     let fact = f.plan.facts[int(f.sites[int(part.terminal)])]
-    let original = flatSourcePayload(f.plan, fact)
+    var original = default(FlatSourcePayload)
+    if not tryFlatSourcePayload(f.plan, fact, original): return false
     let args = f.arguments[int(part.terminal)]
     original.handler == unresolved and
       args.slots == original.args.slots and

@@ -40,7 +40,8 @@ when declared(FlatFrame):
         let node = int(header)+i+1
         if fact.opcode != BitmapOpcodes[operation] or fact.priceIndex != priceIndex or
             f.sites[node] != first+uint32(i): return
-        let original = flatSourcePayload(f.plan, fact)
+        var original = default(FlatSourcePayload)
+        if not tryFlatSourcePayload(f.plan, fact, original): return
         let cached = f.arguments[node]
         if cached.slots != original.args.slots: return
         var immediate = original.args.x

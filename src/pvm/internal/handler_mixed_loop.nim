@@ -32,7 +32,8 @@ when declared(FlatFrame):
       let fact = f.plan.facts[int(ordinal)]
       if fact.priceIndex != priceIndex: return
       if fact.opcode == 2: continue # The original price and attempt span still include this fact.
-      let original = flatSourcePayload(f.plan, fact)
+      var original = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, original): return
       let actual = f.arguments[int(node)]
       if actual.slots != original.args.slots: return
       if node == walk.terminal:
@@ -320,7 +321,8 @@ when declared(FlatFrame):
         let item = decoded.value
         pc += 1+uint64(item.skip)
         if item.opcode != 171: continue
-        let original = flatSourcePayload(decoded)
+        var original = default(FlatSourcePayload)
+        assert tryFlatSourcePayload(decoded, original)
         lastPc = uint32(original.args.x shr 32)
         let header = flatResolve(frame, lastPc)
         assert header != flatStop

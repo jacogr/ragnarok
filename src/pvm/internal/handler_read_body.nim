@@ -7,7 +7,8 @@ when declared(FlatFrame):
   proc flatReadTerminal(f: FlatFrame, node: uint32, fact: FlatFact): bool =
     ## The original static fallthrough remains checked, whether the stream cached it or not.
     if fact.opcode != 1 or not fact.ending or not fact.fallthrough: return false
-    let payload = flatSourcePayload(f.plan, fact)
+    var payload = default(FlatSourcePayload)
+    if not tryFlatSourcePayload(f.plan, fact, payload): return false
     if payload.handler != flatJump[1]: return false
     let target = f.arguments[int(node)].y
     if f.handlers[int(node)] == flatJump[1]: return target == fact.next
@@ -40,7 +41,8 @@ when declared(FlatFrame):
       if fact.opcode == 2 or node >= walk.terminal or f.sites[int(node)] != ordinal or
           fact.priceIndex != f.plan.facts[int(source.first)].priceIndex: return
       let args = f.arguments[int(node)]
-      let payload = flatSourcePayload(f.plan, fact)
+      var payload = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, payload): return
       if args.x != payload.args.x or args.y != payload.args.y or args.slots !=
           payload.args.slots: return
       if not addReadBodyOperation(body, node, ordinal, NativeOperation(opcode: fact.opcode,
@@ -71,7 +73,8 @@ when declared(FlatFrame):
       let fact = f.plan.facts[int(source.first)+index]
       let args = f.arguments[int(header)+1+index]
       if fact.priceIndex != priceIndex: return false
-      let payload = flatSourcePayload(f.plan, fact)
+      var payload = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, payload): return false
       if args.x != payload.args.x or args.y != payload.args.y or
           args.slots != payload.args.slots: return false
       operations[index] = NativeOperation(opcode: fact.opcode, slots: payload.args.slots,

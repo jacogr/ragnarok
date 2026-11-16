@@ -177,6 +177,6 @@ proc initNativeReadRegion*(first: uint64, bytes: openArray[byte]): NativeReadReg
   let offset = low-first
   if offset >= uint64(bytes.len): return
   let length = min(uint64(bytes.len)-offset, NativeReadEnd-low)
-  assert length > 0
+  if length == 0: return
   result = NativeReadRegion(first: low, length: length,
     data: cast[pointer](unsafeAddr bytes[int(offset)]))
