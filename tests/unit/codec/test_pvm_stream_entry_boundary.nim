@@ -4,6 +4,7 @@
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
@@ -42,6 +43,31 @@ proc owner(parts: openArray[seq[byte]], jumps: openArray[uint32] = []): Program 
       JumpCountLimit(1024))
   assert decoded.error == ProgramError.None
   decoded.value
+
+block observerComparisons:
+  # Invalid extents and contents are ordinary false comparisons; the same frame remains readable afterward.
+  let source = owner([@[0'u8]])
+  let plan = newFlatPlan(source, GasCycleLimit(1000))
+  let page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  var frame = newFlatFrame(plan, [page], MachineInfo(gas: MachineGas(100)))
+  assert matchesFlatSource(frame, [page])
+  assert not matchesFlatSource(frame, [])
+  var changed = page
+  changed.bytes[0] = 1
+  assert not matchesFlatSource(frame, [changed])
+  var reference = newString(120+4096)
+  for at in 0..<reference.len:
+    # Construct the complete independent zero baseline explicitly, including the reference CPU prefix.
+    reference[at] = char(0)
+  assert matchesFlatReference(frame, reference)
+  for offset in [-1, 0, high(int)]:
+    assert not matchesFlatReference(frame, reference, offset)
+  assert not matchesFlatReference(frame, "")
+  reference[120] = char(1)
+  assert not matchesFlatReference(frame, reference)
+  reference[120] = char(0)
+  assert matchesFlatReference(frame, reference) and matchesFlatSource(frame, [page])
 
 proc sameCpu(left, right: MachineInfo) =
   ## All copied CPU fields participate, including the prepaid-block state and reserved gas deficit.

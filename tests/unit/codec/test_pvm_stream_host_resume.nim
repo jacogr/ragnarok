@@ -4,6 +4,7 @@
 ## Paid host continuations reuse admitted bodies without suffix growth, repricing or target-prelink side effects.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]

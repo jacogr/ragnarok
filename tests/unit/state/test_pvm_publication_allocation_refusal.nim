@@ -4,6 +4,7 @@
 ## A refused sparse dirty-page sort cannot publish the immutable input as a successful result.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/handler_stream

@@ -4,6 +4,7 @@
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
 
 import std/[assertions, syncio, envvars, monotimes]
+import ../support/pvm_flat_witness
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan]
 import ../../src/pvm/step

@@ -4,6 +4,7 @@
 ## Checked frame histories and direct legacy ARM rejection/capacity controls retain their distinct contracts.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas

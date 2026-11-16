@@ -111,7 +111,8 @@ class PolicyQualificationTests(unittest.TestCase):
         self.arc_suites = {'pvm_fresh_resident', 'pvm_resident_bytes', 'pvm_scalar_host'}
         self.inputs = ['src/pvm/internal/resident_bytes.nim',
             'src/pvm/internal/resident_capture.nim', 'src/pvm/internal/resident_os.h',
-            'tests/support/arc_evidence.nim', 'tests/support/pvm_accumulation_context.nim',
+            'tests/support/arc_evidence.nim', 'tests/support/pvm_flat_witness.nim',
+            'tests/support/pvm_accumulation_context.nim',
             'tests/support/pvm_accumulation_program.nim']
         for suite, profile in self.profiles.items():
             directory = profile['directory']
@@ -266,6 +267,7 @@ class PolicyQualificationTests(unittest.TestCase):
     def test_mapping_header_and_support_contracts_cannot_change(self):
         """Changing an OS binding, helper, oracle or registered profile during execution invalidates its proof."""
         for relative in ('src/pvm/internal/resident_os.h', 'tests/support/arc_evidence.nim',
+                'tests/support/pvm_flat_witness.nim',
                 'tests/unit/codec/test_pvm_fresh_resident.output',
                 'tools/native_requirements/codec/pvm_resident_bytes.json'):
             with self.subTest(source=relative):
@@ -361,6 +363,7 @@ class SharedQualificationTests(unittest.TestCase):
         helper = self.root/'tests/support/pvm_shared_async.nim'
         helper.parent.mkdir(parents=True)
         helper.write_text('inert shared witness')
+        helper.with_name('pvm_flat_witness.nim').write_text('inert checked fixture helpers')
         helper.with_name('pvm_bitmap_fixture.nim').write_text('inert bitmap fixture')
         helper.with_name('pvm_bitmap_loop_execution.nim').write_text('inert bitmap witness')
         helper.with_name('pvm_bitmap_lowering_refusal.nim').write_text('inert heap witness')
@@ -397,8 +400,10 @@ class SharedQualificationTests(unittest.TestCase):
                 output = 'PASS runtime PVM policy\n'
             elif fault == 'extra':
                 output += 'extra output\n'
-            elif fault == 'tamper':
-                (self.root/'tests/support/pvm_shared_async.nim').write_text('changed source')
+            elif fault in ('tamper', 'tamper-flat-helper'):
+                # Both the shared scenario and its checked-construction helper bind the execution proof.
+                helper = 'pvm_shared_async.nim' if fault == 'tamper' else 'pvm_flat_witness.nim'
+                (self.root/'tests/support'/helper).write_text('changed source')
             refused = 'refused' in name
             evidence = dict(schema=1, kind='refused' if refused else 'positive',
                 isa='x86_64' if 'pvmX86Jit' in builds[-1]['defines'] else 'arm64',
@@ -506,9 +511,18 @@ class SharedQualificationTests(unittest.TestCase):
         checks.build.assert_not_called()
         self.profiles['pvm_shared_async_x86']['defines'] = [
             'pvmX86Jit', 'pvmPaidMixedLoopWitness', 'pvmSharedAsyncWitness']
-        checks, _ = self.tools('tamper')
-        with self.assertRaisesRegex(ValueError, 'source changed'):
-            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+        for fault in ('tamper', 'tamper-flat-helper'):
+            # A changed helper invalidates the proof just as a changed execution scenario does.
+            with self.subTest(fault=fault):
+                helper = 'pvm_shared_async.nim' if fault == 'tamper' else 'pvm_flat_witness.nim'
+                source = self.root/'tests/support'/helper
+                original = source.read_bytes()
+                try:
+                    checks, _ = self.tools(fault)
+                    with self.assertRaisesRegex(ValueError, 'source changed'):
+                        ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+                finally:
+                    source.write_bytes(original)
 
     def test_paid_continuation_coverage_cannot_be_omitted(self):
         """A positive native gate must not silently drop the committed-prefix repair cases."""

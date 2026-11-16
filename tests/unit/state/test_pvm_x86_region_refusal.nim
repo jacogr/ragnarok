@@ -4,6 +4,7 @@
 ## Isolated x86 owner-state profile: local rejection preserves later regions and strict probe/storage bounds.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas

@@ -4,6 +4,7 @@
 ## Same-owner loop/read arbitration and checked successor reservation boundaries.
 
 import std/[assertions, envvars, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/[native_pipeline, native_platform]

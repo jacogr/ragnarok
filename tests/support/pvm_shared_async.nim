@@ -4,6 +4,7 @@
 ## Real bounded compiler barrier, complete literal CPU/RAM histories, checked work receipts and final-drop cleanup.
 
 import std/[assertions, syncio, envvars]
+import ./pvm_flat_witness
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[handler_stream, metadata_store, native_pipeline, native_platform,

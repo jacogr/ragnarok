@@ -4,6 +4,7 @@
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]

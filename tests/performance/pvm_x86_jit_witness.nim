@@ -4,6 +4,7 @@
 ## Checked scalar/source histories plus direct legacy x86 literal/region/context and refusal controls.
 
 import std/[assertions, syncio]
+import ../support/pvm_flat_witness
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas

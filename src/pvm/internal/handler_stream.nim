@@ -39,6 +39,7 @@
 ## An invalid predecessor or image key refuses locally before any handler changes. The public
 ## boundary discards that stream and any tentative outcome before returning BackendFailure.
 ## Admission observers likewise preflight bounded coordinates and predecessors before patch-set changes.
+## Application observers return typed failures; assertion conveniences live in tests/support/pvm_flat_witness.
 ## Their failures stay sticky across run entry. Host/cache handoff rejects live temporary handlers
 ## and stack-borrowed native descriptors before moving any owning state.
 
@@ -46,6 +47,7 @@ import std/[assertions, bitops]
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
+
 import ./register_ops
 import ./metadata_store
 import ./dynamic_jump_cache
@@ -129,6 +131,10 @@ when NativeCheckedReadEnabled:
       when NativeReadCycleEnabled:
         protectedTried, protectedInstalled, protectedActive, protectedCountable: bool
         protectedRemainingLimit: uint64
+
+const flatWitnessConveniences = defined(pvmSharedAsyncWitness) or defined(pvmMixedLoopWitness) or
+  defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness)
+  ## Only internal test profiles compile assertion-based constructors; applications use checked admission/observation.
 
 type FlatSourceRanks = ref object
   ## Immutable bitmap ranks preserve source-global ordinals without decoding every header again.
@@ -2246,8 +2252,10 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     allowNative: bool = true): FlatResult[FlatPlan] =
   ## Validate full-source resource obligations and jump membership before execution.
   ## Rank immutable opcode markers now; materialize complete block facts on first resolution.
-  assert sizeof(FlatArgs) == 16
-  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 24
+  when sizeof(FlatArgs) != 16:
+    {.error: "flat argument ABI layout mismatch".}
+  when sizeof(pointer) == 8 and sizeof(FlatFact) != 24:
+    {.error: "flat source fact ABI layout mismatch".}
   if not validFlatLimits(limits): return FlatResult[FlatPlan](status: FlatError.InvalidPolicy)
   let extent = codeLength(source)
   if extent.error != ProgramError.None or extent.value == 0:
@@ -2284,11 +2292,12 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   owner.facts = move(facts)
   FlatResult[FlatPlan](status: FlatError.None, completed: owner)
 
-proc newFlatPlan*(source: Program, cycles: GasCycleLimit): FlatPlan =
-  ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
-  var prepared = prepareFlatPlan(source, cycles, defaultFlatLimits())
-  assert prepared.error == FlatError.None
-  takeValue(prepared)
+when flatWitnessConveniences:
+  proc newFlatPlan(source: Program, cycles: GasCycleLimit): FlatPlan =
+    ## Local witness convenience only; application admission uses prepareFlatPlan and checks its typed result.
+    var prepared = prepareFlatPlan(source, cycles, defaultFlatLimits())
+    assert prepared.error == FlatError.None
+    takeValue(prepared)
 
 proc flatEmit(f: var FlatFrame, handler: FlatHandler, args: FlatArgs, site: uint32): bool =
   ## Parallel contiguous arrays preserve a 24-byte handler/argument payload plus a source index for rare exits.
@@ -3214,11 +3223,12 @@ proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: Machi
       status: FlatError.InvalidMemory)
   prepareFlatMemoryFrame(plan, memory.value, info)
 
-proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
-  ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
-  var prepared = prepareFlatFrame(plan, images, info)
-  assert prepared.error == FlatError.None
-  takeValue(prepared)
+when flatWitnessConveniences:
+  proc newFlatFrame(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
+    ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
+    var prepared = prepareFlatFrame(plan, images, info)
+    assert prepared.error == FlatError.None
+    takeValue(prepared)
 
 func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
     found: var FlatSourceInterval): bool =
@@ -4917,11 +4927,12 @@ proc tryFlatMemorySnapshot*(f: FlatFrame, snapshot: var Memory): oracle.StepErro
   snapshot = updated.value
   oracle.StepError.None
 
-proc flatMemorySnapshot*(f: FlatFrame): Memory =
-  ## Witness convenience. The public stepping adapter checks the typed outcome.
-  result = default(Memory)
-  let observed = tryFlatMemorySnapshot(f, result)
-  assert observed == oracle.StepError.None
+when flatWitnessConveniences:
+  proc flatMemorySnapshot(f: FlatFrame): Memory =
+    ## Witness convenience. The public stepping adapter checks the typed outcome.
+    result = default(Memory)
+    let observed = tryFlatMemorySnapshot(f, result)
+    assert observed == oracle.StepError.None
 
 proc tryObserveFlatHostMemory*(f: var FlatFrame, snapshot: var Memory): oracle.StepError =
   ## Bind a host stop only after the complete observation succeeds.
@@ -4933,12 +4944,6 @@ proc tryObserveFlatHostMemory*(f: var FlatFrame, snapshot: var Memory): oracle.S
   f.hostSnapshotPc = f.info.pc
   f.hostReady = true
   oracle.StepError.None
-
-proc observeFlatHostMemory*(f: var FlatFrame): Memory =
-  ## Witness convenience. Public callbacks receive only a successful observation.
-  result = default(Memory)
-  let observed = tryObserveFlatHostMemory(f, result)
-  assert observed == oracle.StepError.None
 
 proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimit,
     output: var array[32, byte]): MachineError =
@@ -4993,43 +4998,47 @@ proc tryObserveFlatHostScalars*(f: var FlatFrame, info: var MachineInfo): oracle
   f.hostReady = true
   oracle.StepError.None
 
-proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
-  ## Witness convenience; production host routing checks the typed scalar observation.
-  result = default(MachineInfo)
-  let checked = tryObserveFlatHostScalars(f, result)
-  assert checked == oracle.StepError.None
-
 func flatNodes*(f: FlatFrame): int =
   ## A copied observation reports stream size without exposing mutable cache arrays.
   f.handlers.len
 
-proc checkFlatSource*(f: FlatFrame, expected: openArray[PageImage]) =
-  ## An independently captured caller witness checks every immutable baseline byte outside execution.
-  assert expected.len == f.sourcePages.len
+proc matchesFlatSource*(f: FlatFrame, expected: openArray[PageImage]): bool =
+  ## Compare an independent baseline with the immutable source; invalid observations simply do not match.
+  if expected.len != f.sourcePages.len: return false
+  if memoryPageCount(f.sourceMemory).error != MachineError.None: return false
   for slot in 0..<expected.len:
-    # The witness belongs to the caller, never to production frame storage or its resident buffers.
+    # Read-only inspection grants no mutation or publication authority over either owner.
     let description = f.sourcePages[slot]
-    assert description.index == expected[slot].index and description.access == expected[slot].access
+    if description.index != expected[slot].index or description.access != expected[slot].access:
+      return false
     let original = pageImage(f.sourceMemory, description.index)
-    assert original.error == MachineError.None and original.value.access == expected[
-        slot].access and
-      original.value.bytes == expected[slot].bytes
+    if original.error != MachineError.None: return false
+    let image = original.value
+    if image.access != expected[slot].access or image.bytes != expected[slot].bytes:
+      return false
+  true
 
-proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
-  ## Compare all current bytes and permissions against the independent complete reference outside clocks.
-  assert expected.len == offset+f.sourcePages.len*4096
+proc matchesFlatReference*(f: FlatFrame, expected: string, offset: int = 120): bool =
+  ## Compare complete current bytes and permissions without assertions, unsafe size arithmetic or mutable borrows.
+  if offset < 0 or offset > expected.len: return false
+  if f.sourcePages.len > (high(int)-offset) div 4096: return false
+  if expected.len != offset+f.sourcePages.len*4096: return false
+  if memoryPageCount(f.sourceMemory).error != MachineError.None: return false
   for page in 0..<f.sourcePages.len:
+    # An unreadable source owner is a failed comparison, not an implicit zero page.
     let description = f.sourcePages[page]
     let source = pageImage(f.sourceMemory, description.index)
-    assert source.error == MachineError.None
+    if source.error != MachineError.None: return false
     let image = source.value
-    assert image.access == description.access
+    if image.access != description.access: return false
     for at in 0..<4096:
-      # Inaccessible bytes have no resident region and remain solely in their immutable source page.
+      # Inaccessible bytes remain in their source image; accessible bytes include the current dirty overlay.
       var current = image.bytes[at]
       if description.access != PageAccess.Inaccessible:
-        assert flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at], current)
-      assert current == byte(expected[offset+page*4096+at])
+        if not flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at], current):
+          return false
+      if current != byte(expected[offset+page*4096+at]): return false
+  true
 
 proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
   ## A validated immutable Memory already owns checked page capabilities; retain it instead of recapturing them.
@@ -5107,11 +5116,6 @@ proc flatReplaceMemoryOwner(f: var FlatFrame, memory: Memory,
   var replacement = takeValue(prepared)
   if not flatCommitMemoryReplacement(f, replacement): return FlatError.InvalidMemory
   FlatError.None
-
-proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: MachineInfo) =
-  ## Local witness convenience only; the checked boundary preserves a refused frame intact.
-  let error = replaceFlatMemoryChecked(f, images, info)
-  assert error == FlatError.None
 
 proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: MachineGas,
     registers: RegisterFile): oracle.StepError {.discardable.} =

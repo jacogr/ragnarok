@@ -4,6 +4,7 @@
 ## Lazy stream metadata can refuse under a real heap cap after bytecode admission succeeds.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas

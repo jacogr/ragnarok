@@ -76,7 +76,8 @@ def resident_source_paths():
     """Bind fresh-map ownership, its OS header, both registered mains and their exact ARC contracts."""
     paths = [ROOT/'src/pvm/internal/resident_bytes.nim',
              ROOT/'src/pvm/internal/resident_capture.nim',
-             ROOT/'src/pvm/internal/resident_os.h', ROOT/'tests/support/arc_evidence.nim']
+             ROOT/'src/pvm/internal/resident_os.h', ROOT/'tests/support/arc_evidence.nim',
+             ROOT/'tests/support/pvm_flat_witness.nim']
     for suite in RESIDENT_SUITES:
         source = unit_source(suite)
         paths.extend((source, source.with_suffix('.output'),
@@ -86,7 +87,7 @@ def resident_source_paths():
 
 def scalar_source_paths():
     """Bind both registered scalar mains, full output/profile contracts and their actual local support."""
-    paths = [ROOT/'tests/support/arc_evidence.nim',
+    paths = [ROOT/'tests/support/arc_evidence.nim', ROOT/'tests/support/pvm_flat_witness.nim',
              ROOT/'tests/support/pvm_accumulation_context.nim',
              ROOT/'tests/support/pvm_accumulation_program.nim']
     for suite in SCALAR_SUITES:
@@ -149,7 +150,8 @@ def qualify_policy(checks, compiler, shared_refusal=False):
 def shared_source_paths():
     """Bind both registered common mains, helper, exact goldens and their source-owned profiles."""
     paths = [ROOT/'tests/support'/name for name in ('pvm_bitmap_fixture.nim',
-             'pvm_bitmap_loop_execution.nim', 'pvm_bitmap_lowering_refusal.nim', 'pvm_shared_async.nim',
+             'pvm_bitmap_loop_execution.nim', 'pvm_bitmap_lowering_refusal.nim', 'pvm_flat_witness.nim',
+             'pvm_shared_async.nim',
              'pvm_static_fusion.nim')]
     for directory, suite in (('codec', 'pvm_shared_async_arm'),
                              ('codec', 'pvm_shared_async_x86'),
@@ -303,7 +305,7 @@ def qualify_mixed_arena(checks, compiler, host):
 
 def read_width_source_paths():
     """Bind both ISA mains, literals, ABI/source checks and their discovered native profiles."""
-    paths = [ROOT/'tests/support/pvm_shared_read_widths.nim',
+    paths = [ROOT/'tests/support/pvm_shared_read_widths.nim', ROOT/'tests/support/pvm_flat_witness.nim',
              ROOT/'tools/pvm_native_ci.py']
     for name in ('native_read_body', 'handler_read_body', 'read_admission_probe',
                  'handler_stream', 'handler_trace_source', 'jit_rules', 'native_ir',
