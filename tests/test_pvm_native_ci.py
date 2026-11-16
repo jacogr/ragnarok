@@ -743,18 +743,24 @@ class QualificationTests(unittest.TestCase):
             self.assertIsNone(rows[witness_index+1]['dirty_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit','pvmArmMacroReceipt',
-                                      'pvmArmDirtyLoopOwnerReceipt'] if native else [])
+                                      'pvmArmDirtyLoopOwnerReceipt', 'pvmLegacyNativeWitness'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
             self.assertIn('pvmArmDirtyLoopOwnerReceipt',refused)
             legacy=[flags for name,flags in builds if name=='witness-legacy-abi-refused']
-            self.assertEqual(legacy, [['pvmArm64Jit','pvmArmClippedLegacyAbiRefuse']] if native else [])
+            self.assertEqual(legacy, [['pvmArm64Jit','pvmArmClippedLegacyAbiRefuse',
+                                       'pvmLegacyNativeWitness']] if native else [])
             resident=[flags for name,flags in builds if name=='witness-resident-refused']
             if native:
                 self.assertEqual(resident, [['pvmArm64Jit','pvmArmMacroResidentRefuse',
-                                             'pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt']])
+                                             'pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt',
+                                             'pvmLegacyNativeWitness']])
             else:
                 self.assertEqual(resident, [])
+            for name, flags in builds:
+                # Whole-state qualification and ordinary execution retain the production surface.
+                if name in ('all-opcodes', 'regions-host'):
+                    self.assertNotIn('pvmLegacyNativeWitness', flags)
 
     def test_legacy_context_abi_refusal_requires_one_positive_control(self):
         """The intentionally failing process must first prove both valid bridge profiles ran."""

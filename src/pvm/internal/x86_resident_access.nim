@@ -155,30 +155,32 @@ when declared(X86Block):
         header: "x86_resident_access_proof.h".}
       ## No ordinary caller includes the test-only fixed-hardware-register sentinel function.
 
-    proc callX86ResidentAbiProof*(jit: X86Jit, offset: uint32,
-        registers: var RegisterFile, context = false): uint64 =
-      ## Invoke only an actual published raw literal image; this grants no Frame/plan authority.
-      if jit == nil or int(offset) >= jit.entries.len or jit.arena.handle == nil: return 0
-      let code = jit.entries[int(offset)].code
-      if code < 2: return 0
-      residentAbiNative(jit.arena.handle, code-2, addr registers[0], (
-          if context: 1.cint else: 0.cint))
+    when defined(pvmLegacyNativeWitness):
+      proc callX86ResidentAbiProof*(jit: X86Jit, offset: uint32,
+          registers: var RegisterFile, context = false): uint64 =
+        ## Invoke only an actual published raw literal image; this grants no Frame/plan authority.
+        if jit == nil or int(offset) >= jit.entries.len or jit.arena.handle == nil: return 0
+        let code = jit.entries[int(offset)].code
+        if code < 2: return 0
+        residentAbiNative(jit.arena.handle, code-2, addr registers[0], (
+            if context: 1.cint else: 0.cint))
 
     proc residentCopyNative(handle: nil pointer, offset: uint32, output: pointer,
         length: uint32): cint {.cdecl, importc: "pvm_x86_resident_copy_proof",
         header: "x86_resident_access_proof.h".}
       ## Actual RX bytes remain a test-only copy; executable addresses never escape.
 
-    proc copyX86ResidentImageProof*(jit: X86Jit, offset, length: uint32,
-        image: var seq[byte]): bool =
-      ## Copy only a bounded published literal image without changing the native owner.
-      image = @[]
-      if jit == nil or length == 0 or length > 4096 or int(offset) >= jit.entries.len or
-          jit.arena.handle == nil: return false
-      let code = jit.entries[int(offset)].code
-      if code < 2: return false
-      image = newSeq[byte](int(length))
-      if residentCopyNative(jit.arena.handle, code-2, addr image[0], length) == 0:
+    when defined(pvmLegacyNativeWitness):
+      proc copyX86ResidentImageProof*(jit: X86Jit, offset, length: uint32,
+          image: var seq[byte]): bool =
+        ## Copy only a bounded published literal image without changing the native owner.
         image = @[]
-        return false
-      true
+        if jit == nil or length == 0 or length > 4096 or int(offset) >= jit.entries.len or
+            jit.arena.handle == nil: return false
+        let code = jit.entries[int(offset)].code
+        if code < 2: return false
+        image = newSeq[byte](int(length))
+        if residentCopyNative(jit.arena.handle, code-2, addr image[0], length) == 0:
+          image = @[]
+          return false
+        true

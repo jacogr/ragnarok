@@ -1,7 +1,8 @@
 {
   "defines": [
     "pvmX86Jit",
-    "pvmX86ResidentProof"
+    "pvmX86ResidentProof",
+    "pvmLegacyNativeWitness"
   ],
   "directory": "state",
   "includes": [

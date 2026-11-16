@@ -1,6 +1,7 @@
 {
   "defines": [
-    "pvmArm64Jit"
+    "pvmArm64Jit",
+    "pvmLegacyNativeWitness"
   ],
   "directory": "state",
   "includes": [

@@ -24,6 +24,13 @@ CREDIT_WITNESS_FLAGS = frozenset({
 CREDIT_ONLY_FLAGS = CREDIT_WITNESS_FLAGS - {'pvmX86Jit', 'pvmX86ResidentProof'}
 
 
+# Only the direct legacy cache/ABI proofs expose assertion-based owner APIs.
+LEGACY_NATIVE_SUITES = frozenset({
+    'pvm_arm_scalar_refusal', 'pvm_arm_macro_capacity', 'pvm_arm_region_refusal',
+    'pvm_x86_scalar_refusal', 'pvm_x86_region_refusal', 'pvm_x86_resident_access',
+    'pvm_x86_wide_default',
+})
+
 def validate_requirements(records):
     if not isinstance(records, dict) or set(records) != set(UNIT_SUITES):
         # Every discovered source keeps its explicit execution profile; stale profiles also fail.
@@ -38,7 +45,7 @@ def validate_requirements(records):
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
                     'pvmInnerPreparedReceipt', 'pvmPaidMixedLoopWitness', 'pvmResidentWitness',
-                    'pvmSharedAsyncWitness'} | CREDIT_ONLY_FLAGS,
+                    'pvmSharedAsyncWitness', 'pvmLegacyNativeWitness'} | CREDIT_ONLY_FLAGS,
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
@@ -55,6 +62,9 @@ def validate_requirements(records):
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
         defines = set(record['defines'])
+        if ('pvmLegacyNativeWitness' in defines) != (name in LEGACY_NATIVE_SUITES):
+            # Both accidental exposure and a missing direct-proof profile fail before compilation.
+            raise ValueError('Legacy native witness requires a direct owner suite: '+name)
         capped_pvm = {'pvm_checked_code_stream_refusal', 'pvm_code_allocation_refusal',
                       'pvm_frame_allocation_refusal', 'pvm_initialization_allocation_refusal',
                       'pvm_inner_transfer_allocation_refusal', 'pvm_publication_allocation_refusal'}

@@ -9,6 +9,22 @@ staging, budgets and host callbacks. Reusable facts and exclusive native cache
 ownership cross through prepared program and engine boundaries.
 [Interpreter qualification](../../spec/pvm-interpreter-readiness.md)
 
+## Native failure and proof boundaries
+
+Production native execution belongs to `NativeSession`, which admits copied source certificates,
+keeps executable images under an exclusive owner and validates returned receipts before using them.
+Cold emitters return refusal for malformed operands, incomplete certificates and invalid relocations;
+a failed child cannot contribute a partial prefix to a publishable enclosing image. Checked execution
+retains authority when an optional native image is refused; native refusal does not invent a guest
+gas debit or a successful execution result.
+
+The old `ArmJit` and `X86Jit` caches and direct invocation APIs remain only for independent historical
+emitter, arena, ABI and refusal proofs. Their assertion-based contracts require the test-only
+`pvmLegacyNativeWitness` profile. Selecting either ISA alone does not declare those owner types or
+constructors. Ordinary read qualification checks that the constructors remain unavailable; direct
+proof suites explicitly declare their separate profile. Keep production admission and execution on
+the fallible `NativeSession` path instead of reviving these legacy caches.
+
 ## Reusable execution policy
 
 [Gas planning](../../src/pvm/gas/plan.nim), [checked dispatch](../../src/pvm/internal/handler_stream.nim)

@@ -59,6 +59,19 @@ class NativeRequirementsHarness(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_requirements(records)
 
+    def test_legacy_owner_profile_is_confined_to_direct_proofs(self):
+        """Ordinary profiles reject old owner APIs; direct proofs cannot silently omit their selector."""
+        validate_requirements(NATIVE_REQUIREMENTS)
+        for name in ('pvm_arm_scalar_refusal', 'pvm_x86_resident_access', 'pvm_runtime_policy'):
+            records = deepcopy(NATIVE_REQUIREMENTS)
+            flags = records[name]['defines']
+            if 'pvmLegacyNativeWitness' in flags:
+                flags.remove('pvmLegacyNativeWitness')
+            else:
+                flags.append('pvmLegacyNativeWitness')
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Legacy native witness'):
+                validate_requirements(records)
+
     def test_inner_preparation_receipt_is_a_fixed_profile(self):
         """The copied inner-owner receipt is explicit; arbitrary compiler switches stay rejected."""
         records = deepcopy(NATIVE_REQUIREMENTS)
