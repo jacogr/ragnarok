@@ -1280,11 +1280,18 @@ when defined(pvmSharedAsyncWitness):
       assert preparedInfo(code).value.nativeCalls == 0
       assert not nativeImageMappingUnmapped(observation.mappingAddress)
       assert not nativeImageMappingUnmapped(observation.writableAddress)
+      invalidatePreparedNativeForWitness(code)
+      assert not nativeImageMappingUnmapped(observation.mappingAddress)
       assert close(runtime)
-      assert runtimeInfo(runtime).registered == 1
+      assert not nativeImageMappingUnmapped(observation.mappingAddress)
+      assert not nativeImageMappingUnmapped(observation.writableAddress)
+      assert runtimeInfo(runtime).registered == 1, "surviving image retains invalidation credit"
+      assert not launch(runtime), "a surviving sole image must prevent namespace reuse"
     assert nativeImageMappingUnmapped(observation.mappingAddress)
     assert nativeImageMappingUnmapped(observation.writableAddress)
     assert runtimeInfo(runtime).registered == 0
+    assert launch(runtime), "physical owner drop permits empty restart"
+    assert close(runtime)
 
   when NativeCheckedReadEnabled:
     proc unexpectedQuotaHost(calls: var int, suspension: StepOutcome): HostResponse =

@@ -408,10 +408,17 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
         release(runtime.lock)
         return RetirementRefused
       retireMixedLoopLocked(runtime)
-  runtime.slots[slot].state = Retiring
+  # Optional retirement can unlock. Reprove the primary before changing its live ownership.
+  if not matchesRow(runtime, key) or runtime.slots[slot].state != Live:
+    release(runtime.lock)
+    return RetirementRefused
   case runtime.slots[slot].location
   of CompletionLocation.Queued, CompletionLocation.Running:
     # Session.ticket may already be zero after invalidation; the row still owns the old obligation.
+    if image.ready or runtime.slots[slot].completion.ready:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].cancelled = true
     broadcast(runtime.changed)
     release(runtime.lock)
@@ -431,6 +438,8 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
       # An installed row cannot also own a parked completion.
       release(runtime.lock)
       return RetirementRefused
+    # Failed ownership checks above leave Live intact, so close cannot recycle a surviving image.
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].location = CompletionLocation.Reclaiming
     release(runtime.lock)
     image = default(NativeImage) # Actual unmapping is outside the mutex; credit is still occupied.
@@ -441,6 +450,10 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
     return if finished: Detached else: RetirementRefused
   of CompletionLocation.Reclaiming:
     # The worker or host that detached the image still owns physical retirement.
+    if image.ready or runtime.slots[slot].completion.ready:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].cancelled = true
     broadcast(runtime.changed)
     release(runtime.lock)

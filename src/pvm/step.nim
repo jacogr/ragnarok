@@ -520,6 +520,13 @@ when defined(pvmMixedLoopWitness) or defined(pvmSharedAsyncWitness):
     assert data != nil and not data.busy
     nativeStatistics(data.native)
 
+when defined(pvmSharedAsyncWitness):
+  proc invalidatePreparedNativeForWitness*(prepared: PreparedProgram) =
+    ## Exercise ordinary stream invalidation while retaining the prepared mapping owner.
+    let data = prepared.data
+    assert data != nil and not data.busy
+    invalidateNativeStream(data.native)
+
 when defined(pvmArm64JitOwnerReceipt):
   proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
     ## Local experiment-only copied code-cache diagnostics; exact owner availability precedes payload access.
