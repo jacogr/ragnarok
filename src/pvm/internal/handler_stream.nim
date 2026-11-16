@@ -4755,6 +4755,12 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.nativeEntry = stream.nativeEntry
   f.nativeInstalledEpoch = stream.nativeInstalledEpoch
   f.nativeInstallation = stream.nativeInstallation
+  # The emptied cache must not retain scalar overlay ownership if this frame later refuses.
+  # Preparation/failure accounting deliberately stays with the source-bound stream.
+  stream.nativeOriginal = nil
+  stream.nativeEntry = 0
+  stream.nativeInstalledEpoch = 0
+  stream.nativeInstallation = default(FlatNativeInstallation)
   when NativeReadCycleEnabled:
     f.bitmapCandidate = stream.bitmapCandidate
     stream.bitmapCandidate = 0

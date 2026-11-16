@@ -1241,6 +1241,11 @@ when defined(pvmSharedAsyncWitness):
           verify(cold, source, 2048)
           waitNativeCompiler(runtime)
           assert runtimeInfo(runtime).registered == 1
+          let warm = execute(source, quota, code)
+          verify(warm, source, 2048)
+          assert warm.value.backend == PvmBackend.Jit
+          assert preparedInfo(code).value.nativeCalls > 0
+          let before = preparedInfo(code).value
           damageNextNativeInstallation(afterExecution)
           if hosted:
             var calls = 0
@@ -1249,7 +1254,8 @@ when defined(pvmSharedAsyncWitness):
             assert failed.error == StepError.BackendFailure and calls == 0
           else:
             assert execute(source, quota, code).error == StepError.BackendFailure
-          assert preparedInfo(code).value.streamNodes == 0
+          let after = preparedInfo(code).value
+          assert after.streamNodes == 0 and after.preparationUnits == before.preparationUnits
           assert preparedNativeState(code).value == NativeState.Unavailable
           assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
           assert machineInfo(source).value == initial and memoryOf(source).value == memory
