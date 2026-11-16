@@ -33,6 +33,20 @@ static void *pvm_mixed_arena_address(void *handle) {
 #endif
 }
 
+/* Capture a distinct writable alias before disposing the exclusive heap owner. */
+static void *pvm_mixed_arena_writable_address(void *handle) {
+#if defined(__linux__) && defined(__x86_64__)
+    pvm_x86_arena *owner = handle;
+    return owner ? owner->writable : NULL;
+#elif defined(__aarch64__) && (defined(__APPLE__) || defined(__linux__))
+    pvm_arm64_arena *owner = handle;
+    return owner ? owner->writable : NULL;
+#else
+    (void)handle;
+    return NULL;
+#endif
+}
+
 /* The direct fault profiles perform no other allocation between unmapping and this check. */
 static int pvm_mixed_arena_unmapped(void *address) {
 #if defined(__APPLE__) && defined(__aarch64__)

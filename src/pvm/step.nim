@@ -33,7 +33,7 @@ when defined(polkavmRuntime):
   import std/algorithm
   import ./internal/polkavm
 import ./internal/[handler_stream, execution_types, native_pipeline]
-export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo
+export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo, NativeCompilerFailure
 export start, close, runtimeInfo
 when defined(pvmSharedAsyncWitness):
   export pauseNativeCompiler, waitNativeCompiler

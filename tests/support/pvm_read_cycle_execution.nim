@@ -1303,6 +1303,73 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert close(runtime)
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).completions == 0
 
+  proc runMixedCompilerFailure*() =
+    ## Auxiliary claims use the same failure boundary without reviving or losing their primary's image.
+    for point in [NativeCompilerPoint.None, NativeCompilerPoint.AfterClaim,
+        NativeCompilerPoint.BeforePublish]:
+      when defined(pvmSharedAsyncDiagnostic):
+        # Print outside live mapping-disposal checks so diagnostics cannot reuse the observed address.
+        stderr.writeLine("mixed compiler failure point=" & $uint8(point))
+        stderr.flushFile()
+      let runtime = newNativeRuntime()
+      try:
+        assert start(runtime)
+      except:
+        assert false, "auxiliary failure worker did not start"
+      block:
+        # A real installed primary proves the auxiliary's original ownership and admission route.
+        let renderer = newNativeSession(runtime)
+        readyMixedLoopTestRenderer(runtime, renderer)
+        let proof = mixedLoopTestProof(nativeEpoch(renderer))
+        if point == NativeCompilerPoint.None: pauseNativeCompiler(runtime, true)
+        else: armNativeCompilerGate(runtime, point)
+        beginNativeInvocation(renderer, NativeInvocationFloor)
+        assert offerNativeMixedLoop(renderer, proof)
+        finishNativeInvocation(renderer, NativeInvocationFloor)
+        var observation = default(NativeCompilerObservation)
+        if point != NativeCompilerPoint.None:
+          observation = waitNativeCompilerGate(runtime)
+          assert observation.point == point and observation.kind == NativeKind.MixedSelfLoop
+          assert observation.hasImage == (point == NativeCompilerPoint.BeforePublish)
+          if point == NativeCompilerPoint.BeforePublish:
+            assert observation.mappingAddress != 0 and observation.writableAddress != 0
+        damageNativeCompilerOwnership(runtime, point, true)
+        if point == NativeCompilerPoint.None: pauseNativeCompiler(runtime, false)
+        else: releaseNativeCompilerGate(runtime)
+        waitNativeCompiler(runtime)
+        if point == NativeCompilerPoint.BeforePublish:
+          # The primary stays mapped; only the rejected worker-local auxiliary must be absent now.
+          assert nativeImageMappingUnmapped(observation.mappingAddress)
+          assert nativeImageMappingUnmapped(observation.writableAddress)
+        let failed = runtimeInfo(runtime)
+        let expected = if point == NativeCompilerPoint.BeforePublish:
+            NativeCompilerFailure.InvalidPublication else: NativeCompilerFailure.InvalidClaim
+        assert failed.failure == expected and failed.phase == NativePhase.Idle and failed.active ==
+            0, "auxiliary fault classification"
+        assert failed.submitted == 2 and failed.completed == 1, "auxiliary fault settled primary counters"
+        assert failed.registered == (if point == NativeCompilerPoint.BeforePublish: 1 else: 2), "auxiliary fault held credits"
+        beginNativeInvocation(renderer, NativeInvocationFloor)
+        assert nativeState(renderer) == NativeState.Unavailable and not mixedLoopPrimaryReady(renderer)
+        let unavailable = borrowNativeMixedLoop(renderer, proof)
+        assert unavailable.image == nil
+        finishNativeInvocation(renderer, NativeInvocationFloor)
+      assert close(runtime)
+      # Lost auxiliary metadata cannot grant an empty restart; its bounded credit stays quarantined.
+      if point != NativeCompilerPoint.BeforePublish:
+        assert runtimeInfo(runtime).registered == 1, "lost auxiliary credit stays quarantined"
+        try:
+          assert not start(runtime)
+        except:
+          assert false, "quarantined runtime start raised instead of refusing"
+      else:
+        assert runtimeInfo(runtime).registered == 0, "proved auxiliary and primary credits retire"
+        try:
+          assert start(runtime)
+        except:
+          assert false, "empty runtime restart failed"
+        assert runtimeInfo(runtime).failure == NativeCompilerFailure.None
+        assert close(runtime)
+
   proc runMixedLoopMailbox*() =
     runMixedLoopMailboxCase[false]()
     runMixedLoopMailboxCase[true]()

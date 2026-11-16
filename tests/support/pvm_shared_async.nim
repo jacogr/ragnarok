@@ -1192,6 +1192,100 @@ when defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).submitted == 1
     assert close(runtime)
 
+  proc invalidCompilerOwnership() =
+    ## Fault real queued/claimed/publishing jobs; checked CPU/RAM survives and only proved credits retire.
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let initial = machineInfo(source).value
+    let memory = memoryOf(source).value
+    let quota = ExecutionStepLimit(6145)
+    for point in [NativeCompilerPoint.None, NativeCompilerPoint.AfterClaim,
+        NativeCompilerPoint.BeforePublish]:
+      diagnosticPhase("invalidCompilerOwnership point=" & $uint8(point))
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      block:
+        # Retain the prepared owner until after close so its outstanding registration is observable.
+        let code = prepared(owner, runtime)
+        if point == NativeCompilerPoint.None: pauseNativeCompiler(runtime, true)
+        else: armNativeCompilerGate(runtime, point)
+        verify(execute(source, quota, code), source, 2048)
+        var observation = default(NativeCompilerObservation)
+        if point != NativeCompilerPoint.None:
+          observation = waitNativeCompilerGate(runtime)
+          assert observation.point == point, "compiler fault gate point"
+          assert observation.hasImage == (point == NativeCompilerPoint.BeforePublish), "compiler fault real image control"
+          if point == NativeCompilerPoint.BeforePublish:
+            assert observation.mappingAddress != 0 and observation.writableAddress != 0, "compiler fault mapped aliases control"
+        damageNativeCompilerOwnership(runtime, point)
+        if point == NativeCompilerPoint.None: pauseNativeCompiler(runtime, false)
+        else: releaseNativeCompilerGate(runtime)
+        waitNativeCompiler(runtime)
+        if point == NativeCompilerPoint.BeforePublish:
+          # Check immediately, before checked execution can allocate another mapping at this address.
+          assert nativeImageMappingUnmapped(observation.mappingAddress), "compiler fault RX mapping must retire"
+          assert nativeImageMappingUnmapped(observation.writableAddress), "compiler fault RW mapping must retire"
+        let failed = runtimeInfo(runtime)
+        let expected = if point == NativeCompilerPoint.BeforePublish:
+            NativeCompilerFailure.InvalidPublication else: NativeCompilerFailure.InvalidClaim
+        assert failed.failure == expected and failed.phase == NativePhase.Idle, "compiler fault classification"
+        assert failed.active == 0 and failed.completed == 0 and failed.submitted == 1, "compiler fault unsettled counters"
+        assert failed.registered == (if point == NativeCompilerPoint.BeforePublish: 0 else: 1), "compiler fault held credit"
+        if point == NativeCompilerPoint.BeforePublish:
+          # The owner has not observed failure yet. Restart must not strand its old pending ticket.
+          assert close(runtime) and launch(runtime)
+          assert runtimeInfo(runtime).failure == NativeCompilerFailure.None
+        let checked = execute(source, quota, code)
+        verify(checked, source, 2048)
+        assert checked.value.backend == PvmBackend.Interpreted
+        assert preparedNativeState(code).value == NativeState.Unavailable, "failed compiler owner stays checked"
+        assert preparedInfo(code).value.nativeCalls == 0, "failed compiler publishes no native call"
+        assert machineInfo(source).value == initial and memoryOf(source).value == memory
+        assert close(runtime)
+      # A lost Running-row certificate remains quarantined; proven queued/publication rows can retire.
+      if point == NativeCompilerPoint.AfterClaim:
+        assert runtimeInfo(runtime).registered == 1, "lost claim credit remains quarantined"
+        assert not launch(runtime), "quarantined compiler cannot restart"
+      else:
+        assert runtimeInfo(runtime).registered == 0, "proved primary credit retires"
+        assert launch(runtime), "empty compiler can restart"
+        assert runtimeInfo(runtime).failure == NativeCompilerFailure.None, "empty restart clears failure"
+        assert close(runtime)
+
+  proc invalidCollectionOwnership() =
+    ## A sole real mapping in the wrong destination is never overwritten or entered as native code.
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let quota = ExecutionStepLimit(6145)
+    var observation = default(NativeCompilerObservation)
+    block:
+      # Keep the mapped owner alive through explicit runtime close, then prove physical release at drop.
+      let code = prepared(owner, runtime)
+      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+      verify(execute(source, quota, code), source, 2048)
+      observation = waitNativeCompilerGate(runtime)
+      assert observation.hasImage and observation.mappingAddress != 0 and
+          observation.writableAddress != 0
+      releaseNativeCompilerGate(runtime)
+      waitNativeCompiler(runtime)
+      misownNextNativeCompletion(runtime)
+      let checked = execute(source, quota, code)
+      verify(checked, source, 2048)
+      assert checked.value.backend == PvmBackend.Interpreted
+      waitNativeCompiler(runtime)
+      assert runtimeInfo(runtime).failure == NativeCompilerFailure.InvalidPublication
+      assert preparedNativeState(code).value == NativeState.Unavailable
+      assert preparedInfo(code).value.nativeCalls == 0
+      assert not nativeImageMappingUnmapped(observation.mappingAddress)
+      assert not nativeImageMappingUnmapped(observation.writableAddress)
+      assert close(runtime)
+      assert runtimeInfo(runtime).registered == 1
+    assert nativeImageMappingUnmapped(observation.mappingAddress)
+    assert nativeImageMappingUnmapped(observation.writableAddress)
+    assert runtimeInfo(runtime).registered == 0
+
   when NativeCheckedReadEnabled:
     proc unexpectedQuotaHost(calls: var int, suspension: StepOutcome): HostResponse =
       inc calls
@@ -2077,6 +2171,10 @@ proc runSharedAsync*() =
     diagnosticPhase("immediateLoops")
     immediateLoops()
     invalidNativeReceipt()
+    diagnosticPhase("invalidCompilerOwnership")
+    invalidCompilerOwnership()
+    diagnosticPhase("invalidCollectionOwnership")
+    invalidCollectionOwnership()
     when NativeCheckedReadEnabled:
       invalidQuotaPredecessor()
       invalidNativeInstallation()
@@ -2092,6 +2190,7 @@ proc runSharedAsync*() =
         # Both maintained native profiles include deterministic paid fault and retry coverage.
         runPaidMixedLoopSource()
       runMixedLoopMailbox()
+      runMixedCompilerFailure()
       diagnosticPhase("staticFusion")
       runStaticFusion()
     when NativeCheckedReadEnabled:
