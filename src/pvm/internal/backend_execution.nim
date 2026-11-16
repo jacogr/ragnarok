@@ -306,7 +306,8 @@ when declared(ExecutionCursor):
       if wire.error != ProgramError.None or wire.value.len == 0:
         return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
       let data = prepared.value.data
-      assert data != nil
+      if data == nil: return PreparationResult[PreparedProgram](
+          status: PreparationError.BackendFailure)
       let created = polkaCreate((if selected == PvmBackend.PolkaInterpreted: 1'u32 else: 2'u32),
           unsafeAddr wire.value[0], csize_t(wire.value.len), data.foreign.handle)
       if created != 0:

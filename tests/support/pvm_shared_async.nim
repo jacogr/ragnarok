@@ -2245,6 +2245,15 @@ proc runSharedAsync*() =
     nativeBitCounts()
     nativeBitCountLoops()
     diagnosticPhase("hostReceipts")
+    block:
+      # Missing selected private callbacks retain the original source and release the reusable prepared lease.
+      let source = input(hostOwner(), 1)
+      let initial = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let page = pageImage(memory, PageIndex(32)).value
+      assert probeInvalidHostDispatch(source)
+      assert machineInfo(source).value == initial and memoryOf(source).value == memory
+      assert pageImage(memoryOf(source).value, PageIndex(32)).value == page
     hostReceipts()
     hostedNativeParity()
     diagnosticPhase("staleStreamEpoch")
