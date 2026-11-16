@@ -1518,6 +1518,62 @@ when defined(pvmSharedAsyncWitness):
     assert runtimeInfo(runtime).registered == 0 and runtimeInfo(runtime).submitted == 1
     assert close(runtime)
 
+  proc invalidPhysicalRetirement() =
+    ## Parked and installed images retain their exact credits until actual OS release succeeds.
+    if not nativePlatformSupported(): return
+    let owner = loopOwner()
+    let source = input(owner, 2048)
+    let initial = machineInfo(source).value
+    let memory = memoryOf(source).value
+    for installed in [false, true]:
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      var observation = default(NativeCompilerObservation)
+      block:
+        # The compiler gate captures actual aliases before either parking or installing the image.
+        let code = prepared(owner, runtime)
+        armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+        verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+        observation = waitNativeCompilerGate(runtime)
+        assert observation.hasImage and observation.mappingAddress != 0 and
+          observation.writableAddress != 0, "physical-retirement witness needs actual successful aliases"
+        assert not nativeImageMappingUnmapped(observation.mappingAddress)
+        assert not nativeImageMappingUnmapped(observation.writableAddress)
+        releaseNativeCompilerGate(runtime)
+        waitNativeCompiler(runtime)
+        assert runtimeInfo(runtime).registered == 1
+        if installed:
+          # Collect and execute the real image before final session drop owns its retirement.
+          verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+          assert preparedInfo(code).value.nativeCalls > 0
+        refuseNextNativeUnmapsForWitness(100)
+        if not installed:
+          # Explicit close must expose refusal even while the prepared source remains retained.
+          assert not close(runtime), "physical release refusal must remain observable"
+          assert runtimeInfo(runtime).registered == 1
+      assert runtimeInfo(runtime).registered == 1, "native credit recycled before physical release"
+      assert runtimeInfo(runtime).failure == NativeCompilerFailure.ReleaseRefused
+      assert not nativeImageMappingUnmapped(observation.mappingAddress)
+      assert not nativeImageMappingUnmapped(observation.writableAddress)
+      assert not launch(runtime), "a retained mapping prevents namespace restart"
+      assert not close(runtime), "a repeated physical refusal cannot report successful cleanup"
+      assert refusePendingNativeUnmapsForWitness(runtime, 0) == 1
+      assert close(runtime), "a stopped worker must still permit exact physical cleanup retry"
+      assert runtimeInfo(runtime).registered == 0
+      assert nativeImageMappingUnmapped(observation.mappingAddress)
+      assert nativeImageMappingUnmapped(observation.writableAddress)
+      assert launch(runtime), "successful cleanup permits an empty namespace to restart"
+      block:
+        # A fresh real registration in the recovered namespace must execute and retire normally.
+        let code = prepared(owner, runtime)
+        verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+        waitNativeCompiler(runtime)
+        verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+        assert preparedInfo(code).value.nativeCalls > 0
+      assert close(runtime)
+      assert runtimeInfo(runtime).registered == 0
+      assert machineInfo(source).value == initial and memoryOf(source).value == memory
+
   proc invalidCompilerOwnership() =
     ## Fault real queued/claimed/publishing jobs; checked CPU/RAM survives and only proved credits retire.
     if not nativePlatformSupported(): return
@@ -2173,6 +2229,66 @@ when defined(pvmSharedAsyncWitness):
     assert captured.error == MachineError.None, "seedSession.5"
     captured.value
 
+  proc cancelledPhysicalRetirement() =
+    ## A cancelled compiler local retains its physical owner and row after its last session disappears.
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let source = input(loopOwner(), 2048)
+    var session = newNativeSession(runtime)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    let history = seedSession(source, session)
+    verifyState(history, source, 2048)
+    let observation = waitNativeCompilerGate(runtime)
+    assert observation.hasImage and observation.mappingAddress != 0 and
+        observation.writableAddress != 0
+    invalidateNativeStream(session)
+    refuseNextRetirementUnmapsForWitness(runtime, 100)
+    session = default(NativeSession)
+    releaseNativeCompilerGate(runtime)
+    waitNativeCompiler(runtime)
+    assert runtimeInfo(runtime).registered == 1
+    assert runtimeInfo(runtime).failure == NativeCompilerFailure.ReleaseRefused
+    assert not nativeImageMappingUnmapped(observation.mappingAddress)
+    assert not nativeImageMappingUnmapped(observation.writableAddress)
+    assert not close(runtime)
+    assert refusePendingNativeUnmapsForWitness(runtime, 0) == 1
+    assert close(runtime)
+    assert runtimeInfo(runtime).registered == 0
+    assert nativeImageMappingUnmapped(observation.mappingAddress)
+    assert nativeImageMappingUnmapped(observation.writableAddress)
+    verifyState(history, source, 2048)
+
+  proc partialPhysicalAcquisition() =
+    ## Fail after a real first mapping; an unpublished lowerer result still carries a charged physical owner.
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    let source = input(loopOwner(), 2048)
+    var observation = default(NativeCompilerObservation)
+    block:
+      # The public call must retain its complete checked result despite optional factory failure.
+      let code = prepared(source.programOf.value, runtime)
+      refuseNativeAcquisitionForWitness(100)
+      armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+      verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+      observation = waitNativeCompilerGate(runtime)
+      assert observation.hasImage and observation.writableAddress != 0
+      assert not nativeImageMappingUnmapped(observation.writableAddress)
+      releaseNativeCompilerGate(runtime)
+      waitNativeCompiler(runtime)
+      assert runtimeInfo(runtime).registered == 1
+      assert runtimeInfo(runtime).failure == NativeCompilerFailure.ReleaseRefused
+      verify(execute(source, ExecutionStepLimit(6145), code), source, 2048)
+      assert preparedInfo(code).value.nativeCalls == 0
+      assert preparedNativeState(code).value == NativeState.Unavailable
+      assert not close(runtime)
+    assert runtimeInfo(runtime).registered == 1
+    assert refusePendingNativeUnmapsForWitness(runtime, 0) == 1
+    assert close(runtime)
+    assert runtimeInfo(runtime).registered == 0
+    assert nativeImageMappingUnmapped(observation.writableAddress)
+    if observation.mappingAddress != 0:
+      assert nativeImageMappingUnmapped(observation.mappingAddress)
+
   proc cancelledClaimAndPublication() =
     ## Invalidate then final-drop a ticket-cleared running owner, before emission and with a real local image.
     if not nativePlatformSupported(): return
@@ -2600,6 +2716,11 @@ proc runSharedAsync*() =
     immediateLoops()
     invalidNativeReceipt()
     diagnosticPhase("invalidCompilerOwnership")
+    invalidPhysicalRetirement()
+    cancelledPhysicalRetirement()
+    partialPhysicalAcquisition()
+    let physicalProof = nativeArenaRetirementProofForWitness()
+    assert physicalProof == 0, "native arena retirement proof stage " & $physicalProof
     invalidCompilerOwnership()
     diagnosticPhase("invalidCollectionOwnership")
     invalidCollectionOwnership()

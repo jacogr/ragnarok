@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include "arena_retirement.h"
 #include <string.h>
 #include <time.h>
 #if defined(__linux__) && defined(__x86_64__)
@@ -18,50 +19,116 @@ extern int memfd_create(const char *name, unsigned int flags);
 #else
 #define PVM_X86_JIT_HOST 0
 #endif
-/* Each exclusive owner retains one MiB, with separate writable and executable aliases. */
-typedef struct { void *executable; void *writable; uint32_t used; } pvm_x86_arena;
-/* Return process CPU time for cold publication accounting; a missing OS clock is an internal failure. */
-static uint64_t pvm_x86_cpu_ns(void) {
-    struct timespec now;
-    if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now) != 0) abort();
-    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+/* Each arena embeds its cleanup record before acquiring either OS alias. */
+typedef struct {
+    pvm_arena_retirement_owner retirement;
+    void *executable; void *writable; uint32_t used; unsigned mapped;
+} pvm_x86_arena;
+_Static_assert(offsetof(pvm_x86_arena, retirement) == 0, "arena cleanup prefix");
+#ifdef PVM_NATIVE_RETIREMENT_WITNESS
+#include <errno.h>
+static void pvm_x86_arena_refuse_unmaps(void *handle, unsigned count) {
+    /* The generic owner remains live through a refused physical release. */
+    if (handle) pvm_arena_refuse_unmaps(&((pvm_x86_arena *)handle)->retirement, count);
 }
-/* Allocate an exclusive bounded pair of aliases; unsupported hosts or OS refusal return no capability. */
-static void *pvm_x86_arena_create(void) {
+#endif
+#if PVM_X86_JIT_HOST
+static int pvm_x86_arena_unmap(pvm_x86_arena *owner, void *address, size_t bytes) {
+#ifdef PVM_NATIVE_RETIREMENT_WITNESS
+    if (owner->retirement.unmaps_before_refusal) {
+        owner->retirement.unmaps_before_refusal--;
+    } else if (owner->retirement.refused_unmaps) {
+        owner->retirement.refused_unmaps--;
+        errno = EBUSY;
+        return -1;
+    }
+#else
+    (void)owner;
+#endif
+    return munmap(address, bytes);
+}
+#endif
+static int pvm_x86_arena_release_locked(pvm_arena_retirement_owner *record) {
+    /* Static prefix layout binds this callback to the exact original arena and alias flags. */
+    pvm_x86_arena *owner = (pvm_x86_arena *)record;
+#if PVM_X86_JIT_HOST
+    if ((owner->mapped & 1) && (!(owner->mapped & 2) || owner->writable != owner->executable)) {
+        if (pvm_x86_arena_unmap(owner, owner->writable, (1024 * 1024)) != 0) return 0;
+        owner->mapped &= ~1u;
+        owner->writable = NULL;
+    }
+    if (owner->mapped & 2) {
+        int shared = (owner->mapped & 1) && owner->writable == owner->executable;
+        if (pvm_x86_arena_unmap(owner, owner->executable, (1024 * 1024)) != 0) return 0;
+        owner->mapped &= ~2u;
+        owner->executable = NULL;
+        if (shared) { owner->mapped &= ~1u; owner->writable = NULL; }
+    }
+#endif
+    free(owner);
+    return 1;
+}
+static inline int pvm_x86_arena_try_destroy(void *handle) {
+    /* The caller retains the handle on failure; publication and invocation stay disarmed. */
+    return pvm_arena_try_release((pvm_arena_retirement_owner *)handle);
+}
+static void pvm_x86_arena_destroy(void *handle) {
+    /* Last-drop cannot return an error; its embedded record survives a failed OS release. */
+    pvm_arena_drop((pvm_arena_retirement_owner *)handle);
+}
+static void *pvm_x86_arena_create_owned(pvm_arena_retirement_state *state) {
+    /* Return an owned, non-callable cleanup handle if acquisition failed after a mapping survived. */
 #if PVM_X86_JIT_HOST
     const uint32_t capacity = 1024 * 1024;
+    pvm_arena_lock(state);
+    if (!pvm_arena_drain_locked(state)) { pvm_arena_unlock(state); return NULL; }
     pvm_x86_arena *owner = calloc(1, sizeof(*owner));
-    if (!owner) return NULL;
-    int fd = memfd_create("ragnarok-pvm-x86-code", MFD_CLOEXEC);
-    if (fd < 0) { free(owner); return NULL; }
-    if (ftruncate(fd, capacity) != 0) { close(fd); free(owner); return NULL; }
-    owner->writable = mmap(NULL, capacity, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (owner->writable == MAP_FAILED) { close(fd); free(owner); return NULL; }
-    owner->executable = mmap(NULL, capacity, PROT_READ | PROT_EXEC, MAP_SHARED, fd, 0);
-    close(fd);
-    if (owner->executable == MAP_FAILED) {
-        munmap(owner->writable, capacity); free(owner); return NULL;
-    }
+    if (!owner) { pvm_arena_unlock(state); return NULL; }
+    pvm_arena_retirement_init(&owner->retirement, state, pvm_x86_arena_release_locked);
+    int descriptor = memfd_create("ragnarok-pvm-x86-code", MFD_CLOEXEC);
+    if (descriptor < 0) goto failed;
+    if (ftruncate(descriptor, capacity) != 0) { close(descriptor); goto failed; }
+    owner->writable = mmap(NULL, capacity, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0);
+    if (owner->writable == MAP_FAILED) { owner->writable = NULL; close(descriptor); goto failed; }
+    owner->mapped = 1;
+    if (!owner->writable) { close(descriptor); goto failed; }
+#ifdef PVM_NATIVE_RETIREMENT_WITNESS
+    if (pvm_arena_fail_acquisition_locked(&owner->retirement)) { close(descriptor); goto failed; }
+#endif
+    owner->executable = mmap(NULL, capacity, PROT_READ | PROT_EXEC, MAP_SHARED, descriptor, 0);
+    close(descriptor);
+    if (owner->executable == MAP_FAILED) { owner->executable = NULL; goto failed; }
+    owner->mapped |= 2;
+    if (!owner->executable) goto failed;
+    pvm_arena_unlock(state);
+    return owner;
+failed:
+    owner->retirement.retiring = 1;
+    if (pvm_x86_arena_release_locked(&owner->retirement)) owner = NULL;
+    pvm_arena_unlock(state);
     return owner;
 #else
+    (void)state;
     return NULL;
 #endif
 }
-/* Retire only this owner's mappings; default and moved-from handles release nothing. */
-static void pvm_x86_arena_destroy(void *handle) {
-    if (!handle) return;
-#if PVM_X86_JIT_HOST
-    pvm_x86_arena *owner = handle;
-    munmap(owner->writable, 1024 * 1024);
-    munmap(owner->executable, 1024 * 1024);
-#endif
-    free(handle);
+static void *pvm_x86_arena_create(void) {
+    /* Legacy direct owners receive callable arenas only; failed acquisition still retains cleanup. */
+    pvm_x86_arena *owner = pvm_x86_arena_create_owned(pvm_arena_retirement_state_address());
+    if (owner && owner->retirement.retiring) { pvm_x86_arena_destroy(owner); return NULL; }
+    return owner;
+}
+/* Profiling has an explicit unavailable sentinel; no guest operation depends on this clock. */
+static uint64_t pvm_x86_cpu_ns(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now) != 0) return 0;
+    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
 }
 /* Append a complete bounded leaf, preserving prior code; return its aligned offset or a local refusal. */
 static int32_t pvm_x86_arena_publish(void *handle, const unsigned char *bytes, uint32_t length) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !bytes || length == 0 || length > 4096 || owner->used > 1024 * 1024) return -1;
+    if (!owner || owner->retirement.retiring || !bytes || length == 0 || length > 4096 || owner->used > 1024 * 1024) return -1;
     uint32_t offset = (owner->used + 15) & ~UINT32_C(15);
     if (offset > 1024 * 1024 || length > 1024 * 1024 - offset) return -1;
     /* Publication is append-only; native callers receive offsets only after the new bytes exist. */
@@ -79,7 +146,7 @@ static int32_t pvm_x86_arena_publish(void *handle, const unsigned char *bytes, u
 static int pvm_x86_arena_call(void *handle, uint32_t offset, void *registers) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !registers || offset >= owner->used || (offset & 15)) return 0;
+    if (!owner || owner->retirement.retiring || !registers || offset >= owner->used || (offset & 15)) return 0;
     /* Only the Nim cache's admitted entry records call this private pointer boundary. */
     void (*entry)(void *) = (void (*)(void *))((unsigned char *)owner->executable + offset);
     entry(registers);
@@ -93,7 +160,7 @@ static int pvm_x86_arena_call(void *handle, uint32_t offset, void *registers) {
 static uint32_t pvm_x86_arena_next(void *handle, uint32_t offset, void *registers) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !registers || offset >= owner->used || (offset & 15)) return UINT32_MAX;
+    if (!owner || owner->retirement.retiring || !registers || offset >= owner->used || (offset & 15)) return UINT32_MAX;
     uint32_t (*entry)(void *) = (uint32_t (*)(void *))((unsigned char *)owner->executable + offset);
     return entry(registers);
 #else
@@ -105,7 +172,7 @@ static uint32_t pvm_x86_arena_next(void *handle, uint32_t offset, void *register
 static uint32_t pvm_x86_arena_region(void *handle, uint32_t offset, void *registers, void *state) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !registers || !state || offset >= owner->used || (offset & 15)) return UINT32_MAX;
+    if (!owner || owner->retirement.retiring || !registers || !state || offset >= owner->used || (offset & 15)) return UINT32_MAX;
     uint32_t (*entry)(void *, void *) = (uint32_t (*)(void *, void *))((unsigned char *)owner->executable + offset);
     return entry(registers, state);
 #else
@@ -170,7 +237,7 @@ static uint64_t pvm_x86_arena_cycle(void *handle, uint32_t offset, uint64_t *reg
         pvm_x86_cycle_state *state) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !registers || !memory || !state || !memory->write_ptr ||
+    if (!owner || owner->retirement.retiring || !registers || !memory || !state || !memory->write_ptr ||
             (memory->dirty_words != 0 && !dirty_bitmap) ||
             (memory->read_ptr == NULL && memory->read_first != memory->read_end) ||
             offset >= owner->used || (offset & 15)) return 0;
@@ -191,7 +258,7 @@ static uint64_t pvm_x86_arena_wide(void *handle, uint32_t offset, uint64_t *regi
         pvm_x86_wide_state *state) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;
-    if (!owner || !registers || !memory || !state || !memory->cycle.write_ptr ||
+    if (!owner || owner->retirement.retiring || !registers || !memory || !state || !memory->cycle.write_ptr ||
             (memory->cycle.dirty_words != 0 && !dirty_bitmap) ||
             (memory->cycle.read_ptr == NULL &&
                 memory->cycle.read_first != memory->cycle.read_end) ||

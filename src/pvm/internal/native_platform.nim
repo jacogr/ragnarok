@@ -4,7 +4,8 @@
 ## Platform lowering and OS mechanics; native_pipeline owns scheduling and admission.
 ## Auxiliary images hold bounded self-loops or static graphs in immutable arenas.
 ## Mixed self-loops share a 4 KiB image budget. Static fusion has a separate
-## 4 KiB per-entry limit and 256 KiB graph budget. Failed publication releases the entire arena.
+## 4 KiB per-entry limit and 256 KiB graph budget. Failed publication disarms the arena;
+## refused OS cleanup retains its physical owner until release can finish.
 
 import std/assertions
 import ../machine
@@ -20,9 +21,38 @@ when defined(pvmX86Jit):
 elif defined(pvmArm64Jit):
   import ./arm64_jit
 
+when defined(pvmSharedAsyncWitness):
+  {.passC: "-DPVM_NATIVE_RETIREMENT_WITNESS".}
+  var refuseNativeUnmaps {.threadvar.}: cuint
+
+  proc refuseNextNativeUnmapsForWitness*(count: cuint) =
+    ## Refuse the next actual host-thread image's OS releases, not a synthetic runtime result.
+    refuseNativeUnmaps = count
+
+when defined(pvmX86Jit) or defined(pvmArm64Jit):
+  when defined(linux):
+    {.passL: "-lpthread".}
+  type NativeArenaStateObj {.importc: "pvm_arena_retirement_state",
+      header: "arena_retirement.h", incompleteStruct.} = object
+    ## One opaque process-lifetime cleanup state is shared by every inlined foreign caller.
+  proc rawNativeArenaState(): ptr NativeArenaStateObj {.cdecl,
+      importc: "pvm_arena_retirement_state_address", header: "arena_retirement.h".}
+    ## Only the canonical binding accessor requests this translation-unit-local address.
+  proc nativeArenaState(): ptr NativeArenaStateObj {.noinline.} =
+    ## Prevent foreign wrapper inlining from creating independent pending-cleanup states.
+    rawNativeArenaState()
+
 when defined(pvmX86Jit):
-  proc arenaCreate(): nil pointer {.cdecl, importc: "pvm_x86_arena_create", header: "x86_memory.h".}
+  proc arenaCreate(state: ptr NativeArenaStateObj): nil pointer {.cdecl,
+      importc: "pvm_x86_arena_create_owned", header: "x86_memory.h".}
     ## Create the maintained platform arena; only the compiler worker calls this path.
+  when defined(pvmSharedAsyncWitness):
+    proc arenaRefuseUnmaps(handle: pointer, count: cuint) {.cdecl,
+        importc: "pvm_x86_arena_refuse_unmaps", header: "x86_memory.h".}
+      ## Test-only syscall refusal belongs to this exact arena handle.
+  proc arenaTryRelease(handle: pointer): cint {.cdecl,
+      importc: "pvm_x86_arena_try_destroy", header: "x86_memory.h".}
+    ## False retains the exact physical arena, including a partially released alias pair.
   proc arenaRelease(handle: nil pointer) {.cdecl, importc: "pvm_x86_arena_destroy",
       header: "x86_memory.h".}
     ## Release the sole owned mapping; no invocation may retain an active image borrow.
@@ -36,9 +66,16 @@ when defined(pvmX86Jit):
       cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
     ## Two transient borrows and a returned stream coordinate.
 elif defined(pvmArm64Jit):
-  proc arenaCreate(): nil pointer {.cdecl, importc: "pvm_arm64_arena_create",
-      header: "arm64_memory.h".}
+  proc arenaCreate(state: ptr NativeArenaStateObj): nil pointer {.cdecl,
+      importc: "pvm_arm64_arena_create_owned", header: "arm64_memory.h".}
     ## Create the maintained platform arena; only the compiler worker calls this path.
+  when defined(pvmSharedAsyncWitness):
+    proc arenaRefuseUnmaps(handle: pointer, count: cuint) {.cdecl,
+        importc: "pvm_arm64_arena_refuse_unmaps", header: "arm64_memory.h".}
+      ## Test-only syscall refusal belongs to this exact arena handle.
+  proc arenaTryRelease(handle: pointer): cint {.cdecl,
+      importc: "pvm_arm64_arena_try_destroy", header: "arm64_memory.h".}
+    ## False retains the exact physical arena, including a partially released alias pair.
   proc arenaRelease(handle: nil pointer) {.cdecl, importc: "pvm_arm64_arena_destroy",
       header: "arm64_memory.h".}
     ## Release the sole owned mapping; no invocation may retain an active image borrow.
@@ -52,15 +89,17 @@ elif defined(pvmArm64Jit):
       cdecl, importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
     ## Two transient borrows and a returned stream coordinate.
 
-proc abortNativeReceipt*() {.cdecl, importc: "abort", header: "<stdlib.h>", noreturn.}
-  ## Internal ABI/receipt failure cannot unwind into guest replay or publish a partial snapshot.
+when defined(pvmX86ResidentProof):
+  proc abortNativeReceipt*() {.cdecl, importc: "abort", header: "<stdlib.h>", noreturn.}
+    ## Only the private ABI qualification profile deliberately fails on its test receipt mismatch.
 
 when NativeReadCycleEnabled:
   type NativeFusionEntries = array[(NativeFusionBlockLimit+63) div 64, uint64]
     ## One dispatch bit per supported source slot; follows the graph bound independently of receipt words.
 
-type NativeImage* = object             ## Exclusive published image with its exact call ABI.
+type NativeImage* = object ## Exclusive physical arena; callable authority requires complete publication.
   handle: nil pointer
+  published: bool
   offset: uint32
   bytesValue: uint64
   kindValue: NativeKind
@@ -82,6 +121,7 @@ proc `=dup`*(source: NativeImage): NativeImage {.error.}
 proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   ## Primitive move hooks do not clear raw pointers; disarm explicitly.
   image.handle = nil
+  image.published = false
   image.offset = 0
   image.bytesValue = 0
   image.kindValue = NativeKind.PurePrefix
@@ -95,14 +135,69 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   when NativeCheckedReadEnabled:
     image.ringValue = default(NativeRegisterRing)
 
+when (defined(pvmX86Jit) or defined(pvmArm64Jit)) and defined(pvmSharedAsyncWitness):
+  proc injectNativeUnmapRefusal(handle: pointer) =
+    ## Attach a one-shot test refusal to the exact owner before its physical release begins.
+    if refuseNativeUnmaps != 0:
+      arenaRefuseUnmaps(handle, refuseNativeUnmaps)
+      refuseNativeUnmaps = 0
+
 proc `=destroy`*(image: NativeImage) =
-  ## Default, failed and moved-from images own no executable storage.
+  ## Final drop releases physical storage or transfers its existing cleanup record to pending retirement.
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
-    if image.handle != nil: arenaRelease(image.handle)
+    let handle = image.handle
+    if handle != nil:
+      when defined(pvmSharedAsyncWitness):
+        injectNativeUnmapRefusal(handle)
+      arenaRelease(handle)
   when NativeReadCycleEnabled:
     `=destroy`(image.fusionOffsets)
 
+proc tryReleaseNativeImage*(image: var NativeImage): bool =
+  ## Disarm callable authority before any unmap. False keeps the sole opaque handle in this owner.
+  ## Callers retain its registration credit until true and can retry after a partial alias release.
+  image.published = false
+  let handle = image.handle
+  if handle == nil: return true
+  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    when defined(pvmSharedAsyncWitness): injectNativeUnmapRefusal(handle)
+    if arenaTryRelease(handle) == 0: return false
+    image.handle = nil
+    true
+  else:
+    false
+
 when defined(pvmSharedAsyncWitness):
+  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    proc refuseArenaAcquisition(state: ptr NativeArenaStateObj, count: cuint) {.cdecl,
+        importc: "pvm_arena_refuse_acquisition", header: "arena_retirement.h".}
+      ## Fail only after the factory records its first real mapping, retaining cleanup authority.
+    proc arenaRetirementProof(state: ptr NativeArenaStateObj): cint {.cdecl,
+        importc: "pvm_arena_retirement_proof", header: "arena_retirement_proof.h".}
+      ## Probe actual partial alias release, disarmed entry, retained last-drop ownership and recovery.
+
+  proc nativeArenaRetirementProofForWitness*(): int =
+    ## Zero means all physical witnesses ran; unsupported hosts return an explicit failure sentinel.
+    when defined(pvmX86Jit) or defined(pvmArm64Jit):
+      int(arenaRetirementProof(nativeArenaState()))
+    else:
+      -1
+
+  proc refuseNativeAcquisitionForWitness*(count: cuint) =
+    ## The next actual compiler allocation owns a non-callable partial arena when OS cleanup refuses.
+    when defined(pvmX86Jit) or defined(pvmArm64Jit):
+      refuseArenaAcquisition(nativeArenaState(), count)
+
+  proc refuseOwnedNativeUnmapsForWitness*(image: var NativeImage, count: cuint): bool =
+    ## Change only this still-owned arena's syscall refusal; clearing it permits a real retry.
+    let handle = image.handle
+    if handle == nil: return false
+    when defined(pvmX86Jit) or defined(pvmArm64Jit):
+      arenaRefuseUnmaps(handle, count)
+      true
+    else:
+      false
+
   proc compilerImageAddress(handle: nil pointer): nil pointer {.cdecl,
     importc: "pvm_mixed_arena_address", header: "mixed_arena_proof.h".}
     ## Reuse the platform's exact executable mapping address while the image is owned.
@@ -137,14 +232,18 @@ when defined(pvmX86Jit) or defined(pvmArm64Jit):
     when defined(pvmX86Jit):
       # Preserve the normal C constructor unless this x86 profile explicitly refuses executable storage.
       when defined(pvmX86JitRefuse): nil
-      else: arenaCreate()
+      else: arenaCreate(nativeArenaState())
     else:
       # ARM refusal has the same empty-image contract and does not affect an x86-selected profile.
       when defined(pvmArm64JitRefuse): nil
-      else: arenaCreate()
+      else: arenaCreate(nativeArenaState())
 
 func ready*(image: NativeImage): bool =
   ## Only a fully published image has callable authority.
+  image.handle != nil and image.published
+
+func ownsNativeImage*(image: NativeImage): bool =
+  ## Physical ownership survives failed publication or retirement even when callable authority is absent.
   image.handle != nil
 
 func codeBytes*(image: NativeImage): uint64 =
@@ -193,12 +292,15 @@ proc lowerNative*(span: NativeSpan): NativeImage =
     if count == 0 or count > NativeImageByteLimit: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = loop.kind
     let offset = arenaPublish(handle, addr image[0], uint32(image.len))
     if offset < 0:
-      arenaRelease(handle)
+      discard tryReleaseNativeImage(result)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count),
-      kindValue: loop.kind)
+    result.offset = uint32(offset)
+    result.bytesValue = uint64(count)
+    result.published = true
 
 proc enterNative*(image: NativeImage, registers: var RegisterFile): bool =
   ## Confirm a completed register-only entry before the caller credits any native work.
@@ -218,7 +320,8 @@ proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
     context: var NativeLoopContext): uint32 =
   ## The region wrapper borrows two buffers for this call only.
   ## The private x86 ABI profile checks actual caller preservation on the published loop image.
-  assert sizeof(RegisterFile) == 104 and sizeof(NativeLoopContext) == 24
+  when not (sizeof(RegisterFile) == 104 and sizeof(NativeLoopContext) == 24):
+    {.error: "native invocation ABI layout mismatch".}
   if not image.ready or image.kind != NativeKind.ClosedRegisterLoop: return NativeEntryFailure
   when NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof):
     let tagged = ringAbiNative(image.handle, image.offset, addr registers[0], addr context)
@@ -244,13 +347,16 @@ proc lowerNativeRegisterRing*(ring: NativeRegisterRing): NativeImage =
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.RegisterRing
     let offset = arenaPublish(handle, addr encoded[0], uint32(count))
     if offset < 0:
-      arenaRelease(handle)
+      discard tryReleaseNativeImage(result)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(
-        count*unitBytes),
-      kindValue: NativeKind.RegisterRing)
+    result.offset = uint32(offset)
+    result.bytesValue = uint64(
+        count*unitBytes)
+    result.published = true
     when NativeCheckedReadEnabled:
       result.ringValue = ring
 
@@ -271,7 +377,8 @@ func nativeRegisterRingRotation*(image: NativeImage, header: uint32): uint64 =
 proc enterNativeRegisterRing*(image: NativeImage, registers: var RegisterFile,
     context: var NativeRingContext): uint32 =
   ## Validate rotation before borrowing state and verify the complete receipt before returning.
-  assert sizeof(RegisterFile) == 104 and sizeof(NativeRingContext) == 48
+  when not (sizeof(RegisterFile) == 104 and sizeof(NativeRingContext) == 48):
+    {.error: "native invocation ABI layout mismatch".}
   if not image.ready or image.kind != NativeKind.RegisterRing or
       context.entry > 2 or context.visits != [0'u64, 0, 0]:
     return NativeEntryFailure
@@ -312,12 +419,15 @@ when NativeCheckedReadEnabled:
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.CheckedReadBody
     let offset = arenaPublish(handle, addr encoded[0], uint32(count))
     if offset < 0:
-      arenaRelease(handle)
+      discard tryReleaseNativeImage(result)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset),
-      bytesValue: uint64(count)*uint64(unitBytes), kindValue: NativeKind.CheckedReadBody)
+    result.offset = uint32(offset)
+    result.bytesValue = uint64(count)*uint64(unitBytes)
+    result.published = true
 
   when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
     proc checkedReadAbiNative(handle: nil pointer, offset: uint32,
@@ -328,7 +438,8 @@ when NativeCheckedReadEnabled:
         context: var NativeReadContext): bool {.noinline.} =
       ## Check all six saved hardware registers around the actual two-borrow ABI.
       assert isReadBody(image)
-      assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+      when not (sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72):
+        {.error: "native invocation ABI layout mismatch".}
       let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
       assert tagged shr 32 == 1
       let status = uint32(tagged and 0xffffffff'u64)
@@ -340,7 +451,8 @@ when NativeCheckedReadEnabled:
     ## The arena may reject entry before generated code runs. Its failure is
     ## distinct from the read guard's precommit refusal, which permits replay.
     if not isReadBody(image): return NativeReadOutcome.Failed
-    assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+    when not (sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72):
+      {.error: "native invocation ABI layout mismatch".}
     case arenaRegion(image.handle, offset, addr registers[0], addr context)
     of NativeReadSuccess: NativeReadOutcome.Completed
     of NativeReadRefusal: NativeReadOutcome.Refused
@@ -376,12 +488,15 @@ when NativeReadCycleEnabled:
     if encoded.len == 0 or encoded.len > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.BitmapLoop
     let offset = arenaPublish(handle, addr encoded[0], uint32(encoded.len))
     if offset < 0:
-      arenaRelease(handle)
+      discard tryReleaseNativeImage(result)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset),
-      bytesValue: uint64(encoded.len*unitBytes), kindValue: NativeKind.BitmapLoop)
+    result.offset = uint32(offset)
+    result.bytesValue = uint64(encoded.len*unitBytes)
+    result.published = true
 
   proc enterNativeBitmapLoop*(image: NativeImage, registers: var RegisterFile,
       context: var NativeBitmapContext): uint32 =
@@ -455,6 +570,8 @@ when NativeReadCycleEnabled:
     if entries == 0: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.MixedSelfLoop
     when defined(pvmMixedLoopArenaWitness):
       var publishedSlots = 0'u8
     for index in 0..<int(candidates.count):
@@ -468,18 +585,22 @@ when NativeReadCycleEnabled:
         if offset < 0:
           when defined(pvmMixedLoopArenaWitness):
             let address = mixedLoopArenaAddress(handle)
-          arenaRelease(handle)
+          discard tryReleaseNativeImage(result)
           when defined(pvmMixedLoopArenaWitness):
             assert mixedLoopArenaUnmapped(address) == 1
             # Record the failed append and earlier successful slots only after proving cleanup.
             echo "MIXED_ARENA_PUBLISH_REFUSAL,", index, ",", publishedSlots
           return
-        assert uint32(offset) == offsets[index]
+        if uint32(offset) != offsets[index]:
+          discard tryReleaseNativeImage(result)
+          return
         when defined(pvmMixedLoopArenaWitness):
           publishedSlots = publishedSlots or (1'u8 shl index)
-    result = NativeImage(handle: handle, bytesValue: uint64(used),
-      kindValue: NativeKind.MixedSelfLoop, mixedOffsets: offsets,
-      mixedLengths: lengths, mixedEntries: entries)
+    result.bytesValue = uint64(used)
+    result.mixedOffsets = offsets
+    result.mixedLengths = lengths
+    result.mixedEntries = entries
+    result.published = true
 
   proc lowerNativeMixedLoop*(proof: NativeMixedLoop, refused: var bool): NativeImage =
     ## Preserve the one-leaf caller contract through the shared immutable publisher.
@@ -529,8 +650,9 @@ when NativeReadCycleEnabled:
       context: var NativeMixedLoopContext): uint32 =
     ## Enter only a published slot under the shared image borrow and its exact certificate.
     ## Entry offsets are immutable after publication. Both buffers remain invocation-local.
-    assert sizeof(NativeMixedLoopContext) == NativeMixedLoopContextBytes and
-      sizeof(RegisterFile) == 104
+    when not (sizeof(NativeMixedLoopContext) == NativeMixedLoopContextBytes and sizeof(
+        RegisterFile) == 104):
+      {.error: "native invocation ABI layout mismatch".}
     if index >= uint8(NativeMixedLoopEntryLimit) or (nativeMixedLoopEntries(image) and (
         1'u8 shl int(index))) == 0:
       return NativeEntryFailure
@@ -705,12 +827,14 @@ when NativeReadCycleEnabled:
 
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.StaticFusion
     for index in 0..<blocks.len:
       if offsets[index] == 0: continue
       let published = arenaPublish(handle, addr data(index)[0], uint32(data(index).len))
       if published < 0 or uint32(published)+1 != offsets[index]:
         # No code is reachable through an image owner until all appends complete.
-        arenaRelease(handle)
+        discard tryReleaseNativeImage(result)
         return
     var compactEntries = default(NativeFusionEntries)
     var publishedCompact = default(array[NativeFusionBlockLimit, bool])
@@ -723,7 +847,7 @@ when NativeReadCycleEnabled:
       let published = arenaPublish(handle, addr compactData(selected)[0],
         uint32(compactData(selected).len))
       if published < 0 or uint32(published)+1 != compactOffsets[selected]:
-        arenaRelease(handle)
+        discard tryReleaseNativeImage(result)
         return
       publishedCompact[selected] = true
       compactEntries[selected div 64] = compactEntries[selected div 64] or (1'u64 shl (
@@ -736,7 +860,7 @@ when NativeReadCycleEnabled:
         if offsets[index] == 0 or not blocks[index].indirectEntry: continue
         let delta = int(offsets[index]-1)+code[index].inner-tableOffset
         if delta < -NativeFusionImageLimit or delta > NativeFusionImageLimit:
-          arenaRelease(handle)
+          discard tryReleaseNativeImage(result)
           return
         let token = blocks[index].header+1
         var at = nativeFusionSlot(token)
@@ -744,14 +868,16 @@ when NativeReadCycleEnabled:
         table[at] = (uint64(cast[uint32](int32(delta))) shl 32) or uint64(token)
       let published = arenaPublish(handle, addr table[0], uint32(NativeFusionTableBytes div unit))
       if published < 0 or uint32(published) != uint32(tableOffset):
-        arenaRelease(handle)
+        discard tryReleaseNativeImage(result)
         return
       used = tableOffset+NativeFusionTableBytes
     for index in 0..<blocks.len:
       if compactOffsets[index] != 0: offsets[index] = compactOffsets[index]
-    result = NativeImage(handle: handle, bytesValue: uint64(used),
-        kindValue: NativeKind.StaticFusion,
-      fusionOffsets: move(offsets), fusionEntries: entries, fusionCycleEntries: compactEntries)
+    result.bytesValue = uint64(used)
+    result.fusionOffsets = move(offsets)
+    result.fusionEntries = entries
+    result.fusionCycleEntries = compactEntries
+    result.published = true
 
   func nativeFusionEntry*(image: NativeImage, slot: int): bool =
     ## An absent slot never grants entry to arena offset zero.
@@ -802,17 +928,21 @@ when NativeReadCycleEnabled:
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
     if handle == nil: return
+    result.handle = handle
+    result.kindValue = NativeKind.ConnectedReadCycle
     let offset = arenaPublish(handle, addr encoded[0], uint32(count))
     if offset < 0:
-      arenaRelease(handle)
+      discard tryReleaseNativeImage(result)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset),
-      bytesValue: uint64(count) * uint64(unitBytes), kindValue: NativeKind.ConnectedReadCycle)
+    result.offset = uint32(offset)
+    result.bytesValue = uint64(count) * uint64(unitBytes)
+    result.published = true
 
   proc enterNativeReadCycle*(image: NativeImage, registers: var RegisterFile,
       context: var NativeCycleContext): uint32 =
     ## The region borrows the same private memory and register file for this call alone.
-    assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
+    when not (sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104):
+      {.error: "native invocation ABI layout mismatch".}
     if not image.ready or image.kind != NativeKind.ConnectedReadCycle: return NativeEntryFailure
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
 
@@ -820,7 +950,8 @@ when NativeReadCycleEnabled:
     proc enterNativeReadCycleAbiProof*(image: NativeImage, registers: var RegisterFile,
         context: var NativeCycleContext): uint32 =
       ## Check all six SysV preserved registers around the actual connected entry.
-      assert sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104
+      when not (sizeof(NativeCycleContext) == NativeCycleContextBytes and sizeof(RegisterFile) == 104):
+        {.error: "native invocation ABI layout mismatch".}
       if not image.ready or image.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
       let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
       assert tagged shr 32 == 1
