@@ -714,11 +714,14 @@ proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: Prepa
   if data == nil: return StepResult(status: StepError.InvalidPreparedProgram)
   if data.busy: return StepResult(status: StepError.PreparedProgramBusy)
   data.busy = true
-  beginNativeInvocation(data.native, uint64(limit))
+  if not beginNativeInvocation(data.native, uint64(limit)):
+    data.busy = false
+    return StepResult(status: StepError.BackendFailure)
   let answer = runPreparedFrame(source, prepared, limit, plan, memo, single)
-  finishNativeInvocation(data.native, (if answer.error == StepError.None:
+  let finished = finishNativeInvocation(data.native, (if answer.error == StepError.None:
     observedNativeWork(data.native) else: 0'u64))
   data.busy = false
+  if not finished: return StepResult(status: StepError.BackendFailure)
   answer
 
 proc execute*(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram): StepResult =
@@ -1120,12 +1123,15 @@ proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; 
       status: StepError.InvalidPreparedProgram))
   if data.busy: return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
   data.busy = true
-  beginNativeInvocation(data.native, uint64(steps))
+  if not beginNativeInvocation(data.native, uint64(steps)):
+    data.busy = false
+    return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   let answer = runPreparedHost[Context, Reason, Fallible, ScalarCapable, Callbacks](source,
       prepared, context, callbacks, steps, calls, plan, memo)
-  finishNativeInvocation(data.native, (if answer.error == HostExecutionError.None:
+  let finished = finishNativeInvocation(data.native, (if answer.error == HostExecutionError.None:
     observedNativeWork(data.native) else: 0'u64))
   data.busy = false
+  if not finished: return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   answer
 
 proc hostPolicy[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,
