@@ -236,8 +236,10 @@ def overload(language, folder, rounds, warmup, *, binaries=None, directory=None)
     handles, children, idle = [], [], []
     peaks = {'server': {}}
     output = server_log.open('w'); handles.append(output)
+    # Twelve waves include three silent-peer retirements apiece. QUICHE's server idle grace
+    # needs the existing long-load budget; readiness/recovery and five-second probe gates stay fixed.
     server = subprocess.Popen([str(binaries[language]), 'server', '--net-port', str(port), '--net-cert', str(folder / 'a.cert.pem'),
-        '--net-key', str(folder / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '120000', '--net-mode', 'overload'],
+        '--net-key', str(folder / 'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '300000', '--net-mode', 'overload'],
         env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(stop)}, stdout=output, stderr=subprocess.STDOUT)
     children.append(server)
     started = time.monotonic()

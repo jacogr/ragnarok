@@ -113,6 +113,10 @@ class NimonyCISafeguards(unittest.TestCase):
         families = selected_families(text, 'tooling', tooling)
         self.assertEqual(len(families), 1)
         self.assertEqual(families[0]['group'], 'python')
+        contract = scheduled_targets(text, event_context('workflow_dispatch', suite='contract'))
+        self.assertEqual({target for target in contract if not target.startswith('summary-')},
+                         {'check-inventory', 'check-fixture-provenance', 'check-failures',
+                          'check-python', 'check-models', 'check-guards'})
         focused = {
             'unit': {'check-fixture-provenance', 'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards', 'check-unit'},
             'docker': {'check-docker'}, 'e2e': {'check-e2e', 'check-mcp-interop'},

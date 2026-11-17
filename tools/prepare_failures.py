@@ -17,7 +17,7 @@ from nim_dependencies import transitive_dependencies
 
 
 def preparation_targets(shard=None, seed=None):
-    """Provision generated UI assets only for an actual transitive UI-server consumer."""
+    """Provision each selected native builder and only transitively consumed UI assets."""
     plans, specialized = failure_partition(shard, seed)
     sources = [ROOT/FAILURE_SUITES[n]['source'] for n in plans if n in FAILURE_SUITES]
     if specialized:
@@ -28,6 +28,9 @@ def preparation_targets(shard=None, seed=None):
     libraries = failure_libraries(shard, seed)
     if libraries.intersection({'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer'}):
         targets += ['bandersnatch-fetch']
+    if 'quic' in libraries:
+        # Contract partitions bypass full setup, so their QUIC provider needs its pinned builder.
+        targets += ['quic-tools']
     if ROOT/'src/ui/server.nim' in needed:
         targets += ['ui-assets']
     return targets

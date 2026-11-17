@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, tooling, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, tooling, unit, contract, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       contract_measure_bundles:
@@ -84,7 +84,7 @@ jobs:
   # Verify pinned fixtures alongside the other selected checks.
   fixture-provenance:
     name: Build / Provenance
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm' || github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'contract' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm' || github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     runs-on: &ubuntu-x86-version ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -313,7 +313,7 @@ jobs:
 
   # Tooling starts with the builds and runs independently of the second wave.
   tooling:
-    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'contract' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     name: Build / Tooling
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -464,7 +464,7 @@ jobs:
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   # Contract group: named workloads report their own results.
   failures:
-    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'contract' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
     name: Contract / Test (${{ matrix.shard }})
     timeout-minutes: *ci-job-timeout
     strategy:

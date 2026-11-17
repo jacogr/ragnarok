@@ -259,6 +259,35 @@ proc idlePolicy(cert, key: string, ipv6: bool, serverIdle, clientIdle: range[1..
       return # Same idle policy without pings must actually expire, validating the positive control.
   assert keptAlive, "explicit silent timeout must expire without application traffic"
 
+proc startupPolicy(cert, key: string, ipv6: bool, delayed: bool) =
+  ## Delay the server's first response beyond stock startup idle, or prove explicit short idle still expires.
+  var server, client = default(Transport)
+  var token = 0
+  defer:
+    client.closeTransport()
+    server.closeTransport()
+  let idle: range[1..600] = if delayed: 30 else: 2
+  assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000", addr token,
+    acceptFixture, stream, ipv6 = ipv6, idleSeconds = idle)
+  assert client.openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000", addr token,
+    acceptFixture, stream, ipv6 = ipv6, idleSeconds = idle)
+  assert client.connectTransport(server.localPort)
+  let heldUntil = getMonoTime()+initDuration(seconds = 6)
+  while getMonoTime() < heldUntil:
+    # Leave the server socket unread: only a real client startup alarm can retire the attempt.
+    assert client.pollTransport(1)
+    if not delayed and client.closedConnections > 0:
+      assert client.authenticatedConnections == 0
+      return # The shorter configured startup idle must remain effective without a response.
+    assert client.closedConnections == 0, "configured startup idle survives the delayed first flight"
+  assert delayed, "silent short-idle startup must expire within the observation bound"
+  let handshakeDeadline = getMonoTime()+initDuration(seconds = 3)
+  while server.authenticatedConnections == 0 or client.authenticatedConnections == 0:
+    # Releasing the held socket must complete real mutual TLS with the same client attempt.
+    assert getMonoTime() < handshakeDeadline, "delayed startup completes after the server resumes"
+    assert server.pollTransport(1) and client.pollTransport(1)
+    assert server.closedConnections == 0 and client.closedConnections == 0
+
 proc windowPolicy(cert, key: string) =
   ## Optional public receive windows refuse invalid domains atomically and accept the pinned minimum with real TLS resources.
   var owner = default(Transport)
@@ -331,6 +360,9 @@ proc main() {.raises.} =
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)
   for ipv6 in [false, true]:
+    # Both address families honor normal delayed startup and an explicit short silent timeout.
+    startupPolicy(args[0], args[1], ipv6, true)
+    startupPolicy(args[0], args[1], ipv6, false)
     # Each role must maintain negotiated idle independently, including a longer local proposal.
     idlePolicy(args[0], args[1], ipv6, 2, 2, false, false)
     idlePolicy(args[0], args[1], ipv6, 2, 2, true, true)

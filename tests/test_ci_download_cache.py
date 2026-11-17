@@ -41,6 +41,7 @@ class DownloadCacheTests(unittest.TestCase):
                    'build-tools/bandersnatch/target/release',
                    'build-tools/crypto/native-environment.json', 'build-tools/crypto/*.so',
                    'build-tools/crypto/*.dylib', 'build-tools/quic/native-environment.json',
+                   'build-tools/bazel/bazel-*',
                    'build-tools/quic/*.so', 'build-tools/quic/*.dylib',
                    'build-tools/polkavm/native-environment.json', 'build-tools/polkavm/release'}
         ci = '.github/workflows/ci.yml'
@@ -83,6 +84,8 @@ class DownloadCacheTests(unittest.TestCase):
                 if 'build-tools/quic/' in paths:
                     self.assertTrue({'native/quic/**', 'spec/quic-proof-pins.json',
                                      'tools/build_quic.py'} <= inputs)
+                if 'build-tools/bazel/' in paths:
+                    self.assertTrue({'spec/quiche-toolchain.json', 'tools/setup_bazel.py'} <= inputs)
                 if 'build-tools/bandersnatch/' in paths:
                     self.assertTrue({'native/bandersnatch/**', 'native/crypto/**',
                                      'tools/build_bandersnatch.py', 'tools/build_crypto.py'} <= inputs)

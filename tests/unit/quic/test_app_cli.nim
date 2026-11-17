@@ -60,6 +60,18 @@ assert bareServer.argument(4).endsWith("data/network/key.pem") and bareServer.ar
 assert bareServer.argument(6) == DefaultDevelopmentAlpn
 assert bareServer.networkAlpnOverride.len == 0
 assert bareServer.argument(7) == "0" and bareServer.argument(8) == "listen"
+# Retained load controllers cover repeated recoveries without widening ordinary peer deadlines.
+for mode in ["overload", "offload"]:
+  let bounded = parsed(@["server", "--net-mode", mode, "--net-timeout-ms", "300000"])
+  assert bounded.argument(7) == "300000" and bounded.argument(8) == mode
+  var refused = bounded
+  assert not parseOptions(@["server", "--net-mode", mode, "--net-timeout-ms", "300001"], refused)
+  assert not refused.valid
+for input in [@["server", "--net-mode", "valid", "--net-timeout-ms", "120001"],
+    @["client", "--net-mode", "probe", "--net-peer-key", "remote", "--net-timeout-ms", "120001"]]:
+  var refused = bareServer
+  assert not parseOptions(input, refused)
+  assert not refused.valid
 let diskDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-storage", "disk"])
 assert diskDefault.chainPath == DefaultChainFile and diskDefault.stateDatabase == "custom/full/state.db"
 let lightDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-mode",

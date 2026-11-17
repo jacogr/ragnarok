@@ -47,7 +47,9 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
   var position = -1
   if kind == 0:
     if not probe.transport.locallyOpened(stream):
-      assert probe.serveReads and probe.issued == probe.opened and probe.issued < probe.flows.len
+      # A listener may receive the optional UP0 before the host installs its CE response script.
+      assert (probe.serveReads or probe.allowAnnouncements) and probe.issued == probe.opened and
+        probe.issued < probe.flows.len, "incoming stream requires a configured probe role and free transcript"
       position = probe.issued
       inc probe.issued
       if probe.reads.len > 0:
@@ -87,6 +89,7 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
           if flow.announcement:
             wantRead(stream, 0)
             return # An ignored bounded UP0 cannot consume a scripted CE response or enable its output.
+          assert probe.serveReads, "unscripted non-UP0 request cannot receive a fixture response"
           if probe.ticketReads:
             assert flow.input.len == 794 and flow.input[0] in [131'u8, 132]
             assert probe.ticketSelector == 0 or flow.input[0] == probe.ticketSelector
@@ -107,6 +110,8 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
         flow.announcement = true
         flow.persistent = true
         flow.output = @[] # Observe optional UP0 traffic without supplying any chain claim to the node.
+      if flow.remote:
+        assert flow.announcement or probe.serveReads, "incoming bytes require UP0 or a configured CE script"
       let maximum = if probe.ticketReads and flow.remote: 794 else: 8388608
       assert amount <= int64(bytes.len) and flow.input.len+int(amount) <= maximum
       for index in 0..<int(amount): flow.input.add(bytes[index])

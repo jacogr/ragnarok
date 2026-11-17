@@ -26,7 +26,7 @@ const
   DefaultRpcPort* = 9418'u16                  ## Default loopback WebSocket listener port.
   DefaultUiPort* = 8418'u16                   ## Default loopback HTTP listener port.
   MaxPeerTimeoutMs* = 120000                  ## Maximum ordinary bounded peer deadline.
-  MaxOffloadTimeoutMs* = 300000               ## Separate maximum for the server offload workload.
+  MaxLoadTimeoutMs* = 300000 ## Retained admission/offload workloads include repeated bounded recovery waits.
   DefaultTimeoutMs* = 10000                   ## Named peer commands use one finite default deadline.
   DefaultPeerMode* = "valid"                  ## Existing bounded peer workload without service fixture behavior.
   DefaultNodeMode* = NodeMode.Full            ## Complete-state startup remains the default mode.

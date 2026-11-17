@@ -172,8 +172,8 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       if not boundedNumber(value, 1, 65535, 5): refuse(flag & " must be in 1..65535")
     of "--net-timeout-ms":
       let modes = fields[optionIndex("--net-mode")]
-      let maximum = if topic == "server" and modes.len > 0 and modes[0] == "offload":
-          MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
+      let maximum = if topic == "server" and modes.len > 0 and modes[0] in ["overload", "offload"]:
+          MaxLoadTimeoutMs else: MaxPeerTimeoutMs
       let listening = topic == "node" or (topic == "server" and (modes.len == 0 or modes[0] ==
           DefaultServerMode))
       if not boundedNumber(value, (if listening: 0'u64 else: 1'u64), uint64(maximum)):
