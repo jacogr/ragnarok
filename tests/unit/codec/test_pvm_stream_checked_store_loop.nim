@@ -92,7 +92,8 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   if exit == StepExit.Fault:
     # The checked worker must report the same refused page as the source instruction.
     assert frame.faultPage == wantedFault
-  let pc = if exit in [StepExit.Halt, StepExit.Panic]: 0'u64
+  let terminal = exit in [StepExit.Halt, StepExit.Panic]
+  let pc = if terminal: 0'u64
     elif exit == StepExit.Host: uint64(wantedHostPc)
     else: uint64(wanted.pc)
   if uint64(frame.info.pc) != pc:
@@ -100,7 +101,8 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
     echo "CONTROL_PC,", uint64(frame.info.pc), ",", pc
   assert uint64(frame.info.pc) == pc, "checked-loop exit PC mismatch"
   assert frame.info.gas == wanted.gas and frame.info.gasDeficit == wanted.gasDeficit, "checked-loop gas mismatch"
-  assert frame.info.blockCharged == wanted.blockCharged, "checked-loop paid state mismatch"
+  let paid = if terminal: false else: wanted.blockCharged
+  assert frame.info.blockCharged == paid, "checked-loop paid state mismatch"
   for slot in 0..<13:
     # All source-visible register mutations survive faults, limits and aliased destinations exactly.
     assert frame.info.registers[slot] == wanted.registers[slot]

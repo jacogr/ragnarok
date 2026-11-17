@@ -87,7 +87,7 @@ proc checkMemory(memory: Memory, indices: seq[PageIndex], access: seq[
 proc check(machine: Machine, cpu: MachineInfo, indices: seq[PageIndex], access: seq[PageAccess],
     expected: string, limit: uint64, guest: GuestKind) =
   ## Validate terminal CPU state, exact gas, all registers and all mapped memory outside timing.
-  assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
+  assert uint64(cpu.pc) == 0 and not cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8), "pvm sieve native terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16 + i * 8, 8)
   assert uint64(cpu.registers[7]) == count(guest, limit)

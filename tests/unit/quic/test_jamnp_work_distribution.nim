@@ -204,7 +204,7 @@ proc main() {.raises.} =
   assert qualifyWorkDistribution(bytes, view, StateTime(20), small).error ==
       WorkDistributionError.LimitExceeded
   small = limits()
-  small.eligibility.policy.reportGas = ReportGasLimit(10000001)
+  small.eligibility.policy.reportGas = ReportGasLimit(47000001)
   assert qualifyWorkDistribution(bytes, view, StateTime(20), small).error ==
       WorkDistributionError.InvalidPolicy
   echo "distribution refusals checked"

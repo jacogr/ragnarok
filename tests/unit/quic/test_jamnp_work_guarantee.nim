@@ -37,7 +37,7 @@ proc signed(fixture: GuaranteeFixture, signer: WorkSigner, identity: StateEdKey,
   ## Only genuine original/fresh-source qualification and the actual matching private TLS key can supply a local credential.
   let eligible = qualifyWorkGuarantee(fixture.transcript, fixture.original, fixture.execution,
     fixture.view, identity, StateTime(atSlot), guaranteeLimits())
-  assert eligible.error == WorkEligibilityError.None
+  assert eligible.error == WorkEligibilityError.None, "guarantee eligibility: " & $eligible.error
   let signedResult = signer.signWorkContribution(eligible.value, guarantorLimits())
   assert signedResult.error == WorkSignerError.None
   signedResult.value

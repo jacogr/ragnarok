@@ -191,7 +191,7 @@ for sample in 0..<samples:
   let finalMemory = flatMemorySnapshot(frame)
   let publicationNs = cpuNanoseconds()-beforePublication
   let cpu = frame.info
-  assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
+  assert uint64(cpu.pc) == 0 and not cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8), "doom terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16+i*8, 8)
   for page in 0..<pages:

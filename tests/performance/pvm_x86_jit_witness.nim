@@ -704,7 +704,8 @@ proc verifyThreeControl(frame: var FlatFrame, program: Program, info: MachineInf
   runFlat(frame, budget)
   let wanted = machineInfo(expected)
   assert wanted.error == MachineError.None
-  let pc = if exit in [StepExit.Halt, StepExit.Panic]: CodeAddress(0) else: wanted.value.pc
+  let terminal = exit in [StepExit.Halt, StepExit.Panic]
+  let pc = if terminal: CodeAddress(0) else: wanted.value.pc
   if frame.reason != reason or frame.exit != exit:
     echo "THREE_EXIT,", uint64(info.pc), ",", budget, ",", reason, ",", exit, ",", frame.reason,
         ",", frame.exit
@@ -717,7 +718,8 @@ proc verifyThreeControl(frame: var FlatFrame, program: Program, info: MachineInf
         ",", uint64(wanted.value.gas), ",", uint64(frame.info.gas)
   assert frame.info.pc == pc and frame.info.gas == wanted.value.gas
   assert frame.info.gasDeficit == wanted.value.gasDeficit, "three-block gas deficit"
-  assert frame.info.blockCharged == wanted.value.blockCharged, "three-block paid state"
+  let paid = if terminal: false else: wanted.value.blockCharged
+  assert frame.info.blockCharged == paid, "three-block paid state"
   for slot in 0..<13:
     if frame.info.registers[slot] != wanted.value.registers[slot]:
       echo "THREE_REGISTER,", uint64(info.pc), ",", budget, ",", slot, ",", uint64(

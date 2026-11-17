@@ -36,7 +36,7 @@ proc checkRun(current: var FlatFrame, blockIndex: int, interior: bool = false) =
   ## Cold and reused entries retain full containing-block gas and exact instruction effects.
   runFlat(current, if interior: 1'u64 else: 2'u64)
   assert current.reason == StepError.None and current.exit == StepExit.Panic
-  assert uint64(current.info.gas) == 98 and current.info.blockCharged
+  assert uint64(current.info.gas) == 98 and not current.info.blockCharged
   assert uint64(current.info.registers[7]) == (if interior: 0'u64 else: uint64(blockIndex mod 127))
 
 let source = literalProgram()
