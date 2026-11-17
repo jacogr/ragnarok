@@ -958,10 +958,12 @@ proc flatRememberPage(f: var FlatFrame, page: int): bool {.noinline.} =
   f.dirtyPages[word] = f.dirtyPages[word] or (1'u64 shl (page and 63))
   true
 
-proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
+proc flatRememberStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
     discardable.} =
-  ## Whole-store metadata preflight precedes mutation, including a cross-page second word.
-  if not flatStoreMetadataValid[W](f, address): return false
+  ## Consume this exclusive frame's successful complete metadata preflight without repeating it.
+  ## Callers must not change dirty arrays/source-page counts or invoke callbacks between proof and use.
+  ## A scalar byte transfer has no such authority; it may precede these same ordered dirty marks.
+  ## New indices still pass flatRememberPage's capacity/bitmap checks before their first mutation.
   let first = int(address shr 12)
   let word = first shr 6
   if (f.dirtyPages[word] and (1'u64 shl (first and 63))) == 0:
@@ -973,6 +975,12 @@ proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.al
       # Both pages and the complete required index count were admitted before the first change.
       if not flatRememberPage(f, last): return false
   true
+
+proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
+    discardable.} =
+  ## Cold stores and private witnesses retain whole-store metadata preflight before dirty mutation.
+  if not flatStoreMetadataValid[W](f, address): return false
+  flatRememberStore[W](f, address)
 
 func flatDirtyCoordinatesValid(f: FlatFrame): bool =
   ## Preflight the complete retained index list before clearing any word or replacing its baseline.
@@ -1184,16 +1192,18 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
     if address >= f.stackBase:
       let at = int(address-f.stackBase)
       if f.stack.len >= W and at <= f.stack.len-W:
+        # The byte-only primitive cannot invalidate the preflight or change dirty/source metadata.
         if not flatStoreMetadataValid[W](f, address) or not flatWrite[W](f.stack, at, value) or
-            not flatMarkStore[W](f, address):
+            not flatRememberStore[W](f, address):
           f.reason = oracle.StepError.BackendFailure
           return false
         return true
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
+        # RW scalar transfer neither allocates/resizes nor calls hosts; consume the same proof once.
         if not flatStoreMetadataValid[W](f, address) or not tryWriteScalar[W](f.rw, at, value) or
-            not flatMarkStore[W](f, address):
+            not flatRememberStore[W](f, address):
           f.reason = oracle.StepError.BackendFailure
           return false
         return true
