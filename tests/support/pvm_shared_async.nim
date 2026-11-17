@@ -2531,6 +2531,7 @@ proc runSharedAsync*() =
     assert probeMachineOwnerRefusals(loopOwner()), "machine owner refusal must preserve CPU, gas and full source memory"
     assert probeRWViewRefusals(), "RW views must refuse invalid complete spans while preserving owner bytes and outputs"
     assert probeFlatRWViewRefusals(hostOwner()), "lost RW views must refuse descriptors, host reads and publication without changing owners"
+    assert probeFlatRestoreRefusals(hostOwner()), "reset refusal must preserve all private bytes, stopped CPU and immutable sources"
     memoryPublicationRefusals()
     memoryPayloadRefusals()
     unregisteredInvocationLease()
