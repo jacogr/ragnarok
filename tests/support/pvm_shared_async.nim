@@ -1194,6 +1194,7 @@ when defined(pvmSharedAsyncWitness):
 
   proc invalidCompilerOwnership() =
     ## Fault real queued/claimed/publishing jobs; checked CPU/RAM survives and only proved credits retire.
+    if not nativePlatformSupported(): return
     let owner = loopOwner()
     let source = input(owner, 2048)
     let initial = machineInfo(source).value
@@ -1254,6 +1255,7 @@ when defined(pvmSharedAsyncWitness):
 
   proc invalidCollectionOwnership() =
     ## A sole real mapping in the wrong destination is never overwritten or entered as native code.
+    if not nativePlatformSupported(): return
     let runtime = newNativeRuntime()
     assert launch(runtime)
     let owner = loopOwner()
