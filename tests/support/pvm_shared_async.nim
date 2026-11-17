@@ -681,6 +681,95 @@ when defined(pvmSharedAsyncWitness):
     assert runtime.close(), "staleStreamEpoch.8: runtime.close()"
 
 when defined(pvmSharedAsyncWitness):
+  proc verifyPublicationPages(memory: Memory, images: openArray[PageImage], scalar = false) =
+    ## Literal full-page canaries prove all untouched bytes and every predecessor page survive publication.
+    for index in 0..<images.len:
+      var expected = images[index]
+      if scalar and index == 0:
+        # The eight-byte value deliberately straddles two independently cloned chunks.
+        for offset in 0..<8: expected.bytes[511+offset] = byte(0xfedcba9876543210'u64 shr (8*offset))
+      assert pageImage(memory, images[index].index).value == expected
+
+  proc memoryPublicationRefusals() =
+    ## Refuse every directory/root allocation in real immutable updates and a live aliased writer epoch.
+    var images = newSeq[PageImage](65)
+    for index in 0..<images.len:
+      # A partial second block distinguishes retained prefix blocks from rebuilt tails.
+      images[index].index = PageIndex(uint32(32+index))
+      images[index].access = PageAccess.ReadWrite
+      for offset in 0..<4096: images[index].bytes[offset] = byte((index*37+offset*17+29) and 255)
+    let original = captureMemory(images, PageLimit(256)).value
+    var replacement = images[0]
+    replacement.bytes[0] = 0x5a
+    for mode in 0..3:
+      # Immutable operations may have completed private byte staging before the selected publication refusal.
+      var completed = false
+      var refusals = 0
+      for allocation in 1..16:
+        refuseMemoryPublicationAllocationForWitness(allocation)
+        let changed = case mode
+          of 0: captureMemory(images, PageLimit(256))
+          of 1: store(original, MemoryAddress(32*4096+511), AccessWidth(8),
+              RegisterValue(0xfedcba9876543210'u64))
+          of 2: withReplacedPages(original, [replacement])
+          else: withPageRange(original, PageIndex(200), PageIndex(266), PageAccess.ReadWrite,
+              PageContent.Zeroed)
+        let refused = finishMemoryPublicationRefusalForWitness()
+        verifyPublicationPages(original, images)
+        if refused:
+          # Local refusal returns no successor and every earlier immutable owner remains complete.
+          inc refusals
+          assert changed.error == MachineError.LimitExceeded
+        else:
+          # The first unconsumed gate proves the full allocation walk and an actual successful positive control.
+          assert changed.error == MachineError.None and refusals > 0
+          if mode == 1:
+            verifyPublicationPages(changed.value, images, true)
+          elif mode == 2:
+            assert pageImage(changed.value, replacement.index).value == replacement
+            for index in 1..<images.len:
+              assert pageImage(changed.value, images[index].index).value == images[index]
+          else:
+            verifyPublicationPages(changed.value, images)
+            if mode == 3:
+              assert uint32(memoryPageCount(changed.value).value) == 131
+              for index in 200..<266:
+                let expected = PageImage(index: PageIndex(uint32(index)),
+                    access: PageAccess.ReadWrite)
+                assert pageImage(changed.value, expected.index).value == expected
+          completed = true
+          break
+      assert completed
+    var completed = false
+    var refusals = 0
+    for allocation in 1..16:
+      # Successful writes precede the fault; copied writer handles must still observe that same pending epoch.
+      let writer = newScalarMemoryWriter(original).value
+      let alias = writer
+      assert store(writer, MemoryAddress(32*4096+511), AccessWidth(8), RegisterValue(
+          0xfedcba9876543210'u64)).error == MachineError.None
+      refuseMemoryPublicationAllocationForWitness(allocation)
+      let frozen = snapshotMemory(alias)
+      let refused = finishMemoryPublicationRefusalForWitness()
+      verifyPublicationPages(original, images)
+      if refused:
+        inc refusals
+        assert frozen.error == MachineError.LimitExceeded
+        assert uint64(load(writer, MemoryAddress(32*4096+511), AccessWidth(8)).value) ==
+            0xfedcba9876543210'u64
+        let recovered = snapshotMemory(writer)
+        assert recovered.error == MachineError.None
+        verifyPublicationPages(recovered.value, images, true)
+        assert store(alias, MemoryAddress(32*4096+511), AccessWidth(8), RegisterValue(
+            1)).error == MachineError.None
+        verifyPublicationPages(recovered.value, images, true)
+      else:
+        assert frozen.error == MachineError.None and refusals > 0
+        verifyPublicationPages(frozen.value, images, true)
+        completed = true
+        break
+    assert completed
+
   proc unregisteredInvocationLease() =
     ## Source identity/close exclusion survive without borrowing an image credit, including restart.
     if not nativePlatformSupported(): return
@@ -2338,6 +2427,7 @@ proc runSharedAsync*() =
     diagnosticPhase("staleStreamEpoch")
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
+    memoryPublicationRefusals()
     unregisteredInvocationLease()
     diagnosticPhase("metadataHostFailure")
     metadataHostFailure()
