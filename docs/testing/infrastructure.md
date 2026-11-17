@@ -522,6 +522,9 @@ ordinals, PID, command and return scope bind raw counters to case positions; all
 and a completely zero program-termination dump remain mandatory. Checked fallback under JIT policy
 remains explicit. Calibration and reports
 are separate from the original guest files; no source/image rebuild or input filter is introduced.
+An instrumentation-induced native scheduling difference retains an explicit owner refusal and both
+histories. Later owners are still checked from the same complete raw process. Any refusal keeps the
+overall report failed with a nonzero exit; qualified individual rows do not certify a complete pass.
 
 Current synthetic and guest drivers also report copied native counters after each complete,
 checked invocation and outside its primary clocks. One public `PreparedInfo` checkpoint is captured

@@ -190,6 +190,13 @@ class CurrentSyntheticProfile(unittest.TestCase):
                                                'synthetic-8,4,2,8,57,512,4,0')
         with self.assertRaisesRegex(ValueError, 'native execution or code working set'):
             self.run_profile()
+        result = json.loads((self.folder/'synthetic-results.json').read_text())
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(len(result['profiles']), 21)
+        self.assertEqual([(row['case'], row['role']) for row in result['refusals']], [(NAMES[8], 'jit')])
+        self.assertEqual(result['profiles'][-1]['case'], NAMES[-1])
+        for key in ('canonical_native_samples', 'profiled_native_samples'):
+            self.assertEqual(len(result['refusals'][0][key]['samples']), 13)
 
     def test_changed_fixture_or_image_refuses_before_qualification(self):
         """Live sealed inputs are guarded around every collector command, not just at planning time."""

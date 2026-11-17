@@ -167,6 +167,9 @@ Every owner's measured native activity and observed
 state must match its canonical log; a JIT-policy owner with no native work remains interpreted.
 The separate synthetic report/calibration/raw parts preserve the guest evidence. Instrumented
 clocks are discarded, and original source/image/input/host/build seals remain mandatory.
+If one owner's measured native schedule differs under instrumentation, retain both histories and
+its explicit refusal while checking later owners from the same complete process. The overall
+attribution report still fails and exits nonzero; later evidence cannot turn that refusal into a pass.
 
 
 Each process emits thirteen raw validated calls. Sample0 is the cold call;

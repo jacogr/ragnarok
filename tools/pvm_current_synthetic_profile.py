@@ -18,7 +18,7 @@ from native_checks import NativeChecks, ROOT
 from pvm_benchmark_report import NAMES
 from pvm_ci_performance import execution_environment
 from pvm_guest_compare import unchanged
-from pvm_instruction_profile import (calibrate_scope, collect, exclusive_costs, profile_counts,
+from pvm_instruction_profile import (calibrate_scope, collect, exclusive_costs, final_return_dump, profile_counts,
                                      validate_return_dump_identity)
 from pvm_native_ci import host_identity
 from pvm_native_samples import match_measured_native_invocations, validate_native_sample_totals
@@ -82,6 +82,54 @@ def canonical_synthetic_plan(cohort, revision):
         build_environment=identity['build_environment'])
 
 
+def synthetic_profile_observations(process, parsed, scope, binary, folder):
+    """Qualify every owner in one complete original process, retaining explicit attribution refusals.
+
+    Callers supply the full strict wire parser's output and a canonical plan. Every raw part and
+    embedded identity is required before selecting any owner. A compiler-scheduling disagreement
+    refuses that owner's attribution; it never removes a call or turns a partial report into a pass.
+    This pure reader also permits stricter replay of already collected original evidence.
+    """
+    role = process['role']
+    if [row['case'] for row in process['rows']] != list(NAMES) or set(parsed) != set(NAMES):
+        raise ValueError('Incomplete synthetic process owner inventory')
+    name = 'synthetic-'+role
+    output = folder/(name+'.callgrind')
+    final_return_dump(output, 13, owners=len(NAMES))
+    validate_return_dump_identity(output, 13*len(NAMES), scope, binary)
+    hashes = {part.name: hashlib.sha256(part.read_bytes()).hexdigest()
+              for part in sorted(folder.glob(name+'.callgrind*'))}
+    profiles, refusals = [], []
+    for index, row in enumerate(process['rows']):
+        # All raw/wire calls remain present even when one measured native schedule cannot be reproduced.
+        value = parsed[row['case']]
+        observed = validate_native_sample_totals(value['diagnostics']['scope_observations'],
+            value['native'], role, 'synthetic-'+str(index))
+        if observed is None:
+            raise ValueError('Profiled synthetic has no per-invocation native evidence')
+        try:
+            if value['policy']['actual'] != row['policy']['actual']:
+                raise ValueError('Profiled synthetic changed actual backend')
+            comparison = match_measured_native_invocations(row['native_samples'], observed, role)
+        except ValueError as error:
+            # Fail the overall report after recording every owner; do not lose later memory evidence.
+            refusals.append(dict(case=row['case'], role=role, reason=str(error),
+                canonical_native_samples=row['native_samples'], profiled_native_samples=observed))
+            continue
+        parts = [folder/(name+'.callgrind.'+str(index*13+offset)) for offset in (1, 13)]
+        texts = [part.read_text() for part in parts]
+        costs = [exclusive_costs(text) for text in texts]
+        profiles.append(dict(case=row['case'], role=role, checked_calls=143, scope=scope,
+            native=value['native'], policy=value['policy'], native_comparison=comparison,
+            actual_by_phase={phase: 'jit' if comparison[phase]['operations'] else 'interpreted'
+                             for phase in ('cold', 'reused')},
+            cold=profile_counts(texts[0]), reused=profile_counts(texts[1]),
+            cold_self_costs=costs[0], self_costs=costs[1],
+            selected_parts={phase: part.name for phase, part in zip(('cold', 'reused'), parts)},
+            profile_hashes=hashes, inputs=process['inputs']))
+    return profiles, refusals
+
+
 def profile_current_synthetic(cohort_path, revision, folder=None):
     """Retain partial evidence on failure; only the original image on its measured CI host may run."""
     folder = Path(folder or ROOT/'build/tests/pvm-synthetic-profile')
@@ -93,7 +141,7 @@ def profile_current_synthetic(cohort_path, revision, folder=None):
         scope='one public execute/executeWithHost: restoration, scalar callbacks/resumes and '
               'owned publication; excludes constructor, startup and independent driver oracles',
         image_authority='original-sealed-image', native_activity_authority='per-invocation-v1',
-        controls=[], builds=[], profiles=[])
+        controls=[], builds=[], profiles=[], refusals=[])
     try:
         # Foreign hosts and development shells cannot reach calibration or the retained image.
         if os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -152,37 +200,20 @@ def profile_current_synthetic(cohort_path, revision, folder=None):
             executed, final = collect(checks, binary, name, scope,
                 execution_environment(**process['environment']), 1800,
                 dump_symbols=(scope,), executions=13, owners=len(NAMES))
-            validate_return_dump_identity(folder/(name+'.callgrind'), 13*len(NAMES), scope, binary)
             parsed = parse_synthetic(executed['output'], role, require_full=True)
-            hashes = {part.name: hashlib.sha256(part.read_bytes()).hexdigest()
-                      for part in sorted(folder.glob(name+'.callgrind*'))}
-            for index, row in enumerate(process['rows']):
-                # All eleven parsed full-state receipts and all 143 raw return parts remain required.
-                value = parsed[row['case']]
-                if value['policy']['actual'] != row['policy']['actual']:
-                    raise ValueError('Profiled synthetic changed actual backend')
-                observed = validate_native_sample_totals(value['diagnostics']['scope_observations'],
-                    value['native'], role, 'synthetic-'+str(index))
-                if observed is None:
-                    raise ValueError('Profiled synthetic has no per-invocation native evidence')
-                comparison = match_measured_native_invocations(row['native_samples'], observed, role)
-                parts = [folder/(name+'.callgrind.'+str(index*13+offset)) for offset in (1, 13)]
-                texts = [part.read_text() for part in parts]
-                costs = [exclusive_costs(text) for text in texts]
+            profiles, refusals = synthetic_profile_observations(process, parsed, scope, binary, folder)
+            report['refusals'].extend(refusals)
+            for row in profiles:
+                # Only independently qualified attribution gets annotations; the failed owner stays explicit.
+                final = folder/row['selected_parts']['reused']
                 command(['callgrind_annotate', '--auto=no', '--inclusive=yes', '--tree=both',
-                         '--threshold=95', '--show=Ir', parts[1]], role+'-'+row['case']+'-arcs')
-                report['profiles'].append(dict(case=row['case'], role=role, checked_calls=143,
-                    scope=scope, native=value['native'], policy=value['policy'],
-                    native_comparison=comparison,
-                    actual_by_phase={phase: 'jit' if comparison[phase]['operations'] else 'interpreted'
-                                     for phase in ('cold', 'reused')},
-                    cold=profile_counts(texts[0]), reused=profile_counts(texts[1]),
-                    cold_self_costs=costs[0], self_costs=costs[1],
-                    selected_parts={phase: part.name for phase, part in zip(('cold', 'reused'), parts)},
-                    profile_hashes=hashes, inputs=process['inputs'],
-                    run={key: executed[key] for key in ('command', 'exit_code', 'log')}))
+                         '--threshold=95', '--show=Ir', final], role+'-'+row['case']+'-arcs')
+                row['run'] = {key: executed[key] for key in ('command', 'exit_code', 'log')}
+                report['profiles'].append(row)
                 destination.write_text(json.dumps(report, indent=2)+'\n')
         unchanged(seals)
+        if report['refusals']:
+            raise ValueError('; '.join(row['case']+': '+row['reason'] for row in report['refusals']))
         report['status'] = 'passed'
     except BaseException as error:
         # Preserve the precise failed collection and raw parts instead of emitting qualified attribution.
