@@ -5,12 +5,14 @@
     "state_trace_step"
   ],
   "includes": [
+    "bandersnatch",
     "crypto",
-    "bandersnatch"
+    "quic"
   ],
   "libraries": [
     "bandersnatch",
-    "crypto"
+    "crypto",
+    "quic"
   ],
   "observers": [],
   "prepared": false

@@ -2,13 +2,15 @@
   "defines": [],
   "directory": "state",
   "includes": [
+    "bandersnatch",
     "crypto",
-    "bandersnatch"
+    "quic"
   ],
   "libraries": [
     "bandersnatch_observer",
     "bandersnatch",
-    "observer"
+    "observer",
+    "quic"
   ],
   "observers": [],
   "prepared": false

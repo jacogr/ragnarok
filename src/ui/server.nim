@@ -16,8 +16,7 @@
 import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
 import ../lib/[socket_io, http_stream, logging]
-import std/http/httpmsg as http_msg
-import std/http/httpparse as http_parse
+import ../lib/http_head
 
 # Make generates immutable path/data arrays from the staged UI; no runtime asset files are read.
 include ../../build/ui_assets
@@ -34,9 +33,8 @@ type
     input, output: string
     assetIndex, position: int
     remaining: int64
-  UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
+  UiServer* = object ## Non-copyable listener and root owner; disabled instances own no descriptors.
     logger: LogWriter
-    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, rootOpened: bool
     fd, root: cint
     connections: array[MaxConnections, Connection]
@@ -62,7 +60,6 @@ proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
   server.fd = -1
   server.root = -1
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
-  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Clear moved-from slot flags without retiring resources transferred to the destination.
@@ -76,7 +73,6 @@ proc `=destroy`*(server: UiServer) =
   if server.rootOpened: discard posix.close(server.root)
   for slot in server.connections: # File and socket lifetimes belong exclusively to this owner.
     if slot.fileOpened: discard posix.close(slot.file)
-  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
@@ -91,7 +87,6 @@ proc close*(server: var UiServer) =
     slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
-  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.logger = default(LogWriter)
   server.rootOpened = false
@@ -248,31 +243,30 @@ proc readEmbedded(slot: var Connection) =
   slot.position += count
   slot.remaining -= int64(count)
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint, headBytes: int) =
-  ## Parse complete stock HTTP GET/HEAD headers with no body or ambiguous framing.
-  ## After stock syntax validation, apply UI method, path and encoding policy.
+proc process(slot: var Connection, root: cint, headBytes: int) =
+  ## Parse complete Balsa HTTP GET/HEAD headers with no body or ambiguous framing.
+  ## After Balsa syntax validation, apply UI method, path and encoding policy.
   ## The parsed request stays local to this call, while the response owns its
   ## selected asset or development descriptor across dispatcher turns.
-  if headBytes < 0:
+  if headBytes == HeadTooLarge:
     slot.close()
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request", "text/plain", 0)
-  # The request message retires on return. The listener keeps the vocabulary for later requests.
-  var head = http_msg.initHttpMsg(tags)
-  if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
-      headBytes: return
+  if headBytes <= 0 or headBytes > slot.input.len: return
+  var head = default(Head)
+  if head.findHeadEnd(toOpenArray(slot.input, 0, headBytes-1)) != headBytes: return
   for field in ["host", "accept-encoding"]:
-    if head.countHeaderByName(field) > 1: return # Application selectors must be unambiguous.
-  if head.contains(http_msg.hTransferEncoding) or head.contentLength > 0: return
-  if head.getStr(http_msg.hHost).len == 0: return
-  let isGet = head.methodOf == http_msg.tag(http_msg.mGet)
-  let isHead = head.methodOf == http_msg.tag(http_msg.mHead)
+    if head.headerCount(field) > 1: return # Application selectors must be unambiguous.
+  if head.hasHeader("transfer-encoding") or head.contentLength > 0: return
+  if head.header("host").len == 0: return
+  let isGet = head.methodOf == "GET"
+  let isHead = head.methodOf == "HEAD"
   if not isGet and not isHead:
     slot.output = "HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     return
   let path = staticPath(head.target)
   if path.len == 0: return
-  let encoding = head.getStr(http_msg.hAcceptEncoding)
+  let encoding = head.header("accept-encoding")
   if not acceptsGzip(encoding): # This server offers gzip only, without an identity fallback.
     slot.output = response("406 Not Acceptable", "text/plain", 0)
     return
@@ -311,14 +305,6 @@ proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint, headByte
 proc tick*(server: var UiServer) =
   ## Accept once and pass at most one bounded asset chunk per ready stream and turn.
   if not server.opened: return
-  let existingTags = server.httpTags
-  let tags: http_msg.HttpTags =
-    if existingTags != nil:
-      existingTags # A running listener reuses its vocabulary.
-    else:
-      let vocabulary = http_msg.newHttpTags()
-      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
-      vocabulary
   pollHttpStreams()
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure rejects only the newly accepted socket.
@@ -357,8 +343,8 @@ proc tick*(server: var UiServer) =
     if not slot.stream.canSend: continue
     if slot.output.len == 0 and not slot.fileOpened and not slot.embedded:
       let headBytes = slot.stream.receiveHead(slot.input)
-      if headBytes == http_parse.ParseIncomplete: continue
-      slot.process(tags, server.root, headBytes)
+      if headBytes == HeadPending: continue
+      slot.process(server.root, headBytes)
       if not slot.opened: continue
       logHttpResponse(server.logger, "UI", slot.output)
     if slot.stream.expired:

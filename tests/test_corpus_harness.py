@@ -179,7 +179,7 @@ class CorpusHarness(unittest.TestCase):
                     checks = SimpleNamespace(folder=folder, build=Mock(side_effect=build),
                         command=Mock(return_value=dict(exit_code=run_code, output=output)))
                     with patch('native_fixture_contracts.FIXTURE_CONTRACTS', contracts), patch('corpus_state.announce'):
-                        result = guest_scenario('compiler', checks, {'crypto': '/crypto', 'bandersnatch': '/bs'},
+                        result = guest_scenario('compiler', checks, {'crypto': '/crypto', 'bandersnatch': '/bs', 'quic': '/quic'},
                             oracle, ('sample',), name='sample', reference='independent', message='sample')
                     self.assertEqual(result['passed'], passed)
                     self.assertEqual(result['transitions'], 2)

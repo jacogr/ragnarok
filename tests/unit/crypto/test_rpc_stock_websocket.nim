@@ -7,6 +7,7 @@ import std/[assertions, syncio, strutils, base64, ioring, monotimes]
 import std/socket as tcp
 import std/posix/posix as posix
 import ../../../src/lib/socket_io as native_io
+import ../../../src/lib/[http_head, http_stream]
 import ../../../src/rpc/[server, protocol, wire, wire_stream]
 import ../../../src/chain/[genesis, parameters, provider]
 from ../../../src/codec/state/layout import chapterKey, StateChapter
@@ -82,6 +83,61 @@ proc shutdownSocket(fd, how: cint): cint {.importc: "shutdown", header: "<sys/so
 let shutdownWrite {.importc: "SHUT_WR", header: "<sys/socket.h>".}: cint
 
 const UpgradeRequest = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+
+proc preambleLimits() =
+  ## Both production Reader loops refuse a fragmented blank-line head before its deadline.
+  for rpc in [false, true]:
+    # Independent socket pairs keep stream ownership and refusal observation local to each case.
+    var pair = default(array[2, cint])
+    assert socketPair(cint(posix.AF_UNIX), cint(posix.SOCK_STREAM), 0, addr pair[0]) == 0,
+      "create the preamble stream fixture"
+    defer: discard posix.close(pair[1])
+    assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
+    var http = default(HttpStream)
+    var websocket = default(RpcWireStream)
+    if rpc:
+      assert websocket.start(pair[0]), "start the RPC Reader"
+    else:
+      assert http.start(pair[0]), "start the HTTP Reader"
+    let limit = int(maxHeadBytes())
+    var head = ""
+    var input = default(WireInput)
+    var sent = 0
+    while sent < limit - 2:
+      # Small sends fit macOS socket-pair buffers; drive the Reader between fragments.
+      var chunk = repeat("\r\n", min(1024, limit - 2 - sent) div 2)
+      assert native_io.sendBytes(pair[1], chunk.toCString(), csize_t(chunk.len), 0) == chunk.len,
+        "send the next preamble fragment"
+      sent += chunk.len
+      for attempt in 0..<10:
+        # The incomplete preamble remains pending until its retained wire budget is exhausted.
+        pollRpcStreams()
+        websocket.pump()
+        if rpc:
+          assert not websocket.takeInput(input), "RPC preamble remains pending below its limit"
+        else:
+          assert http.receiveHead(head) == HeadPending, "HTTP preamble remains pending below its limit"
+        discard pauseMicros(1000)
+    var ending = "\r\n"
+    assert native_io.sendBytes(pair[1], ending.toCString(), csize_t(ending.len), 0) == ending.len,
+      "send the final two bytes of the wire head budget"
+    var refused = false
+    for attempt in 0..<1000:
+      # No request line or EOF follows: only the byte bound can publish this refusal now.
+      pollRpcStreams()
+      websocket.pump()
+      if rpc:
+        if websocket.takeInput(input):
+          assert input.kind == BadHead, "RPC publishes a head refusal"
+          refused = true
+      else:
+        let extent = http.receiveHead(head)
+        if extent != HeadPending:
+          assert extent == HeadTooLarge and head == "", "HTTP refuses without publishing a head"
+          refused = true
+      if refused: break
+      discard pauseMicros(1000)
+    assert refused, "blank-line head reaches its byte bound before the five-second deadline"
 
 proc replyAfterEof() =
   ## Force EOF to arrive after the inbox transfer and before the dispatcher publishes its reply.
@@ -276,6 +332,7 @@ proc main() {.raises.} =
   coalescedFrames(owner, port)
   halfClosedClient(owner, port)
   replyAfterEof()
+  preambleLimits()
   blockedWriter(owner, client)
   # Give the dispatcher time to arm readiness before testing joined idle shutdown.
   for attempt in 0..<30:

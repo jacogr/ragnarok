@@ -2,10 +2,12 @@
   "defines": [],
   "directory": "crypto",
   "includes": [
-    "crypto"
+    "crypto",
+    "quic"
   ],
   "libraries": [
-    "crypto"
+    "crypto",
+    "quic"
   ],
   "observers": [],
   "prepared": false

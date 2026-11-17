@@ -2,6 +2,7 @@
   "source": "tests/native/application_seed_results.nim",
   "build_name": "application-seed-results",
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "cases": [
     {"identity": {"reason": "default"}, "arguments": ["default"], "name": "application-seed-default", "diagnostic": "outcome.status == None", "description": "Application seed default extraction guard"},
     {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "application-seed-refused", "diagnostic": "outcome.status == None", "description": "Application seed refused extraction guard"},

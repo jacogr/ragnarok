@@ -5,7 +5,7 @@
 [Services](../../src/app/services.nim) supplies selected views to RPC and MCP.
 The [chain provider](../../src/chain/provider.nim) owns exact immutable lookup and
 explicit finality. [RPC dispatch](../../src/rpc/protocol.nim) owns JSON method behavior
-and subscription state. The local endpoints use stock HTTP framing and parsing. Each service owns its
+and subscription state. The local endpoints use Balsa HTTP/1 request-head parsing. Each service owns its
 access policy and decides whether to accept a body.
 [Parser qualification](../../spec/http-parser-adoption.md)
 

@@ -17,5 +17,6 @@
     }
   ],
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "source": "tests/native/current_publication_handoff_results.nim"
 }
