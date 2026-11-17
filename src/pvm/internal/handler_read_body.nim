@@ -16,8 +16,11 @@ when declared(FlatFrame):
         int(fact.next) >= f.compiledForPc.len or int(target) >= f.sites.len or
         int(target) >= f.handlers.len or target >= flatReservationHeaderFlag: return false
     let targetFact = f.sites[int(target)]
-    int(targetFact) < f.plan.facts.len and f.plan.facts[int(targetFact)].pc == fact.next and
-      f.compiledForPc[int(fact.next)] == (target or flatReservationHeaderFlag)+1
+    var destination = default(FlatFact)
+    var packed = 0'u32
+    tryReadFlatFact(f, int(targetFact), destination) and destination.pc == fact.next and
+      tryReadMetadata(f.compiledForPc, int(fact.next), packed) and
+      packed == (target or flatReservationHeaderFlag)+1
 
   proc buildFlatReadBody(f: FlatFrame, pc: uint32, epoch: uint64): NativeReadBody =
     ## Bind one ordinary complete header, original operations and its unmodified checked terminal.
@@ -27,19 +30,23 @@ when declared(FlatFrame):
     var header = 0'u32
     var source = default(FlatSourceInterval)
     if not flatCompleteOriginalHeader(f, pc, NativeReadFactLimit, header, source): return
-    if f.handlers[int(header)] != flatCharge or f.plan.facts[int(source.first)].opcode != 2:
-      return
+    var root = default(FlatFact)
+    if not tryReadFlatFact(f, int(source.first), root) or f.handlers[int(header)] != flatCharge or
+        root.opcode != 2: return
     var walk = default(FlatSourceSummary)
+    var ending = default(FlatFact)
     if not flatWalkCompleteSource(f, header, source, walk) or
-        not flatReadTerminal(f, walk.terminal, f.plan.facts[int(source.last)]): return
+        not tryReadFlatFact(f, int(source.last), ending) or
+        not flatReadTerminal(f, walk.terminal, ending): return
     var body = initNativeReadBody(header, walk.terminal, source.first, source.last, epoch)
     var ordinal = source.first+1
     var node = header+1
     while ordinal < source.last:
       # The initial noop is the only folded fact this first shape accepts.
-      let fact = f.plan.facts[int(ordinal)]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(ordinal), fact): return
       if fact.opcode == 2 or node >= walk.terminal or f.sites[int(node)] != ordinal or
-          fact.priceIndex != f.plan.facts[int(source.first)].priceIndex: return
+          fact.priceIndex != root.priceIndex: return
       let args = f.arguments[int(node)]
       var payload = default(FlatSourcePayload)
       if not tryFlatSourcePayload(f.plan, fact, payload): return
@@ -56,7 +63,9 @@ when declared(FlatFrame):
     if not body.complete: return false
     let info = body.info
     if f.handlers[int(info.terminal)] != flatCachedJump[1]: return false
-    let nextPc = f.plan.facts[int(info.last)].next
+    var terminal = default(FlatFact)
+    if not tryReadFlatFact(f, int(info.last), terminal): return false
+    let nextPc = terminal.next
     var header = 0'u32
     var source = default(FlatSourceInterval)
     if not flatCompleteOriginalHeader(f, nextPc, NativeReadContinuationSpan, header, source) or
@@ -66,11 +75,15 @@ when declared(FlatFrame):
     if not flatWalkCompleteSource(f, header, source, walk) or
         walk.operations != NativeReadContinuationSpan or
         f.handlers[int(walk.terminal)] != flatCachedJump[1] or
-        not flatReadTerminal(f, walk.terminal, f.plan.facts[int(source.last)]): return false
+        not tryReadFlatFact(f, int(source.last), terminal) or
+        not flatReadTerminal(f, walk.terminal, terminal): return false
     var operations = default(array[NativeReadContinuationSpan.int-1, NativeOperation])
-    let priceIndex = f.plan.facts[int(source.first)].priceIndex
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(source.first), first): return false
+    let priceIndex = first.priceIndex
     for index in 0..<operations.len:
-      let fact = f.plan.facts[int(source.first)+index]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(source.first)+index, fact): return false
       let args = f.arguments[int(header)+1+index]
       if fact.priceIndex != priceIndex: return false
       var payload = default(FlatSourcePayload)
@@ -157,7 +170,11 @@ when declared(FlatFrame):
     if int(info.first) >= f.plan.facts.len:
       invalidateNativeStream(f.nativeSession)
       return
-    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(info.first), first):
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, first.pc, info.epoch)
     let extended = nativeReadContinuation(f.nativeSession).terminal != 0
     if (extended and not extendFlatReadBody(f, body)) or
         not validateNativeRead(f.nativeSession, body):
@@ -177,7 +194,11 @@ when declared(FlatFrame):
     if int(info.first) >= f.plan.facts.len:
       invalidateNativeStream(f.nativeSession)
       return
-    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(info.first), first):
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, first.pc, info.epoch)
     let extended = nativeReadContinuation(f.nativeSession).terminal != 0
     if (extended and not extendFlatReadBody(f, body)) or
         not matchesNativeReadBody(f.nativeSession, body):

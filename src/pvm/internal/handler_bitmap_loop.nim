@@ -17,7 +17,9 @@ when declared(FlatFrame):
       if header >= NativeEntryLimit or int(header) >= f.sites.len: return
       let first = f.sites[int(header)]
       if int(first) >= f.plan.facts.len: return
-      let pc = f.plan.facts[int(first)].pc
+      var rootFact = default(FlatFact)
+      if not tryReadFlatFact(f, int(first), rootFact): return
+      let pc = rootFact.pc
       var resolved = 0'u32
       var source = default(FlatSourceInterval)
       if not flatCompleteOriginalHeader(f, pc, span, resolved, source) or resolved != header or
@@ -33,10 +35,11 @@ when declared(FlatFrame):
         if not original: return
       var walk = default(FlatSourceSummary)
       if not flatWalkCompleteSource(f, header, source, walk) or walk.operations != span: return
-      let priceIndex = f.plan.facts[int(first)].priceIndex
+      let priceIndex = rootFact.priceIndex
       proof.sites[role] = NativeBitmapSite(header: header, first: first, price: source.price)
       for i in 0..<int(span):
-        let fact = f.plan.facts[int(first)+i]
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, int(first)+i, fact): return
         let node = int(header)+i+1
         if fact.opcode != BitmapOpcodes[operation] or fact.priceIndex != priceIndex or
             f.sites[node] != first+uint32(i): return

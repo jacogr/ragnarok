@@ -15,7 +15,9 @@ when declared(FlatFrame):
     if int(header) >= f.sites.len: return true
     let first = f.sites[int(header)]
     if int(first) >= f.plan.facts.len: return true
-    let span = f.plan.facts[int(first)].sourceCount
+    var fact = default(FlatFact)
+    if not tryReadFlatFact(f, int(first), fact): return true
+    let span = fact.sourceCount
     if span == 0 or span > uint32(f.plan.facts.len)-first: return true
     candidate.first <= first+span-1 and first <= candidate.last
 
@@ -46,10 +48,13 @@ when declared(FlatFrame):
         f.readProbe.inspected == ReadProbeWalkLimit or nativeInvocationUsed(f.nativeSession): return
     let first = int(f.sites[int(header)])
     if first < 0 or first >= f.plan.facts.len: return
-    let fact = f.plan.facts[first]
+    var fact = default(FlatFact)
+    if not tryReadFlatFact(f, first, fact): return
     if fact.opcode != 2 or fact.sourceCount notin 4'u32..NativeReadFactLimit: return
     let count = int(fact.sourceCount)
-    if count > f.plan.facts.len-first or f.plan.facts[first+count-1].opcode != 1: return
+    var terminal = default(FlatFact)
+    if count > f.plan.facts.len-first or not tryReadFlatFact(f, first+count-1, terminal) or
+        terminal.opcode != 1: return
     discoverReadProbe(f, header, fact.pc)
 
   template observeReadProbeTerminal(f: var FlatFrame, off: uint32, slot: int,
@@ -119,12 +124,14 @@ when declared(FlatFrame):
       assert f.readProbe.count == ReadProbeSlots
       if f.readProbe.protectedTried or f.readProbe.inspected == ReadProbeWalkLimit: return
       let first = int(f.sites[int(header)])
-      if first > f.plan.facts.len-ConnectedReadOpcodes.len or
-          f.plan.facts[first].sourceCount != uint32(ConnectedReadOpcodes.len): return
+      var root = default(FlatFact)
+      if first > f.plan.facts.len-ConnectedReadOpcodes.len or not tryReadFlatFact(f, first, root) or
+          root.sourceCount != uint32(ConnectedReadOpcodes.len): return
       inc f.readProbe.inspected
       for index, opcode in ConnectedReadOpcodes:
         # Immutable opcodes filter discovery; the full route is certified after observation.
-        if f.plan.facts[first+index].opcode != opcode: return
+        var fact = default(FlatFact)
+        if not tryReadFlatFact(f, first+index, fact) or fact.opcode != opcode: return
       f.readProbe.protectedTried = true
       if f.readProbe.inspected == ReadProbeWalkLimit: return
       inc f.readProbe.inspected
@@ -317,8 +324,9 @@ when declared(FlatFrame):
       return
     if not flatRestoreNativeInstallation(f): return
     var valid = false
-    if int(info.first) < f.plan.facts.len:
-      var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    var first = default(FlatFact)
+    if int(info.first) < f.plan.facts.len and tryReadFlatFact(f, int(info.first), first):
+      var body = buildFlatReadBody(f, first.pc, info.epoch)
       if body.complete:
         when NativeReadCycleEnabled:
           if nativeReplacementIsCycle(f.nativeSession):

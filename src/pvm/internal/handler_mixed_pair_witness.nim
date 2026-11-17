@@ -139,11 +139,15 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
           observed.repeatedHeaders
       if observed.paid != 0:
         assert observed.lastGuardOrdinal == proof.first+uint32(expectedPrefix[scenario])
-        assert observed.lastGuardPc == native.plan.facts[int(observed.lastGuardOrdinal)].pc
+        var guard = default(FlatFact)
+        assert tryReadFlatFact(native, int(observed.lastGuardOrdinal), guard)
+        assert observed.lastGuardPc == guard.pc
       if scenario == 8:
         assert native.reason == oracle.StepError.StepLimitExceeded
-        assert uint64(native.info.pc) == uint64(native.plan.facts[int(proof.first)+3].pc)
-        assert native.plan.facts[int(proof.first)+3].opcode == 2
+        var stopped = default(FlatFact)
+        assert tryReadFlatFact(native, int(proof.first)+3, stopped)
+        assert uint64(native.info.pc) == uint64(stopped.pc)
+        assert stopped.opcode == 2
       if scenario == 9:
         assert native.exit == oracle.StepExit.OutOfGas and uint64(native.info.gas) == gas
       if scenario in [0, 1, 2, 3, 6]:
@@ -184,7 +188,9 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         runFlat(resumed, suffix+1)
         runFlat(reference, suffix+1)
         assertPaidFramesEqual(resumed, reference)
-        let exitPc = resumed.plan.facts[int(resumed.sites[int(proof.exitHeader)])].pc
+        var ending = default(FlatFact)
+        assert tryReadFlatSite(resumed, proof.exitHeader, ending)
+        let exitPc = ending.pc
         let exitPrice = blockGas(program, CodeAddress(uint64(exitPc)), cycles)
         assert exitPrice.error == GasError.None
         assert uint64(resumed.info.gas)+uint64(exitPrice.value) ==

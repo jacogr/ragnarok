@@ -24,12 +24,15 @@ when declared(FlatFrame):
         not flatWalkCompleteSource(f, header, source, walk) or
         walk.operations < NativeMixedLoopMinimum or walk.terminal >= NativeEntryLimit or
         f.handlers[int(walk.terminal)] != flatBranch[171]: return
-    let priceIndex = f.plan.facts[int(source.first)].priceIndex
+    var root = default(FlatFact)
+    if not tryReadFlatFact(f, int(source.first), root): return
+    let priceIndex = root.priceIndex
     var proof = NativeMixedLoop(header: header, first: source.first, terminal: walk.terminal,
       price: source.price, epoch: epoch, span: uint8(source.span), count: uint8(walk.operations))
     var node = header+1
     for ordinal in source.first..source.last:
-      let fact = f.plan.facts[int(ordinal)]
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, int(ordinal), fact): return
       if fact.priceIndex != priceIndex: return
       if fact.opcode == 2: continue # The original price and attempt span still include this fact.
       var original = default(FlatSourcePayload)
@@ -55,7 +58,8 @@ when declared(FlatFrame):
             # and the next iteration independently bind the second site's worker and operands.
             if ordinal >= source.last or node+1 >= walk.terminal or
                 f.sites[int(node+1)] != ordinal+1: return
-            let nextFact = f.plan.facts[int(ordinal+1)]
+            var nextFact = default(FlatFact)
+            if not tryReadFlatFact(f, int(ordinal+1), nextFact): return
             let fused = flatFusedRegisterHandler(fact.opcode, nextFact.opcode)
             if fused == nil or worker != fused or nextFact.priceIndex != priceIndex: return
       proof.operations[int(node-header-1)] = NativeOperation(opcode: fact.opcode,
@@ -89,7 +93,9 @@ when declared(FlatFrame):
     if span > NativeReadFactLimit or first+int(span) > f.plan.facts.len: return
     var store = false
     for index in first..<first+int(span):
-      if nativeMixedLoopStoreWidth(f.plan.facts[index].opcode) != 0:
+      var fact = default(FlatFact)
+      if not tryReadFlatFact(f, index, fact): return
+      if nativeMixedLoopStoreWidth(fact.opcode) != 0:
         store = true
         break
     if not store: return
@@ -99,7 +105,9 @@ when declared(FlatFrame):
     f.mixedSource.candidates[int(f.mixedSource.count)] = token
     inc f.mixedSource.count
     when defined(pvmMixedLoopWitness):
-      let exitPc = f.plan.facts[int(f.sites[int(proof.exitHeader)])].pc
+      var ending = default(FlatFact)
+      if not tryReadFlatSite(f, proof.exitHeader, ending): return
+      let exitPc = ending.pc
       echo "MIXED_LOOP_PROOF,", pc, ",", proof.first, ",", exitPc, ",", proof.price,
         ",", proof.epoch, ",", proof.header, ",", proof.terminal
       for index in 0..<int(proof.count):
@@ -125,7 +133,11 @@ when declared(FlatFrame):
           inc counters.paid
           let ordinal = f.sites[int(receipt.next)]
           counters.lastGuardOrdinal = ordinal
-          counters.lastGuardPc = f.plan.facts[int(ordinal)].pc
+          var fact = default(FlatFact)
+          if not tryReadFlatFact(f, int(ordinal), fact):
+            f.reason = oracle.StepError.BackendFailure
+            continue
+          counters.lastGuardPc = fact.pc
         if receipt.paid or (receipt.next == header and receipt.visits < funded):
           inc counters.refusals
         break
@@ -287,7 +299,11 @@ when declared(FlatFrame):
         let proof {.cursor.} = requested[].proofs[index]
         let counts = f.mixedArenaWitness[index]
         let geometry = witnessNativeMixedLoopGeometry(image[], uint8(index))
-        let pc = f.plan.facts[int(f.sites[int(proof.header)])].pc
+        var fact = default(FlatFact)
+        if not tryReadFlatSite(f, proof.header, fact):
+          f.reason = oracle.StepError.BackendFailure
+          continue
+        let pc = fact.pc
         echo "MIXED_ARENA_ENTRY,", pc, ",", index, ",", counts.entries, ",", counts.visits,
           ",", counts.refusals, ",", counts.paid, ",", counts.operations, ",", counts.branches,
           ",", counts.repeatedHeaders, ",", image[].codeBytes, ",", f.mixedMask,
@@ -363,7 +379,9 @@ when declared(FlatFrame):
       assert proof.header == header and proof.terminal == terminal
       assert proof.exitHeader != header and proof.exitHeader == frame.arguments[int(terminal)].y
       assert not buildFlatMixedLoop(frame, pc, 0).complete
-      assert not buildFlatMixedLoop(frame, frame.plan.facts[int(source.first+1)].pc, 1).complete
+      var interior = default(FlatFact)
+      assert tryReadFlatFact(frame, int(source.first)+1, interior)
+      assert not buildFlatMixedLoop(frame, interior.pc, 1).complete
       assert buildFlatMixedLoop(frame, pc, 2).epoch != proof.epoch
       let price = frame.arguments[int(header)].x
       frame.arguments[int(header)].x = price+1
@@ -394,9 +412,11 @@ when declared(FlatFrame):
 
       for node in int(header)+1..<int(terminal)-1:
         let ordinal = frame.sites[node]
-        let fact = frame.plan.facts[int(ordinal)]
+        var fact = default(FlatFact)
+        assert tryReadFlatFact(frame, int(ordinal), fact)
         if ordinal >= source.last: continue
-        let next = frame.plan.facts[int(ordinal+1)]
+        var next = default(FlatFact)
+        assert tryReadFlatFact(frame, int(ordinal)+1, next)
         let fused = flatFusedRegisterHandler(fact.opcode, next.opcode)
         if fused == nil or frame.handlers[node] != fused: continue
         let firstArgs = frame.arguments[node]

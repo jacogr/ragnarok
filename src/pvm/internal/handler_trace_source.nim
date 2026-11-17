@@ -14,7 +14,8 @@ when declared(FlatFrame):
       header: var uint32, source: var FlatSourceInterval): bool =
     ## Bind the original complete PC/price map without execution policy or a copied operation array.
     if int(pc) >= f.compiledForPc.len: return false
-    let packed = f.compiledForPc[int(pc)]
+    var packed = 0'u32
+    if not tryReadMetadata(f.compiledForPc, int(pc), packed): return false
     if packed == 0: return false
     let value = packed-1
     if (value and 0x80000000'u32) == 0: return false
@@ -23,7 +24,8 @@ when declared(FlatFrame):
         int(resolved) >= f.arguments.len: return false
     let ordinal = f.sites[int(resolved)]
     if int(ordinal) >= f.plan.facts.len: return false
-    let first = f.plan.facts[int(ordinal)]
+    var first = default(FlatFact)
+    if not tryReadFlatFact(f, int(ordinal), first): return false
     if first.pc != pc or int(first.priceIndex) >= f.plan.pricePcs.len or
         f.plan.pricePcs[int(first.priceIndex)] != CodeAddress(uint64(pc)): return false
     let span = f.arguments[int(resolved)].y
@@ -47,7 +49,10 @@ when declared(FlatFrame):
         var node = header+1
         for at in source.first..source.last:
           # Folded noops retain their priced source span without consuming physical stream nodes.
-          let fact = f.plan.facts[int(at)]
+          var fact = default(FlatFact)
+          if not tryReadFlatFact(f, int(at), fact):
+            accepted = false
+            break sourceWalk
           if at != source.last and (fact.ending or not fact.fallthrough):
             accepted = false
             break sourceWalk
