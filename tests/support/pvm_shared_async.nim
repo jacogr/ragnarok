@@ -1655,6 +1655,43 @@ when defined(pvmSharedAsyncWitness):
         assert recovered.value.backend == PvmBackend.Interpreted
         assert close(runtime)
 
+    proc invalidStreamHandback() =
+      ## Both public wrappers suppress a tentative halt when final handback discovers a live observer.
+      let owner = loopOwner()
+      let source = input(owner, 2048)
+      let original = machineInfo(source).value
+      let memory = memoryOf(source).value
+      let quota = ExecutionStepLimit(6145)
+      var failures = default(array[2, StepError])
+      for hosted in [false, true]:
+        let runtime = newNativeRuntime()
+        assert launch(runtime)
+        block:
+          let code = prepared(owner, runtime)
+          damageNextStreamHandbackForWitness()
+          if hosted:
+            var calls = 0
+            let failed = executeWithHost(source, calls, unexpectedQuotaHost, quota,
+              HostCallLimit(1), code)
+            failures[1] = failed.error
+            assert calls == 0
+          else:
+            failures[0] = execute(source, quota, code).error
+          if failures[int(hosted)] == StepError.BackendFailure:
+            waitNativeCompiler(runtime)
+            let held = preparedInfo(code).value
+            assert held.streamNodes == 0 and held.preparationUnits > 0
+            assert preparedNativeState(code).value == NativeState.Unavailable
+            assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
+            verify(execute(source, quota, code), source, 2048)
+            assert preparedInfo(code).value.preparationUnits >= held.preparationUnits
+          assert machineInfo(source).value == original and memoryOf(source).value == memory
+        waitNativeCompiler(runtime)
+        assert close(runtime)
+      assert failures[0] == StepError.BackendFailure and failures[1] == StepError.BackendFailure,
+        "stream handback must suppress staged results; ordinary=" & $uint8(failures[0]) &
+        "; hosted=" & $uint8(failures[1])
+
     proc invalidQuotaPredecessor() =
       ## Both public owners must discard a damaged stream with an active observer.
       let owner = loopOwner()
@@ -2532,6 +2569,8 @@ proc runSharedAsync*() =
     assert probeRWViewRefusals(), "RW views must refuse invalid complete spans while preserving owner bytes and outputs"
     assert probeFlatRWViewRefusals(hostOwner()), "lost RW views must refuse descriptors, host reads and publication without changing owners"
     assert probeFlatRestoreRefusals(hostOwner()), "reset refusal must preserve all private bytes, stopped CPU and immutable sources"
+    when NativeCheckedReadEnabled:
+      assert probeFlatObserverRefusals(hostOwner()), "observer refusal must preserve prior handlers, CPU, source memory and discard unsafe cache authority"
     memoryPublicationRefusals()
     memoryPayloadRefusals()
     unregisteredInvocationLease()
@@ -2567,6 +2606,7 @@ proc runSharedAsync*() =
     when NativeCheckedReadEnabled:
       diagnosticPhase("invalidInvocationLease")
       invalidInvocationLease()
+      invalidStreamHandback()
       invalidQuotaPredecessor()
       invalidNativeInstallation()
     diagnosticPhase("purePrefixControl")

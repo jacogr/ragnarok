@@ -3,10 +3,41 @@
 
 ## Bounded one-call admission through checked terminals on read-capable native backends.
 ## The owning handler include supplies the private frame and checked terminal operations.
+## Fixed candidate counts, coordinates and exact predecessors are proved before any patch-set change.
+## A failed observation is sticky in the private frame: it cannot nominate, execute again or hand its
+## temporary handlers to a retained stream. Terminal visits check only their own bounded slot.
 
 when declared(FlatFrame):
   const
     ReadProbeVisitFloor = 32768'u64 ## Minimum eligible complete visits in one invocation.
+
+  func readProbeCoordinatesValid(f: FlatFrame, candidate: ReadProbeCandidate): bool =
+    ## A retained observation may address only complete nodes in this exclusive checked stream.
+    let count = uint64(min(f.handlers.len, min(f.arguments.len, f.sites.len)))
+    uint64(candidate.header) < count and uint64(candidate.terminal) < count
+
+  func readProbeCountValid(f: FlatFrame): bool =
+    ## Hot terminal lookup needs only the fixed ordinary count and a live observation state.
+    not f.readProbe.failed and f.readProbe.count >= 0 and f.readProbe.count <= ReadProbeSlots and
+      f.readProbe.inspected >= 0 and f.readProbe.inspected <= ReadProbeWalkLimit
+
+  func readProbeLayoutValid(f: FlatFrame): bool =
+    ## Bound every fixed-array walk and prove coordinates before observer installation or restoration.
+    if not readProbeCountValid(f): return false
+    for index in 0..<f.readProbe.count:
+      if not readProbeCoordinatesValid(f, f.readProbe.candidates[index]): return false
+      for prior in 0..<index:
+        if f.readProbe.candidates[prior].terminal == f.readProbe.candidates[index].terminal:
+          return false
+    when NativeReadCycleEnabled:
+      if f.readProbe.protectedActive and not f.readProbe.protectedInstalled: return false
+      if f.readProbe.protectedInstalled:
+        if f.readProbe.count != ReadProbeSlots or
+            not readProbeCoordinatesValid(f, f.readProbe.candidates[ReadProbeSlots]): return false
+        let header = f.readProbe.candidates[ReadProbeSlots].header
+        for index in 0..<f.readProbe.count:
+          if f.readProbe.candidates[index].terminal == header: return false
+    true
 
   func readProbeGuardOverlaps(f: FlatFrame, candidate: NativeReadBodyInfo): bool =
     ## Source aliases of an incumbent's checked successor are protected even at different physical nodes.
@@ -46,6 +77,9 @@ when declared(FlatFrame):
     ## Cheap immutable shape filtering precedes one bounded inspection of a cached checked header.
     if not f.readProbe.observing or not f.readProbe.later or
         f.readProbe.inspected == ReadProbeWalkLimit or nativeInvocationUsed(f.nativeSession): return
+    if uint64(header) >= uint64(f.sites.len):
+      flatObserverFailure(f)
+      return
     let first = int(f.sites[int(header)])
     if first < 0 or first >= f.plan.facts.len: return
     var fact = default(FlatFact)
@@ -60,7 +94,14 @@ when declared(FlatFrame):
   template observeReadProbeTerminal(f: var FlatFrame, off: uint32, slot: int,
       observer: FlatHandler, destination: var uint32) =
     ## Settle the checked terminal and count only complete eligible visits for this exact slot.
-    assert f.readProbe.observing
+    if not f.readProbe.observing or not readProbeCountValid(f) or slot < 0 or
+        slot >= f.readProbe.count or not readProbeCoordinatesValid(f, f.readProbe.candidates[
+            slot]) or
+        f.readProbe.candidates[slot].terminal != off or
+        f.handlers[int(off)] != observer or f.remaining > f.readProbe.segmentBudget:
+      flatObserverFailure(f)
+      destination = flatStop
+      return
     let header = f.readProbe.candidates[slot].header
     let full = f.barrier == flatStop and f.info.blockCharged and
       f.reservation == (header or flatReservationHeaderFlag)
@@ -73,7 +114,10 @@ when declared(FlatFrame):
         f.readProbe.candidates[slot].resolved = true
         f.handlers[int(off)] = observer
     if not full or destination == flatStop: return
-    assert f.remaining <= f.readProbe.segmentBudget
+    if f.remaining > f.readProbe.segmentBudget:
+      flatObserverFailure(f)
+      destination = flatStop
+      return
     # Initial admission observes its first segment; later admission retains settled work across callbacks.
     let segmentWork = f.readProbe.segmentBudget-f.remaining
     if f.readProbe.priorWork > high(uint64)-segmentWork: return
@@ -85,19 +129,27 @@ when declared(FlatFrame):
 
   proc readProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
     ## Ordinary observations search only the ordinary candidate range.
+    if not readProbeCountValid(f):
+      flatObserverFailure(f)
+      return flatStop
     var slot = 0
     while slot < f.readProbe.count and f.readProbe.candidates[slot].terminal != off:
       inc slot
-    assert slot < f.readProbe.count
+    if slot >= f.readProbe.count:
+      flatObserverFailure(f)
+      return flatStop
     observeReadProbeTerminal(f, off, slot, readProbeTerminal, result)
 
   when NativeReadCycleEnabled:
     proc protectedReadProbeCharge(f: var FlatFrame, off: uint32): uint32 =
       ## Use the original reservation and body dispatch. Only complete attempts can count.
       flatReserveImpl(f, off, true, false)
-      let next = off+1
+      let next = uint64(off)+1
+      if next >= uint64(min(f.handlers.len, min(f.arguments.len, f.sites.len))):
+        return flatBackendFailure(f, off)
       let selected = f.handlers[int(next)]
-      selected(f, next)
+      if selected == nil: return flatBackendFailure(f, off)
+      selected(f, uint32(next))
 
     proc settleProtectedReadSegment(f: var FlatFrame) =
       ## Restore the original header before classifiers and retain only settled eligible segment visits.
@@ -105,8 +157,13 @@ when declared(FlatFrame):
       ## either exit only after its own fallthrough has completed. An interruption inside Read
       ## ends the segment with a refusal and cannot contribute nomination evidence.
       if not f.readProbe.observing or not f.readProbe.protectedActive: return
+      if not readProbeLayoutValid(f):
+        flatObserverFailure(f)
+        return
       let header = f.readProbe.candidates[ReadProbeSlots].header
-      assert f.handlers[int(header)] == protectedReadProbeCharge
+      if f.handlers[int(header)] != protectedReadProbeCharge:
+        flatObserverFailure(f)
+        return
       f.handlers[int(header)] = flatCharge
       f.readProbe.protectedActive = false
       if f.reason == oracle.StepError.None and f.attemptedExit and
@@ -121,7 +178,10 @@ when declared(FlatFrame):
 
     proc discoverProtectedRead(f: var FlatFrame, header, pc: uint32) =
       ## Give one exact-length, source-matched Read a spare observation after saturation.
-      assert f.readProbe.count == ReadProbeSlots
+      if not readProbeLayoutValid(f) or f.readProbe.count != ReadProbeSlots or
+          uint64(header) >= uint64(f.sites.len):
+        flatObserverFailure(f)
+        return
       if f.readProbe.protectedTried or f.readProbe.inspected == ReadProbeWalkLimit: return
       let first = int(f.sites[int(header)])
       var root = default(FlatFact)
@@ -156,6 +216,9 @@ when declared(FlatFrame):
 
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32) =
     ## Bound certificate walks per call and deduplicate cached headers during later discovery.
+    if not readProbeLayoutValid(f):
+      flatObserverFailure(f)
+      return
     if f.readProbe.inspected == ReadProbeWalkLimit: return
     when NativeReadCycleEnabled:
       if f.readProbe.count == ReadProbeSlots and f.readProbe.protectedTried: return
@@ -173,14 +236,25 @@ when declared(FlatFrame):
     let info = body.info
     if f.readProbe.later and (nativeReadObservationOverlaps(f.nativeSession, info) or
           readProbeGuardOverlaps(f, info)): return
-    f.readProbe.candidates[f.readProbe.count] = ReadProbeCandidate(pc: pc, header: header,
-      terminal: info.terminal, sourceFacts: info.last-info.first+1, operations: body.len,
-      resolved: f.handlers[int(info.terminal)] == flatCachedJump[1])
+    var candidate = ReadProbeCandidate(pc: pc, header: header, terminal: info.terminal,
+      sourceFacts: info.last-info.first+1, operations: body.len)
+    if not readProbeCoordinatesValid(f, candidate):
+      flatObserverFailure(f)
+      return
+    for index in 0..<f.readProbe.count:
+      if f.readProbe.candidates[index].terminal == info.terminal: return
+    let selected = f.handlers[int(info.terminal)]
+    if selected != flatJump[1] and selected != flatCachedJump[1]: return
+    candidate.resolved = selected == flatCachedJump[1]
+    f.readProbe.candidates[f.readProbe.count] = candidate
     inc f.readProbe.count
     f.handlers[int(info.terminal)] = readProbeTerminal
 
   proc beginReadProbe*(f: var FlatFrame, budget: uint64) =
     ## Initial selection observes the fresh first segment; replacement also observes restored cached code.
+    if f.readProbe.failed or f.readProbe.observing:
+      flatObserverFailure(f)
+      return
     if f.pricingKind != 0 or f.plan.allowNative or f.info.blockCharged:
       return
     let later = nativeReplacementObservation(f.nativeSession)
@@ -197,19 +271,32 @@ when declared(FlatFrame):
     ## Rebind only known bounded observers, preserving dedup, inspection and visit state across callbacks.
     if f.readProbe.observing or not f.readProbe.callActive or not f.readProbe.later or
         not nativeReplacementObservation(f.nativeSession): return
+    if not readProbeLayoutValid(f):
+      flatObserverFailure(f)
+      return
+    for index in 0..<f.readProbe.count:
+      let selected = f.handlers[int(f.readProbe.candidates[index].terminal)]
+      if selected != flatJump[1] and selected != flatCachedJump[1]:
+        flatObserverFailure(f)
+        return
+    when NativeReadCycleEnabled:
+      if f.readProbe.protectedInstalled:
+        let header = f.readProbe.candidates[ReadProbeSlots].header
+        if f.handlers[int(header)] != flatCharge:
+          flatObserverFailure(f)
+          return
+    # The whole fixed set is valid before changing a predecessor or observation state.
     f.readProbe.segmentBudget = budget
     f.readProbe.priorWork = observedNativeWork(f.nativeSession)
     f.readProbe.observing = true
     for index in 0..<f.readProbe.count:
       let terminal = f.readProbe.candidates[index].terminal
       let selected = f.handlers[int(terminal)]
-      assert selected == flatJump[1] or selected == flatCachedJump[1]
       f.readProbe.candidates[index].resolved = selected == flatCachedJump[1]
       f.handlers[int(terminal)] = readProbeTerminal
     when NativeReadCycleEnabled:
       if f.readProbe.protectedInstalled:
         let header = f.readProbe.candidates[ReadProbeSlots].header
-        assert f.handlers[int(header)] == flatCharge
         let outstanding = if f.readProbe.priorWork >= NativeInvocationFloor: 0'u64
           else: NativeInvocationFloor-f.readProbe.priorWork
         f.readProbe.protectedCountable = outstanding <= budget
@@ -221,14 +308,25 @@ when declared(FlatFrame):
   proc endReadProbeSegment*(f: var FlatFrame) =
     ## Restore each original terminal before callbacks, replacement, exit or stream retention.
     if not f.readProbe.observing: return
+    if not readProbeLayoutValid(f):
+      flatObserverFailure(f)
+      return
+    for index in 0..<f.readProbe.count:
+      if f.handlers[int(f.readProbe.candidates[index].terminal)] != readProbeTerminal:
+        flatObserverFailure(f)
+        return
+    when NativeReadCycleEnabled:
+      if f.readProbe.protectedActive:
+        let header = f.readProbe.candidates[ReadProbeSlots].header
+        if f.handlers[int(header)] != protectedReadProbeCharge:
+          flatObserverFailure(f)
+          return
     when NativeReadCycleEnabled:
       # Early runFlat refusals still restore a rebound protected header exactly once.
       settleProtectedReadSegment(f)
     for index in 0..<f.readProbe.count:
       # runFlat has already restored its temporary step barrier on the terminal slot.
       let terminal = f.readProbe.candidates[index].terminal
-      let handler = f.handlers[int(terminal)]
-      assert handler == readProbeTerminal
       if f.readProbe.candidates[index].resolved:
         f.handlers[int(terminal)] = flatCachedJump[1]
       else:
@@ -255,9 +353,11 @@ when declared(FlatFrame):
       nominateNativeReadCycle(f.nativeSession, cycle)
       true
 
-  proc finishReadProbe*(f: FlatFrame, success: bool) =
+  proc finishReadProbe*(f: var FlatFrame, success: bool) =
     ## Revalidate and nominate only the best qualified candidate after a full checked halt.
-    assert not f.readProbe.observing
+    if f.readProbe.observing or not readProbeLayoutValid(f):
+      flatObserverFailure(f)
+      return
     if f.readProbe.epoch == 0 or not success or f.reason != oracle.StepError.None or
         f.exit != oracle.StepExit.Halt or not f.attemptedExit: return
     let settled = observedNativeWork(f.nativeSession)

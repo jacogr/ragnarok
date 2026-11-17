@@ -295,8 +295,11 @@ block changedStoppedPc:
     assert frame.exit == StepExit.Host and uint64(frame.info.pc) == 0
     frame.info.pc = CodeAddress(1)
     if scalar:
-      # Observation alone cannot authorize a fabricated source coordinate.
-      let cpu = observeFlatHostScalars(frame)
+      # The checked observation rejects a fabricated source coordinate before exposing a CPU result.
+      var cpu = frame.info
+      let before = cpu
+      assert tryObserveFlatHostScalars(frame, cpu) == StepError.InvalidHostSuspension
+      assert cpu == before
       assert resumeFlatHostScalars(frame, cpu.gas, cpu.registers) == StepError.InvalidHostSuspension
     else:
       # Owned-memory observations carry the same stopped-source binding as scalar observations.
