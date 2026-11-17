@@ -140,3 +140,26 @@ Standalone failing reduction, five independent minimal runs, contract/duplicate 
 source-built current upstream remain pending. This is project-bound evidence, not a ready upstream
 draft. Raw old/new commands, exact generated C and diagnostics remain under ignored
 `build/upstream-watch/nimony/2026-11-14/ci-repair/`.
+
+## November 17 resident-to-linked fallback observation
+
+The full legacy ARM qualification also fails at the fragment ledger assertion after an oversized
+resident image declines and the linked driver successfully publishes. The unchanged pre-buffer
+parent sources (`185c0807`) and the new proof-boundary tree both fail the same assertion on the
+November 14 pin (`8102b8e3c`), macOS ARM64, checked ARC/Clang ThinLTO. This predates the new
+ARM word buffer and the legacy profile boundary.
+
+Generated C captures `fallback.fragments` before both publication calls and reuses that snapshot
+for the final expected-increment check. The publisher still emits the field increment. The diagnostic
+prints status `2`, resident mode `false` and the same stale fragment value `2` before and after
+successful linked publication. This matches NIM-005's observation symptom; it does not establish
+a shared compiler-pass cause or a standalone upstream defect.
+
+The memory-cycle fixture now uses the same test-only `noinline` fragment observation pattern as
+the macro fixture for the before/refusal/after ledger checks. It preserves successful publication,
+exactly one new fragment, resident refusal, linked status and existing child/capacity checks.
+Production code, compiler, pins and runtime checks are unchanged. Exact commands, old/current
+source diagnostics and generated C are retained under ignored
+`build/pvm-holistic/graceful/legacy-native-diagnostic/`; the full witness rerun is recorded separately
+in `legacy-native-direct.json`. Standalone reduction and upstream contract/duplicate review remain
+pending as recorded above.

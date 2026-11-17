@@ -7,6 +7,10 @@ import std/assertions
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/internal/arm64_jit
 
+proc observedFragments(jit: ArmJit): uint64 {.noinline.} =
+  ## NIM-005 can reuse a pre-publication field snapshot; observe the actual legacy owner ledger.
+  jit.fragments
+
 type CycleCaseResult = object ## Copied execution output keeps borrowed context/storage local to one call.
   destination: uint32
   registers: RegisterFile
@@ -592,15 +596,15 @@ proc checkArmResidentMemoryCycleBackend*(dirtySource, prefixSource,
       oversized.prefixSpan = 401
       oversized.prefixOperations = 400
       let bytes = fallback.codeBytes
-      let fragments = fallback.fragments
+      let fragments = observedFragments(fallback)
       assert not publishArmResidentMemoryCycle(fallback, oversized)
       assert armMemoryCycleStatus(fallback) == 0 and
           not armResidentMemoryCycleActive(fallback) and
-          fallback.codeBytes == bytes and fallback.fragments == fragments
+          fallback.codeBytes == bytes and observedFragments(fallback) == fragments
       assert publishArmMemoryCycle(fallback, move(oversized))
       assert armMemoryCycleStatus(fallback) == 2 and
           not armResidentMemoryCycleActive(fallback) and
-          fallback.fragments == fragments+1
+          observedFragments(fallback) == fragments+1
     inc result
 
     # A disposable resident owner releases its executable arena once.

@@ -19,6 +19,10 @@ assert bank.error == X86EmissionError.None
 var control = default(X86Block)
 emitX86ResidentOperation(control, bank, 20, default(RegisterSlots), 42)
 assert control.error == X86EmissionError.None and takeX86Instructions(control).len > 0
+# Ordinary native read qualification must not expose the assertion-based legacy cache owner.
+when declared(newX86Jit):
+  {.error: "legacy native owner leaked into the ordinary read profile".}
+
 when NativeCheckedReadEnabled:
   # The production read ABI is selected only on Linux x86; portable mapping cases above still run elsewhere.
   assert x86CheckedReadInstructions(default(NativeReadBody)).len == 0

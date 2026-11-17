@@ -20,6 +20,10 @@
 ## and region composition reject that whole builder, including any earlier valid prefix.
 ## A successful builder still needs the enclosing source and execution certificate before publication.
 
+## Legacy direct owners and their assertion-based proof helpers are available only under
+## `pvmLegacyNativeWitness`. Production uses NativeSession and the fallible encoding routines
+## below; enabling an ISA alone never exposes the old cache/invocation contracts.
+
 import std/assertions
 import ../[program, machine]
 import ./native_register_ring
@@ -169,7 +173,9 @@ type
     calls, blocks: uint64
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
-  X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
+
+when defined(pvmLegacyNativeWitness):
+  type X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
     arena: X86Arena
     region: X86RegionCache
     when defined(pvmX86Jit):
@@ -185,9 +191,10 @@ const
   x86NonRegionFragmentLimit = 8191'u64 ## Leave one owner slot for the pure region.
   x86TotalFragmentLimit = 8192'u64     ## Leaves and the one-shot region share this publication budget.
 
-func x86PublicationAvailable(jit: X86Jit, region = false): bool =
-  ## Nonregion entries, including this cycle, leave one shared owner slot for the pure region.
-  jit.fragments < (if region: x86TotalFragmentLimit else: x86NonRegionFragmentLimit)
+when defined(pvmLegacyNativeWitness):
+  func x86PublicationAvailable(jit: X86Jit, region = false): bool =
+    ## Nonregion entries, including this cycle, leave one shared owner slot for the pure region.
+    jit.fragments < (if region: x86TotalFragmentLimit else: x86NonRegionFragmentLimit)
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -203,9 +210,10 @@ proc `=destroy`(owner: X86Arena) =
   ## A default/moved-from arena has no mapping to retire.
   if owner.handle != nil: destroyNative(owner.handle)
 
-proc newX86Jit*(): X86Jit =
-  ## Creation retains no executable allocation until a qualifying source span is actually published.
-  X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
+when defined(pvmLegacyNativeWitness):
+  proc newX86Jit*(): X86Jit =
+    ## Creation retains no executable allocation until a qualifying source span is actually published.
+    X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 proc takeX86Instructions*(fragment: var X86Block): seq[byte] =
   ## Transfer only a complete builder. A failed builder retains its refusal even after repeated takes.
@@ -415,79 +423,80 @@ when defined(pvmX86ResidentProof):
     ## Comparisons read the same current mapped operands used by scalar operations.
     emitX86BranchAccess(fragment, access, opcode, slots, value, yes, no)
 
-proc x86Ending*(jit: X86Jit, offset: uint32): uint32 =
-  ## Only a previously admitted arithmetic record supplies its immutable trailing source coordinate.
-  assert int(offset) < jit.entries.len
-  jit.entries[int(offset)].ending
+when defined(pvmLegacyNativeWitness):
+  proc x86Ending*(jit: X86Jit, offset: uint32): uint32 =
+    ## Only a previously admitted arithmetic record supplies its immutable trailing source coordinate.
+    assert int(offset) < jit.entries.len
+    jit.entries[int(offset)].ending
 
-proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
-  ## The coordinate map and physical publications have independent finite ceilings.
-  if jit.unavailable or nodes > 262144 or offset >= nodes: return 1
-  if jit.entries.len < int(nodes): jit.entries.setLen(int(nodes))
-  jit.entries[int(offset)].code
+  proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
+    ## The coordinate map and physical publications have independent finite ceilings.
+    if jit.unavailable or nodes > 262144 or offset >= nodes: return 1
+    if jit.entries.len < int(nodes): jit.entries.setLen(int(nodes))
+    jit.entries[int(offset)].code
 
-proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
-  ## A cold refusal is exact to one stream coordinate and never changes another admitted entry.
-  if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
-    jit.entries[int(offset)].code = 1
+  proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
+    ## A cold refusal is exact to one stream coordinate and never changes another admitted entry.
+    if int(offset) < jit.entries.len and jit.entries[int(offset)].code < 2:
+      jit.entries[int(offset)].code = 1
 
-proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block,
-    conditional: bool = false, shortPrefix: bool = false): bool =
-  ## Only complete bounded pure spans become executable, with no guest pointer encoded in their bytes.
-  if jit.unavailable or fragment.failure != X86EmissionError.None or
-      int(offset) >= jit.entries.len:
-    return false
-  let previous = jit.entries[int(offset)]
-  if previous.code != 0 and not conditional:
-    return false
-  if conditional and (previous.code < 2 or previous.conditional or previous.ending != ending or
-      count != previous.operations+1): return false
-  let minimum = if shortPrefix: 1'u32 else: 4'u32
-  if (not conditional and count < minimum) or count > (
-      if conditional: 65'u32 else: 64'u32) or ending <= offset or ending > uint32(
-          jit.entries.len) or
-      not x86PublicationAvailable(jit) or fragment.bytes.len == 0 or
-      fragment.bytes.len >= 4096:
-    refuseX86Entry(jit, offset)
-    return false
-  var bytes = fragment.bytes
-  bytes.add(0xc3) # RET is the sole exit; no generated arithmetic operation can suspend or fault.
-  if jit.arena.handle == nil:
-    when defined(pvmX86JitRefuse): discard # Explicit allocation refusal must exercise canonical fallback.
-    else: jit.arena.handle = createNative()
-  if jit.arena.handle == nil:
-    jit.unavailable = true
-    return false
-  let code = publishNative(jit.arena.handle, addr bytes[0], uint32(bytes.len))
-  if code < 0:
-    refuseX86Entry(jit, offset)
-    return false
-  jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count,
-      conditional: conditional)
-  inc jit.fragments
-  jit.codeBytes = uint64(code)+uint64(bytes.len)
-  true
+  proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block,
+      conditional: bool = false, shortPrefix: bool = false): bool =
+    ## Only complete bounded pure spans become executable, with no guest pointer encoded in their bytes.
+    if jit.unavailable or fragment.failure != X86EmissionError.None or
+        int(offset) >= jit.entries.len:
+      return false
+    let previous = jit.entries[int(offset)]
+    if previous.code != 0 and not conditional:
+      return false
+    if conditional and (previous.code < 2 or previous.conditional or previous.ending != ending or
+        count != previous.operations+1): return false
+    let minimum = if shortPrefix: 1'u32 else: 4'u32
+    if (not conditional and count < minimum) or count > (
+        if conditional: 65'u32 else: 64'u32) or ending <= offset or ending > uint32(
+            jit.entries.len) or
+        not x86PublicationAvailable(jit) or fragment.bytes.len == 0 or
+        fragment.bytes.len >= 4096:
+      refuseX86Entry(jit, offset)
+      return false
+    var bytes = fragment.bytes
+    bytes.add(0xc3) # RET is the sole exit; no generated arithmetic operation can suspend or fault.
+    if jit.arena.handle == nil:
+      when defined(pvmX86JitRefuse): discard # Explicit allocation refusal must exercise canonical fallback.
+      else: jit.arena.handle = createNative()
+    if jit.arena.handle == nil:
+      jit.unavailable = true
+      return false
+    let code = publishNative(jit.arena.handle, addr bytes[0], uint32(bytes.len))
+    if code < 0:
+      refuseX86Entry(jit, offset)
+      return false
+    jit.entries[int(offset)] = X86Entry(code: uint32(code)+2, ending: ending, operations: count,
+        conditional: conditional)
+    inc jit.fragments
+    jit.codeBytes = uint64(code)+uint64(bytes.len)
+    true
 
-proc callX86Entry*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
-  ## The frame's original complete reservation authorizes these pure operations; no CPU or memory is retained.
-  if int(offset) >= jit.entries.len: return high(uint32)
-  let entry = jit.entries[int(offset)]
-  if entry.code < 2 or entry.conditional or jit.arena.handle == nil: return high(uint32)
-  if callNative(jit.arena.handle, entry.code-2, addr registers[0]) == 0: return high(uint32)
-  inc jit.calls
-  jit.operations += uint64(entry.operations)
-  entry.ending
+  proc callX86Entry*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
+    ## The frame's original complete reservation authorizes these pure operations; no CPU or memory is retained.
+    if int(offset) >= jit.entries.len: return high(uint32)
+    let entry = jit.entries[int(offset)]
+    if entry.code < 2 or entry.conditional or jit.arena.handle == nil: return high(uint32)
+    if callNative(jit.arena.handle, entry.code-2, addr registers[0]) == 0: return high(uint32)
+    inc jit.calls
+    jit.operations += uint64(entry.operations)
+    entry.ending
 
-proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
-  ## The exclusive source record selects only its two checked scalar destinations; invocation registers are borrowed afresh.
-  assert int(offset) < jit.entries.len
-  let entry = jit.entries[int(offset)]
-  assert entry.code >= 2 and entry.conditional and jit.arena.handle != nil
-  result = nextNative(jit.arena.handle, entry.code-2, addr registers[0])
-  if result == high(uint32): return
-  inc jit.calls
-  inc jit.branchCalls
-  jit.operations += uint64(entry.operations)
+  proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
+    ## The exclusive source record selects only its two checked scalar destinations; invocation registers are borrowed afresh.
+    assert int(offset) < jit.entries.len
+    let entry = jit.entries[int(offset)]
+    assert entry.code >= 2 and entry.conditional and jit.arena.handle != nil
+    result = nextNative(jit.arena.handle, entry.code-2, addr registers[0])
+    if result == high(uint32): return
+    inc jit.calls
+    inc jit.branchCalls
+    jit.operations += uint64(entry.operations)
 
 type
   X86RegionBlock* = object ## Captured pure source block and its already-checked scalar successors.
@@ -502,26 +511,27 @@ type
     guard: bool
     section: X86RegionSection
 
-func x86RegionStatus*(jit: X86Jit): uint8 =
-  ## Global capacity/storage refusal never retries; local candidate negatives retain bounded header probes.
-  jit.region.status
+when defined(pvmLegacyNativeWitness):
+  func x86RegionStatus*(jit: X86Jit): uint8 =
+    ## Global capacity/storage refusal never retries; local candidate negatives retain bounded header probes.
+    jit.region.status
 
-proc x86StartProbe*(jit: X86Jit, header: uint32) =
-  ## Header coordinates share the existing bounded entry table without enlarging hot records.
-  assert int(header) < jit.entries.len
-  jit.entries[int(header)].probes = 8
+  proc x86StartProbe*(jit: X86Jit, header: uint32) =
+    ## Header coordinates share the existing bounded entry table without enlarging hot records.
+    assert int(header) < jit.entries.len
+    jit.entries[int(header)].probes = 8
 
-proc x86FinishProbe*(jit: X86Jit, header: uint32): bool =
-  ## Exhaustion removes discovery from subsequent ordinary block visits.
-  assert int(header) < jit.entries.len
-  if jit.entries[int(header)].probes > 0: dec jit.entries[int(header)].probes
-  jit.entries[int(header)].probes == 0
+  proc x86FinishProbe*(jit: X86Jit, header: uint32): bool =
+    ## Exhaustion removes discovery from subsequent ordinary block visits.
+    assert int(header) < jit.entries.len
+    if jit.entries[int(header)].probes > 0: dec jit.entries[int(header)].probes
+    jit.entries[int(header)].probes == 0
 
-func x86RegionCount*(jit: X86Jit): range[1..2] =
-  ## Only published proof records expose active block coordinates.
-  let count = jit.region.count
-  assert jit.region.status == 2 and count >= 1 and count <= 2
-  range[1..2](count)
+  func x86RegionCount*(jit: X86Jit): range[1..2] =
+    ## Only published proof records expose active block coordinates.
+    let count = jit.region.count
+    assert jit.region.status == 2 and count >= 1 and count <= 2
+    range[1..2](count)
 
 proc regionWord(fragment: var X86Block, value: uint32) =
   ## Emit a complete little-endian rel32/immediate without native host-endian assumptions.
@@ -890,61 +900,64 @@ proc encodeX86RegisterRing*(ring: NativeRegisterRing): seq[byte] =
       if result.len != 0: return
   x86CanonicalRegisterRing(ring)
 
-proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
-  ## Preserve the legacy publisher and its two-block receipt.
-  assert jit.region.status == 0
-  var code = x86RegionBytes(blocks.toOpenArray(0, int(count)-1), false)
-  if code.len == 0: return false
-  if not x86PublicationAvailable(jit, region = true):
-    # Exhausted owner-wide publication capacity is permanent.
+when defined(pvmLegacyNativeWitness):
+  proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
+    ## Preserve the legacy publisher and its two-block receipt.
+    assert jit.region.status == 0
+    var code = x86RegionBytes(blocks.toOpenArray(0, int(count)-1), false)
+    if code.len == 0: return false
+    if not x86PublicationAvailable(jit, region = true):
+      # Exhausted owner-wide publication capacity is permanent.
+      jit.region.status = 1
+      return false
+    # Only proven owner-wide capacity/storage failure is sticky; local negatives exhaust existing per-header probes.
     jit.region.status = 1
-    return false
-  # Only proven owner-wide capacity/storage failure is sticky; local negatives exhaust existing per-header probes.
-  jit.region.status = 1
-  if jit.arena.handle == nil: return false
-  let published = publishNative(jit.arena.handle, addr code[0], uint32(code.len))
-  if published < 0: return false
-  jit.region.code = uint32(published)
-  for index in 0..<count:
-    jit.region.spans[index] = blocks[index].span
-    jit.region.operations[index] = blocks[index].operations
-  jit.region.count = uint32(count)
-  jit.region.status = 2
-  inc jit.fragments
-  jit.codeBytes = uint64(published)+uint64(code.len)
-  true
+    if jit.arena.handle == nil: return false
+    let published = publishNative(jit.arena.handle, addr code[0], uint32(code.len))
+    if published < 0: return false
+    jit.region.code = uint32(published)
+    for index in 0..<count:
+      jit.region.spans[index] = blocks[index].span
+      jit.region.operations[index] = blocks[index].operations
+    jit.region.count = uint32(count)
+    jit.region.status = 2
+    inc jit.fragments
+    jit.codeBytes = uint64(published)+uint64(code.len)
+    true
 
 proc regionNative(handle: nil pointer, offset: uint32, registers, state: pointer): uint32
     {.cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
   ## Execute a published region with borrowed registers and region accounting state.
 
-proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5, uint64]): uint32 =
-  ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.
-  assert jit.region.status == 2 and state[2] == 0 and state[3] == 0
-  let available = state[1]
-  let gas = state[0]
-  result = regionNative(jit.arena.handle, jit.region.code, addr registers, addr state)
-  assert state[1] <= available and state[0] <= gas
-  let consumed = available-state[1]
-  var accounted = 0'u64
-  for index in 0..<x86RegionCount(jit):
-    let span = uint64(jit.region.spans[index])
-    let count = state[index+2]
-    assert count <= consumed div span
-    let attempts = count*span
-    assert accounted <= consumed and attempts <= consumed-accounted
-    accounted += attempts
-    jit.operations += count*uint64(jit.region.operations[index])
-    jit.region.blocks += count
-  assert accounted == consumed
-  inc jit.calls
-  inc jit.branchCalls
-  inc jit.headerCalls
-  inc jit.region.calls
+when defined(pvmLegacyNativeWitness):
+  proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5,
+      uint64]): uint32 =
+    ## Fresh register/context borrows expire on return; visit accounting is bounded by consumed source attempts.
+    assert jit.region.status == 2 and state[2] == 0 and state[3] == 0
+    let available = state[1]
+    let gas = state[0]
+    result = regionNative(jit.arena.handle, jit.region.code, addr registers, addr state)
+    assert state[1] <= available and state[0] <= gas
+    let consumed = available-state[1]
+    var accounted = 0'u64
+    for index in 0..<x86RegionCount(jit):
+      let span = uint64(jit.region.spans[index])
+      let count = state[index+2]
+      assert count <= consumed div span
+      let attempts = count*span
+      assert accounted <= consumed and attempts <= consumed-accounted
+      accounted += attempts
+      jit.operations += count*uint64(jit.region.operations[index])
+      jit.region.blocks += count
+    assert accounted == consumed
+    inc jit.calls
+    inc jit.branchCalls
+    inc jit.headerCalls
+    inc jit.region.calls
 
-func x86RegionStatistics*(jit: X86Jit): array[2, uint64] =
-  ## Distinguish connected entries from completed logical blocks without claiming hardware instruction counts.
-  [jit.region.calls, jit.region.blocks]
+  func x86RegionStatistics*(jit: X86Jit): array[2, uint64] =
+    ## Distinguish connected entries from completed logical blocks without claiming hardware instruction counts.
+    [jit.region.calls, jit.region.blocks]
 
 when defined(pvmX86Jit):
   type X86CycleFixup = object
@@ -2296,107 +2309,108 @@ when defined(pvmX86Jit):
       {.cdecl, importc: "pvm_x86_arena_cycle", header: "x86_memory.h".}
     ## The high return word proves whether the typed C boundary invoked any generated bytes.
 
-  func x86CycleSlot*(jit: X86Jit, dirty: uint32): int =
-    ## A bounded scalar lookup never exposes a native entry or source pointer to the caller.
-    if jit == nil: return -1
-    for index in 0..<int(jit.memoryCycle.count):
-      if jit.memoryCycle.entries[index].active and
-          jit.memoryCycle.entries[index].candidate.dirty.header ==
-              dirty: return index
-    -1
+  when defined(pvmLegacyNativeWitness):
+    func x86CycleSlot*(jit: X86Jit, dirty: uint32): int =
+      ## A bounded scalar lookup never exposes a native entry or source pointer to the caller.
+      if jit == nil: return -1
+      for index in 0..<int(jit.memoryCycle.count):
+        if jit.memoryCycle.entries[index].active and
+            jit.memoryCycle.entries[index].candidate.dirty.header ==
+                dirty: return index
+      -1
 
-  func x86CycleCandidate*(jit: X86Jit, index: int): X86MemoryCycleCandidate =
-    ## Only an active slot yields its copied source graph.
-    assert jit != nil and index >= 0 and index < int(jit.memoryCycle.count)
-    assert jit.memoryCycle.entries[index].active
-    jit.memoryCycle.entries[index].candidate
+    func x86CycleCandidate*(jit: X86Jit, index: int): X86MemoryCycleCandidate =
+      ## Only an active slot yields its copied source graph.
+      assert jit != nil and index >= 0 and index < int(jit.memoryCycle.count)
+      assert jit.memoryCycle.entries[index].active
+      jit.memoryCycle.entries[index].candidate
 
-  func x86CycleBound*(jit: X86Jit, index: int,
-      planIdentity: nil pointer): bool =
-    ## Same-plan restoration may move the owner; the immutable plan identity must still match.
-    jit != nil and index >= 0 and index < int(jit.memoryCycle.count) and
-      jit.memoryCycle.entries[index].active and planIdentity != nil and
-      jit.memoryCycle.entries[index].planIdentity == planIdentity
+    func x86CycleBound*(jit: X86Jit, index: int,
+        planIdentity: nil pointer): bool =
+      ## Same-plan restoration may move the owner; the immutable plan identity must still match.
+      jit != nil and index >= 0 and index < int(jit.memoryCycle.count) and
+        jit.memoryCycle.entries[index].active and planIdentity != nil and
+        jit.memoryCycle.entries[index].planIdentity == planIdentity
 
-  proc retireX86Cycle*(jit: X86Jit, index: int) =
-    ## Revocation only disables this optimization; published bytes and pure regions remain owned.
-    if jit != nil and index >= 0 and index < int(jit.memoryCycle.count):
-      jit.memoryCycle.entries[index].active = false
+    proc retireX86Cycle*(jit: X86Jit, index: int) =
+      ## Revocation only disables this optimization; published bytes and pure regions remain owned.
+      if jit != nil and index >= 0 and index < int(jit.memoryCycle.count):
+        jit.memoryCycle.entries[index].active = false
 
-  proc publishX86MemoryCycle*(jit: X86Jit, candidate: X86MemoryCycleCandidate,
-      operands: X86CycleEmission, planIdentity: nil pointer): int =
-    ## Manual publication is finite and does not install any source handler on failure.
-    result = -1
-    if jit == nil or planIdentity == nil or jit.unavailable or
-        jit.memoryCycle.count >= 8 or not x86PublicationAvailable(jit): return
-    for index in 0..<int(jit.memoryCycle.count):
-      if jit.memoryCycle.entries[index].candidate.dirty.header ==
-          candidate.dirty.header:
+    proc publishX86MemoryCycle*(jit: X86Jit, candidate: X86MemoryCycleCandidate,
+        operands: X86CycleEmission, planIdentity: nil pointer): int =
+      ## Manual publication is finite and does not install any source handler on failure.
+      result = -1
+      if jit == nil or planIdentity == nil or jit.unavailable or
+          jit.memoryCycle.count >= 8 or not x86PublicationAvailable(jit): return
+      for index in 0..<int(jit.memoryCycle.count):
+        if jit.memoryCycle.entries[index].candidate.dirty.header ==
+            candidate.dirty.header:
+          return
+      var image: seq[byte] = @[]
+      if not buildX86MemoryCycleImage(candidate, operands, image): return
+      if jit.region.status != 2:
+        # This private publisher alone leaves one existing fragment and one maximum image available.
+        if jit.fragments+1 >= x86TotalFragmentLimit or
+            jit.codeBytes > 1024'u64*1024-uint64(image.len)-4126: return
+      if jit.arena.handle == nil:
+        when defined(pvmX86JitRefuse): discard
+        else: jit.arena.handle = createNative()
+      if jit.arena.handle == nil:
+        jit.unavailable = true
         return
-    var image: seq[byte] = @[]
-    if not buildX86MemoryCycleImage(candidate, operands, image): return
-    if jit.region.status != 2:
-      # This private publisher alone leaves one existing fragment and one maximum image available.
-      if jit.fragments+1 >= x86TotalFragmentLimit or
-          jit.codeBytes > 1024'u64*1024-uint64(image.len)-4126: return
-    if jit.arena.handle == nil:
-      when defined(pvmX86JitRefuse): discard
-      else: jit.arena.handle = createNative()
-    if jit.arena.handle == nil:
-      jit.unavailable = true
-      return
-    let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
-    if published < 0: return
-    let index = int(jit.memoryCycle.count)
-    jit.memoryCycle.entries[index] = X86MemoryCycleSlot(candidate: candidate,
-      planIdentity: planIdentity, code: uint32(published), active: true)
-    inc jit.memoryCycle.count
-    inc jit.fragments
-    jit.codeBytes = uint64(published)+uint64(image.len)
-    result = index
+      let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
+      if published < 0: return
+      let index = int(jit.memoryCycle.count)
+      jit.memoryCycle.entries[index] = X86MemoryCycleSlot(candidate: candidate,
+        planIdentity: planIdentity, code: uint32(published), active: true)
+      inc jit.memoryCycle.count
+      inc jit.fragments
+      jit.codeBytes = uint64(published)+uint64(image.len)
+      result = index
 
-  proc callX86MemoryCycle*(jit: X86Jit, index: int, registers: var RegisterFile,
-      memory: var X86CycleMemory, dirty: var seq[uint64],
-          state: var X86CycleState): uint64 =
-    ## A zero high word is only an untouched pre-call refusal; the wrapper validates every native receipt.
-    if jit == nil or index < 0 or index >= int(jit.memoryCycle.count) or
-        not jit.memoryCycle.entries[index].active or jit.arena.handle == nil:
-      return 0
-    assert sizeof(X86CycleMemory) == 56 and sizeof(X86CycleState) == 64
-    let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
-    cycleNative(jit.arena.handle, jit.memoryCycle.entries[index].code,
-        addr registers[0],
-      addr memory, bitmap, addr state)
+    proc callX86MemoryCycle*(jit: X86Jit, index: int, registers: var RegisterFile,
+        memory: var X86CycleMemory, dirty: var seq[uint64],
+            state: var X86CycleState): uint64 =
+      ## A zero high word is only an untouched pre-call refusal; the wrapper validates every native receipt.
+      if jit == nil or index < 0 or index >= int(jit.memoryCycle.count) or
+          not jit.memoryCycle.entries[index].active or jit.arena.handle == nil:
+        return 0
+      assert sizeof(X86CycleMemory) == 56 and sizeof(X86CycleState) == 64
+      let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
+      cycleNative(jit.arena.handle, jit.memoryCycle.entries[index].code,
+          addr registers[0],
+        addr memory, bitmap, addr state)
 
-  proc recordX86MemoryCycle*(jit: X86Jit, prefix, dirty, tail,
-      groups: uint64): bool =
-    ## Count logical non-noop guest operations only after the complete native ledger is accepted.
-    if jit == nil or prefix > high(uint64) div 4 or dirty > high(
-        uint64) div 5 or tail > high(uint64) div 3: return false
-    let p = prefix*4
-    let d = dirty*5
-    let t = tail*3
-    if p > high(uint64)-d or p+d > high(uint64)-t or
-        jit.operations > high(uint64)-(p+d+t) or jit.calls == high(uint64) or
-        jit.memoryCycle.calls == high(uint64) or
-        jit.memoryCycle.groups > high(uint64)-groups or
-        jit.memoryCycle.tails > high(uint64)-tail: return false
-    jit.operations += p+d+t
-    inc jit.calls
-    inc jit.memoryCycle.calls
-    jit.memoryCycle.groups += groups
-    jit.memoryCycle.tails += tail
-    true
+    proc recordX86MemoryCycle*(jit: X86Jit, prefix, dirty, tail,
+        groups: uint64): bool =
+      ## Count logical non-noop guest operations only after the complete native ledger is accepted.
+      if jit == nil or prefix > high(uint64) div 4 or dirty > high(
+          uint64) div 5 or tail > high(uint64) div 3: return false
+      let p = prefix*4
+      let d = dirty*5
+      let t = tail*3
+      if p > high(uint64)-d or p+d > high(uint64)-t or
+          jit.operations > high(uint64)-(p+d+t) or jit.calls == high(uint64) or
+          jit.memoryCycle.calls == high(uint64) or
+          jit.memoryCycle.groups > high(uint64)-groups or
+          jit.memoryCycle.tails > high(uint64)-tail: return false
+      jit.operations += p+d+t
+      inc jit.calls
+      inc jit.memoryCycle.calls
+      jit.memoryCycle.groups += groups
+      jit.memoryCycle.tails += tail
+      true
 
-  func x86MemoryCycleStatistics*(jit: X86Jit): array[2, uint64] =
-    ## Private native invocation and four-block group receipts exclude fallback source attempts.
-    if jit == nil: default(array[2, uint64])
-    else: [jit.memoryCycle.calls, jit.memoryCycle.groups]
+    func x86MemoryCycleStatistics*(jit: X86Jit): array[2, uint64] =
+      ## Private native invocation and four-block group receipts exclude fallback source attempts.
+      if jit == nil: default(array[2, uint64])
+      else: [jit.memoryCycle.calls, jit.memoryCycle.groups]
 
-  func x86MemoryCycleTailVisits*(jit: X86Jit): uint64 =
-    ## Validated native tail completions exclude checked fallback reads.
-    if jit == nil: 0'u64
-    else: jit.memoryCycle.tails
+    func x86MemoryCycleTailVisits*(jit: X86Jit): uint64 =
+      ## Validated native tail completions exclude checked fallback reads.
+      if jit == nil: 0'u64
+      else: jit.memoryCycle.tails
 
   when defined(pvmX86Jit):
     const
@@ -2646,134 +2660,137 @@ when defined(pvmX86Jit):
         {.cdecl, importc: "pvm_x86_arena_wide", header: "x86_memory.h".}
       ## A zero high word proves the typed C boundary refused before invoking native bytes.
 
-    func x86WideActive*(jit: X86Jit): bool =
-      ## Only a successfully published, source-bound image may be called.
-      jit != nil and jit.wideCycle.status == 2
+    when defined(pvmLegacyNativeWitness):
+      func x86WideActive*(jit: X86Jit): bool =
+        ## Only a successfully published, source-bound image may be called.
+        jit != nil and jit.wideCycle.status == 2
 
-    func x86WideCanPublish*(jit: X86Jit): bool =
-      ## Local source refusals keep this owner eligible; consumed storage does not.
-      jit != nil and jit.wideCycle.status == 0
+      func x86WideCanPublish*(jit: X86Jit): bool =
+        ## Local source refusals keep this owner eligible; consumed storage does not.
+        jit != nil and jit.wideCycle.status == 0
 
     when defined(pvmX86WideParentRefusalWitness):
-      proc x86WideRefuseParentOnceWitness*(jit: X86Jit) =
-        ## Isolate the child-published/parent-refused transaction in one native unit profile.
-        assert jit != nil
-        jit.wideCycle.refuseParentOnce = true
+      when defined(pvmLegacyNativeWitness):
+        proc x86WideRefuseParentOnceWitness*(jit: X86Jit) =
+          ## Isolate the child-published/parent-refused transaction in one native unit profile.
+          assert jit != nil
+          jit.wideCycle.refuseParentOnce = true
 
-      func x86WideParentRefusalPending*(jit: X86Jit): bool =
-        ## The direct witness distinguishes a consumed refusal from an earlier return.
-        jit != nil and jit.wideCycle.refuseParentOnce
+        func x86WideParentRefusalPending*(jit: X86Jit): bool =
+          ## The direct witness distinguishes a consumed refusal from an earlier return.
+          jit != nil and jit.wideCycle.refuseParentOnce
 
-    func x86WideCandidate*(jit: X86Jit): X86WideCycleCandidate =
-      ## Copy the source proof without exposing the owner's callable code offset.
-      assert x86WideActive(jit)
-      jit.wideCycle.candidate
+    when defined(pvmLegacyNativeWitness):
+      func x86WideCandidate*(jit: X86Jit): X86WideCycleCandidate =
+        ## Copy the source proof without exposing the owner's callable code offset.
+        assert x86WideActive(jit)
+        jit.wideCycle.candidate
 
-    func x86WideBound*(jit: X86Jit, planIdentity: nil pointer): bool =
-      ## Restored frames may move; their immutable plan must remain the publication owner.
-      x86WideActive(jit) and planIdentity != nil and
-        jit.wideCycle.planIdentity == planIdentity
+      func x86WideBound*(jit: X86Jit, planIdentity: nil pointer): bool =
+        ## Restored frames may move; their immutable plan must remain the publication owner.
+        x86WideActive(jit) and planIdentity != nil and
+          jit.wideCycle.planIdentity == planIdentity
 
-    proc x86WidePublishedSourceImage*(jit: X86Jit, emission: X86WideEmission,
-        image: var seq[byte]): bool =
-      ## Rebuild the published source bytes from its retained code offsets, without
-      ## reading the executable arena or changing the callable owner.
-      image = @[]
-      if not x86WideActive(jit) or jit.wideCycle.code >= jit.codeBytes or
-          jit.wideCycle.childCode >= jit.wideCycle.code: return false
-      if not buildX86WideCycleImage(jit.wideCycle.candidate, emission,
-          jit.wideCycle.code, jit.wideCycle.childCode, image): return false
-      uint64(jit.wideCycle.code)+uint64(image.len) == jit.codeBytes
+      proc x86WidePublishedSourceImage*(jit: X86Jit, emission: X86WideEmission,
+          image: var seq[byte]): bool =
+        ## Rebuild the published source bytes from its retained code offsets, without
+        ## reading the executable arena or changing the callable owner.
+        image = @[]
+        if not x86WideActive(jit) or jit.wideCycle.code >= jit.codeBytes or
+            jit.wideCycle.childCode >= jit.wideCycle.code: return false
+        if not buildX86WideCycleImage(jit.wideCycle.candidate, emission,
+            jit.wideCycle.code, jit.wideCycle.childCode, image): return false
+        uint64(jit.wideCycle.code)+uint64(image.len) == jit.codeBytes
 
-    proc retireX86Wide*(jit: X86Jit) =
-      ## Retirement leaves the published child and all original handlers available.
-      if jit != nil and jit.wideCycle.status == 2: jit.wideCycle.status = 3
+      proc retireX86Wide*(jit: X86Jit) =
+        ## Retirement leaves the published child and all original handlers available.
+        if jit != nil and jit.wideCycle.status == 2: jit.wideCycle.status = 3
 
-    proc publishX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
-        emission: X86WideEmission, childSlot: int, planIdentity: nil pointer): bool =
-      ## One bounded driver links an existing immutable child without copying or replacing it.
-      ## It checks that the child is active in this arena and matches the copied cycle and
-      ## plan identity. Parent refusal leaves that child intact and grants no wide entry.
-      if jit == nil or jit.wideCycle.status != 0 or planIdentity == nil or
-          jit.unavailable or not x86PublicationAvailable(jit) or
-          childSlot < 0 or childSlot >= int(jit.memoryCycle.count): return false
-      let child = jit.memoryCycle.entries[childSlot]
-      if not child.active or child.planIdentity != planIdentity or
-          child.candidate != candidate.cycle or child.code >= jit.codeBytes or
-          jit.arena.handle == nil or jit.codeBytes > 1048576'u64-4112'u64:
-        return false
-      when defined(pvmX86WideParentRefusalWitness):
-        if jit.wideCycle.refuseParentOnce:
-          jit.wideCycle.refuseParentOnce = false
+      proc publishX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
+          emission: X86WideEmission, childSlot: int, planIdentity: nil pointer): bool =
+        ## One bounded driver links an existing immutable child without copying or replacing it.
+        ## It checks that the child is active in this arena and matches the copied cycle and
+        ## plan identity. Parent refusal leaves that child intact and grants no wide entry.
+        if jit == nil or jit.wideCycle.status != 0 or planIdentity == nil or
+            jit.unavailable or not x86PublicationAvailable(jit) or
+            childSlot < 0 or childSlot >= int(jit.memoryCycle.count): return false
+        let child = jit.memoryCycle.entries[childSlot]
+        if not child.active or child.planIdentity != planIdentity or
+            child.candidate != candidate.cycle or child.code >= jit.codeBytes or
+            jit.arena.handle == nil or jit.codeBytes > 1048576'u64-4112'u64:
           return false
-      let planned = uint32((jit.codeBytes+15'u64) and not 15'u64)
-      var image: seq[byte] = @[]
-      if not buildX86WideCycleImage(candidate, emission, planned, child.code, image):
-        return false
-      if jit.region.status != 2 and
-          (jit.fragments+1 >= x86TotalFragmentLimit or
-            jit.codeBytes > 1048576'u64-uint64(image.len)-4126'u64):
+        when defined(pvmX86WideParentRefusalWitness):
+          if jit.wideCycle.refuseParentOnce:
+            jit.wideCycle.refuseParentOnce = false
+            return false
+        let planned = uint32((jit.codeBytes+15'u64) and not 15'u64)
+        var image: seq[byte] = @[]
+        if not buildX86WideCycleImage(candidate, emission, planned, child.code, image):
+          return false
+        if jit.region.status != 2 and
+            (jit.fragments+1 >= x86TotalFragmentLimit or
+              jit.codeBytes > 1048576'u64-uint64(image.len)-4126'u64):
+          jit.wideCycle.status = 1
+          return false
         jit.wideCycle.status = 1
-        return false
-      jit.wideCycle.status = 1
-      let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
-      if published < 0: return false
-      inc jit.fragments
-      jit.codeBytes = uint64(published)+uint64(image.len)
-      if uint32(published) != planned: return false # Account for an unexpected occupied slot.
-      jit.wideCycle.candidate = candidate
-      jit.wideCycle.planIdentity = planIdentity
-      jit.wideCycle.code = uint32(published)
-      jit.wideCycle.childCode = child.code
-      jit.wideCycle.status = 2
-      true
+        let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
+        if published < 0: return false
+        inc jit.fragments
+        jit.codeBytes = uint64(published)+uint64(image.len)
+        if uint32(published) != planned: return false # Account for an unexpected occupied slot.
+        jit.wideCycle.candidate = candidate
+        jit.wideCycle.planIdentity = planIdentity
+        jit.wideCycle.code = uint32(published)
+        jit.wideCycle.childCode = child.code
+        jit.wideCycle.status = 2
+        true
 
-    proc callX86WideCycle*(jit: X86Jit, registers: var RegisterFile,
-        memory: var X86WideMemory, dirty: var seq[uint64],
-        state: var X86WideState): uint64 =
-      ## The four invocation borrows outlive exactly one guarded native call.
-      if not x86WideActive(jit) or jit.arena.handle == nil: return 0
-      assert sizeof(X86WideMemory) == 128 and sizeof(X86WideState) == 104
-      let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
-      wideNative(jit.arena.handle, jit.wideCycle.code, addr registers[0],
-        addr memory, bitmap, addr state)
+      proc callX86WideCycle*(jit: X86Jit, registers: var RegisterFile,
+          memory: var X86WideMemory, dirty: var seq[uint64],
+          state: var X86WideState): uint64 =
+        ## The four invocation borrows outlive exactly one guarded native call.
+        if not x86WideActive(jit) or jit.arena.handle == nil: return 0
+        assert sizeof(X86WideMemory) == 128 and sizeof(X86WideState) == 104
+        let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
+        wideNative(jit.arena.handle, jit.wideCycle.code, addr registers[0],
+          addr memory, bitmap, addr state)
 
-    proc recordX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
-        state: X86WideState): bool =
-      ## Publish only validated logical child/outer work without counter overflow.
-      if not x86WideActive(jit) or jit.calls == high(uint64) or
-          jit.wideCycle.calls == high(uint64) or
-          jit.memoryCycle.calls > high(uint64)-state.childCalls or
-          jit.memoryCycle.groups > high(uint64)-state.cycle.wordGroups or
-          jit.memoryCycle.tails > high(uint64)-state.cycle.visits[2] or
-          (state.cycle.exitKind == 3 and jit.wideCycle.readRefusals == high(uint64)):
-        return false
-      let counts = [state.cycle.visits[0], state.cycle.visits[1],
-        state.cycle.visits[2], state.outerVisits[0], state.outerVisits[1],
-        state.outerVisits[2], state.outerVisits[3]]
-      let nodes = [4'u64, 5, 3, 1, 3, 1,
-        uint64(candidate.readOperations)+1'u64] # Include the completed cached jump.
-      var operations = 0'u64
-      for index in 0..<counts.len:
-        if nodes[index] != 0 and counts[index] > high(uint64) div nodes[index]:
+      proc recordX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
+          state: X86WideState): bool =
+        ## Publish only validated logical child/outer work without counter overflow.
+        if not x86WideActive(jit) or jit.calls == high(uint64) or
+            jit.wideCycle.calls == high(uint64) or
+            jit.memoryCycle.calls > high(uint64)-state.childCalls or
+            jit.memoryCycle.groups > high(uint64)-state.cycle.wordGroups or
+            jit.memoryCycle.tails > high(uint64)-state.cycle.visits[2] or
+            (state.cycle.exitKind == 3 and jit.wideCycle.readRefusals == high(uint64)):
           return false
-        let part = counts[index]*nodes[index]
-        if operations > high(uint64)-part: return false
-        operations += part
-      if jit.operations > high(uint64)-operations: return false
-      jit.operations += operations
-      inc jit.calls
-      inc jit.wideCycle.calls
-      jit.memoryCycle.calls += state.childCalls
-      jit.memoryCycle.groups += state.cycle.wordGroups
-      jit.memoryCycle.tails += state.cycle.visits[2]
-      if state.cycle.exitKind == 3: inc jit.wideCycle.readRefusals
-      true
+        let counts = [state.cycle.visits[0], state.cycle.visits[1],
+          state.cycle.visits[2], state.outerVisits[0], state.outerVisits[1],
+          state.outerVisits[2], state.outerVisits[3]]
+        let nodes = [4'u64, 5, 3, 1, 3, 1,
+          uint64(candidate.readOperations)+1'u64] # Include the completed cached jump.
+        var operations = 0'u64
+        for index in 0..<counts.len:
+          if nodes[index] != 0 and counts[index] > high(uint64) div nodes[index]:
+            return false
+          let part = counts[index]*nodes[index]
+          if operations > high(uint64)-part: return false
+          operations += part
+        if jit.operations > high(uint64)-operations: return false
+        jit.operations += operations
+        inc jit.calls
+        inc jit.wideCycle.calls
+        jit.memoryCycle.calls += state.childCalls
+        jit.memoryCycle.groups += state.cycle.wordGroups
+        jit.memoryCycle.tails += state.cycle.visits[2]
+        if state.cycle.exitKind == 3: inc jit.wideCycle.readRefusals
+        true
 
-    func x86WideStatistics*(jit: X86Jit): array[2, uint64] =
-      ## Distinguish wide entries from later-read canonical replays.
-      if jit == nil: default(array[2, uint64])
-      else: [jit.wideCycle.calls, jit.wideCycle.readRefusals]
+      func x86WideStatistics*(jit: X86Jit): array[2, uint64] =
+        ## Distinguish wide entries from later-read canonical replays.
+        if jit == nil: default(array[2, uint64])
+        else: [jit.wideCycle.calls, jit.wideCycle.readRefusals]
 
 when defined(pvmX86ResidentProof) and NativeCheckedReadEnabled:
   include ./x86_read_guard_witness

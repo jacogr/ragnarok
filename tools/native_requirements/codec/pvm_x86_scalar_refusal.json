@@ -1,7 +1,12 @@
 {
-  "defines": ["pvmX86Jit"],
+  "defines": [
+    "pvmX86Jit",
+    "pvmLegacyNativeWitness"
+  ],
   "directory": "codec",
-  "includes": ["pvm_jit"],
+  "includes": [
+    "pvm_jit"
+  ],
   "libraries": [],
   "observers": [],
   "prepared": false

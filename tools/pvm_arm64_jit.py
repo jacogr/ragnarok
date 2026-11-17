@@ -189,6 +189,9 @@ def qualify(checks, compiler, *, native=True):
             continue  # A checked-only host has no ARM native bridge to guard.
         if name in ('witness-macro-refused', 'witness-resident-refused') and not native:
             continue  # Checked-only hosts cannot execute native macro publication refusals.
+        if (name.startswith('witness') or name.startswith('region-refusal')) and 'pvmArm64Jit' in defines:
+            # Only direct legacy proof owners opt into the old ABI; ordinary timing paths stay production.
+            defines = [*defines, 'pvmLegacyNativeWitness']
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')

@@ -50,6 +50,9 @@ def qualify(checks, compiler, rows=None):
                  *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else []),
                  *(['pvmSharedAsyncWitness'] if name == 'checked-read-arbitration' else []),
                  *(['pvmX86ResidentProof'] if name == 'checked-read-resident-abi' else [])]
+        if name.startswith(('x86-', 'fragment-cap-', 'region-refusal-')) or name == 'checked-read-resident-abi':
+            # Direct old-owner proofs remain available without exposing them in production profiles.
+            flags.append('pvmLegacyNativeWitness')
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])

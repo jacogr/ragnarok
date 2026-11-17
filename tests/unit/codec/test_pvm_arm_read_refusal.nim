@@ -8,6 +8,10 @@ import ../../../src/pvm/internal/[arm64_jit, native_ir, native_read_body]
 when NativeReadCycleEnabled:
   import ../../support/pvm_read_cycle_execution as cycle_execution
 
+# Ordinary native read qualification must not expose the assertion-based legacy cache owner.
+when declared(newArmJit):
+  {.error: "legacy native owner leaked into the ordinary read profile".}
+
 when NativeCheckedReadEnabled:
   # The real ARM read path and private malformed-metadata controls execute only on a supported native target.
   witnessArmReadGuards()
