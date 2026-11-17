@@ -20,7 +20,7 @@ import ./[bootstrap as refinement_bootstrap, dispatch as refinement_dispatch]
 type
   RefinementInvocationError* {.pure.} = enum ## Tagged local refusals carry no output owner or partial gas/exports.
     Uninitialized, None, InvalidBootstrap, InvalidExecution, LimitExceeded, NotSuccess,
-    BootstrapFailure, HostFailure, ExecutionFailure
+    BootstrapFailure, HostFailure, ExecutionFailure, ExportFailure
   RefinementInvocationLimits* = object ## Each independent local budget preserves its own refusal stage.
     capture*: RefinementCaptureLimits
     copy*: MemoryByteLimit
@@ -61,6 +61,8 @@ type
       hostReason: RefinementDispatchError
     of ExecutionFailure:
       executionReason: StepError
+    of ExportFailure:
+      exportReason: RefinementExportError
     else:
       discard # Default and other local refusals have neither output nor invented detail fields.
 
@@ -87,6 +89,11 @@ func executionError*[T](outcome: RefinementInvocationResult[T]): StepError
     {.requires: outcome.status == RefinementInvocationError.ExecutionFailure.} =
   ## Inspect only the engine's exact instruction or budget refusal.
   outcome.executionReason
+
+func exportError*[T](outcome: RefinementInvocationResult[T]): RefinementExportError
+    {.requires: outcome.status == RefinementInvocationError.ExportFailure.} =
+  ## Preserve a local export-owner inspection refusal without manufacturing protocol work output.
+  outcome.exportReason
 
 proc refinementInfo*(invocation: RefinementInvocation): RefinementInvocationResult[
     RefinementInvocationInfo] =
@@ -130,8 +137,12 @@ proc complete(bootstrap: PreparedRefinementBootstrap, source: RefinementBootstra
     kind: WorkKind, used: Gas, exports: RefinementExports, bytes: seq[byte]):
     RefinementInvocationResult[RefinementInvocation] =
   ## Construct the one internally selected final owner; no public caller can substitute source/output tuples.
+  let count = exports.count
+  if count.error != RefinementExportError.None:
+    return RefinementInvocationResult[RefinementInvocation](
+      status: RefinementInvocationError.ExportFailure, exportReason: count.error)
   let info = RefinementInvocationInfo(kind: kind, service: source.service, core: source.core,
-    item: source.item, gasUsed: used, exports: exports.count,
+    item: source.item, gasUsed: used, exports: count.value,
     outputBytes: if kind == WorkKind.Success: uint64(bytes.len) else: 0'u64)
   let data = if kind == WorkKind.Success:
     InvocationData(bootstrap: bootstrap, info: info, exports: exports, hasOutput: true, bytes: bytes)

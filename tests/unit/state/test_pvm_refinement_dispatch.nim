@@ -132,7 +132,9 @@ proc run(prepared: PreparedRefinementExecution, steps = 100'u64, calls = 10'u64,
 let lookup = cpu([@[10'u8, 7], @[50'u8, 0]], registers())
 for item in [0'u64, 1]:
   let done = run(prepare(lookup, item).value).value
-  assert done.outcome.exit == StepExit.Halt and uint64(done.exports.count) == 0
+  let count = done.exports.count
+  assert count.error == RefinementExportError.None
+  assert done.outcome.exit == StepExit.Halt and uint64(count.value) == 0
   assert uint64(done.outcome.machine.machineInfo.value.registers[7]) == 3
   let actual = readBytes(done.outcome.machine.memoryOf.value, MemoryAddress(196608), MemoryLength(
       3), MemoryByteLimit(3)).value
@@ -146,9 +148,13 @@ let multi = cpu([@[10'u8, 7], immediate(7, 196608), immediate(8, 3), @[10'u8, 8]
 let prepared = prepare(multi).value
 for replay in 0..<2:
   let done = run(prepared).value
-  assert done.outcome.exit == StepExit.Halt and uint64(done.exports.count) == 1
+  let count = done.exports.count
+  assert count.error == RefinementExportError.None
+  assert done.outcome.exit == StepExit.Halt and uint64(count.value) == 1
   assert uint64(done.outcome.machine.machineInfo.value.registers[7]) == 7
-  let bytes = array[4104, byte](done.exports.segment(ExportCount(0)))
+  let inspected = done.exports.segment(ExportCount(0))
+  assert inspected.error == RefinementExportError.None
+  let bytes = array[4104, byte](inspected.value)
   assert bytes[0] == 21 and bytes[1] == 22 and bytes[2] == 23
   for index in 3..<4104: assert bytes[index] == 0 # Exact lookup bytes plus a fully zero-padded tail.
 assert multi.memoryOf.value.pageImage(PageIndex(48)).value.bytes == default(array[4096, byte])
@@ -208,7 +214,8 @@ for kind, ending in [@[0'u8], @[10'u8, 8], @[52'u8, 0, 0, 0, 0, 1]]:
       registers(), 3521)
   let done = run(prepare(guest).value).value
   assert done.outcome.exit == [StepExit.Panic, StepExit.OutOfGas, StepExit.Fault][kind]
-  assert uint64(done.exports.count) == 0
+  let count = done.exports.count
+  assert count.error == RefinementExportError.None and uint64(count.value) == 0
 let limitedInner = cpu([immediate(7, 196608), immediate(8, 3), @[10'u8, 8], immediate(7, 0),
   immediate(8, 196608), immediate(9, 3), @[10'u8, 9], @[50'u8,
     0]], registers())
@@ -248,7 +255,8 @@ assert run(default(PreparedRefinementExecution)).error == RefinementDispatchErro
 proc cycle() =
   ## No original mutable source or callback-local export accumulator survives a single iteration.
   let captured = prepare(multi).value
-  assert uint64(run(captured).value.exports.count) == 1
+  let count = run(captured).value.exports.count
+  assert count.error == RefinementExportError.None and uint64(count.value) == 1
   assert run(captured, exports = 0).error == RefinementDispatchError.LimitExceeded
 cycle()
 

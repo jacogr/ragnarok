@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## GP 0.8.0 host 8 appends padded export segments to an immutable invocation-local successor.
-## Exposes bounded append responses and copied segment access; no invocation authentication or publication.
+## Exposes bounded append responses and fallible copied segment access; no invocation authentication or publication.
 
-import std/assertions
 import ./[machine, step]
 import ./host/fetch as host_fetch
 import ../codec/bounded
@@ -13,7 +12,7 @@ import ../codec/work/digest as work_digest
 type
   ExportOffset* = distinct uint64 ## Package segment position before this invocation's ordered exports.
   RefinementExportError* {.pure.} = enum ## Local refusals never fabricate a charged guest reply or export successor.
-    Uninitialized, None, InvalidContext, InvalidMemory, LimitExceeded
+    Uninitialized, None, InvalidContext, InvalidMemory, LimitExceeded, InvalidIndex
   ExportLimits* = object ## Local caps cover all segments retained by the new successor, not just this call's input.
     items*: ElementLimit
     bytes*: ByteLimit
@@ -24,6 +23,12 @@ type
     segments: seq[SegmentData]
   RefinementExports* = object ## Default is invalid; explicit capture starts with an empty export sequence.
     data: nil ExportData
+  ExportInspectionResult*[T] = object ## Refused inspection carries only its reason, never an invented empty value.
+    case status: RefinementExportError
+    of None:
+      completed: T
+    else:
+      discard # Missing owners and invalid indices cannot masquerade as valid zero exports or zero segments.
   ExportTransition* = object ## A completed protocol response retains its matching immutable export successor.
     response*: HostResponse
     exports*: RefinementExports
@@ -47,18 +52,32 @@ proc captureRefinementExports*(offset: ExportOffset): RefinementExports =
   ## Retain the caller's full-width package offset with an explicitly empty ordered sequence.
   RefinementExports(data: ExportData(offset: offset, segments: @[]))
 
-proc count*(exports: RefinementExports): ExportCount {.requires: exports.data != nil.} =
-  ## Inspect only initialized immutable export owners.
-  let data = exports.data
-  assert data != nil # Retain the checked owner for compiler flow analysis.
-  ExportCount(uint64(data.segments.len))
+func error*[T](outcome: ExportInspectionResult[T]): RefinementExportError =
+  ## Inspect the local refusal without granting access to a payload or writable discriminator.
+  outcome.status
 
-proc segment*(exports: RefinementExports, index: ExportCount): FetchSegment
-    {.requires: exports.data != nil and uint64(index) < uint64(exports.data.segments.len).} =
-  ## Return an independent fixed-size value; no mutable storage view escapes the owner.
+func value*[T](outcome: ExportInspectionResult[T]): T
+    {.requires: outcome.status == RefinementExportError.None.} =
+  ## Extract only a successfully inspected count or independent fixed segment value.
+  outcome.completed
+
+proc count*(exports: RefinementExports): ExportInspectionResult[ExportCount] =
+  ## Distinguish an initialized empty owner from an absent owner before dereferencing its metadata.
   let data = exports.data
-  assert data != nil # The public precondition rejects a default owner.
-  FetchSegment(data.segments[int(uint64(index))].bytes)
+  if data == nil:
+    return ExportInspectionResult[ExportCount](status: RefinementExportError.InvalidContext)
+  ExportInspectionResult[ExportCount](status: RefinementExportError.None,
+    completed: ExportCount(uint64(data.segments.len)))
+
+proc segment*(exports: RefinementExports, index: ExportCount): ExportInspectionResult[FetchSegment] =
+  ## Check owner and full-width index before narrowing; no mutable storage view or fabricated zero segment escapes.
+  let data = exports.data
+  if data == nil:
+    return ExportInspectionResult[FetchSegment](status: RefinementExportError.InvalidContext)
+  if uint64(index) >= uint64(data.segments.len):
+    return ExportInspectionResult[FetchSegment](status: RefinementExportError.InvalidIndex)
+  ExportInspectionResult[FetchSegment](status: RefinementExportError.None,
+    completed: FetchSegment(data.segments[int(uint64(index))].bytes))
 
 proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: RegisterFile,
     memory: Memory, limits: ExportLimits): RefinementExportResult =

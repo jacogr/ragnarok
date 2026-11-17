@@ -19,7 +19,7 @@ import ./[bootstrap as refinement_bootstrap, outcome as refinement_outcome,
 type
   RefinementReportError* {.pure.} = enum ## Local refusals carry no partial item prefix or fabricated protocol result.
     Uninitialized, None, InvalidPackage, InvalidTrace, LimitExceeded, InvalidIndex, NotSuccess,
-    BootstrapFailure, InvocationFailure
+    BootstrapFailure, InvocationFailure, ExportFailure
   RefinementReportLimits* = object ## Aggregate retention caps supplement finite per-item preparation/execution policies.
     items*, exports*: ElementLimit
     blobs*: ByteLimit
@@ -64,6 +64,8 @@ type
       bootstrapReason: RefinementBootstrapError
     of InvocationFailure:
       invocationReason: RefinementInvocationResult[RefinementInvocation]
+    of ExportFailure:
+      exportReason: RefinementExportError
     else:
       discard # Default/local refusals contain no partial owner or misleading stage detail.
 
@@ -85,6 +87,11 @@ func invocationError*[T](outcome: RefinementReportResult[T]): RefinementInvocati
     {.requires: outcome.status == RefinementReportError.InvocationFailure.} =
   ## Retain the failed invocation alternative, including its guarded host/engine/capture detail.
   outcome.invocationReason
+
+func exportError*[T](outcome: RefinementReportResult[T]): RefinementExportError
+    {.requires: outcome.status == RefinementReportError.ExportFailure.} =
+  ## Retain local inspection failure separately from protocol-mandated replacement segments.
+  outcome.exportReason
 
 proc reportInfo*(report: RefinedPackage): RefinementReportResult[RefinementReportInfo] =
   ## Copy aggregate facts only from a complete ordered result.
@@ -154,11 +161,17 @@ proc refinedSegment*(item: RefinedWorkItem, index: ExportCount): RefinementRepor
       status: RefinementReportError.Uninitialized)
   if uint64(index) >= uint64(data.info.exports):
     return RefinementReportResult[FetchSegment](status: RefinementReportError.InvalidIndex)
-  let segment = if data.info.kind == WorkKind.Success:
-    data.exports.segment(index)
-  else:
-    default(FetchSegment) # Every report error replaces exactly the declared segment count with zeros.
-  RefinementReportResult[FetchSegment](status: RefinementReportError.None, completed: segment)
+  if data.info.kind == WorkKind.Success:
+    # A missing accepted owner is a local failure, never a protocol replacement segment.
+    let segment = data.exports.segment(index)
+    if segment.error != RefinementExportError.None:
+      return RefinementReportResult[FetchSegment](status: RefinementReportError.ExportFailure,
+        exportReason: segment.error)
+    return RefinementReportResult[FetchSegment](status: RefinementReportError.None,
+      completed: segment.value)
+  # Every protocol report error replaces exactly the declared segment count with zeros.
+  RefinementReportResult[FetchSegment](status: RefinementReportError.None,
+    completed: default(FetchSegment))
 
 proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: CoreIndex,
     parameters: Parameters, trace: openArray[byte], inputs: RefinementInputs,
