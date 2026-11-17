@@ -35,6 +35,9 @@ when defined(polkavmRuntime):
 import ./internal/[handler_stream, execution_types, native_pipeline]
 export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo, NativeCompilerFailure
 export start, close, runtimeInfo
+when defined(pvmSharedAsyncDiagnostic):
+  import std/syncio
+
 when defined(pvmSharedAsyncWitness):
   export pauseNativeCompiler, waitNativeCompiler
 export execution_types
@@ -900,7 +903,8 @@ include ./internal/backend_execution
 proc publishScalarHostTerminal(frame: FlatFrame, owner: Program, response: ScalarHostResponse,
     selected: StepExit, nativeBaseline: uint64): StepResult =
   ## Final scalar replies still materialize every dirty byte and an immutable result at the causing PC.
-  assert selected in [StepExit.Panic, StepExit.OutOfGas]
+  if selected notin [StepExit.Panic, StepExit.OutOfGas]:
+    return StepResult(status: StepError.InvalidHostResponse)
   var cpu = frame.info
   cpu.gas = response.gas
   cpu.gasDeficit = response.gasDeficit
@@ -921,6 +925,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
     steps: ExecutionStepLimit, calls: HostCallLimit, pages: PageLimit): HostExecutionResult[
         Reason] {.untyped.} =
   ## Keep one private engine frame across genuine callbacks; every public observation is immutable.
+  ## A missing selected private callback refuses as InvalidHostResponse before any callback effect;
+  ## ordinary, scalar and foreign adapters never publish a tentative guest result on that failure.
   ## Callbacks is the caller's concrete fixed record; ScalarCapable selects procedure code only.
   var remaining = uint64(steps)
   var available = uint64(calls)
@@ -973,7 +979,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
             readHandler(context, cpu, status, bytes)
           else:
             let selected = callbacks.scalarFallible
-            assert selected != nil
+            if selected == nil:
+              return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
             selected(context, call, cpu)
           case reply.kind
           of HostResultKind.Response: response = reply.value
@@ -984,7 +991,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
         else:
           # Response-only callers retain their original StepResult contract through the same driver.
           let selected = callbacks.scalarResponse
-          assert selected != nil
+          if selected == nil:
+            return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
           response = selected(context, call, cpu)
         var posteriorExit = StepExit.Continued
         if uint64(response.gasDeficit) != 0 or not hostResponseExit(response.action, posteriorExit):
@@ -1015,7 +1023,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
     var response = default(HostResponse)
     when Fallible:
       let selected = callbacks.fallible
-      assert selected != nil
+      if selected == nil:
+        return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
       let reply = selected(context, suspension)
       case reply.kind
       of HostResultKind.Response: response = reply.value
@@ -1025,7 +1034,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
       else: return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
     else:
       let selected = callbacks.response
-      assert selected != nil
+      if selected == nil:
+        return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
       response = selected(context, suspension)
     if not validPreparedHostResponse(response, pages):
       return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
@@ -1050,11 +1060,13 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
       PvmBackend.PolkaCompiled]:
     when Fallible:
       let selected = callbacks.fallible
-      assert selected != nil
+      if selected == nil:
+        return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
       return runForeignHost(source, prepared, context, selected, steps, calls)
     else:
       let selected = callbacks.response
-      assert selected != nil
+      if selected == nil:
+        return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
       return executionResult[Reason](runForeignHost(source, prepared, context, selected, steps, calls))
   var cpu = default(MachineInfo)
   var owner = default(Program)
@@ -1331,6 +1343,76 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
   executeWithHost(source, context, handler, steps, calls, prepared.value,
     scalarCalls, scalarHandler, read32)
+
+when defined(pvmSharedAsyncWitness):
+  proc probeInvalidHostDispatch*(source: Machine): bool =
+    ## Real host suspension refuses missing owned/scalar callback alternatives and preserves owner reuse.
+    proc response(context: var int, stopped: StepOutcome): HostResponse =
+      ## A valid owned fallback resumes the exact returned CPU and memory for the positive control.
+      inc context
+      let cpu = machineInfo(stopped.machine).value
+      HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
+        memory: memoryOf(stopped.machine).value)
+    proc fallible(context: var int, stopped: StepOutcome): HostResult[ResponseOnly] =
+      ## A selected missing scalar slot must never fall back to this already-effectful signature.
+      inc context
+      default(HostResult[ResponseOnly])
+    func scalar(call: HostCallId): bool =
+      ## Force the real scalar route while its private response slot is absent.
+      true
+    let owner = programOf(source)
+    if owner.error != MachineError.None: return false
+    let prepared = newPreparedProgram(owner.value, defaultPreparedLimits(GasCycleLimit(1000000)))
+    when defined(pvmSharedAsyncDiagnostic): echo "invalid host preparation: ", prepared.error
+    if prepared.error != PreparationError.None: return false
+    let code = prepared.value
+    var context = 0
+    let owned = hostSelected[int, ResponseOnly, false, false, HostCallbacks[int, ResponseOnly]](
+      source, code, context, default(HostCallbacks[int, ResponseOnly]),
+      ExecutionStepLimit(32), HostCallLimit(2))
+    when defined(pvmSharedAsyncDiagnostic):
+      echo "invalid owned host: ", owned.error, ", calls=", context
+      if owned.error == HostExecutionError.ExecutionFailure: echo "invalid owned cause: ",
+          owned.executionError
+    if owned.error != HostExecutionError.ExecutionFailure or
+        owned.executionError != StepError.InvalidHostResponse or context != 0: return false
+    let failed = hostSelected[int, ResponseOnly, true, false, HostCallbacks[int, ResponseOnly]](
+      source, code, context, default(HostCallbacks[int, ResponseOnly]),
+      ExecutionStepLimit(32), HostCallLimit(2))
+    if failed.error != HostExecutionError.ExecutionFailure or
+        failed.executionError != StepError.InvalidHostResponse or context != 0: return false
+    let copied = hostSelected[int, ResponseOnly, false, true, ScalarHostCallbacks[int,
+        ResponseOnly]](
+      source, code, context, ScalarHostCallbacks[int, ResponseOnly](response: response,
+        scalarCalls: scalar), ExecutionStepLimit(32), HostCallLimit(2))
+    if copied.error != HostExecutionError.ExecutionFailure or
+        copied.executionError != StepError.InvalidHostResponse or context != 0: return false
+    let copiedFailure = hostSelected[int, ResponseOnly, true, true, ScalarHostCallbacks[int,
+        ResponseOnly]](
+      source, code, context, ScalarHostCallbacks[int, ResponseOnly](fallible: fallible,
+        scalarCalls: scalar), ExecutionStepLimit(32), HostCallLimit(2))
+    if copiedFailure.error != HostExecutionError.ExecutionFailure or
+        copiedFailure.executionError != StepError.InvalidHostResponse or context != 0: return false
+    let recovered = executeWithHost(source, context, response, ExecutionStepLimit(32),
+        HostCallLimit(2), code)
+    if recovered.error != StepError.None or recovered.value.exit != StepExit.Halt or context != 2:
+      return false
+    var cpu = default(MachineInfo)
+    var program = default(Program)
+    var memory = default(Memory)
+    if sourceInfo(source, cpu, program, memory) != StepError.None: return false
+    let data {.cursor.} = code.data
+    if data == nil: return false
+    let plan {.cursor.} = data.plan
+    if plan == nil: return false
+    var created = prepareFlatMemoryFrame(plan, memory, cpu)
+    if created.error != FlatError.None: return false
+    for terminal in [StepExit.Continued, StepExit.Halt, StepExit.Fault, StepExit.Host]:
+      # These tags cannot authorize scalar terminal publication, even with a valid source/frame.
+      let refused = publishScalarHostTerminal(borrowFrame(created), program,
+        default(ScalarHostResponse), terminal, 0)
+      if refused.error != StepError.InvalidHostResponse: return false
+    true
 
 proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(
     NativeRuntime)): PreparedProgramCache =
