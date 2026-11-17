@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Profile unchanged canonical Sieve images on their qualified Linux x86 CI host.
+"""Profile unchanged canonical Sieve and Pinky images on their qualified Linux x86 CI host.
 
-The short input covers both policies; the large native input bounds diagnostic cost. Complete
+The short Sieve and real Pinky frame cover both policies; large Sieve stays native-only. Complete
 original thirteen-call processes retain state/backend checks. Calibrated return dumps
 separate the cold public invocation from the final reused call; all profile clocks are discarded.
 """
@@ -54,35 +54,42 @@ def canonical_guest_plan(cohort, revision, limits):
     if not isinstance(identity.get('clang'), str) or not identity['clang'].strip() or not isinstance(
             identity.get('build_environment'), dict):
         raise ValueError('Missing canonical compiler or build environment identity')
-    artifact = source/'tests/fixtures/pvm-sieve/sieve.polkavm'
     rows = []
-    for limit in limits:
-        for role in (('interpreted', 'jit') if limit == 100000 else ('jit',)):
-            # The original order-zero image/inputs are authoritative; no substitute driver is compiled.
-            row, = [row for row in cohort['runs'] if (row['case_id'], row['role'], row['order']) ==
-                    ('sieve-'+str(limit), role, 0)]
-            native = row['parsed']['native']
-            policy = row['parsed']['policy']
-            # These hot inputs must exercise the named backend; a valid fallback cannot attribute JIT cost.
-            if policy['requested'] != role or policy['actual'] != role or (role == 'jit' and any(
-                    native[key] <= 0 for key in ('fragments', 'calls', 'operations', 'code_bytes'))):
-                raise ValueError('Canonical guest did not exercise the selected backend')
-            env = row['run']['benchmark_environment']
-            data = Path(env.get('RAGNAROK_PVM_SIEVE_INPUT', ''))
-            expected = data.parent/('expected-'+str(limit)+'.bin')
-            environment = dict(RAGNAROK_PVM_BACKEND=role, RAGNAROK_PVM_PERFORMANCE='1',
-                RAGNAROK_PVM_GUEST='sieve', RAGNAROK_PVM_PRICING='prepared',
-                RAGNAROK_PVM_SIEVE_SAMPLES='13', RAGNAROK_PVM_SIEVE_CLOCK='1',
-                RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
-                RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_ARTIFACT=str(artifact))
-            if (env != environment or not data.is_absolute() or data.name != 'input-'+str(limit)+'.bin'
-                    or row['run']['command'] != [build['binary']]):
-                raise ValueError('Canonical guest invocation recipe disagreement')
-            inputs = {str(path): files.get(str(path)) for path in (data, expected, artifact)}
-            if any(value is None for value in inputs.values()):
-                raise ValueError('Unsealed canonical guest input')
-            rows.append(dict(limit=limit, role=role, environment=environment,
-                             inputs=inputs, native=row['parsed']['native']))
+    selections = [('sieve', limit, role) for limit in limits
+                  for role in (('interpreted', 'jit') if limit == 100000 else ('jit',))]
+    selections += [('pinky', 1, role) for role in ('interpreted', 'jit')]
+    for guest, limit, role in selections:
+        # The original order-zero image/inputs are authoritative; no substitute driver is compiled.
+        row, = [row for row in cohort['runs'] if (row['case_id'], row['role'], row['order']) ==
+                (guest+'-'+str(limit), role, 0)]
+        native = row['parsed']['native']
+        policy = row['parsed']['policy']
+        # These hot inputs must exercise the named backend; fallback cannot attribute native cost.
+        if policy['requested'] != role or policy['actual'] != role or (role == 'jit' and any(
+                native[key] <= 0 for key in ('fragments', 'calls', 'operations', 'code_bytes'))):
+            raise ValueError('Canonical guest did not exercise the selected backend')
+        env = row['run']['benchmark_environment']
+        data = Path(env.get('RAGNAROK_PVM_SIEVE_INPUT', ''))
+        expected = data.parent/('expected-'+str(limit)+'.bin')
+        environment = dict(RAGNAROK_PVM_BACKEND=role, RAGNAROK_PVM_PERFORMANCE='1',
+            RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING='prepared',
+            RAGNAROK_PVM_SIEVE_SAMPLES='13', RAGNAROK_PVM_SIEVE_CLOCK='1',
+            RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
+            RAGNAROK_PVM_SIEVE_EXPECTED=str(expected))
+        members = [data, expected]
+        if guest == 'sieve':
+            # Sieve restores an external compact artifact; Pinky's snapshot contains its program.
+            artifact = source/'tests/fixtures/pvm-sieve/sieve.polkavm'
+            environment['RAGNAROK_PVM_SIEVE_ARTIFACT'] = str(artifact)
+            members.append(artifact)
+        if (env != environment or not data.is_absolute() or data.name != 'input-'+str(limit)+'.bin'
+                or row['run']['command'] != [build['binary']]):
+            raise ValueError('Canonical guest invocation recipe disagreement')
+        inputs = {str(path): files.get(str(path)) for path in members}
+        if any(value is None for value in inputs.values()):
+            raise ValueError('Unsealed canonical guest input')
+        rows.append(dict(case=guest, limit=limit, role=role, environment=environment,
+                         inputs=inputs, native=native))
     return dict(revision=revision, source_root=str(source), build=build, rows=rows,
                 compiler=identity['compiler'], clang=identity['clang'], toolchain=identity['toolchain'],
                 build_environment=identity['build_environment'])
@@ -156,12 +163,12 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
         scope = selected_symbol(symbols, 'runPreparedKernel')
         for row in plan['rows']:
             # Keep all thirteen checked calls. Instrumented clocks never enter the derived profile.
-            role, limit = row['role'], row['limit']
-            name = 'sieve-'+str(limit)+'-'+role
+            guest, role, limit = row['case'], row['role'], row['limit']
+            name = guest+'-'+str(limit)+'-'+role
             executed, final = collect(checks, binary, name, scope,
                 execution_environment(**row['environment']), 1800,
                 dump_symbols=(scope,), executions=13)
-            parsed = parse_application(executed['output'], role, 'sieve', limit, require_full=True)
+            parsed = parse_application(executed['output'], role, guest, limit, require_full=True)
             if parsed['policy']['actual'] != role:
                 # Instrumentation must not turn a native process into a successful interpreted fallback.
                 raise ValueError('Profiled guest changed actual backend')
@@ -176,7 +183,7 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
                      '--show=Ir,Bc,Bcm,Bi,Bim', final], name+'-self')
             command(['callgrind_annotate', '--auto=no', '--inclusive=yes', '--tree=both',
                      '--threshold=95', '--show=Ir', final], name+'-arcs')
-            report['profiles'].append(dict(case='sieve', limit=limit, role=role,
+            report['profiles'].append(dict(case=guest, limit=limit, role=role,
                 checked_calls=13, native=parsed['native'], policy=parsed['policy'], scope=scope,
                 cold=counts[0], reused=counts[1], cold_self_costs=costs[0], self_costs=costs[1],
                 profile_hashes={member.name: hashlib.sha256(member.read_bytes()).hexdigest()
