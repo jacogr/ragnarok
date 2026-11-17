@@ -141,6 +141,19 @@ Current code bytes may decrease on retirement. These are supplementary observati
 never time components or readiness waits; old artifacts without this declaration
 remain readable. DOOM retains its existing aggregate diagnostic contract.
 
+Current guest instruction attribution v2 requires these original per-call observations on both
+the canonical and profiled process. Native call/operation/branch/header deltas, cumulative and
+newly observed publication counts, and previous/current checkpoint occupancy must match for
+sample0 and every sample3–12. Changed native work cannot hide behind equal process totals.
+Each log independently requires operation increases to have a call increase, with header-call
+delta at most branch-call delta at most call delta. Publication/occupancy may change independently;
+a successful native read entry may record no work. Matching malformed histories cannot qualify.
+Only the excluded warmup samples1/2 may differ. Both complete histories and those differences
+are retained; no call is omitted or replaced, and all thirteen independent full-state checks
+remain mandatory. Phase-specific actual engines follow native-operation deltas. Publication
+and occupancy are post-clock observations, not proof of their exact in-call timing. Older
+aggregate-only cohorts remain readable but cannot acquire invented per-call attribution.
+
 
 Each process emits thirteen raw validated calls. Sample0 is the cold call;
 samples1–12 are resident. Reused statistics use exactly samples3–12, independently

@@ -6,6 +6,8 @@
 The short Sieve and real Pinky frame cover both policies; large Sieve stays native-only. Complete
 original thirteen-call processes retain state/backend checks. Calibrated return dumps
 separate the cold public invocation from the final reused call; all profile clocks are discarded.
+Every measured cold/reused call must keep its native work and observed code state. Excluded
+warmup admission differences remain explicit instead of being hidden in a process-wide total.
 """
 import argparse
 import hashlib
@@ -20,8 +22,9 @@ from pvm_guest_compare import unchanged
 from pvm_instruction_profile import calibrate_scope, collect, profile_counts, exclusive_costs
 from pvm_native_ci import host_identity
 from pvm_performance_report import validate_current_report
+from pvm_native_samples import validate_native_sample_totals, match_measured_native_invocations
 from pvm_x86_jit_profile import (canonical_source_identity, canonical_tooling_seals,
-                                 matching_native_activity, selected_symbol)
+                                 selected_symbol)
 
 
 def canonical_guest_plan(cohort, revision, limits):
@@ -68,6 +71,10 @@ def canonical_guest_plan(cohort, revision, limits):
         if policy['requested'] != role or policy['actual'] != role or (role == 'jit' and any(
                 native[key] <= 0 for key in ('fragments', 'calls', 'operations', 'code_bytes'))):
             raise ValueError('Canonical guest did not exercise the selected backend')
+        observations = validate_native_sample_totals(row['parsed']['diagnostics']['scope_observations'],
+            native, role, 'guest-process')
+        if observations is None:
+            raise ValueError('Canonical guest has no per-invocation native evidence')
         env = row['run']['benchmark_environment']
         data = Path(env.get('RAGNAROK_PVM_SIEVE_INPUT', ''))
         expected = data.parent/('expected-'+str(limit)+'.bin')
@@ -89,7 +96,7 @@ def canonical_guest_plan(cohort, revision, limits):
         if any(value is None for value in inputs.values()):
             raise ValueError('Unsealed canonical guest input')
         rows.append(dict(case=guest, limit=limit, role=role, environment=environment,
-                         inputs=inputs, native=native))
+                         inputs=inputs, native=native, native_samples=observations))
     return dict(revision=revision, source_root=str(source), build=build, rows=rows,
                 compiler=identity['compiler'], clang=identity['clang'], toolchain=identity['toolchain'],
                 build_environment=identity['build_environment'])
@@ -100,12 +107,13 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
     folder = Path(folder or ROOT/'build/tests/pvm-guest-profile')
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder/'results.json'
-    report = dict(schema='pvm-canonical-guest-profile-v1', status='incomplete',
+    report = dict(schema='pvm-canonical-guest-profile-v2', status='incomplete',
         clock_policy='discarded', hardware_counters=False, boundary_protocol='symbol-returns-v1',
         thread_scheduling='fair-required', scheduling_quantum=1000,
         scope='one public execute: private memory construction, native execution and publication; '
               'excludes constructor, runtime startup and complete-state driver oracles',
-        image_authority='original-sealed-image', controls=[], builds=[], profiles=[])
+        image_authority='original-sealed-image', native_activity_authority='per-invocation-v1',
+        controls=[], builds=[], profiles=[])
     try:
         # No build, calibration or guest work is reachable on a foreign host or outside CI.
         if os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -172,7 +180,11 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
             if parsed['policy']['actual'] != role:
                 # Instrumentation must not turn a native process into a successful interpreted fallback.
                 raise ValueError('Profiled guest changed actual backend')
-            matching_native_activity(row['native'], parsed['native'])
+            observations = validate_native_sample_totals(parsed['diagnostics']['scope_observations'],
+                parsed['native'], role, 'guest-process')
+            if observations is None:
+                raise ValueError('Profiled guest has no per-invocation native evidence')
+            comparison = match_measured_native_invocations(row['native_samples'], observations, role)
             cold = folder/(name+'.callgrind.1')
             texts = [cold.read_text(), final.read_text()]
             counts = [profile_counts(text) for text in texts]
@@ -185,6 +197,9 @@ def profile_current_guest(cohort_path, revision, limits, folder=None):
                      '--threshold=95', '--show=Ir', final], name+'-arcs')
             report['profiles'].append(dict(case=guest, limit=limit, role=role,
                 checked_calls=13, native=parsed['native'], policy=parsed['policy'], scope=scope,
+                native_comparison=comparison,
+                actual_by_phase={phase: 'jit' if comparison[phase]['operations'] else 'interpreted'
+                                 for phase in ('cold', 'reused')},
                 cold=counts[0], reused=counts[1], cold_self_costs=costs[0], self_costs=costs[1],
                 profile_hashes={member.name: hashlib.sha256(member.read_bytes()).hexdigest()
                     for member in sorted(folder.glob(name+'.callgrind*'))}, inputs=row['inputs'],
