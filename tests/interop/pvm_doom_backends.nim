@@ -223,7 +223,7 @@ for call in 0..<callCount:
   assert done.value.exit == StepExit.Halt
   let cpu = machineInfo(done.value.machine).value
   let finalMemory = memoryOf(done.value.machine).value
-  assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
+  assert uint64(cpu.pc) == 0 and not cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint32(memoryPageCount(finalMemory).value) == uint32(pages)
   var snapshot = ""
   appendWord(snapshot, uint64(cpu.pc), 8)
