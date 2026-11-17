@@ -105,9 +105,11 @@ when declared(FlatPlan):
           candidate.guards = candidate.guards or (1'u32 shl candidate.bodyCount)
         elif not supportedScalarOpcode(item.opcode):
           return false
+        let immediate = if nativeImmediateStoreOpcode(item.opcode):
+            nativeStoreImmediate(uint64(item.x), uint64(item.y))
+          else: uint64(item.x)
         candidate.operations[index] = NativeOperation(opcode: item.opcode,
-            slots: instructionRegisters(decoded),
-          immediate: uint64(item.x))
+          slots: instructionRegisters(decoded), immediate: immediate)
         inc candidate.bodyCount
       cursor = next
     false

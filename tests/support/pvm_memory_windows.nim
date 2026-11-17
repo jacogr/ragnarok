@@ -13,19 +13,25 @@ import ../../src/pvm/internal/[native_ir, native_platform, native_fusion, native
 when NativeReadCycleEnabled:
   proc windowLiteral(bytes: openArray[byte]): NativeOperation =
     ## Decode one genuine marked instruction, keeping the test independent of emitter operands.
-    assert bytes.len < 8
     var wire = @[0'u8, 0]
     let length = encode(JamNatural(uint64(bytes.len+1)))
     for index in 0..<length.len: wire.add(length.bytes[index])
     for value in bytes: wire.add(value)
     wire.add(0)
-    wire.add(byte(1 or (1 shl bytes.len)))
+    var mask = newSeq[byte]((bytes.len+8) div 8)
+    mask[0] = 1
+    mask[bytes.len div 8] = mask[bytes.len div 8] or (1'u8 shl (bytes.len mod 8))
+    for value in mask: wire.add(value)
     let owner = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
     assert owner.error == ProgramError.None
     let decoded = instruction(owner.value, CodeAddress(0))
     assert decoded.error == ProgramError.None
+    let immediate = if decoded.value.opcode in {30'u8..33, 70..73}:
+        (uint64(decoded.value.x) and 0xffffffff'u64) or
+          ((uint64(decoded.value.y) and 0xffffffff'u64) shl 32)
+      else: uint64(decoded.value.x)
     NativeOperation(opcode: decoded.value.opcode, slots: instructionRegisters(decoded),
-      immediate: uint64(decoded.value.x))
+      immediate: immediate)
 
   proc windowTransfer(opcode: byte, absolute: bool, value: byte,
       displacement: uint32): NativeOperation =
@@ -61,7 +67,37 @@ when NativeReadCycleEnabled:
     assert not default(NativeMemoryWindow).contains(-1)
     assert not default(NativeMemoryWindow).contains(32)
 
-  proc checkWindowTransfers(opcode: byte, absolute: bool, scenario: int) =
+  proc windowLiteralStore(opcode: byte, absolute: bool, base: byte,
+      displacement, literal: uint32): NativeOperation =
+    ## Independent wire bytes distinguish literal A bases from register-store B bases.
+    let wireOpcode = opcode-(if absolute: 90'u8 else: 50'u8)
+    var bytes = @[wireOpcode, (if absolute: 4'u8 else: 0x40'u8 or base)]
+    for index in 0..<4: bytes.add(byte((displacement shr (index*8)) and 255))
+    for index in 0..<4: bytes.add(byte((literal shr (index*8)) and 255))
+    windowLiteral(bytes)
+
+  proc checkLiteralWindowGeometry() =
+    ## Data lanes never stand in for address bases; a live base write ends a mixed store group.
+    var operations = default(array[int(NativeReadFactLimit)-1, NativeOperation])
+    operations[0] = windowLiteralStore(120, false, 6, 0, 0)
+    operations[1] = windowLiteral([149'u8, 0x77, 1])
+    operations[2] = windowTransfer(123, false, 8, 8)
+    let mixed = nativeMemoryWindow(operations, 3, 0)
+    assert mixed.ready and mixed.baseLane == 6 and not mixed.absolute and mixed.span == 16
+    operations[2] = windowLiteralStore(123, false, 6, 8, 0xffffffff'u32)
+    assert nativeMemoryWindow(operations, 3, 0).ready
+    operations[2] = windowLiteralStore(123, false, 7, 8, 0xffffffff'u32)
+    assert not nativeMemoryWindow(operations, 3, 0).ready
+    operations[2] = windowLiteralStore(123, false, 6, 8, 0)
+    operations[1] = windowLiteral([149'u8, 0x66, 1])
+    assert not nativeMemoryWindow(operations, 3, 0).ready
+    operations[0] = windowLiteralStore(120, true, 0, 65536, 0)
+    operations[2] = windowLiteralStore(123, true, 0, 65544, 0)
+    let absolute = nativeMemoryWindow(operations, 3, 0)
+    assert absolute.ready and absolute.absolute and absolute.span == 16
+
+  proc checkWindowTransfers(opcode: byte, absolute: bool, scenario: int,
+      literalPosition: int = -1, literal: uint32 = 0) =
     ## Preserve complete registers, bytes, dirty authority and receipts on success or first-site replay.
     let writing = opcode <= 123
     let width = case opcode
@@ -86,6 +122,13 @@ when NativeReadCycleEnabled:
       (if scenario == 18 and writing: 8'u8 else: 11'u8)])
     blocks[0].operations[2] = windowTransfer(opcode, absolute,
       (if scenario == 13 and not absolute and not writing: 6'u8 else: 8'u8), first+8)
+    if literalPosition >= 0:
+      # Position two selects both sites; mixed pairs independently exercise both original base roles.
+      assert writing and literalPosition <= 2
+      for member in 0..1:
+        if member == literalPosition or literalPosition == 2:
+          blocks[0].operations[member*2] = windowLiteralStore(opcode, absolute, 6,
+            first+uint32(member*8), literal xor uint32(member*0x100))
     blocks[1].operations[0] = windowLiteral([149'u8, 0xcc, 1])
     let window = nativeMemoryWindow(blocks[0].operations, 3, 0)
     assert window.ready and window.count == 2 and window.span == uint32(8+width)
@@ -162,8 +205,13 @@ when NativeReadCycleEnabled:
           (if scenario == 13 and not absolute and not writing: 6 else: 8)
         let offset = 1+member*8
         if writing:
+          let value = if member == literalPosition or literalPosition == 2:
+              let bits = literal xor uint32(member*0x100)
+              if bits >= 0x80000000'u32: uint64(bits) or 0xffffffff00000000'u64
+              else: uint64(bits)
+            else: uint64(expected[lane])
           for index in 0..<width:
-            expectedStorage[offset+index] = byte((uint64(expected[lane]) shr (index*8)) and 255)
+            expectedStorage[offset+index] = byte((value shr (index*8)) and 255)
         else:
           var value = 0'u64
           for index in 0..<width: value = value or (uint64(storage[offset+index]) shl (index*8))
@@ -186,6 +234,14 @@ proc runMemoryWindows*() =
   ## The shared native suite runs every memory width and addressing form on each supported ISA.
   when NativeReadCycleEnabled:
     checkWindowGeometry()
+    checkLiteralWindowGeometry()
     for opcode in 120'u8..130'u8:
       for absolute in [false, true]:
         for scenario in 0..18: checkWindowTransfers(opcode, absolute, scenario)
+    for opcode in 120'u8..123'u8:
+      for absolute in [false, true]:
+        for position in 0..2:
+          for literal in [0'u32, 0x100'u32, 0x10000'u32, 0x80000000'u32, 0xffffffff'u32]:
+            for scenario in 0..18:
+              # Reuse the independent complete-state/dirty/receipt oracle for literal and mixed windows.
+              checkWindowTransfers(opcode, absolute, scenario, position, literal)

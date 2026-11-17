@@ -20,9 +20,11 @@ when declared(X86Block):
     ## Count the original operands, including memory bases and aliases, without executing guest work.
     let encoding = nativeReadEncodingOpcode(op.opcode)
     if nativeMixedLoopStoreWidth(op.opcode) != 0:
-      # Stores consume their value and, for relative forms, their current address base.
-      inc uses[op.slots.aIndex]
-      if op.opcode >= 120: inc uses[op.slots.bIndex]
+      # A literal has no guest value input. Relative literals consume A, register stores B.
+      if op.opcode in {70'u8..73}: inc uses[op.slots.aIndex]
+      elif not nativeImmediateStoreOpcode(op.opcode):
+        inc uses[op.slots.aIndex]
+        if op.opcode >= 120: inc uses[op.slots.bIndex]
     else:
       let destination = if nativeReadOpcode(encoding): op.slots.aIndex
         else: op.slots.destinationIndex

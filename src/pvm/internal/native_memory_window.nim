@@ -6,7 +6,9 @@
 ## true-length region before using the hint. Failed proofs resume checked execution at the first
 ## original memory site, so earlier scalar effects and later partial/fault behavior stay ordered.
 ## These values retain no source owner, invocation pointer or entry authority. Read/write groups
-## are separate; a scalar base write or a different memory base ends the current group.
+## are separate; a scalar base write or a different memory base ends the current group. Literal
+## and register stores can share the same proof: their original address roles, not data roles,
+## determine whether the base is invariant.
 
 import ./[jit_rules, native_ir, native_read_body]
 
@@ -23,12 +25,23 @@ type
     absolute*: bool            ## Absolute groups consume no live guest address register.
 
 func nativeWindowOpcode*(opcode: byte): byte {.inline.} =
-  ## Normalize the existing absolute/relative register memory families, or return zero.
+  ## Normalize absolute/relative register and literal memory families, or return zero.
   case opcode
+  of 30..33: opcode+90'u8
   of 52..58: opcode+72'u8
   of 59..62: opcode+61'u8
+  of 70..73: opcode+50'u8
   of 120..130: opcode
   else: 0'u8
+
+func nativeWindowAbsolute(opcode: byte): bool {.inline.} =
+  ## Absolute literal and register transfers have no live guest address base.
+  opcode in {30'u8..33, 52..62}
+
+func nativeWindowBase(operation: NativeOperation): int {.inline.} =
+  ## Relative literal stores consume original A; relative register transfers consume original B.
+  if operation.opcode in {70'u8..73}: int(operation.slots.aIndex)
+  else: int(operation.slots.bIndex)
 
 func ready*(window: NativeMemoryWindow): bool {.inline.} =
   ## Only a complete multi-site hint can replace ordinary guards.
@@ -50,9 +63,9 @@ func nativeMemoryWindow*(operations: array[int(NativeReadFactLimit)-1, NativeOpe
   let initial = operations[first]
   let encoding = nativeWindowOpcode(initial.opcode)
   if encoding < 120 or encoding > 130: return
-  let absolute = initial.opcode < 120
+  let absolute = nativeWindowAbsolute(initial.opcode)
   let kind = if encoding <= 123: NativeWindowKind.Write else: NativeWindowKind.Read
-  let base = int(initial.slots.bIndex)
+  let base = if absolute: 0 else: nativeWindowBase(initial)
   var minimum = high(int64)
   var maximum = low(int64)
   var members = 0'u32
@@ -68,8 +81,8 @@ func nativeMemoryWindow*(operations: array[int(NativeReadFactLimit)-1, NativeOpe
       continue
     let access = indirectMemoryAccess(range[120..130](code))
     let nextKind = if code <= 123: NativeWindowKind.Write else: NativeWindowKind.Read
-    if (op.opcode < 120) != absolute or nextKind != kind or
-        (not absolute and int(op.slots.bIndex) != base): break
+    if nativeWindowAbsolute(op.opcode) != absolute or nextKind != kind or
+        (not absolute and nativeWindowBase(op) != base): break
     let displacement = int64(cast[int32](uint32(op.immediate and 0xffffffff'u64)))
     let low = min(minimum, displacement)
     let high = max(maximum, displacement+int64(access.width))

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Copied source and invocation receipts for a bounded native mixed self-loop.
+## Literal stores retain both original 32-bit operands in the existing immediate field: address
+## displacement below, signed literal above. Address bases remain live source operands.
 
 import ../[machine, program]
 import ./[jit_rules, native_ir, native_read_body, native_read_cycle]
@@ -22,13 +24,25 @@ const
   NativeMixedLoopGuardMask = 0x3f'u32
 
 func nativeMixedLoopStoreWidth*(opcode: byte): uint32 =
-  ## Absolute and wrapped relative stores truncate to the same four widths.
+  ## Register and literal stores truncate to the same four widths on both addressing forms.
   case opcode
-  of 59, 120: 1'u32
-  of 60, 121: 2'u32
-  of 61, 122: 4'u32
-  of 62, 123: 8'u32
+  of 30, 59, 70, 120: 1'u32
+  of 31, 60, 71, 121: 2'u32
+  of 32, 61, 72, 122: 4'u32
+  of 33, 62, 73, 123: 8'u32
   else: 0'u32
+
+func nativeImmediateStoreOpcode*(opcode: byte): bool {.inline.} =
+  ## Literal data consumes no guest value lane; relative forms still read their original A base.
+  opcode in {30'u8..33, 70..73}
+
+func nativeStoreImmediate*(address, literal: uint64): uint64 {.inline.} =
+  ## Copy checked source operands without growing the retained operation or retaining its owner.
+  (address and 0xffffffff'u64) or ((literal and 0xffffffff'u64) shl 32)
+
+func nativeStoreLiteral*(operation: NativeOperation): uint64 {.inline.} =
+  ## The checked literal is signed 32-bit; each store truncates this value to its own width.
+  cast[uint64](int64(cast[int32](uint32(operation.immediate shr 32))))
 
 type
   NativeMixedLoop* = object

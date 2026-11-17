@@ -130,6 +130,10 @@ when declared(X86Block):
     let delta = uint32(op.immediate and 0xffffffff'u64)-window.displacement
     if delta >= window.span or width > window.span-delta: return false
     put(code, [0x66'u8, 0x4d, 0x0f, 0x7e, 0xc8]) # MOVQ R8,XMM9.
+    if nativeImmediateStoreOpcode(op.opcode):
+      # The shared window proves the address; literal data still belongs to this original site.
+      mixedLoopImmediateStore(code, byte(width), uint32(op.immediate shr 32), delta)
+      return code.failure == X86EmissionError.None
     if encoding <= 123: readAccess(code, access, op.slots.aIndex, false)
     case encoding
     of 120: put(code, [0x41'u8, 0x88, 0x80])

@@ -24,7 +24,8 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
       assert a.value.access == b.value.access and a.value.bytes == b.value.bytes
 
   proc witnessFlatPaidMixedLoop*(program: Program, pc: uint32, base, wordAddress,
-      readBase: uint64, report: bool = true, width: byte = 4, storesOnly = false) =
+      readBase: uint64, report: bool = true, width: byte = 4, storesOnly = false,
+      literalStore = false) =
     ## Compare true native entries to original checked workers before and after repairing a fault.
     let cycles = GasCycleLimit(100000)
     var prepared = prepareFlatPlan(program, cycles, defaultFlatLimits(), false)
@@ -87,6 +88,18 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
 
       let proof = buildFlatMixedLoop(native, pc, 1, allowPaid = true)
       assert proof.complete and uint64(proof.span) == span and proof.count == 8 and proof.price == blockPrice
+      if literalStore and scenario == 0:
+        # A valid address cannot authorize a different cached literal than the immutable source owns.
+        for index in 0..<int(proof.count):
+          if not nativeImmediateStoreOpcode(proof.operations[index].opcode): continue
+          let node = int(proof.header)+index+1
+          let original = native.arguments[node].y
+          native.arguments[node].y = original xor 1
+          assert not buildFlatMixedLoop(native, pc, 1, allowPaid = true).complete,
+            "cached literal must not replace its source-owned Y operand"
+          native.arguments[node].y = original
+          assert buildFlatMixedLoop(native, pc, 1, allowPaid = true).complete,
+            "restoring the source literal must recover the same proof"
       assert proof.paidGuards == 0x2f'u32
       assert not buildFlatMixedLoop(native, pc, 1, allowPaid = false).complete
       var corrupted = proof
@@ -155,7 +168,8 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         assert uint64(native.info.registers[3]) == expected
         let finalWord = load(flatMemorySnapshot(native), MemoryAddress(wordAddress),
           AccessWidth(width))
-        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (expected and storeMask)
+        let stored = if literalStore: 0xffffffff87654321'u64 else: expected
+        assert finalWord.error == MachineError.None and uint64(finalWord.value) == (stored and storeMask)
       if scenario in [4, 5, 7]:
         assert native.exit == oracle.StepExit.Fault and native.info.blockCharged
         assert uint64(native.info.pc) == uint64(observed.lastGuardPc)
@@ -166,8 +180,16 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         let early = load(beforeRepair, MemoryAddress(base+expectedVisits[scenario]), AccessWidth(1))
         assert early.error == MachineError.None and uint64(early.value) == 0xa5
         if scenario == 7:
-          let untouched = load(beforeRepair, MemoryAddress(wordAddress), AccessWidth(2))
-          assert untouched.error == MachineError.None and uint64(untouched.value) == 0x5544
+          # Check only bytes in the existing first page; the missing page caused this refusal.
+          let available = min(uint64(width), 4096-wordAddress mod 4096)
+          for offset in 0..<int(available):
+            let position = wordAddress mod 4096+uint64(offset)
+            let expected = if position == 4094: 0x44'u64
+              elif position == 4095: 0x55'u64 else: 0'u64
+            let untouched = load(beforeRepair, MemoryAddress(wordAddress+uint64(offset)),
+              AccessWidth(1))
+            assert untouched.error == MachineError.None and uint64(untouched.value) == expected,
+              "a refused crossing store changed its first-page bytes"
         let expectedFault = if scenario == 7: (lastWordPage shl 12) else: readBase+4096
         assert uint64(native.faultPage) == expectedFault
         let supplied = if scenario == 7: wordEnd else:
@@ -195,9 +217,11 @@ when declared(FlatFrame) and defined(pvmPaidMixedLoopWitness):
         assert exitPrice.error == GasError.None
         assert uint64(resumed.info.gas)+uint64(exitPrice.value) ==
           gas-(expectedVisits[scenario]+1)*blockPrice
-        let finalWord = load(flatMemorySnapshot(resumed), MemoryAddress(wordAddress), AccessWidth(4))
-        let expectedWord = if scenario == 5: 0x8000a5a5'u64 else: 0x800000a5'u64
-        assert finalWord.error == MachineError.None and uint64(finalWord.value) == expectedWord
+        let finalWord = load(flatMemorySnapshot(resumed), MemoryAddress(wordAddress), AccessWidth(width))
+        let expectedWord = if literalStore: 0xffffffff87654321'u64
+          elif scenario == 5: 0xffffffff8000a5a5'u64 else: 0xffffffff800000a5'u64
+        assert finalWord.error == MachineError.None and uint64(finalWord.value) ==
+          (expectedWord and storeMask), "paid retry must store the source value at its original width"
       if report:
         # Maintained unit goldens stay portable; private qualification retains exact receipts.
         echo "MIXED_PAID_FRAME,", scenario, ",", observed.visits, ",", observed.paid, ",",

@@ -158,8 +158,9 @@ when declared(ArmBlock):
       of 128: 0xb9400000'u32
       of 129: 0xb9800000'u32
       else: 0xf9400000'u32
-    words.add(instruction or ((delta div width) shl 10) or (17'u32 shl 5) or
-      (uint32(op.slots.aIndex)+4))
+    let value = if encoding <= 123: armStoreDataRegister(words, op, width)
+      else: uint32(op.slots.aIndex)+4
+    words.add(instruction or ((delta div width) shl 10) or (17'u32 shl 5) or value)
     true
 
   proc patchFusionEdge*(code: var ArmFusionEncoding, edge, deltaBytes: int): bool =
