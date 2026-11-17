@@ -2525,6 +2525,7 @@ proc runSharedAsync*() =
     diagnosticPhase("staleStreamEpoch")
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
+    assert probeDirectoryReadRefusals(), "directory reads must refuse damaged physical storage without output or guest absence"
     memoryPublicationRefusals()
     memoryPayloadRefusals()
     unregisteredInvocationLease()
