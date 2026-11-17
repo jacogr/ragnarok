@@ -154,6 +154,16 @@ remain mandatory. Phase-specific actual engines follow native-operation deltas. 
 and occupancy are post-clock observations, not proof of their exact in-call timing. Older
 aggregate-only cohorts remain readable but cannot acquire invented per-call attribution.
 
+The same current-image request also attributes the complete synthetic process. One stable
+public-call boundary encloses `execute`/`executeWithHost`, including restoration, scalar callbacks,
+resumes and owned publication. Each policy retains all eleven owners and all143 calls in original
+order; no case filtering or per-case replacement processes alter shared runtime admission.
+Bounded return dumps retain every part and an empty final dump. Cold/reused parts are selected
+afterward by the original case position. Every owner's measured native activity and observed
+state must match its canonical log; a JIT-policy owner with no native work remains interpreted.
+The separate synthetic report/calibration/raw parts preserve the guest evidence. Instrumented
+clocks are discarded, and original source/image/input/host/build seals remain mandatory.
+
 
 Each process emits thirteen raw validated calls. Sample0 is the cold call;
 samples1–12 are resident. Reused statistics use exactly samples3–12, independently

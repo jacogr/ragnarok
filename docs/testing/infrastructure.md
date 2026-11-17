@@ -494,7 +494,7 @@ timings from different CI machines or operating systems do not establish a runti
 Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.
 
-For current x86 Sieve and Pinky attribution, add `pvm_guest_profile=true` to the focused `bench-pvm`
+For current x86 guest and synthetic attribution, add `pvm_guest_profile=true` to the focused `bench-pvm`
 dispatch. Profiling runs after timing in the same native job, using the exact retained canonical
 image and inputs. It retains all thirteen complete-state calls and calibrated cold/final reused
 instruction and simulated branch counts; instrumented clocks are discarded. The short input
@@ -511,6 +511,14 @@ independently validated logs: work needs a call, and header/branch deltas cannot
 respective branch/call deltas. Async publication/occupancy remains independent. Actual engines follow
 the native-operation deltas, so a JIT-policy cold call can honestly remain interpreted. These
 are counter/occupancy observations, not additional clocks or exact executor-entry timestamps.
+
+The same request retains host/memory attribution in `build/tests/pvm-synthetic-profile/`.
+It runs each original synthetic image once per policy, retaining all eleven owners and143 public
+calls in order. The stable public boundary includes scalar callbacks/resumes and publication;
+case-specific cold/final return dumps are selected afterward. Complete parsing and every raw part
+remain required, including unselected calls. Per-owner measured native work/state must match the
+canonical process. Checked fallback under JIT policy remains explicit. Calibration and reports
+are separate from the original guest files; no source/image rebuild or input filter is introduced.
 
 Current synthetic and guest drivers also report copied native counters after each complete,
 checked invocation and outside its primary clocks. One public `PreparedInfo` checkpoint is captured

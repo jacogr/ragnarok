@@ -238,10 +238,13 @@ def disassembly_passed(result):
             and re.search(r'^\s*[0-9a-f]+:\s+[a-z][a-z0-9]*\b', text, re.M) is not None)
 
 
-def final_return_dump(output, executions):
+def final_return_dump(output, executions, owners=1):
     """Require every complete bounded function-return part and an empty final dump; retain the last raw part unchanged."""
-    if type(executions) is not int or not 1 <= executions <= 13:
+    if (type(executions) is not int or not 1 <= executions <= 13
+            or type(owners) is not int or not 1 <= owners <= 11
+            or owners != 1 and executions != 13):
         raise ValueError('invalid bounded execution dump count')
+    executions *= owners
     parts = {path.name: path for path in output.parent.glob(output.name+'.*')}
     expected = {output.name+'.'+str(index) for index in range(1, executions+1)}
     if set(parts) != expected:
@@ -255,7 +258,7 @@ def final_return_dump(output, executions):
 
 
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False):
+            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False, owners=1):
     """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
@@ -275,7 +278,7 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
         raise RuntimeError('Callgrind did not produce a profile: '+name)
     if dump_symbols:
         # Returning raw numbered output preserves Callgrind bytes and its original dump identity.
-        output = final_return_dump(output, executions)
+        output = final_return_dump(output, executions, owners)
     return result, output
 
 
