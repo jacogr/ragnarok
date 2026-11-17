@@ -9,7 +9,8 @@ peer observations.
 | --- | --- |
 | [`chain.nim`](chain.nim) | Bounded JIP-4 metadata extraction for telemetry network identity |
 | [`wire.nim`](wire.nim) | Owned JIP-3 registration and event encodings |
-| [`client.nim`](client.nim) | Nonblocking TCP delivery, bounded queues and reconnect lifecycle |
+| [`client.nim`](client.nim) | Dispatcher-owned event IDs, bounded queues and reconnect policy |
+| [`stream.nim`](stream.nim) | Task-owned Socket/Writer delivery, deadlines and joined cleanup |
 | [`observer.nim`](observer.nim) | Translation of transport/peer events into copied telemetry observations |
 
 ## Run

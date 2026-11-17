@@ -36,14 +36,20 @@ The binary is not a project dependency, and no downloaded executable is needed f
 
 ## Verification
 
-`make check-unit` includes native wire/metadata tests, malformed chain JSON/hex cases, independent
-hash expectations, a saturated socket pair, partial-send continuation and ordered dropped/status
-frames, a close queued exactly at a status deadline without spurious loss, incoming/outgoing event layouts, correlation across dropped samples, and event-ID exhaustion.
+`make unit SUITE=telemetry` covers wire/metadata, numeric endpoint validation, shared queued/in-flight
+byte credit, ordered dropped/status frames, incoming/outgoing correlation, ID exhaustion and moved
+client ownership. Actual IPv4 and IPv6 collectors receive exact registration and lifecycle bytes.
+`make unit SUITE=telemetry_stream` covers detached binary batches, real socket backpressure,
+continuation without duplicated bytes, deadline errors, abort without a final flush, moved task
+ownership and joined idle/blocked shutdown. The [stream owner](../src/telemetry/stream.nim) and
+[exporter](../src/telemetry/client.nim) explain their implementation contracts. The focused
+`telemetry_stream` model checks byte-credit and joined-storage ownership, with premature-credit
+and premature-free mutants and a reachable joined-stop witness; socket tests supply runtime evidence.
 The native transport suite holds 65 unfinished TLS handshakes against the 64 observation slots
 on both IPv4 and IPv6, then completes one, closes it, reuses its slot, and checks tracked failures
 and overflow
 losses during destruction.
-`make check-guards` includes a native lowering probe rejecting copies of the TCP owner.
+`make check-guards` includes native lowering probes rejecting copies of the stream mailbox and its composite exporter.
 `make check-e2e` includes IPv4 and IPv6 collector resets against real application servers,
 with certificate-backed registration, empty-peer status and subsequent authenticated exchanges.
 It also covers a certificate-backed proof-peer exchange with telemetry enabled, an unresponsive outgoing destination, and an attempt/outcome

@@ -126,86 +126,54 @@ assert not valid.opened
 # Private queue witnesses verify bounded storage and retirement without relying on wall time.
 var queued = default(Client)
 queued.queue(sample, 10)
-assert queued.length == 47 and queued.offset == 0 and queued.deadline == 5010
+assert queued.length == 47 and queued.inFlight == 0 and queued.deadline == 5010
 # Every copied byte is retained independently of the producer sequence.
 for i in 0..<sample.len: assert queued.buffer[i] == sample[i]
-queued.offset = 5
+queued.inFlight = 5
 queued.lost = 8
 queued.failed(20)
-assert queued.length == 0 and queued.offset == 0 and queued.lost == 0
+assert queued.length == 0 and queued.inFlight == 0 and queued.lost == 0
 assert queued.retryAt == 5020
 
-# A Unix stream pair gives deterministic backpressure without a collector process or network race.
-proc socketPair(domain, kind, protocol: cint, descriptors: ptr cint): cint {.importc: "socketpair",
-    header: "<sys/socket.h>".}
-
-# Receive consumes only a caller-owned bounded buffer and never retains it.
-proc receive(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "recv",
-    header: "<sys/socket.h>".}
-var descriptors = [-1.cint, -1.cint]
-assert socketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0,
-    addr descriptors[0]) == 0
+# Queue credit stays occupied until the Writer has acknowledged the entire in-flight batch.
 var blocked = default(Client)
 assert blocked.configure("localhost:9000", parsed.value)
-blocked.fd = descriptors[0]
-blocked.opened = true
-assert fcntl(descriptors[0], F_SETFL, O_NONBLOCK) == 0
-assert fcntl(descriptors[1], F_SETFL, O_NONBLOCK) == 0
-var scratch = default(array[4096, byte])
-# Regression: a close queued just before a due status must not manufacture a loss marker.
+blocked.opened = true # Exercise dispatcher queue policy independently of actual I/O timing below.
 blocked.statusAt = 2000
 blocked.peerDisconnected(1999, Timestamp(19), remoteIdentity)
 blocked.tick(2000, Timestamp(20), 0)
 assert blocked.lost == 0 and blocked.nextEvent == 2
-let simultaneous = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
-assert simultaneous == closed.len + sample.len
-assert scratch[12] == 27 and scratch[closed.len + 12] == 10
-assert blocked.length == 0
-# Reset only test counters before the independent backpressure schedule below.
+assert blocked.length == closed.len + sample.len
+assert blocked.buffer[12] == 27 and blocked.buffer[closed.len + 12] == 10
+# Maximum-size statuses exhaust credit while an equally large detached batch is still in flight.
 blocked.statusAt = 0
 blocked.nextEvent = 0
-var filled = false
-# Saturate at most 32 MiB of kernel writes; no syscall can block after O_NONBLOCK.
-for iteration in 0..<8192:
-  let sent = sendBytes(descriptors[0], addr scratch[0], csize_t(scratch.len), 0)
-  if sent < 0:
-    assert osLastError() == OSErrorCode(EAGAIN) or osLastError() == OSErrorCode(EWOULDBLOCK)
-    filled = true
-    break
-assert filled
-# Maximum-size statuses exhaust the fixed buffer even though a small lifecycle frame would fit.
 let largeSample = status(maximum.value, Timestamp(30), 7)
 blocked.metadata = maximum.value
 blocked.queue(largeSample, 0)
-blocked.offset = 7 # Model a previously accepted prefix before collector backpressure.
+blocked.inFlight = blocked.length
+blocked.length = 0
 blocked.tick(0, Timestamp(10), 7)
 blocked.tick(2000, Timestamp(20), 7)
-assert blocked.offset == 7 and blocked.length == largeSample.len and blocked.lost == 2
-# Drain kernel filler completely without blocking or spinning indefinitely.
-for iteration in 0..<8192:
-  if receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0) < 0: break
-blocked.tick(2500, Timestamp(25), 7)
-assert blocked.length == 0
-let suffix = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
-assert suffix == largeSample.len - 7
-# A partial write resumes at its exact suffix, without duplicating frame bytes.
-for i in 0..<suffix: assert scratch[i] == largeSample[i + 7]
-blocked.metadata = parsed.value # Resume with the original small status after true capacity loss.
+assert blocked.inFlight == largeSample.len and blocked.length == 0 and blocked.lost == 2
+# Model only completed credit here; the stream suite proves actual Writer completion on sockets.
+blocked.inFlight = 0
+blocked.metadata = parsed.value
 blocked.tick(4000, Timestamp(40), 7)
-let resumed = receive(descriptors[1], addr scratch[0], csize_t(scratch.len), 0)
-assert resumed == 29 + sample.len
-assert number(scratch, 4, 8) == 10 and number(scratch, 13, 8) == 20
-assert number(scratch, 21, 8) == 2 and scratch[29 + 12] == 10
+assert blocked.length == 29 + sample.len
+assert number(blocked.buffer, 4, 8) == 10 and number(blocked.buffer, 13, 8) == 20
+assert number(blocked.buffer, 21, 8) == 2 and blocked.buffer[29 + 12] == 10
+blocked.length = 0 # The previous completed batch no longer occupies dispatcher staging.
 # Correlation includes status and lost observations; append never overwrites a partial frame or deadline.
 assert blocked.nextEvent == 3
 let attempt = blocked.dialing(4100, Timestamp(41), remoteIdentity, remoteAddress, 9000)
 assert uint64(attempt) == 3 and blocked.length == dialFrame.len
 let originalDeadline = blocked.deadline
-blocked.offset = 5
+blocked.inFlight = 5
 blocked.omit(Timestamp(42)) # Missing native metadata still consumes one correlated position.
 assert blocked.nextEvent == 5 and blocked.lost == 1
 blocked.dialOutcome(4300, Timestamp(43), attempt, true)
-assert blocked.nextEvent == 6 and blocked.lost == 0 and blocked.offset == 5
+assert blocked.nextEvent == 6 and blocked.lost == 0 and blocked.inFlight == 5
 assert blocked.deadline == originalDeadline
 assert blocked.buffer[dialFrame.len + 12] == 0
 assert number(blocked.buffer, dialFrame.len + 21, 8) == 1
@@ -215,7 +183,7 @@ let beforeClose = blocked.length
 blocked.peerDisconnected(4350, Timestamp(44), remoteIdentity)
 assert blocked.nextEvent == 7 and blocked.length == beforeClose + closed.len
 assert blocked.buffer[beforeClose + 12] == 27 and blocked.buffer[beforeClose + 13] == 123
-assert blocked.deadline == originalDeadline and blocked.offset == 5
+assert blocked.deadline == originalDeadline and blocked.inFlight == 5
 # Native tracking losses consume IDs and precede the next incoming frame without touching a partial prefix.
 let beforeIncoming = blocked.length
 blocked.omit(Timestamp(45))
@@ -228,7 +196,7 @@ let beforeOutcome = blocked.length
 blocked.acceptOutcome(4380, Timestamp(48), incomingId, remoteIdentity, true)
 assert blocked.buffer[beforeOutcome + 12] == 23
 assert number(blocked.buffer, beforeOutcome + 13, 8) == 9
-assert blocked.nextEvent == 11 and blocked.deadline == originalDeadline and blocked.offset == 5
+assert blocked.nextEvent == 11 and blocked.deadline == originalDeadline and blocked.inFlight == 5
 # Admission refusal appends after TLS success without allocating another correlation slot.
 let beforeRefusal = blocked.length
 blocked.refusing(4390, Timestamp(49), remoteAddress, 9000)
@@ -242,20 +210,88 @@ blocked.nextEvent = high(uint64)
 blocked.dialOutcome(4600, Timestamp(46), offline, false)
 assert not blocked.enabled and blocked.nextEvent == high(uint64) # Exhaustion disables rather than wraps.
 blocked.close()
-discard posix.close(descriptors[1])
 echo "telemetry ok"
 
-# A transferred native socket survives moved-source close and destruction; retries stay disabled there.
+# Moving a client transfers its live task; closing the moved source cannot retire the destination.
 block moved_client:
   var destination = default(Client)
   block:
     var source = default(Client)
-    source.fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0
-    source.opened = true
-    source.enabled = true
+    assert source.configure("localhost:1", parsed.value)
+    source.begin(0, Timestamp(0))
+    assert source.stream.active and source.opened
     destination = move(source)
-    assert not source.enabled and not source.opened
+    assert not source.enabled and not source.opened and not source.stream.active
     source.close()
-  assert fcntl(destination.fd, F_GETFL) >= 0
+  assert destination.stream.active and destination.enabled
   destination.close()
+
+proc inspectBinding(fd: cint, address: pointer, size: ptr SockLen): cint {.
+    importc: "getsockname", header: "<sys/socket.h>".}
+  ## Observe the kernel-selected collector port using its initialized native address type.
+
+proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+  ## Give passive I/O continuations a bounded turn while the test collector drains bytes.
+
+proc collectorDelivery(ipv6: bool, identity: array[32, byte]) =
+  ## Exercise the public task connect path and independently capture exact JIP-3 wire bytes.
+  let host = if ipv6: "[::1]" else: "127.0.0.1"
+  var binding = default(Client)
+  assert binding.configure(host & ":1", parsed.value)
+  let family = if ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
+  let listener = socket(cint(ord(family)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+  assert listener >= 0 and nonblocking(listener), "create the numeric loopback collector"
+  defer: discard posix.close(listener)
+  var port = 0'u16
+  if ipv6:
+    binding.address6.sin6_port = 0
+    assert bindSocket(listener, addr binding.address6, SockLen(sizeof(Sockaddr_in6))) == 0
+    var size = SockLen(sizeof(Sockaddr_in6))
+    assert inspectBinding(listener, addr binding.address6, addr size) == 0
+    port = networkPort(binding.address6.sin6_port)
+  else:
+    binding.address.sin_port = 0
+    assert bindSocket(listener, addr binding.address, SockLen(sizeof(Sockaddr_in))) == 0
+    var size = SockLen(sizeof(Sockaddr_in))
+    assert inspectBinding(listener, addr binding.address, addr size) == 0
+    port = networkPort(binding.address.sin_port)
+  assert port > 0 and listenSocket(listener, 1) == 0
+  var client = default(Client)
+  assert client.configure(host & ":" & $port, parsed.value)
+  var collector = -1.cint
+  defer:
+    if collector >= 0: discard posix.close(collector)
+  var received = newSeq[byte]()
+  for attempt in 0..<2000:
+    # Registration is delivered before any application observations are queued.
+    client.tick(0, Timestamp(0), 0)
+    if collector < 0:
+      collector = acceptSocket(listener, nil, nil)
+      if collector >= 0: assert nonblocking(collector)
+    if collector >= 0:
+      var bytes = default(array[2048, byte])
+      let count = receive(collector, addr bytes[0], csize_t(bytes.len), 0)
+      if count > 0:
+        for index in 0..<count: received.add(bytes[index])
+    if received.len >= hello.len: break
+    discard pauseMicros(1000)
+  assert received == hello, "numeric collector receives exact registration"
+  assert client.nextEvent == 0 and not client.connecting
+  client.peerDisconnected(1, Timestamp(23), identity)
+  received = @[]
+  for attempt in 0..<2000:
+    # The same Writer delivers the following lifecycle frame without HTTP or text conversion.
+    client.tick(1, Timestamp(1), 0)
+    var bytes = default(array[2048, byte])
+    let count = receive(collector, addr bytes[0], csize_t(bytes.len), 0)
+    if count > 0:
+      for index in 0..<count: received.add(bytes[index])
+    if received.len >= closed.len: break
+    discard pauseMicros(1000)
+  assert received == closed and client.nextEvent == 1
+  client.close()
+
+for ipv6 in [false, true]:
+  # Both address families are required; missing IPv6 support is a failure, not a skip.
+  collectorDelivery(ipv6, remoteIdentity)
+ioring.shutdown()
