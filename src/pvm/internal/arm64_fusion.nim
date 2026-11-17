@@ -326,9 +326,10 @@ when declared(ArmBlock):
           scratch.guards.shrink(0)
           emitArmCheckedRead(scratch, op.slots, uint32(op.immediate and 0xffffffff'u64),
             range[124..130](encoding), encoding != op.opcode)
-          appendArmCycleRead(words, fixes, scratch, index+1)
+          if not appendArmCycleRead(words, fixes, scratch, index+1): return
         else:
           emitArmOperation(scratch.body, op.opcode, op.slots, op.immediate)
+          if scratch.body.failure != ArmEmissionError.None: return
           for word in scratch.body.words: words.add(word)
     if words.len > capacity-returnWords*(3+countSetBits(item.guards))-epilogueWords-8: return
 
@@ -348,6 +349,7 @@ when declared(ArmBlock):
         let branch = item.branch
         let condition = armBranchCompare(scratch.body, branch.opcode,
           branch.slots.aIndex, branch.slots.bIndex, branch.immediate)
+        if scratch.body.failure != ArmEmissionError.None: return
         for word in scratch.body.terminal: words.add(word)
         words.add(0x54000040'u32 or condition) # B.cond over the false edge.
       for edge in 0..1:
