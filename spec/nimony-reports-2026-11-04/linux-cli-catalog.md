@@ -38,3 +38,21 @@ A normal diagnostic would be appropriate for unsupported source; an internal ass
 investigation. Standalone reduction, five independent empty-directory runs, line minimality,
 language-contract inspection, upstream duplicate/devel searches and native Linux qualification
 remain pending. No Linux runtime pass is claimed.
+
+
+## November 17 current-source control
+
+The direct check of current `src/app/cli/catalog.nim` targeting Linux AMD64 was rerun with
+pristine official November 14 `8102b8e3c` and November 16 `1e3c6de07` archives, checked ARC,
+release and fresh separate project/stdlib caches. Both exit 1 with the same earlier ordinary
+compile-time string-evaluation diagnostics, starting at line 32:
+
+```text
+Error: cannot evaluate expression at compile time: "Bounded workloads default to " & $(DefaultTimeoutMs) & " ms."
+```
+
+Neither reaches the historical `nifcore` assertion. The current-source result is inconclusive
+for the original observation; do not relabel it a new regression or a verified fix. No CLI source
+change is made. The actual optimized macOS peer builds successfully. Exact commands, outputs and
+statuses are in `build/upstream-watch/nimony/2026-11-17-upgrade/extra-checks.json` and
+`linux-catalog-{old,new}.log`. This does not establish native Linux behavior.

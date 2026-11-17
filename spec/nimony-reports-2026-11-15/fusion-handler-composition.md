@@ -141,3 +141,31 @@ runtime qualification and measurements belong to that implementation change.
 This successful source construction does not repair the compiler, establish the assertion's
 root cause, qualify current upstream or complete the pending standalone reduction. The original
 portable patch and five failure receipts above are intentionally unchanged.
+
+
+## November 17 official-archive retest
+
+The pristine November 16 archive `1e3c6de070dd59d2c59188fc8b28fbf23a064470` contains
+[the optimizer fixpoint repair](https://github.com/nim-lang/nimony/pull/3022) and
+[its mutation-tracking follow-up](https://github.com/nim-lang/nimony/pull/3024).
+Their inclusion does not resolve this recorded failure.
+
+Reconstruct the same exact base and experimental patch in a new private source tree.
+Both trial source hashes match the portable receipt above. With the unchanged checked
+ARC/Clang ThinLTO profile, compilation still exits 1 in `shoggoth`:
+
+```text
+assertions.nim(38)       raiseAssert
+Error: unhandled exception: Symbol not found in NIF module: `iir.1000.hanpyzcax1 [AssertionDefect]
+```
+
+A separate copy with only the recorded direct-comparison alternative compiles and links the
+Pinky driver successfully. This is compilation evidence, not runtime or timing qualification
+of the experimental composition path. Keep the direct-comparison construction and the original
+failing input; no common cause or upstream resolution is established.
+
+The new compiler executable SHA-256 is
+`77178b0e2c9954c584698804d3780e383a0e52567bcf39c79f02cbf9b5ba9b10`.
+Commands, full output and private caches are under ignored
+`build/upstream-watch/nimony/2026-11-17-upgrade/nim010-{original,control}/`;
+`probes.json` records both statuses. No compiler or standard-library source was changed.

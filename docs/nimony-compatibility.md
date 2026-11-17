@@ -31,6 +31,11 @@ accessor crash. Keep useful explicit-context APIs and owning factories. A `func`
 mutable pointee location: the PVM byte reader returns a scalar and native consumers explicitly
 borrow checked addresses through `RWView.borrowedData(index)`. See the
 [November 14 qualification](../spec/nimony-nightly-2026-11-14.md).
+The November 16 nightly `1e3c6de07` adds proven loop invariants, stricter postcondition checking
+and optimizer cleanup/loop improvements. It still reproduces the NIM-010 composition trial;
+keep its supported direct comparisons and the NIM-005 test-only counter observers. The
+[November 16 qualification](../spec/nimony-nightly-2026-11-16.md) records the matching browser
+backend and the exact scope of retesting. No new compatibility adapter is introduced.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
