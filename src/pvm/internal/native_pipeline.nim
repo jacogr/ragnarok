@@ -4,7 +4,10 @@
 ## Shared ARM64 and x86-64 scheduling for one compiler work slot and four image credits.
 ## The host serializes handle operations. The worker receives copied IR and a scalar job key
 ## under the runtime lock. Parked completions belong to individual registrations and free
-## the worker before the host collects them. Credits bound image owners through unmapping.
+## the worker before the host collects them. Credits bound image owners through successful unmapping.
+## Refused OS release disables optional compilation and parks the non-callable physical owner
+## in its original charged row. Explicit close can retry after join; final anchor drop transfers
+## an existing arena record to process cleanup, whose factories drain or refuse before allocation.
 ## Retirement checks the exact key and image location before recycling a row. Unproven
 ## ownership leaves that credit occupied, and checked execution remains available.
 ## An invalid lowering request with a genuine queued row completes with an empty
@@ -129,13 +132,13 @@ type
     Absent, Deferred, Pending, Ready, Unavailable, Closed
   NativeCompilerFailure* {.pure.} = enum
     ## First reason the optional compiler was stopped; broken ownership never becomes a guest exit.
-    None, InvalidClaim, InvalidPublication, InvalidLease
+    None, InvalidClaim, InvalidPublication, InvalidLease, ReleaseRefused
   RegistrationState = enum
     Free, Live, Retiring, Exhausted
   WorkPhase {.pure.} = enum ## One compiler request; parked results belong to their registrations.
     Idle, Queued, Running
   CompletionLocation {.pure.} = enum ## Credit follows the sole image through physical retirement.
-    Empty, Queued, Running, Complete, Installed, Reclaiming
+    Empty, Queued, Running, Complete, Installed, Reclaiming, ReleasePending
   JobKey = object ## Copied authority; no session, Program, frame or callback reference crosses threads.
     slot: int
     generation, ticket, epoch: uint64
@@ -156,11 +159,12 @@ type
     lock: Lock
     changed: Cond
     thread: RawThread
-    initialized, started, stopping: bool
+    initialized, started, stopping, closing, starting: bool
     compilerExited: bool
     failure: NativeCompilerFailure
     work: WorkPhase
     slots: array[NativeSessionLimit, Registration]
+    quarantined: array[NativeSessionLimit, NativeImage] # Ambiguous row identity never loses physical authority.
     active: int
     nextTicket: uint64
     key: JobKey
@@ -168,12 +172,13 @@ type
     submitted, completed: uint64
     primaryCreditRefusals: uint64
     when NativeReadCycleEnabled:
-      mixedKey, mixedOwner: JobKey ## One auxiliary arena and its exact installed primary ticket.
+      mixedKey, mixedOwner: JobKey   ## One auxiliary arena and its exact installed primary ticket.
       mixedSet: NativeMixedLoopSet
       fusionSet: seq[NativeFusionBlock] ## Moved POD request, stable until the worker/last borrow returns.
       mixedPairRefused: bool
       mixedBorrowed: bool
     when defined(pvmSharedAsyncWitness):
+      retirementUnmapRefusals: cuint # Exact next retirement, consumed only with a physical image.
       paused, gateReached, gateReleased: bool
       rejectQueuedRequest: bool
       rejectReadRetirement: bool
@@ -259,10 +264,13 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   for index in 0..<runtime.slots.len:
     # This hook is legal only before synchronization initialization and registration admission.
     `=wasMoved`(runtime.slots[index])
+    `=wasMoved`(runtime.quarantined[index])
   when NativeReadCycleEnabled: `=wasMoved`(runtime.fusionSet)
   runtime.initialized = false
   runtime.started = false
   runtime.stopping = false
+  runtime.closing = false
+  runtime.starting = false
   runtime.compilerExited = false
   runtime.failure = NativeCompilerFailure.None
 
@@ -280,6 +288,7 @@ proc `=destroy`(runtime: var NativeRuntimeStorage) =
   for index in 0..<runtime.slots.len:
     # Closed surviving clients retain the anchor until their own image/credit retirement finishes.
     `=destroy`(runtime.slots[index])
+    `=destroy`(runtime.quarantined[index])
   when NativeReadCycleEnabled: `=destroy`(runtime.fusionSet)
   if runtime.initialized:
     deinitCond(runtime.changed)
@@ -334,13 +343,19 @@ func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   runtime.slots[key.slot].generation == key.generation and
     sameKey(runtime.slots[key.slot].key, key)
 
+func hasQuarantinedImages(runtime: ptr NativeRuntimeStorage): bool =
+  ## Caller holds the runtime mutex; unknown row identity prevents every potentially premature credit release.
+  for index in 0..<runtime.quarantined.len:
+    if runtime.quarantined[index].ownsNativeImage: return true
+  false
+
 proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   ## Caller relocked only AFTER image destruction; recycle the exact row without erasing generation.
   if key.generation == 0 or key.ticket == 0 or key.epoch == 0 or
       not matchesRow(runtime, key): return false
   let index = key.slot
   if runtime.slots[index].location != CompletionLocation.Reclaiming or
-      runtime.slots[index].completion.ready: return false
+      runtime.slots[index].completion.ownsNativeImage or hasQuarantinedImages(runtime): return false
   when NativeReadCycleEnabled:
     # Keep the row and its certificate intact if a native borrower still owns the image.
     if sameKey(runtime.mixedKey, key) and runtime.mixedBorrowed: return false
@@ -361,13 +376,56 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
     runtime.slots[index].state = Free
   true
 
+proc stopFailedCompiler(runtime: ptr NativeRuntimeStorage, failure: NativeCompilerFailure)
+  ## Physical release refusal stops optional compilation without changing any guest result.
+
+proc retainFailedImageLocked(runtime: ptr NativeRuntimeStorage, key: JobKey, image: var NativeImage,
+    known = true) =
+  ## Keep a refused physical owner in its exact charged row, or in bounded quarantine for ambiguous identity.
+  ## At most the four existing credits can own images; failure stops admission before another allocation.
+  stopFailedCompiler(runtime, NativeCompilerFailure.ReleaseRefused)
+  var retained = false
+  if known and matchesRow(runtime, key) and runtime.slots[key.slot].location ==
+      CompletionLocation.Reclaiming:
+    if not runtime.slots[key.slot].completion.ownsNativeImage:
+      runtime.slots[key.slot].completion = move(image)
+      runtime.slots[key.slot].location = CompletionLocation.ReleasePending
+      runtime.slots[key.slot].state = Retiring
+      runtime.slots[key.slot].cancelled = true
+      retained = true
+  if not retained:
+    for index in 0..<runtime.quarantined.len:
+      if not runtime.quarantined[index].ownsNativeImage:
+        runtime.quarantined[index] = move(image)
+        break
+  # A caller still holding an impossible fifth owner retains it; its final C drop cannot lose authority.
+  broadcast(runtime.changed)
+
+proc settleImageRetirementLocked(runtime: ptr NativeRuntimeStorage, key: JobKey,
+    image: var NativeImage): Retirement =
+  ## Release outside the mutex; re-lock before returning the exact credit or retaining a failed owner.
+  ## Return with the mutex held. Ready and physical ownership are deliberately different observations.
+  when defined(pvmSharedAsyncWitness):
+    if runtime.retirementUnmapRefusals != 0 and image.ownsNativeImage:
+      discard refuseOwnedNativeUnmapsForWitness(image, runtime.retirementUnmapRefusals)
+      runtime.retirementUnmapRefusals = 0
+  release(runtime.lock)
+  let released = tryReleaseNativeImage(image)
+  if released: image = default(NativeImage)
+  acquire(runtime.lock)
+  if not released:
+    retainFailedImageLocked(runtime, key, image)
+    return RetirementPending
+  if finishRetirement(runtime, key): Detached else: RetirementRefused
+
 when NativeReadCycleEnabled:
   func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
     ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
     result = 0
     for row in runtime.slots:
       if row.state == Free and row.generation < high(uint64) and
-          row.location == CompletionLocation.Empty and not row.completion.ready: inc result
+          row.location == CompletionLocation.Empty and
+              not row.completion.ownsNativeImage: inc result
 
   proc retireMixedLoopLocked(runtime: ptr NativeRuntimeStorage) =
     ## Cancel a queued or running owner, or detach a completed image after its last borrow.
@@ -377,17 +435,14 @@ when NativeReadCycleEnabled:
     runtime.slots[slot].cancelled = true
     case runtime.slots[slot].location
     of CompletionLocation.Queued:
-      if runtime.slots[slot].completion.ready: return
+      if runtime.slots[slot].completion.ownsNativeImage: return
       runtime.slots[slot].location = CompletionLocation.Reclaiming
       discard finishRetirement(runtime, key)
-    of CompletionLocation.Complete:
+    of CompletionLocation.Complete, CompletionLocation.ReleasePending:
       if not runtime.mixedBorrowed:
         var image = move(runtime.slots[slot].completion)
         runtime.slots[slot].location = CompletionLocation.Reclaiming
-        release(runtime.lock)
-        image = default(NativeImage)
-        acquire(runtime.lock)
-        discard finishRetirement(runtime, key)
+        discard settleImageRetirementLocked(runtime, key, image)
     of CompletionLocation.Running, CompletionLocation.Reclaiming:
       discard # The current worker or detached host owns physical retirement.
     else:
@@ -397,40 +452,70 @@ when NativeReadCycleEnabled:
 
 proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
     image: var NativeImage): Retirement =
-  ## One canonical cancellation/detach path; its caller keeps the stable runtime anchor alive.
+  ## Cancel a queued owner or retire its exact physical image; OS refusal retains the original charged row.
   let slot = key.slot
   if slot < 0 or slot >= runtime.slots.len: return NoWork
   acquire(runtime.lock)
-  if runtime.slots[slot].generation != key.generation or runtime.slots[slot].state != Live:
+  let retry = runtime.slots[slot].state == Retiring and
+    runtime.slots[slot].location == CompletionLocation.ReleasePending
+  if runtime.slots[slot].generation != key.generation or
+      (runtime.slots[slot].state != Live and not retry):
     release(runtime.lock)
     return RetirementRefused
   if runtime.slots[slot].location == CompletionLocation.Empty:
-    # Shutdown can already have retired the mapping. The closed empty row still
-    # belongs to the exact generation until its surviving session drops it.
-    if runtime.started or image.ready or runtime.slots[slot].completion.ready:
+    # A closed surviving session still owns its generation. A misplaced physical owner must retire first.
+    if runtime.started or runtime.slots[slot].completion.ownsNativeImage:
       release(runtime.lock)
       return RetirementRefused
-    runtime.slots[slot].state = Free
+    if not image.ownsNativeImage:
+      runtime.slots[slot].state = Free
+      release(runtime.lock)
+      return NoWork
+    if key.ticket == 0 or key.epoch == 0:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].key = key
+    runtime.slots[slot].state = Retiring
+    runtime.slots[slot].location = CompletionLocation.Reclaiming
+    let retired = settleImageRetirementLocked(runtime, key, image)
     release(runtime.lock)
-    return NoWork
+    return retired
   if key.ticket == 0 or key.epoch == 0 or not matchesRow(runtime, key):
     release(runtime.lock)
     return RetirementRefused
   when NativeReadCycleEnabled:
     if runtime.mixedKey.generation != 0 and sameKey(runtime.mixedOwner, key):
-      # A borrowed auxiliary can finish revocation only when its frame returns it.
       if runtime.mixedBorrowed:
         release(runtime.lock)
         return RetirementRefused
       retireMixedLoopLocked(runtime)
-  # Optional retirement can unlock. Reprove the primary before changing its live ownership.
-  if not matchesRow(runtime, key) or runtime.slots[slot].state != Live:
+  # Auxiliary retirement unlocks. Reprove both identity and the admitted release phase.
+  let stillRetry = runtime.slots[slot].state == Retiring and
+    runtime.slots[slot].location == CompletionLocation.ReleasePending
+  if not matchesRow(runtime, key) or (runtime.slots[slot].state != Live and not stillRetry):
     release(runtime.lock)
     return RetirementRefused
   case runtime.slots[slot].location
   of CompletionLocation.Queued, CompletionLocation.Running:
-    # Session.ticket may already be zero after invalidation; the row still owns the old obligation.
-    if image.ready or runtime.slots[slot].completion.ready:
+    if image.ownsNativeImage or runtime.slots[slot].completion.ownsNativeImage:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Retiring
+    runtime.slots[slot].cancelled = true
+    broadcast(runtime.changed)
+    release(runtime.lock)
+    return RetirementPending
+  of CompletionLocation.Complete, CompletionLocation.ReleasePending:
+    if image.ownsNativeImage:
+      release(runtime.lock)
+      return RetirementRefused
+    image = move(runtime.slots[slot].completion)
+  of CompletionLocation.Installed:
+    if runtime.slots[slot].completion.ownsNativeImage or not image.ownsNativeImage:
+      release(runtime.lock)
+      return RetirementRefused
+  of CompletionLocation.Reclaiming:
+    if image.ownsNativeImage or runtime.slots[slot].completion.ownsNativeImage:
       release(runtime.lock)
       return RetirementRefused
     runtime.slots[slot].state = Retiring
@@ -439,40 +524,15 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
     release(runtime.lock)
     return RetirementPending
   of CompletionLocation.Empty:
-    # An auxiliary release may have unlocked; do not infer ownership after the transition.
     release(runtime.lock)
     return RetirementRefused
-  of CompletionLocation.Complete, CompletionLocation.Installed:
-    # Complete detaches the row image; Installed already belongs exclusively to this caller.
-    if runtime.slots[slot].location == CompletionLocation.Complete:
-      if image.ready:
-        release(runtime.lock)
-        return RetirementRefused
-      image = move(runtime.slots[slot].completion)
-    elif runtime.slots[slot].completion.ready:
-      # An installed row cannot also own a parked completion.
-      release(runtime.lock)
-      return RetirementRefused
-    # Failed ownership checks above leave Live intact, so close cannot recycle a surviving image.
-    runtime.slots[slot].state = Retiring
-    runtime.slots[slot].location = CompletionLocation.Reclaiming
-    release(runtime.lock)
-    image = default(NativeImage) # Actual unmapping is outside the mutex; credit is still occupied.
-    acquire(runtime.lock)
-    let finished = finishRetirement(runtime, key)
-    broadcast(runtime.changed)
-    release(runtime.lock)
-    return if finished: Detached else: RetirementRefused
-  of CompletionLocation.Reclaiming:
-    # The worker or host that detached the image still owns physical retirement.
-    if image.ready or runtime.slots[slot].completion.ready:
-      release(runtime.lock)
-      return RetirementRefused
-    runtime.slots[slot].state = Retiring
-    runtime.slots[slot].cancelled = true
-    broadcast(runtime.changed)
-    release(runtime.lock)
-    return RetirementPending
+  runtime.slots[slot].state = Retiring
+  runtime.slots[slot].cancelled = true
+  runtime.slots[slot].location = CompletionLocation.Reclaiming
+  let retired = settleImageRetirementLocked(runtime, key, image)
+  broadcast(runtime.changed)
+  release(runtime.lock)
+  retired
 
 when defined(pvmSharedAsyncWitness):
   proc witnessRetirementIdentity*() =
@@ -512,7 +572,7 @@ proc `=wasMoved`(session: var NativeSessionStorage) {.nodestroy, inline,
   session.invocation = false
   session.allowed = false
 
-proc `=destroy`(session: NativeSessionStorage) =
+proc `=destroy`(session: var NativeSessionStorage) =
   ## Last session reference cancels an abandoned invocation rather than crashing or stranding its lease.
   ## A live checked frame retains this session; raw auxiliary views require that same retained owner
   ## until use ends. Final drop therefore has no executing segment to resume or qualify for compilation.
@@ -528,7 +588,7 @@ proc `=destroy`(session: NativeSessionStorage) =
           session.generation == primary.generation and session.epoch == primary.epoch and
           runtime.slots[primary.slot].state == Live and
           runtime.slots[primary.slot].location == CompletionLocation.Installed and
-          not runtime.slots[primary.slot].completion.ready and session.image.ready
+          not runtime.slots[primary.slot].completion.ownsNativeImage and session.image.ready
         if ownsPrimary and matchesRow(runtime, key) and key.epoch == primary.epoch and
             key.kind in {NativeKind.MixedSelfLoop, NativeKind.StaticFusion} and
             runtime.slots[key.slot].location == CompletionLocation.Complete and
@@ -552,11 +612,18 @@ proc `=destroy`(session: NativeSessionStorage) =
       runtime.stopping = true
       broadcast(runtime.changed)
     release(runtime.lock)
-  `=destroy`(session.image)
   if anchor != nil:
-    # Installed storage was released above, before the canonical helper returns its credit.
-    var detached = default(NativeImage)
-    discard retireOwner(addr anchor.storage, session.retirementKey, detached)
+    let runtime = addr anchor.storage
+    let retired = retireOwner(runtime, session.retirementKey, session.image)
+    if retired == RetirementRefused and session.image.ownsNativeImage:
+      # A malformed row cannot discard the last physical handle or free a speculative credit.
+      if tryReleaseNativeImage(session.image):
+        discard retireOwner(runtime, session.retirementKey, session.image)
+      else:
+        acquire(runtime.lock)
+        retainFailedImageLocked(runtime, session.retirementKey, session.image, false)
+        release(runtime.lock)
+  `=destroy`(session.image)
   `=destroy`(session.runtime)
 
 proc newNativeRuntime*(): NativeRuntime =
@@ -610,16 +677,20 @@ proc rejectCompilerPublication(runtime: ptr NativeRuntimeStorage, key: JobKey,
   ## Only its exact empty Running row may retire; unrelated or ambiguous rows stay occupied.
   let reclaim = matchesRow(runtime, key) and
     runtime.slots[key.slot].location == CompletionLocation.Running and
-    not runtime.slots[key.slot].completion.ready
+    not runtime.slots[key.slot].completion.ownsNativeImage
   if reclaim:
     runtime.slots[key.slot].state = Retiring
     runtime.slots[key.slot].cancelled = true
     runtime.slots[key.slot].location = CompletionLocation.Reclaiming
   stopFailedCompiler(runtime, NativeCompilerFailure.InvalidPublication)
-  release(runtime.lock)
-  image = default(NativeImage)
-  acquire(runtime.lock)
-  if reclaim: discard finishRetirement(runtime, key)
+  if reclaim:
+    discard settleImageRetirementLocked(runtime, key, image)
+  else:
+    release(runtime.lock)
+    let released = tryReleaseNativeImage(image)
+    if released: image = default(NativeImage)
+    acquire(runtime.lock)
+    if not released: retainFailedImageLocked(runtime, key, image, false)
 
 proc releaseCompilerClaim(runtime: ptr NativeRuntimeStorage, key: JobKey): bool {.inline.} =
   ## The worker already copied the selected payload. Sample cancellation after the witness gate.
@@ -669,11 +740,11 @@ when NativeReadCycleEnabled:
         image = lowerNativeMixedLoops(requested, refused, pairRefused)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
-      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready,
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ownsNativeImage,
         nativeImageMappingAddress(image), nativeImageWritableAddress(image))
     if not sameKey(runtime.mixedKey, key) or not matchesRow(runtime, key) or
         runtime.slots[key.slot].location != CompletionLocation.Running or
-        runtime.slots[key.slot].completion.ready:
+        runtime.slots[key.slot].completion.ownsNativeImage:
       rejectCompilerPublication(runtime, key, image)
       return
     if refused != 0 and not runtime.stopping and not runtime.slots[key.slot].cancelled:
@@ -691,11 +762,9 @@ when NativeReadCycleEnabled:
     if runtime.stopping or runtime.slots[key.slot].cancelled or not image.ready or image.kind != key.kind:
       runtime.slots[key.slot].location = CompletionLocation.Reclaiming
       when defined(pvmSharedAsyncWitness):
-        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ready)
-      release(runtime.lock)
-      image = default(NativeImage)
-      acquire(runtime.lock)
-      discard finishRetirement(runtime, key)
+        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ownsNativeImage,
+          nativeImageMappingAddress(image), nativeImageWritableAddress(image))
+      discard settleImageRetirementLocked(runtime, key, image)
     else:
       runtime.slots[key.slot].completion = move(image)
       runtime.mixedPairRefused = pairRefused
@@ -784,29 +853,28 @@ proc compilerRun(raw: pointer) =
             discard releaseCompilerClaim(runtime, key)
         else:
           discard releaseCompilerClaim(runtime, key)
-    if image.ready and image.kind != key.kind:
-      # Dispose an incompatible result while still outside the runtime lock.
-      image = default(NativeImage)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
-      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready,
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ownsNativeImage,
         nativeImageMappingAddress(image), nativeImageWritableAddress(image))
     if not sameKey(runtime.key, key) or not matchesRow(runtime, key) or
         runtime.slots[key.slot].location != CompletionLocation.Running or
-        runtime.slots[key.slot].completion.ready:
+        runtime.slots[key.slot].completion.ownsNativeImage:
       rejectCompilerPublication(runtime, key, image)
       finishCompilerThread(runtime)
       return
-    if runtime.stopping or runtime.slots[key.slot].cancelled:
+    let unusableOwner = image.ownsNativeImage and (not image.ready or image.kind != key.kind)
+    if runtime.stopping or runtime.slots[key.slot].cancelled or unusableOwner:
+      if unusableOwner:
+        runtime.slots[key.slot].state = Retiring
+        runtime.slots[key.slot].cancelled = true
       # A worker local remains charged until its real mapping is destroyed outside the mutex.
       runtime.slots[key.slot].location = CompletionLocation.Reclaiming
       when defined(pvmSharedAsyncWitness):
         # The gate releases the mutex with the actual local image still owned, before physical disposal.
-        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ready)
-      release(runtime.lock)
-      image = default(NativeImage)
-      acquire(runtime.lock)
-      discard finishRetirement(runtime, key)
+        compilerGate(runtime, key, NativeCompilerPoint.BeforeRetire, image.ownsNativeImage,
+          nativeImageMappingAddress(image), nativeImageWritableAddress(image))
+      discard settleImageRetirementLocked(runtime, key, image)
       runtime.work = WorkPhase.Idle
       runtime.key = default(JobKey)
       broadcast(runtime.changed)
@@ -828,14 +896,21 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
   let anchor {.cursor.} = runtime.data
   if anchor == nil or not nativePlatformSupported(): return false
   let data = addr anchor.storage
-  if data.started or data.active != 0: return false
+  acquire(data.lock)
+  if data.started or data.closing or data.starting or data.active != 0 or hasQuarantinedImages(data):
+    release(data.lock)
+    return false
   for index in 0..<data.slots.len:
     # A restart cannot erase surviving clients, an image or quarantined physical ownership.
     if data.slots[index].state in {Live, Retiring} or
         data.slots[index].location != CompletionLocation.Empty or
-        data.slots[index].completion.ready: return false
+        data.slots[index].completion.ownsNativeImage:
+      release(data.lock)
+      return false
   when NativeReadCycleEnabled:
-    if data.mixedBorrowed: return false
+    if data.mixedBorrowed:
+      release(data.lock)
+      return false
     data.mixedKey = default(JobKey)
     data.mixedOwner = default(JobKey)
     data.mixedSet = default(NativeMixedLoopSet)
@@ -847,6 +922,7 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
   when defined(pvmSharedAsyncWitness):
     # A restarted empty namespace cannot inherit a prior test gate or paused worker.
     data.paused = false
+    data.retirementUnmapRefusals = 0
     data.rejectQueuedRequest = false
     data.rejectReadRetirement = false
     data.misownCompletion = false
@@ -855,42 +931,53 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
     data.followingGate = NativeCompilerPoint.None
     data.gateReached = false
     data.gateReleased = false
-  data.thread.create(compilerRun, data)
+  data.starting = true
+  release(data.lock)
+  try:
+    data.thread.create(compilerRun, data)
+  except:
+    # A refused optional worker leaves a stable empty runtime available for a later explicit retry.
+    acquire(data.lock)
+    data.starting = false
+    broadcast(data.changed)
+    release(data.lock)
+    return false
   acquire(data.lock)
   while not data.started:
     wait(data.changed, data.lock)
+  data.starting = false
+  broadcast(data.changed)
   release(data.lock)
   true
 
 proc close*(runtime: NativeRuntime): bool =
-  ## Refuse an active public invocation; join outside the lock, retaining closed storage for live sessions.
+  ## Stop/join outside the mutex, then release exact parked images before returning their credits.
+  ## False keeps refused physical owners in ReleasePending, including on retries after the worker stopped.
+  ## Closed surviving sessions retain installed images and their original charged generations.
   let anchor {.cursor.} = runtime.data
   if anchor == nil: return true
   let data = addr anchor.storage
   acquire(data.lock)
-  if not data.started:
-    release(data.lock)
-    return true
-  if data.active != 0:
+  if data.starting or data.closing or data.active != 0:
     release(data.lock)
     return false
   when NativeReadCycleEnabled:
     if data.mixedBorrowed:
-      # Even a contradictory invocation count cannot authorize destruction of borrowed code.
       release(data.lock)
       return false
+  let join = data.started
+  data.closing = true
   data.stopping = true
   broadcast(data.changed)
   release(data.lock)
-  data.thread.join()
+  if join: data.thread.join()
   var images = default(array[NativeSessionLimit, NativeImage])
   var keys = default(array[NativeSessionLimit, JobKey])
   var detached = default(array[NativeSessionLimit, bool])
   acquire(data.lock)
   for index in 0..<data.slots.len:
-    # With the worker joined, every parked completion can detach without racing publication.
     case data.slots[index].location
-    of CompletionLocation.Complete, CompletionLocation.Queued:
+    of CompletionLocation.Complete, CompletionLocation.Queued, CompletionLocation.ReleasePending:
       let key = data.slots[index].key
       if key.slot != index or key.generation != data.slots[index].generation or
           key.ticket == 0 or key.epoch == 0: continue
@@ -899,24 +986,34 @@ proc close*(runtime: NativeRuntime): bool =
       images[index] = move(data.slots[index].completion)
       data.slots[index].location = CompletionLocation.Reclaiming
     of CompletionLocation.Empty, CompletionLocation.Installed:
-      discard # Installed storage stays in its closed surviving session, still holding its credit.
+      discard # A closed live session still owns its installed arena and namespace.
     of CompletionLocation.Running, CompletionLocation.Reclaiming:
-      # Keep an unproven credit occupied. The joined runtime can no longer execute
-      # or reuse it. The last closed anchor still owns any row-held completion.
-      discard
+      discard # Unproven/outstanding physical ownership never authorizes credit reuse.
   release(data.lock)
+  var completed = true
   for index in 0..<images.len:
-    # No runtime mutex is held while executable storage is physically released.
-    images[index] = default(NativeImage)
+    if not detached[index]: continue
+    let released = tryReleaseNativeImage(images[index])
+    if released: images[index] = default(NativeImage)
+    acquire(data.lock)
+    if released:
+      if not finishRetirement(data, keys[index]): completed = false
+    else:
+      retainFailedImageLocked(data, keys[index], images[index])
+      completed = false
+    release(data.lock)
   acquire(data.lock)
+  if hasQuarantinedImages(data): completed = false
   for index in 0..<data.slots.len:
-    if detached[index]: discard finishRetirement(data, keys[index])
+    if data.slots[index].location == CompletionLocation.ReleasePending or
+        data.slots[index].completion.ownsNativeImage: completed = false
   data.work = WorkPhase.Idle
   data.key = default(JobKey)
   data.started = false
+  data.closing = false
   broadcast(data.changed)
   release(data.lock)
-  true
+  completed
 
 proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
   ## Closed/default observation remains safe; no ARC handle is read by the compiler thread.
@@ -951,12 +1048,12 @@ proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
 proc registerSession(runtime: ptr NativeRuntimeStorage, data: NativeSessionData): bool =
   ## The finish lock already proves an eligible request can queue; claim only its image credit.
   if not runtime.started or runtime.stopping or runtime.work != WorkPhase.Idle or
-      data.slot >= 0 or data.ticket != 0 or data.image.ready: return false
+      data.slot >= 0 or data.ticket != 0 or data.image.ownsNativeImage: return false
   for index in 0..<runtime.slots.len:
     # A free label cannot authorize reuse while a location or owning image contradicts it.
     if runtime.slots[index].state != Free or
         runtime.slots[index].location != CompletionLocation.Empty or
-        runtime.slots[index].completion.ready: continue
+        runtime.slots[index].completion.ownsNativeImage: continue
     if runtime.slots[index].generation == high(uint64):
       runtime.slots[index].state = Exhausted
     else:
@@ -1156,7 +1253,8 @@ when NativeReadCycleEnabled:
     data.slot == key.slot and matchesRow(runtime, key) and data.generation == key.generation and
       key.epoch == data.epoch and runtime.slots[key.slot].state == Live and
       runtime.slots[key.slot].location == CompletionLocation.Installed and
-      not runtime.slots[key.slot].cancelled and not runtime.slots[key.slot].completion.ready and
+      not runtime.slots[key.slot].cancelled and not runtime.slots[
+          key.slot].completion.ownsNativeImage and
       data.image.ready and data.image.kind == key.kind and
       data.imageKey == NativeImageKey(slot: key.slot, generation: key.generation,
         ticket: key.ticket, epoch: key.epoch, kind: key.kind)
@@ -1190,7 +1288,7 @@ when NativeReadCycleEnabled:
       # Bounded selection rechecks physical ownership rather than trusting the free-credit count.
       if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64) and
           runtime.slots[index].location == CompletionLocation.Empty and
-          not runtime.slots[index].completion.ready:
+          not runtime.slots[index].completion.ownsNativeImage:
         slot = index
         break
     if slot < 0:
@@ -1269,7 +1367,7 @@ when NativeReadCycleEnabled:
     for index in 0..<runtime.slots.len:
       if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64) and
           runtime.slots[index].location == CompletionLocation.Empty and
-          not runtime.slots[index].completion.ready:
+          not runtime.slots[index].completion.ownsNativeImage:
         slot = index
         break
     if slot < 0 or runtime.slots[slot].location != CompletionLocation.Empty: return false
@@ -1317,7 +1415,8 @@ when NativeReadCycleEnabled:
         key.generation == 0 or key.epoch != data.epoch or not matchesRow(runtime, key) or
         not sameKey(runtime.mixedOwner, runtime.slots[data.slot].key): return
     if runtime.slots[key.slot].location != CompletionLocation.Complete or
-        runtime.slots[key.slot].cancelled or not runtime.slots[key.slot].completion.ready or
+        runtime.slots[key.slot].cancelled or not runtime.slots[
+            key.slot].completion.ownsNativeImage or
         runtime.slots[key.slot].completion.kind != key.kind: return
     runtime.mixedBorrowed = true
     observeMixedPublication(data[], key)
@@ -1392,7 +1491,7 @@ when NativeReadCycleEnabled:
             NativeKind.StaticFusion} or
         not runtime.mixedBorrowed or not sameKey(runtime.mixedOwner, data.retirementKey) or
         runtime.slots[key.slot].location != CompletionLocation.Complete or
-        not runtime.slots[key.slot].completion.ready or
+        not runtime.slots[key.slot].completion.ownsNativeImage or
         runtime.slots[key.slot].completion.kind != key.kind:
       # A wrong owner or repeated return cannot revoke another frame's executable borrow.
       release(runtime.lock)
@@ -1467,7 +1566,7 @@ func nativePromotionOpen*(session: NativeSession): bool =
   let data {.cursor.} = session.data
   if data == nil: return false
   data.invocation and data.state == NativeState.Deferred and data.ticket == 0 and
-    not data.image.ready and data.span.len >= NativeMinimumOperations and
+    not data.image.ownsNativeImage and data.span.len >= NativeMinimumOperations and
     data.span.epoch == data.epoch and data.span.kind == NativeKind.PurePrefix
 
 func nativePrefixObservation*(session: NativeSession): bool {.inline.} =
@@ -1524,7 +1623,7 @@ when NativeCheckedReadEnabled:
     ## Only deferred owner storage can retain a newly observed complete checked round.
     let data {.cursor.} = session.data
     if data == nil or not data.invocation or data.state != NativeState.Deferred or
-        data.ticket != 0 or data.image.ready or data.ringEpoch != 0 or
+        data.ticket != 0 or data.image.ownsNativeImage or data.ringEpoch != 0 or
         data.invocationBudget < NativeInvocationFloor or
         data.span.kind == NativeKind.ClosedRegisterLoop:
       return 0'u64
@@ -1543,7 +1642,8 @@ when NativeCheckedReadEnabled:
     if data == nil: return 0'u64
     if nativeReplacementObservation(session): return data.epoch
     if not data.invocation or data.state != NativeState.Deferred or
-        data.ticket != 0 or data.image.ready or data.invocationBudget < NativeInvocationFloor or
+        data.ticket != 0 or data.image.ownsNativeImage or data.invocationBudget <
+            NativeInvocationFloor or
         readCertificate(data.readProof).complete: return 0'u64
     data.epoch
 
@@ -1617,7 +1717,7 @@ when NativeCheckedReadEnabled:
     ## Copy only retained coordinates for bounded source revalidation, never another discovery scan.
     let data {.cursor.} = session.data
     if data == nil or not data.invocation or data.state != NativeState.Deferred or
-        not data.readNominated or data.ticket != 0 or data.image.ready or
+        not data.readNominated or data.ticket != 0 or data.image.ownsNativeImage or
         data.invocationBudget < NativeInvocationFloor: return default(NativeReadBodyInfo)
     readCertificate(data.readProof).info
 
@@ -1737,7 +1837,7 @@ when NativeCheckedReadEnabled:
     # No worker can mutate an Installed row. Serialized host use and the still-active lease
     # preserve this exact key through retireOwner's unlocked physical-unmapping window.
     let retired = retireOwner(runtime, job, data.image)
-    if retired != Detached or data.image.ready:
+    if retired != Detached or data.image.ownsNativeImage:
       # Disable the affected owner's native route. Its remaining image or credit
       # still belongs to the original lifecycle, including any in-flight retirement.
       data.state = NativeState.Unavailable
@@ -1850,10 +1950,10 @@ proc collectNative(session: NativeSession) =
   when defined(pvmSharedAsyncWitness):
     if runtime.misownCompletion:
       runtime.misownCompletion = false
-      assert not data.image.ready and runtime.slots[data.slot].completion.ready,
+      assert not data.image.ownsNativeImage and runtime.slots[data.slot].completion.ready,
           "collection failure witness needs a real sole parked image"
       data.image = move(runtime.slots[data.slot].completion)
-  if data.image.ready:
+  if data.image.ownsNativeImage:
     # Do not overwrite either owning image or release its credit on an ambiguous handoff.
     stopFailedCompiler(runtime, NativeCompilerFailure.InvalidPublication)
     data.allowed = false
@@ -2178,6 +2278,26 @@ func validLoopReceipt(loop: NativeLoopInfo, destination: uint32, gas, remaining:
 
 when defined(pvmSharedAsyncWitness):
   var refuseLoopReceipt {.threadvar.}: bool
+
+  proc refuseNextRetirementUnmapsForWitness*(runtime: NativeRuntime, count: cuint) =
+    ## Arm the next real physical retirement under the row lock, including a worker-owned cancelled image.
+    let anchor {.cursor.} = runtime.data
+    if anchor == nil: return
+    acquire(anchor.storage.lock)
+    anchor.storage.retirementUnmapRefusals = count
+    release(anchor.storage.lock)
+
+  proc refusePendingNativeUnmapsForWitness*(runtime: NativeRuntime, count: cuint): int =
+    ## Touch only retained release-pending owners under the real row lock; return the actual owner count.
+    let anchor {.cursor.} = runtime.data
+    if anchor == nil: return 0
+    let data = addr anchor.storage
+    acquire(data.lock)
+    result = 0
+    for index in 0..<data.slots.len:
+      if data.slots[index].location == CompletionLocation.ReleasePending:
+        if refuseOwnedNativeUnmapsForWitness(data.slots[index].completion, count): inc result
+    release(data.lock)
 
   proc corruptNextNativeLoopReceipt*() =
     ## The next real closed-loop entry executes normally, then presents an invalid receipt.
