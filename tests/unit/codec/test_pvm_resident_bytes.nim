@@ -71,23 +71,30 @@ proc checkManaged() =
   assert storage.len == 1031 and storage.logicalBytes == 1031 and storage.mappedBytes == 0
   block:
     # The borrow ends before storage retirement; writes are observed through independent reads.
-    var view = borrowRW(storage)
+    var view = default(RWView)
+    assert tryBorrowRW(storage, view)
     checkScalarTransfers[1](view)
     checkScalarTransfers[2](view)
     checkScalarTransfers[4](view)
     checkScalarTransfers[8](view)
-    assert view.len == 1031 and borrowedData(view) != nil
+    var base: nil ptr byte = nil
+    assert tryBorrowedData(view, 0, view.len, base)
+    assert view.len == 1031 and base != nil
     for index in 0..<view.len:
       assert view[index] == byte(index mod 251)
     view[0] = 91
     view[1030] = 173
     # Native locations alias the owner rather than an indexed byte-value temporary.
-    let last = view.borrowedData(1030)
+    var last: nil ptr byte = nil
+    assert tryBorrowedData(view, 1030, 1, last)
+    assert last != nil
     last[] = 174
     assert view[1030] == 174
     view[1030] = 173
     assert last[] == 173
-    fillWindow(view.toOpenArray(512, 515))
+    var span = default(RWSpan)
+    assert tryBorrowRWSpan(view, 512, 4, span)
+    fillWindow(span.toOpenArray)
     assert view[0] == 91 and view[1030] == 173
     assert view[511] == byte(511 mod 251) and view[516] == byte(516 mod 251)
     for index in 0..<4:
@@ -100,8 +107,11 @@ proc checkDefaults() =
   checkEmptyScalarTransfers()
   var storage = default(RWStorage)
   assert storage.len == 0 and storage.logicalBytes == 0 and storage.mappedBytes == 0
-  let view = borrowRW(storage)
-  assert view.len == 0 and borrowedData(view) == nil
+  var view = default(RWView)
+  assert tryBorrowRW(storage, view)
+  var base: nil ptr byte = nil
+  assert tryBorrowedData(view, 0, 0, base)
+  assert view.len == 0 and base == nil
   let invalid = tryMapFreshZero(-1)
   assert invalid.error == ResidentAllocationError.InvalidSize
   let uninitialized = default(ResidentAllocationResult)
@@ -113,8 +123,11 @@ proc checkDefaults() =
     assert empty.error == ResidentAllocationError.None
     var owner = takeOwned(empty)
     assert empty.error == ResidentAllocationError.Uninitialized
-    let emptyView = borrowRW(owner)
-    assert emptyView.len == 0 and borrowedData(emptyView) == nil
+    var emptyView = default(RWView)
+    assert tryBorrowRW(owner, emptyView)
+    var emptyBase: nil ptr byte = nil
+    assert tryBorrowedData(emptyView, 0, 0, emptyBase)
+    assert emptyView.len == 0 and emptyBase == nil
     assert residentWitnessSnapshot() == before
 
 proc foreignCycle(bytes: int) =
@@ -127,7 +140,8 @@ proc foreignCycle(bytes: int) =
   assert allocation.error == ResidentAllocationError.Uninitialized
   block:
     # Verify the complete requested span, including its final partial guest/host page.
-    var view = borrowRW(owner)
+    var view = default(RWView)
+    assert tryBorrowRW(owner, view)
     assert view.len == bytes
     checkScalarTransfers[1](view)
     checkScalarTransfers[2](view)
@@ -139,13 +153,16 @@ proc foreignCycle(bytes: int) =
     view[4095] = 149
     view[bytes-1] = 239
     # The final byte of a resident mapping has the same scoped pointer contract.
-    let last = view.borrowedData(bytes-1)
+    var last: nil ptr byte = nil
+    assert tryBorrowedData(view, bytes-1, 1, last)
+    assert last != nil
     assert last[] == 239
     last[] = 238
     assert view[bytes-1] == 238
     view[bytes-1] = 239
   var storage = takeResident(owner)
-  assert borrowRW(owner).len == 0
+  var movedView = default(RWView)
+  assert tryBorrowRW(owner, movedView) and movedView.len == 0
   assert storage.logicalBytes == uint64(bytes)
   let backing = storage.mappedBytes
   assert backing >= uint64(bytes)
@@ -164,7 +181,8 @@ proc foreignCycle(bytes: int) =
     assert recovered.logicalBytes == uint64(bytes) and recovered.mappedBytes == backing
     block:
       # Final storage still holds the original mutations and untouched zero bytes.
-      let view = borrowRW(recovered)
+      var view = default(RWView)
+      assert tryBorrowRW(recovered, view)
       assert view.len == bytes
       for index in 0..<view.len:
         let expected = if index == 0: 7'u8
@@ -199,7 +217,8 @@ proc checkMoveOverwrite() =
     var destination = takeResident(oldOwner)
     block:
       # Distinct first/last markers identify the mapping that must be retired by replacement.
-      var view = borrowRW(destination)
+      var view = default(RWView)
+      assert tryBorrowRW(destination, view)
       view[0] = 19
       view[4098] = 31
     var newAllocation = tryMapFreshZero(8197)
@@ -209,7 +228,8 @@ proc checkMoveOverwrite() =
     let arrivingBacking = source.mappedBytes
     block:
       # These independent markers must survive the legal move into the live destination.
-      var view = borrowRW(source)
+      var view = default(RWView)
+      assert tryBorrowRW(source, view)
       view[0] = 211
       view[8196] = 233
     let both = residentWitnessSnapshot()
@@ -223,7 +243,8 @@ proc checkMoveOverwrite() =
     assert destination.logicalBytes == 8197 and destination.mappedBytes == arrivingBacking
     block:
       # The surviving extent and bytes come from the arriving owner, with no stale first mapping view.
-      let view = borrowRW(destination)
+      var view = default(RWView)
+      assert tryBorrowRW(destination, view)
       assert view.len == 8197 and view[0] == 211 and view[8196] == 233
       for index in 1..<8196:
         assert view[index] == 0

@@ -83,7 +83,9 @@ proc tryCaptureFreshZeroRW*(memory: Memory, descriptions: openArray[PageDescript
     if allocation.error != ResidentAllocationError.None:
       return FreshRWCapture(status: FreshRWStatus.AllocationRefused)
     var owner = resident_bytes.takeOwned(allocation)
-    var view = borrowRW(owner)
+    var view = default(RWView)
+    if not tryBorrowRW(owner, view) or view.len != pages*4096:
+      return FreshRWCapture(status: FreshRWStatus.InvalidMemory)
     for slot in first..<after:
       # The same immutable source/descriptions bind both passes, without a mask vector or later opcode work.
       let expected = descriptions[slot]
@@ -93,9 +95,10 @@ proc tryCaptureFreshZeroRW*(memory: Memory, descriptions: openArray[PageDescript
       if not known.value:
         # Every unknown page includes all eight chunks, even if a subset has genuine zero provenance.
         let offset = (slot-first)*4096
-        assert offset >= 0 and offset <= view.len-4096
-        let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)),
-          view.toOpenArray(offset, offset+4095))
+        var span = default(RWSpan)
+        if not tryBorrowRWSpan(view, offset, 4096, span):
+          return FreshRWCapture(status: FreshRWStatus.InvalidMemory)
+        let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), span.toOpenArray)
         if copied.error != MachineError.None:
           return FreshRWCapture(status: FreshRWStatus.InvalidMemory)
         let actual = copied.value

@@ -105,7 +105,9 @@ when declared(FlatFrame):
     if base < 0xffffffff'u64 and base-f.rwBase < uint64(f.rw.len):
       let skip = int(base-f.rwBase)
       context.length = min(uint64(f.rw.len-skip), 0xffffffff'u64-base)
-      context.bytes = f.rw.borrowedData(skip)
+      # The clipped native count remains bounded by the admitted native-int RW length.
+      if not tryBorrowedData(f.rw, skip, int(context.length), context.bytes):
+        return flatLocal(f, off, oracle.StepError.BackendFailure)
     let next = runNativeBitmap(f.nativeSession, f.nativeInstallation.key, f.info.registers, context)
     if next == NativeEntryFailure: return flatLocal(f, off, oracle.StepError.BackendFailure)
     f.info.gas = MachineGas(context.gas)

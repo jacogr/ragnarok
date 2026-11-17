@@ -2986,7 +2986,12 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
       flatCopySourcePage(memory, page, image, f.stack.toOpenArray(offset, offset+4095))
     elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
       let offset = int(address-f.rwBase)
-      flatCopySourcePage(memory, page, image, f.rw.toOpenArray(offset, offset+4095))
+      var span = default(RWSpan)
+      if not tryBorrowRWSpan(f.rw, offset, 4096, span):
+        f.reason = oracle.StepError.BackendFailure
+        f.preparationFailure = FlatError.InvalidMemory
+        return
+      flatCopySourcePage(memory, page, image, span.toOpenArray)
     elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
       let offset = int(address-f.roBase)
       flatCopySourcePage(memory, page, image, f.ro.toOpenArray(offset, offset+4095))
@@ -3131,7 +3136,9 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     elif i == firstRW:
       frame.rwBase = region.first
       if not residentRW: frame.rwStorage = takeManaged(region.bytes)
-      frame.rw = borrowRW(frame.rwStorage) # Derive the borrow only after final owner installation.
+      # Derive the borrow only after final owner installation and require the complete admitted extent.
+      if not tryBorrowRW(frame.rwStorage, frame.rw) or frame.rw.len != region.size:
+        return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
     elif i == lastRW:
       frame.stackBase = region.first
       frame.stack = move(region.bytes)
@@ -3587,10 +3594,12 @@ when defined(pvmX86Jit):
       flatX86CycleReadRegionSpan(first, bytes, address, width, memory)
 
     proc flatX86CycleReadRegion(first: uint64, bytes: RWView, address: uint64,
-        width: uint8, memory: var X86CycleMemory) =
-      ## Reborrow only the live RW allocation for this synchronous native call.
-      if bytes.len == 0: return
-      flatX86CycleReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1), address, width, memory)
+        width: uint8, memory: var X86CycleMemory): bool =
+      ## Admit the complete RW source before its scoped native read descriptor can acquire authority.
+      var span = default(RWSpan)
+      if not tryBorrowRWSpan(bytes, 0, bytes.len, span): return false
+      flatX86CycleReadRegionSpan(first, span.toOpenArray, address, width, memory)
+      true
 
     proc flatX86CycleWriteRegion(first: uint64, bytes: var seq[byte], address: uint64,
         memory: var X86CycleMemory) =
@@ -3598,29 +3607,34 @@ when defined(pvmX86Jit):
       flatX86CycleWriteRegionSpan(first, bytes, address, memory)
 
     proc flatX86CycleWriteRegion(first: uint64, bytes: RWView, address: uint64,
-        memory: var X86CycleMemory) =
-      ## Empty/moved views supply no native writable capability.
-      if bytes.len == 0: return
-      flatX86CycleWriteRegionSpan(first, bytes.toOpenArray(0, bytes.len-1), address, memory)
+        memory: var X86CycleMemory): bool =
+      ## Empty success grants no writable bytes; an unavailable RW source returns false before publication.
+      var span = default(RWSpan)
+      if not tryBorrowRWSpan(bytes, 0, bytes.len, span): return false
+      flatX86CycleWriteRegionSpan(first, span.toOpenArray, address, memory)
+      true
 
-    proc flatX86CycleMemory(f: var FlatFrame, candidate: X86MemoryCycleCandidate):
-        X86CycleMemory =
-      ## Reborrow private memory on each call; no pointer follows the cache through a move or host remap.
-      result = default(X86CycleMemory)
-      if candidate.base > 12: return
+    proc flatX86CycleMemory(f: var FlatFrame, candidate: X86MemoryCycleCandidate,
+        memory: var X86CycleMemory): bool =
+      ## Stage complete descriptors before publishing; owner/extent refusal preserves the caller's output.
+      if candidate.base > 12 or candidate.readWidth notin [1'u8, 2, 4, 8] or
+          uint64(f.dirtyPages.len) > uint64(high(uint32)): return false
+      var built = default(X86CycleMemory)
       let base = uint64(f.info.registers[range[0..12](candidate.base)])
       let writeAddress = (base+candidate.storeDisplacement) and 0xffffffff'u64
-      flatX86CycleWriteRegion(f.stackBase, f.stack, writeAddress, result)
-      if result.writePtr == nil:
-        flatX86CycleWriteRegion(f.rwBase, f.rw, writeAddress, result)
+      flatX86CycleWriteRegion(f.stackBase, f.stack, writeAddress, built)
+      if built.writePtr == nil:
+        if not flatX86CycleWriteRegion(f.rwBase, f.rw, writeAddress, built): return false
       let readAddress = candidate.readImmediate and 0xffffffff'u64
-      flatX86CycleReadRegion(f.stackBase, f.stack, readAddress, candidate.readWidth, result)
-      if result.readPtr == nil:
-        flatX86CycleReadRegion(f.rwBase, f.rw, readAddress, candidate.readWidth, result)
-      if result.readPtr == nil:
-        flatX86CycleReadRegion(f.roBase, f.ro, readAddress, candidate.readWidth, result)
-      assert f.dirtyPages.len <= int(high(uint32))
-      result.dirtyWords = uint32(f.dirtyPages.len)
+      flatX86CycleReadRegion(f.stackBase, f.stack, readAddress, candidate.readWidth, built)
+      if built.readPtr == nil:
+        if not flatX86CycleReadRegion(f.rwBase, f.rw, readAddress, candidate.readWidth,
+            built): return false
+      if built.readPtr == nil:
+        flatX86CycleReadRegion(f.roBase, f.ro, readAddress, candidate.readWidth, built)
+      built.dirtyWords = uint32(f.dirtyPages.len)
+      memory = built
+      true
 
     func flatX86CycleReceiptValid(candidate: X86MemoryCycleCandidate, startGas,
         startAttempts: uint64, state: X86CycleState, next: uint32): bool =
@@ -3805,7 +3819,8 @@ when defined(pvmX86Jit):
     proc flatX86CycleDescriptorProof*(f: var FlatFrame,
         candidate: X86MemoryCycleCandidate): array[7, uint64] =
       ## Report only the fresh descriptor ranges, never its borrowed invocation pointers.
-      let memory = flatX86CycleMemory(f, candidate)
+      var memory = default(X86CycleMemory)
+      if not flatX86CycleMemory(f, candidate, memory): return default(array[7, uint64])
       [uint64(if memory.readPtr == nil: 0 else: 1), memory.readFirst,
         memory.readEnd, uint64(if memory.writePtr == nil: 0 else: 1),
         memory.writeFirst, memory.writeEnd, uint64(memory.dirtyWords)]
@@ -3972,14 +3987,22 @@ when NativeReadCycleEnabled:
     if count == 0:
       flatDispatchSegment(f, entry)
       return
+    var writable = default(NativeReadRegion)
+    if not flatRWReadRegion(f.rwBase, f.rw, writable):
+      discard flatBackendFailure(f, entry)
+      return
     var context = NativeFusionContext(memory: NativeMixedLoopContext(
-      read: [initNativeReadRegion(f.stackBase, f.stack), flatRWReadRegion(f.rwBase, f.rw),
+      read: [initNativeReadRegion(f.stackBase, f.stack), writable,
         initNativeReadRegion(f.roBase, f.ro)],
       writable: [NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len)),
         NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))],
       dirtyWords: uint64(f.dirtyPages.len)))
     if f.stack.len > 0: context.memory.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.memory.writable[1].data = f.rw.borrowedData(0)
+    var rwData: nil ptr byte = nil
+    if not tryBorrowedData(f.rw, 0, f.rw.len, rwData):
+      discard flatBackendFailure(f, entry)
+      return
+    context.memory.writable[1].data = rwData
     if f.dirtyPages.len > 0: context.memory.dirty = addr f.dirtyPages[0]
     let dynamicOffsets = f.dynamicOffsets
     if dynamicOffsets != nil: context.jumps = addr dynamicOffsets.slots
@@ -4713,8 +4736,9 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
       f.stack.toOpenArray(offset, offset+4095)))
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    return flatPublicationError(stageResidentPage(batch, sourceSlot, description,
-      f.rw.toOpenArray(offset, offset+4095)))
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(f.rw, offset, 4096, span): return oracle.StepError.BackendFailure
+    return flatPublicationError(stageResidentPage(batch, sourceSlot, description, span.toOpenArray))
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
@@ -4829,7 +4853,11 @@ proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimi
       if physical >= f.stackBase and physical-f.stackBase+uint64(count) <= uint64(f.stack.len):
         copyMem(addr bytes[copied], unsafeAddr f.stack[int(physical-f.stackBase)], count)
       elif physical >= f.rwBase and physical-f.rwBase+uint64(count) <= uint64(f.rw.len):
-        copyMem(addr bytes[copied], f.rw.borrowedData(int(physical-f.rwBase)), count)
+        var source: nil ptr byte = nil
+        if not tryBorrowedData(f.rw, int(physical-f.rwBase), count,
+            source): return MachineError.InvalidOwner
+        if source == nil: return MachineError.InvalidOwner
+        copyMem(addr bytes[copied], source, count)
       else:
         var resident = false
         for slot in 0..<f.extra.len:
@@ -4988,8 +5016,10 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(f.rw, offset, 4096, span): return false
     if apply:
-      flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
+      flatCopySourcePage(posterior, page, description, span.toOpenArray)
       inc copiedPages
     return true
   for i in 0..<f.extra.len:
@@ -5318,7 +5348,9 @@ proc flatRestoreScratchPage(f: var FlatFrame, page: int): bool =
     return flatTryCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    return flatTryCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(f.rw, offset, 4096, span): return false
+    return flatTryCopySourcePage(f.sourceMemory, page, description, span.toOpenArray)
   if address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
     let offset = int(address-f.roBase)
     return flatTryCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
@@ -5365,9 +5397,9 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     frame.rwBase = held.rwBase
     frame.stackBase = held.stackBase
     frame.ro = move(held.ro)
+    held.rw = default(RWView) # Retire the consumed heap cell's borrow before moving its real owner.
     frame.rwStorage = move(held.rwStorage)
-    frame.rw = borrowRW(frame.rwStorage)
-    held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
+    if not tryBorrowRW(frame.rwStorage, frame.rw): break restore
     frame.stack = move(held.stack)
     frame.extra = move(held.extra)
     frame.dirtyPages = move(held.dirtyPages)
@@ -5428,8 +5460,8 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   scratch.dirtyPages = move(f.dirtyPages)
   scratch.payloadBytes = total
   scratch.rwStorage = move(f.rwStorage)
-  scratch.rw = borrowRW(scratch.rwStorage)
   clearFlatBorrowedMemory(f) # Child moves do not invoke the whole-frame move hook.
+  if not tryBorrowRW(scratch.rwStorage, scratch.rw): return nil
   scratch
 
 when defined(pvmResidentWitness):
@@ -5623,3 +5655,74 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
 
 when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
   include ./handler_native_installation_witness
+
+when defined(pvmSharedAsyncWitness):
+  proc probeFlatRWViewRefusals*(source: Program): bool =
+    ## A genuine private RW owner survives lost derived-view authority; no native context, snapshot or host prefix publishes.
+    var prepared = prepareFlatPlan(source, GasCycleLimit(1000000), defaultFlatLimits(), false)
+    if prepared.error != FlatError.None: return false
+    let plan = takeValue(prepared)
+    var page = PageImage(index: PageIndex(32), access: PageAccess.ReadWrite)
+    for index in 0..<4096: page.bytes[index] = byte((index*17+29) and 255)
+    let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(12345))
+    var created = prepareFlatFrame(plan, [page], initial)
+    if created.error != FlatError.None: return false
+    var frame = takeValue(created)
+    if frame.rw.len != 4096 or frame.sourcePages.len != 1: return false
+    runFlat(frame, 32)
+    if frame.reason != oracle.StepError.None or frame.exit != oracle.StepExit.Host: return false
+    var stopped = default(Memory)
+    if tryObserveFlatHostMemory(frame, stopped) != oracle.StepError.None: return false
+    let info = frame.info
+    let memory = frame.sourceMemory
+    let good = frame.rw
+    when NativeCheckedReadEnabled:
+      if not prepareFlatReadContext(frame): return false
+      frame.readContextReady = false
+    invalidateRWDataForWitness(frame.rw)
+    when NativeCheckedReadEnabled:
+      var region = default(NativeReadRegion)
+      if not flatRWReadRegion(frame.rwBase, good, region): return false
+      let saved = region
+      if flatRWReadRegion(frame.rwBase, frame.rw, region) or region != saved: return false
+      let savedContext = frame.readContext
+      if prepareFlatReadContext(frame) or frame.readContextReady or frame.readContext != savedContext:
+        return false
+    if not flatMarkStore[1](frame, uint64(uint32(page.index))*4096): return false
+    var snapshot = memory
+    if tryFlatMemorySnapshot(frame, snapshot) != oracle.StepError.BackendFailure or snapshot != memory:
+      return false
+    var copied = 99'u64
+    if flatHostPage(frame, memory, MemoryPageSlot(0), false, copied) or copied != 99: return false
+    if flatHostPage(frame, memory, MemoryPageSlot(0), true, copied) or copied != 99: return false
+    if flatRestoreScratchPage(frame, 0): return false
+    var output = default(array[32, byte])
+    for index in 0..<output.len: output[index] = 0xa5
+    if readFlatHost32(frame, MemoryAddress(uint64(uint32(page.index))*4096), MemoryByteLimit(32),
+        output) != MachineError.InvalidOwner: return false
+    for value in output:
+      if value != 0xa5: return false
+    if frame.info != info or pageImage(memory, page.index).value != page: return false
+    var intact = default(RWView)
+    if not tryBorrowRW(frame.rwStorage, intact): return false
+    for index in 0..<4096:
+      var value = 0'u64
+      if not tryReadScalar[1](intact, index, value) or byte(value) != page.bytes[
+          index]: return false
+    resetFlatFrame(frame, info)
+    if frame.reason != oracle.StepError.BackendFailure or frame.preparationFailure !=
+        FlatError.InvalidMemory:
+      return false
+    runFlat(frame, 8)
+    if frame.reason != oracle.StepError.InvalidPreparedProgram or frame.info != info: return false
+    var fresh = prepareFlatMemoryFrame(plan, memory, info)
+    if fresh.error != FlatError.None: return false
+    var recovered = takeValue(fresh)
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(recovered.rw, 0, 4096, span): return false
+    var bytes = default(array[4096, byte])
+    let observed = copyMemoryPage(memory, MemoryPageSlot(0), bytes)
+    if observed.error != MachineError.None: return false
+    for index, value in span.toOpenArray:
+      if value != bytes[index]: return false
+    recovered.info == info and pageImage(memory, page.index).value == page

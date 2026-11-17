@@ -36,6 +36,20 @@ type
     ## Plain synchronous borrow: intended length-first16-byte shape, requiring lowering proof.
     length: int
     data: nil ptr UncheckedArray[byte]
+  RWSpanKind {.pure.} = enum
+    ## Default spans are genuinely empty; present spans carry a proven non-null address and complete count.
+    Empty, Present
+  RWSpan* = object
+    ## Checked synchronous array capability; its original RW owner must remain stable throughout use.
+    ## The empty alternative owns no address. Present fields are private and constructed only by checked slicing.
+    case kind: RWSpanKind
+    of Present:
+      count: int
+      data: ptr UncheckedArray[byte]
+    of Empty:
+      empty: array[0, byte]
+  RWByteAddress = nil ptr byte
+    ## Plain pointer output for checked native descriptors; it grants no lifetime beyond the retained RW owner.
   RWStorageKind {.pure.} = enum
     Empty, Managed, Resident
   RWStorage* = object
@@ -196,25 +210,34 @@ proc takeResident*(bytes: var ResidentBytes): RWStorage =
   ## Transfer the completed foreign owner and its complete logical/backing charge.
   RWStorage(kind: RWStorageKind.Resident, resident: move(bytes))
 
-proc borrowRW*(owner: var ResidentBytes): RWView =
-  ## Construction may borrow before storage installation; no borrow may outlive this owner.
-  assert owner.logical <= csize_t(high(int))
-  assert owner.logical == 0 or owner.data != nil
-  RWView(length: int(owner.logical),
-    data: cast[nil ptr UncheckedArray[byte]](owner.data))
+proc tryBorrowRW*(owner: var ResidentBytes, view: var RWView): bool =
+  ## Validate complete owner extents before exposing a synchronous view; refusal leaves output and owner unchanged.
+  if owner.logical > csize_t(high(int)) or owner.backing < owner.logical: return false
+  if owner.logical == 0:
+    if owner.data != nil or owner.backing != 0: return false
+    view = default(RWView)
+    return true
+  let data = owner.data
+  if data == nil: return false
+  view = RWView(length: int(owner.logical), data: cast[ptr UncheckedArray[byte]](data))
+  true
 
-proc borrowRW*(storage: var RWStorage): RWView =
-  ## Select the backing once at installation, after final owner transfer.
+proc tryBorrowRW*(storage: var RWStorage, view: var RWView): bool =
+  ## Select the final installed owner once; a failed selection cannot publish an empty replacement view.
   case storage.kind
   of RWStorageKind.Managed:
-    # Empty managed storage has no element0 address.
-    if storage.managed.len == 0: return default(RWView)
-    RWView(length: storage.managed.len,
-      data: cast[ptr UncheckedArray[byte]](addr storage.managed[0]))
+    if storage.managed.len == 0:
+      view = default(RWView)
+      return true
+    let data = storage.managed.rawData
+    if data == nil: return false
+    view = RWView(length: storage.managed.len, data: data)
+    true
   of RWStorageKind.Resident:
-    borrowRW(storage.resident)
+    tryBorrowRW(storage.resident, view)
   of RWStorageKind.Empty:
-    default(RWView) # No owner means no visible extent or usable pointer.
+    view = default(RWView)
+    true
 
 func len*(view: RWView): int =
   ## Hot access is independent of the storage alternative.
@@ -251,7 +274,7 @@ func containsSpan*(view: RWView, first, count: int): bool {.inline.} =
   first >= 0 and count > 0 and view.length >= count and first <= view.length-count and
     view.data != nil
 
-proc tryReadScalar*[W: static[int]](view: RWView, at: int, value: var uint64): bool {.inline.} =
+func tryReadScalar*[W: static[int]](view: RWView, at: int, value: var uint64): bool {.inline.} =
   ## Read exactly one little-endian scalar from this synchronous borrow. A missing pointer or
   ## incomplete extent returns false without changing value. The owner must remain stable/alive
   ## for the call. No pointer or mutable storage escapes, and no allocation is performed.
@@ -302,29 +325,109 @@ when defined(pvmResidentWitness):
     not (tryWriteScalar[1](view, 0, 1) or tryWriteScalar[2](view, 0, 1) or
       tryWriteScalar[4](view, 0, 1) or tryWriteScalar[8](view, 0, 1))
 
-func `[]`*(view: RWView, index: int): byte =
-  ## Read one checked byte; mutations go through the separate checked setter.
-  assert index >= 0 and index < view.length and view.data != nil
-  view.data[index]
+func tryBorrowedData*(view: RWView, first, count: int, data: var RWByteAddress): bool {.inline.} =
+  ## Prove the whole requested native/copy span before exposing its address; refusal preserves output.
+  ## Empty success carries no address, and no borrowed pointer may outlive the unchanged installed RW owner.
+  if view.length < 0 or first < 0 or count < 0 or first > view.length or count > view.length-first:
+    return false
+  let source = view.data
+  if view.length > 0 and source == nil: return false
+  if count == 0:
+    data = nil
+    return true
+  if source == nil: return false
+  data = unsafeAddr source[first]
+  true
 
-proc `[]=`*(view: var RWView, index: int, value: byte) =
-  ## Stores change bytes without owner/tag checks or resize authority.
-  assert index >= 0 and index < view.length and view.data != nil
-  view.data[index] = value
+func tryBorrowRWSpan*(view: RWView, first, count: int, span: var RWSpan): bool {.inline.} =
+  ## Construct a checked array capability only after complete range/owner validation; refusal preserves output.
+  var data: RWByteAddress = nil
+  if not tryBorrowedData(view, first, count, data): return false
+  if count == 0:
+    span = default(RWSpan)
+    return true
+  if data == nil: return false
+  span = RWSpan(kind: RWSpanKind.Present, count: count,
+    data: cast[ptr UncheckedArray[byte]](data))
+  true
 
-proc borrowedData*(view: RWView): nil ptr byte =
-  ## Only synchronous descriptor builders may retain this pointer inside the active Frame.
-  assert view.length >= 0 and (view.length == 0 or view.data != nil)
-  cast[nil ptr byte](view.data)
+func toOpenArray*(span: var RWSpan): openArray[byte] =
+  ## Use the checked complete extent synchronously. The mutable span binds the returned array's short lifetime.
+  ## Empty spans convert through their actual zero-length member, without a nil-to-nonnull cast or borrowed temporary.
+  case span.kind
+  of RWSpanKind.Empty: toOpenArray(span.empty)
+  of RWSpanKind.Present: toOpenArray(span.data, 0, span.count-1)
 
-func toOpenArray*(view: RWView, first, last: int): openArray[byte] {.inline.} =
-  ## Nonempty scoped slice; callers guard empty descriptors before requesting an array view.
-  assert first >= 0 and first <= last and last < view.length and view.data != nil
-  toOpenArray(view.data, first, last)
+when defined(pvmResidentWitness) or defined(pvmSharedAsyncWitness) or
+    defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness):
+  proc borrowRW*(owner: var ResidentBytes): RWView =
+    ## Asserted convenience for test fixtures only; production must handle explicit borrowing refusal.
+    result = default(RWView)
+    assert tryBorrowRW(owner, result)
 
-proc borrowedData*(view: RWView, index: int): ptr byte =
-  ## Borrow one checked location for synchronous native descriptors or copies inside the active Frame.
-  unsafeAddr view.toOpenArray(index, index)[0]
+  proc borrowRW*(storage: var RWStorage): RWView =
+    ## Preserve concise actual-owner test fixtures without providing a production infallible constructor.
+    result = default(RWView)
+    assert tryBorrowRW(storage, result)
+
+  func `[]`*(view: RWView, index: int): byte =
+    ## Only tests require an asserted byte observation; ordinary execution uses fallible scalar transfers.
+    var word = 0'u64
+    assert tryReadScalar[1](view, index, word)
+    byte(word)
+
+  proc `[]=`*(view: var RWView, index: int, value: byte) =
+    ## Test setup writes still exercise the actual complete production scalar guard.
+    assert tryWriteScalar[1](view, index, uint64(value))
+
+  func toOpenArray*(view: RWView, first, last: int): openArray[byte] =
+    ## Test-only legacy slice convenience; checked production slices use RWSpan.
+    assert first >= 0 and first <= last and last < view.length and view.data != nil
+    toOpenArray(view.data, first, last)
+
+when defined(pvmResidentWitness) or defined(pvmSharedAsyncWitness):
+  proc writeRWSpanForWitness(bytes: var openArray[byte]) =
+    ## The real checked span must support mutable consumers; empty spans perform no write.
+    if bytes.len > 0: bytes[0] = 0xa5
+
+  proc probeRWViewRefusals*(): bool =
+    ## Real managed ownership proves complete range checks, unchanged outputs, aliasing and true empty capabilities.
+    var bytes = @[0x11'u8, 0x22, 0x33, 0x44]
+    var storage = takeManaged(bytes)
+    var view = default(RWView)
+    if not tryBorrowRW(storage, view) or view.len != 4: return false
+    var address: RWByteAddress = nil
+    if not tryBorrowedData(view, 0, 4, address) or address == nil: return false
+    let original = address
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(view, 1, 2, span): return false
+    let saved = span
+    for bounds in [(-1, 1), (0, -1), (4, 1), (high(int), 1), (1, high(int))]:
+      # Every refused request preserves the last valid address/span rather than substituting an empty window.
+      if tryBorrowedData(view, bounds[0], bounds[1], address) or address != original: return false
+      if tryBorrowRWSpan(view, bounds[0], bounds[1], span) or span != saved: return false
+    writeRWSpanForWitness(span.toOpenArray)
+    var word = 0'u64
+    if not tryReadScalar[4](view, 0, word) or word != 0x4433a511'u64: return false
+    for broken in [RWView(length: 4, data: nil), RWView(length: -1, data: view.data)]:
+      if tryBorrowedData(broken, 0, 1, address) or address != original: return false
+      if tryBorrowRWSpan(broken, 0, 1, span) or span != saved: return false
+    var owner = default(ResidentBytes)
+    owner.logical = csize_t(high(int))+1
+    if tryBorrowRW(owner, view) or view.len != 4: return false
+    owner.logical = 1
+    owner.backing = 1
+    if tryBorrowRW(owner, view) or view.len != 4: return false
+    owner.logical = 0
+    owner.backing = 0
+    if not tryBorrowRW(owner, view) or view.len != 0: return false
+    if not tryBorrowRWSpan(view, 0, 0, span): return false
+    if span.toOpenArray.len != 0: return false
+    writeRWSpanForWitness(span.toOpenArray)
+    if not tryBorrowedData(view, 0, 0, address) or address != nil: return false
+    var intact = default(RWView)
+    if not tryBorrowRW(storage, intact): return false
+    tryReadScalar[4](intact, 0, word) and word == 0x4433a511'u64
 
 when defined(pvmResidentWitness):
   proc residentWitnessLayout*(): array[7, int] =

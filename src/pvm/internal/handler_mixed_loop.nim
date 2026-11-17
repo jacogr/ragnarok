@@ -178,13 +178,19 @@ when declared(FlatFrame):
     let gas = uint64(f.info.gas)
     let funded = nativeMixedLoopBudget(boundProof.span, boundProof.price, gas, f.remaining)
     if funded == 0: return flatCharge(f, off)
+    var writable = default(NativeReadRegion)
+    if not flatRWReadRegion(f.rwBase, f.rw, writable):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     var context = NativeMixedLoopContext(read: [initNativeReadRegion(f.stackBase, f.stack),
-      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)],
+      writable, initNativeReadRegion(f.roBase, f.ro)],
       visitLimit: uint64(funded))
     context.writable[0] = NativeCycleWritable(first: f.stackBase, length: uint64(f.stack.len))
     context.writable[1] = NativeCycleWritable(first: f.rwBase, length: uint64(f.rw.len))
     if f.stack.len > 0: context.writable[0].data = addr f.stack[0]
-    if f.rw.len > 0: context.writable[1].data = f.rw.borrowedData(0)
+    var rwData: nil ptr byte = nil
+    if not tryBorrowedData(f.rw, 0, f.rw.len, rwData):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
+    context.writable[1].data = rwData
     if f.dirtyPages.len > 0: context.dirty = addr f.dirtyPages[0]
     context.dirtyWords = uint64(f.dirtyPages.len)
     let raw: uint32 = enter(image[], f.info.registers, context)

@@ -95,16 +95,21 @@ when declared(FlatFrame):
     addNativeReadContinuation(body, NativeReadContinuation(header: header,
       terminal: walk.terminal, price: source.price), operations)
 
-  proc flatRWReadRegion(first: uint64, bytes: RWView): NativeReadRegion =
-    ## Match the original empty/clipped openArray constructor without borrowing element zero of an empty view.
-    if bytes.len == 0: return default(NativeReadRegion)
-    initNativeReadRegion(first, bytes.toOpenArray(0, bytes.len-1))
+  proc flatRWReadRegion(first: uint64, bytes: RWView, region: var NativeReadRegion): bool =
+    ## Prove the complete live RW span before constructing a native descriptor; empty success grants no byte access.
+    var span = default(RWSpan)
+    if not tryBorrowRWSpan(bytes, 0, bytes.len, span): return false
+    region = initNativeReadRegion(first, span.toOpenArray)
+    true
 
-  proc prepareFlatReadContext(f: var FlatFrame) {.noinline.} =
-    ## Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
-    f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
-      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+  proc prepareFlatReadContext(f: var FlatFrame): bool {.noinline.} =
+    ## Publish descriptors only after the RW borrow succeeds; a failed rebuild leaves the earlier context untouched.
+    var writable = default(NativeReadRegion)
+    if not flatRWReadRegion(f.rwBase, f.rw, writable): return false
+    f.readContext = [initNativeReadRegion(f.stackBase, f.stack), writable,
+      initNativeReadRegion(f.roBase, f.ro)]
     f.readContextReady = true
+    true
 
   proc flatNativeReadBody(f: var FlatFrame, off: uint32): uint32 =
     ## Require the exact complete reservation. Refusal replays the original paid body.
@@ -118,8 +123,8 @@ when declared(FlatFrame):
         f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
         f.reservation != (read.header or flatReservationHeaderFlag):
       return original(f, off)
-    if not f.readContextReady:
-      prepareFlatReadContext(f)
+    if not f.readContextReady and not prepareFlatReadContext(f):
+      return flatLocal(f, off, oracle.StepError.BackendFailure)
     case runNativeReadBody(f.nativeSession, f.info.registers, f.readContext)
     of NativeReadOutcome.Completed: read.terminal
     of NativeReadOutcome.Refused: original(f, off)
@@ -127,8 +132,10 @@ when declared(FlatFrame):
 
   proc runFlatReadContinuationCold(f: var FlatFrame): NativeReadOutcome {.noinline.} =
     ## Publish fresh descriptors only once the combined register transaction commits.
-    var context = [initNativeReadRegion(f.stackBase, f.stack),
-      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+    var writable = default(NativeReadRegion)
+    if not flatRWReadRegion(f.rwBase, f.rw, writable): return NativeReadOutcome.Failed
+    var context = [initNativeReadRegion(f.stackBase, f.stack), writable,
+      initNativeReadRegion(f.roBase, f.ro)]
     result = runNativeReadBody(f.nativeSession, f.info.registers, context)
     if result == NativeReadOutcome.Completed:
       f.readContext = context
