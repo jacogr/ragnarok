@@ -16,7 +16,7 @@
 ## A direct publisher does not grant admission to a prepared frame.
 ## Scalar bit counts use the baseline ISA without POPCNT, LZCNT or TZCNT requirements.
 ## Zero-word scans select the explicit 32/64 result before their otherwise undefined value is used.
-## Scalar and branch builders retain their first lowering refusal. Extraction, direct publication
+## Cold builders retain their first lowering, mapping or relocation refusal. Extraction, direct publication
 ## and region composition reject that whole builder, including any earlier valid prefix.
 ## A successful builder still needs the enclosing source and execution certificate before publication.
 
@@ -153,7 +153,7 @@ when defined(pvmX86Jit):
 type
   X86EmissionError* {.pure.} = enum
     ## Cold-builder refusals prevent every later publication; no guest state has been executed.
-    None, UnsupportedOpcode, InvalidDestination
+    None, UnsupportedOpcode, InvalidDestination, InvalidRegister, InvalidCertificate, InvalidFixup
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
     failure: X86EmissionError
@@ -707,8 +707,8 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
     byteLimit = NativeImageByteLimit): seq[byte] =
   ## Emit guarded source blocks and, for an eligible Ring, one reserved A/B/C path.
   let count = blocks.len
-  assert count in 1..3 and (not round.enabled or (rotating and count == 3))
-  assert byteLimit in 1..NativeImageByteLimit
+  if count notin 1..3 or (rotating and count != 3) or (round.enabled and not rotating): return @[]
+  if byteLimit notin 1..NativeImageByteLimit: return @[]
   var code = default(X86Block)
   put(code, entryBytes)
   # RDI/RSI keep the guest array and context across every rotation.
@@ -788,20 +788,27 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
   put(code, [0xc3'u8])
   if code.bytes.len >= byteLimit: return @[]
   for at in returns:
+    if at < 0 or at > code.bytes.len-4 or epilogue < at+4: return @[]
     let relative = uint32(epilogue-at-4)
     for shift in 0..<4: code.bytes[at+shift] = byte((relative shr (shift*8)) and 255)
   for fix in fixes:
-    var target = case fix.section
-      of X86RegionSection.Source: -1
-      of X86RegionSection.Round: roundLabels[int(fix.target)]
-      of X86RegionSection.Refund: refundLabels[int(fix.target)]
+    if fix.at < 0 or fix.at > code.bytes.len-4: return @[]
+    var target = -1
+    case fix.section
+    of X86RegionSection.Source: discard
+    of X86RegionSection.Round:
+      if fix.target >= uint32(roundLabels.len): return @[]
+      target = roundLabels[int(fix.target)]
+    of X86RegionSection.Refund:
+      if fix.target >= uint32(refundLabels.len): return @[]
+      target = refundLabels[int(fix.target)]
     if target < 0 and not fix.guard:
       for index in 0..<count:
         if blocks[index].header == fix.target: target = labels[index]
     if target < 0:
       for index in 0..<exits.len:
         if exits[index] == fix.target: target = exitLabels[index]
-    assert target >= 0 and target < code.bytes.len
+    if target < 0 or target >= code.bytes.len: return @[]
     let origin = fix.at+4
     let relative = if target >= origin: uint32(target-origin) else: 0'u32-uint32(origin-target)
     for shift in 0..<4: code.bytes[fix.at+shift] = byte((relative shr (shift*8)) and 255)
@@ -834,9 +841,11 @@ when declared(X86ResidentAccess):
     ## Load every lane, including a write-only destination whose writer may be skipped
     ## by a rotation, guard or prefix exit. The common exit commits all possible writes
     ## while their guest values are still in the SysV registers, then restores the caller.
-    let lanes = ringLaneUse(ring)
+    var lanes = default(X86RingLanes)
+    if not tryRingLaneUse(ring, lanes): return @[]
     if not fitsX86ResidentBank(lanes.used): return @[]
     let bank = x86ResidentAccess(lanes.used)
+    if bank.failure != X86EmissionError.None: return @[]
     var blocks = default(array[3, X86RegionBlock])
     for index in 0..2:
       let item = ring.blocks[index]
@@ -860,6 +869,7 @@ when declared(X86ResidentAccess):
         loadX86ResidentRegister(entry, bank, slot)
     commitX86ResidentRegisters(leave, bank, lanes.written)
     restoreX86ResidentRegisters(leave, bank)
+    if entry.failure != X86EmissionError.None or leave.failure != X86EmissionError.None: return @[]
     x86RegionBytes(blocks, true, nativeRingRoundBudget(ring), entry.bytes, leave.bytes, limit)
 
   when defined(pvmX86ResidentProof):
@@ -1095,16 +1105,24 @@ when defined(pvmX86Jit):
 
     proc readAccess(code: var X86Block, access: var X86CheckedReadAccess,
         slot: range[0..12], right: bool) =
+      if access.bank.failure != X86EmissionError.None:
+        refuseX86Emission(code, access.bank.failure)
+        return
       readBodyLiveIn(access, slot)
       readAccess(code, access.bank, slot, right)
 
     proc writeAccess(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
-      assert access.bank.registers[slot] != 0 # Unmapped lanes are read-only throughout this leaf.
+      if access.bank.failure != X86EmissionError.None or access.bank.registers[slot] == 0:
+        refuseX86Emission(code, X86EmissionError.InvalidRegister)
+        return
       writeAccess(code, access.bank, slot)
       access.written = access.written or (1'u32 shl int(slot))
 
     proc readBodyBase(code: var X86Block, access: X86ResidentAccess, slot: range[0..12]) =
       ## Address arithmetic starts with the low word of the current logical lane.
+      if access.failure != X86EmissionError.None:
+        refuseX86Emission(code, access.failure)
+        return
       let encoded = access.registers[slot]
       if encoded == 0:
         readBodyBase(code, X86CanonicalAccess(), slot)
@@ -1141,7 +1159,7 @@ when defined(pvmX86Jit):
       of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX].
       of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
       of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-      else: assert false # The common certificate admits only these seven load encodings.
+      else: refuseX86Emission(code, X86EmissionError.UnsupportedOpcode)
 
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
         labels: untyped, body: NativeReadBody, access: untyped,
@@ -1156,13 +1174,21 @@ when defined(pvmX86Jit):
           emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
         elif (window.operations and (1'u32 shl index)) != 0:
           # RSI holds this entry's first-descriptor window. Load bytes at the original position.
-          let offset = uint32(op.immediate and 0xffffffff'u64)-window.first
-          assert op.opcode == 130 and offset <= 32
+          let address = uint32(op.immediate and 0xffffffff'u64)
+          if op.opcode != 130 or address < window.first:
+            refuseX86Emission(code, X86EmissionError.InvalidCertificate)
+            continue
+          let offset = address-window.first
+          if offset > 32:
+            refuseX86Emission(code, X86EmissionError.InvalidCertificate)
+            continue
           put(code, [0x48'u8, 0x8b, 0x46, byte(offset)]) # MOV RAX,[RSI+offset].
           writeAccess(code, access, op.slots.aIndex)
         else:
           let opcode = int(encoding)
-          assert opcode >= 124 and opcode <= 130 # Prove the local width-table conversion.
+          if opcode < 124 or opcode > 130:
+            refuseX86Emission(code, X86EmissionError.InvalidCertificate)
+            continue
           let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
           if encoding != op.opcode:
             # MOV EDX,imm32 zero-extends the absolute address without a guest live-in.
@@ -1191,8 +1217,13 @@ when defined(pvmX86Jit):
           code.bytes.len > NativeImageByteLimit: return @[]
       for fix in fixes:
         # All targets are forward and fit rel32 under the image byte ceiling.
+        if int(fix.target) >= labels.len or fix.at < 0 or fix.at > code.bytes.len-4:
+          refuseX86Emission(code, X86EmissionError.InvalidFixup)
+          return @[]
         let target = labels[int(fix.target)]
-        assert target >= fix.at+4 and target < code.bytes.len
+        if target < fix.at+4 or target >= code.bytes.len:
+          refuseX86Emission(code, X86EmissionError.InvalidFixup)
+          return @[]
         let delta = uint32(target-(fix.at+4))
         for shift in 0..<4:
           code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
@@ -1200,7 +1231,9 @@ when defined(pvmX86Jit):
 
     proc checkedReadStackInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
       ## Stage the certified body on the stack, then commit only its written slots.
-      assert body.complete and sizeof(RegisterFile) == 104
+      when sizeof(RegisterFile) != 104:
+        {.error: "x86 read register ABI layout mismatch".}
+      if not body.complete: return @[]
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
       var labels = default(array[1+4*int(NativeReadFactLimit), int])
@@ -1255,7 +1288,12 @@ when defined(pvmX86Jit):
       restoreX86ResidentRegisters(code, access.bank)
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
+    when defined(pvmX86ResidentProof):
+      # The private proof profile can corrupt a real producer relocation before sealing.
+      var x86ReadInvalidFixupWitness {.threadvar.}: bool
+
     proc checkedReadResidentInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
+      ## Seal the entire body before constructing its entry; a refused child never publishes a prologue.
       var access = X86CheckedReadAccess(bank: x86ResidentAccess(dirty), liveIns: 0, written: 0)
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
@@ -1263,21 +1301,29 @@ when defined(pvmX86Jit):
       var nextLabel = 1'u8
       emitCheckedReadOperations(code, fixes, labels, body, access, body.len, 0, nextLabel)
       if code.failure != X86EmissionError.None: return @[]
-      assert access.written == dirty
+      if access.written != dirty: return @[]
       commitX86ResidentRegisters(code, access.bank)
       emitCheckedReadResidentReturn(code, access, NativeReadSuccess)
       labels[0] = code.bytes.len # Late refusal skips every guest-file store.
       emitCheckedReadResidentReturn(code, access, NativeReadRefusal)
 
+      when defined(pvmX86ResidentProof):
+        # This mutation is absent from production and exercises the actual complete-body producer.
+        if x86ReadInvalidFixupWitness and fixes.len > 0:
+          fixes[0].at = -1
+      let sealed = sealCheckedRead(code, fixes, labels)
+      if code.failure != X86EmissionError.None or sealed.len == 0: return @[]
       var entry = default(X86Block)
       emitCheckedReadResidentEntry(entry, access)
-      if entry.bytes.len + code.bytes.len > NativeImageByteLimit: return @[]
+      if entry.bytes.len > NativeImageByteLimit-sealed.len: return @[]
       # A prepended prologue shifts each branch and its target equally.
-      put(entry, sealCheckedRead(code, fixes, labels))
+      put(entry, sealed)
       takeX86Instructions(entry)
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
-      assert body.complete and sizeof(RegisterFile) == 104
+      when sizeof(RegisterFile) != 104:
+        {.error: "x86 read register ABI layout mismatch".}
+      if not body.complete: return @[]
       # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
       # reload canonical slots. Above six dirty lanes we copy all thirteen slots to the stack.
       # ARM retains live-ins and writes in ArmReadSpan's bank. Revisit live-in allocation and
@@ -1771,7 +1817,9 @@ when defined(pvmX86Jit):
           # Preserve nested refusal instead of appending its otherwise well-formed prefix.
           refuseX86Emission(code, read.failure)
           return
-        assert access.written == dirty
+        if access.written != dirty:
+          refuseX86Emission(code, X86EmissionError.InvalidCertificate)
+          return
         for slot in 0..12:
           # A later Read must observe the canonical state left by the previous roles.
           loadCheckedReadLiveIn(code, access, slot)
@@ -1794,7 +1842,8 @@ when defined(pvmX86Jit):
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
         ## The synchronous leaf owns the canonical file until return. Its mapped Read slots
         ## hold the pre-Read checkpoint while the hardware bank holds current guest state.
-        assert sizeof(RegisterFile) == 104 and sizeof(NativeCycleContext) == NativeCycleContextBytes
+        when sizeof(RegisterFile) != 104 or sizeof(NativeCycleContext) != NativeCycleContextBytes:
+          {.error: "x86 connected read ABI layout mismatch".}
         if not cycle.read.complete or cycle.read.continuationInfo.terminal == 0 or
             cycle.read.len != readCycleBodyOps+readCycleSetupOps or
             cycle.tailLoad.opcode != 57 or cycle.tailStep.opcode != 131 or
@@ -1835,7 +1884,8 @@ when defined(pvmX86Jit):
         let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
         let addend = if storePage and allowStoreTail: storeTailSetupAddend(cycle) else: -1
         # The short direct guard addresses the canonical lane and leaves the resident bank live.
-        let storeTail = addend >= 0 and roleAccess.registers[addend] == 0
+        let storeTail = addend >= 0 and addend < roleAccess.registers.len and
+          roleAccess.registers[addend] == 0
         # Keep the entry-local borrow outside the 104-byte stack checkpoint.
         # Both allocations preserve the original alignment and fit a signed immediate.
         let tailSlot = if resident: 0'u8 else: byte(sizeof(RegisterFile))
@@ -1898,7 +1948,7 @@ when defined(pvmX86Jit):
           let span = byte(NativeCycleSpans[role]*group)
           let price = cycle.layout.sites[role].price*group
           if storeTail and role == NativeCycleRole.StoreSetup:
-            assert addend >= 0 and addend <= 12
+            if addend < 0 or addend >= roleAccess.registers.len: return @[]
             emitReadCycleStoreTailSetup(code, fixes, labels, word, roleAccess, addend, tailSlot)
           if credits:
             # A funded credit covers both reservations. Cold checks enter at this same
@@ -2724,3 +2774,6 @@ when defined(pvmX86Jit):
       ## Distinguish wide entries from later-read canonical replays.
       if jit == nil: default(array[2, uint64])
       else: [jit.wideCycle.calls, jit.wideCycle.readRefusals]
+
+when defined(pvmX86ResidentProof) and NativeCheckedReadEnabled:
+  include ./x86_read_guard_witness

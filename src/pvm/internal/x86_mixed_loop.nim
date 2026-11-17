@@ -39,19 +39,21 @@ when declared(X86Block):
       labels: var X86MixedLoopLabels, op: NativeOperation, encoding, refusal: byte,
       nextLabel: var byte, access: untyped) =
     ## Resolve the original absolute or wrapped relative address at its source position.
-    if encoding == op.opcode:
-      # The staged base may also be this read's destination.
-      readBodyBase(code, access, op.slots.bIndex)
-      put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps modulo 2^32.
+    if encoding < 124 or encoding > 130:
+      refuseX86Emission(code, X86EmissionError.UnsupportedOpcode)
     else:
-      put(code, [0xba'u8]) # MOV EDX,absolute32.
-    cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
-    let opcode = int(encoding)
-    assert opcode >= 124 and opcode <= 130
-    let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
-    mixedLoopReadPointer(code, fixes, labels, width, refusal, nextLabel)
-    emitCheckedReadValue(code, encoding)
-    writeAccess(code, access, op.slots.aIndex)
+      if encoding == op.opcode:
+        # The staged base may also be this read's destination.
+        readBodyBase(code, access, op.slots.bIndex)
+        put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 wraps modulo 2^32.
+      else:
+        put(code, [0xba'u8]) # MOV EDX,absolute32.
+      cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
+      let opcode = int(encoding)
+      let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
+      mixedLoopReadPointer(code, fixes, labels, width, refusal, nextLabel)
+      emitCheckedReadValue(code, encoding)
+      writeAccess(code, access, op.slots.aIndex)
 
   template mixedLoopStoreAccess(code: var X86Block, fixes: var seq[X86CycleFixup],
       labels: var X86MixedLoopLabels, op: NativeOperation, width, refusal: byte,
@@ -124,8 +126,9 @@ when declared(X86Block):
       unpaid = 1'u8
       outside = 2'u8
       finish = 3'u8
-      pointerSlots = [104'u8, 112]
-      frameBytes = 120'u8
+      registerBytes = 104'u8 # The complete canonical file precedes both hoisted pointer slots.
+      pointerSlots = [registerBytes, registerBytes+8'u8]
+      frameBytes = registerBytes+16'u8
     if operations.len < 3 or operations.len > int(NativeReadFactLimit): return @[]
     let terminal = operations.len-1
     let branch = operations[terminal]
@@ -156,7 +159,8 @@ when declared(X86Block):
       elif op.opcode != 2:
         return @[]
     if not sawStore: return @[]
-    assert sizeof(RegisterFile) == int(pointerSlots[0]) and NativeCycleGasOffset == 136
+    when sizeof(RegisterFile) != int(registerBytes) or NativeCycleGasOffset != 136:
+      {.error: "x86 mixed-loop ABI layout mismatch".}
 
     var code = default(X86Block)
     var fixes: seq[X86CycleFixup] = @[]
@@ -226,8 +230,10 @@ when declared(X86Block):
     if code.failure != X86EmissionError.None or code.bytes.len > NativeImageByteLimit: return @[]
     for fix in fixes:
       # The single checked self-edge can patch backward. Every target is image-local.
+      if int(fix.target) >= labels.len: return @[]
       let target = labels[int(fix.target)]
-      assert target > 0 and target < code.bytes.len
+      if target <= 0 or target >= code.bytes.len or fix.at < 0 or fix.at > code.bytes.len-4:
+        return @[]
       let delta = cast[uint32](int32(target-(fix.at+4)))
       for shift in 0..<4:
         code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
@@ -323,6 +329,7 @@ when declared(X86Block):
     if code.failure != X86EmissionError.None or code.bytes.len > NativeImageByteLimit: return
     for fix in fixes:
       # The self-edge may patch backward. All targets and fixups remain image-local.
+      if int(fix.target) >= labels.len: return @[]
       let target = labels[int(fix.target)]
       if target <= 0 or target >= code.bytes.len or fix.at < 0 or fix.at > code.bytes.len-4:
         return
