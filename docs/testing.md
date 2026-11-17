@@ -105,7 +105,7 @@ newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
 choose `smoke`, `unit`, `contract`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-doom`, `bench-storage`, `bench-storage-growth` or `full`
-(the default). `contract` runs the Contract partitions, Python tooling and fixture provenance
+(the default). `contract` runs the Contract partitions, Tooling and fixture provenance
 without unrelated workloads. `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm`, `bench-pvm` and `bench-doom` selections run their declared scopes.
 **Perf / PVM** runs automatically after master merges on native Linux ARM64 and x86-64.
