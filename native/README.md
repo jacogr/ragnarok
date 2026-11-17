@@ -12,7 +12,7 @@ contracts.
 | --- | --- |
 | [`bandersnatch/`](bandersnatch/README.md) | Rust VRF/RingVRF primitive bridge and locked Cargo dependencies |
 | [`crypto/`](crypto/README.md) | C hash, Ed25519 and secret-wiping primitives |
-| [`quic/`](quic/README.md) | LSQUIC transport and copied TLS certificate observations |
+| [`quic/`](quic/README.md) | QUICHE transport and copied TLS certificate observations |
 
 Use `make setup` to provision dependencies and `make` to build the development proof peer.
 [`tools/`](../tools/README.md) owns orchestration; generated libraries and compiler output stay

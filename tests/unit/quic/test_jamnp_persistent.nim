@@ -111,7 +111,7 @@ proc awaitOpened(server: var DevnetNetwork, first, second: var RawClient, count:
   assert false, "native stream-open deadline"
 
 proc connect(server: var DevnetNetwork, first, second: var RawClient, useSecond: bool) =
-  ## Wait for authenticated transport before asking LSQUIC to create any application stream.
+  ## Wait for authenticated transport before asking QUICHE to create any application stream.
   let deadline = getMonoTime()+initDuration(seconds = 2)
   while getMonoTime() < deadline:
     drive(server, first, second)

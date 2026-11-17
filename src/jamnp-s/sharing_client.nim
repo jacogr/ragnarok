@@ -129,7 +129,7 @@ proc event*(route: var SharingClientRoute, stream: NativeStream, kind: cint, bud
     if route.sentFin: return
     let maximum = min(4096, route.output.len-route.offset)
     let written = streamWrite(stream, addr route.output[route.offset], csize_t(maximum))
-    if written == -2 or written == 0: return # LSQUIC write_avail may be zero until transport credit advances.
+    if written == -2 or written == 0: return # Transport writes can make no progress until credit advances.
     if written < 0 or written > int64(maximum):
       route.refuse(ReadError.InvalidStream)
       return

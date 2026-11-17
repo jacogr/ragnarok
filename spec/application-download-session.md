@@ -46,7 +46,7 @@ release and actual composite-copy/privacy/nominal/result guards.
 Local macOS verification with pinned Nimony/ARC, checked optimized Clang/LTO:
 
 - `make unit SUITE=application_download_session` passes the signed two-guest block,
-  real authenticated LSQUIC failure/empty/healthy transfers, explicit cancellation,
+  real authenticated QUICHE failure/empty/healthy transfers, explicit cancellation,
   injected reset-event routing and deterministic expiry. It observes native-close
   barriers, selected framing/decode reasons, foreign/forged/stale tokens, binding
   retry, handoff backpressure and later canonical adoption. Native reception and

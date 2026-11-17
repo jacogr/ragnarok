@@ -1,4 +1,7 @@
-# Maintained LSQUIC fork qualification
+# Historical LSQUIC fork qualification
+
+The current provider is Google QUICHE; see [the transport pin](quic-proof-pins.json).
+This record describes the retired provider and its former build patches.
 
 The native QUIC adapter moves from `fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52`
 to `0c9c66903b70ac25852d70d54672005aafb1a446`. The candidate is an eleven-commit

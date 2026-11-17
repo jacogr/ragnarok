@@ -16,5 +16,5 @@ Read the owning `../docs/design/<module>.md` before changing architectural bound
   successful compilation does not prove initialization safety for every scalar kind. See the trial.
 
 Keep JAM codecs, domains, identities, framing and state logic in Nim. Narrow C/Rust interfaces
-are reserved for maintained primitives, LSQUIC/TLS and OS interfaces. Compile natively on Linux;
+are reserved for maintained primitives, QUICHE/TLS and OS interfaces. Compile natively on Linux;
 consensus behavior must remain deterministic. Use idiomatic Nim without speculative scaffolding.

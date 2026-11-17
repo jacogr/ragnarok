@@ -51,7 +51,7 @@ On local macOS with pinned Nimony/ARC, checked optimized Clang/LTO builds:
   maximum ticks, invalid/busy configuration and stale/cross-plan certificates.
   Its 1,000 lifecycle cycles retain 192 occupied bytes before and after.
 - `make unit SUITE=application_block_download` passes scheduled real authenticated
-  LSQUIC failures, empty replies and healthy transfer, followed by genuine guest
+  QUICHE failures, empty replies and healthy transfer, followed by genuine guest
   preparation and later canonical adoption. Reception/callbacks still hash
   nothing; 1,000 receiver lifecycle cycles retain 8,806,720 occupied bytes.
 - Three privacy probes, the peer/tick nominal rejection and the actual schedule

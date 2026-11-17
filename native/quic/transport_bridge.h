@@ -8,6 +8,9 @@
 #define RQ_TRANSPORT_BRIDGE_H
 #include <stdint.h>
 #include <stddef.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* Opaque transport owner; TLS policy and UDP/event-loop work stay in the native language. */
 typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
@@ -28,7 +31,7 @@ typedef void (*rq_peer_cb)(void *, unsigned, int, const uint8_t *, size_t);
  * are borrowed only for this synchronous callback. Exactly one permits admission. */
 typedef int (*rq_admission_cb)(void *, unsigned, const uint8_t *, size_t,
                                 const uint8_t *, size_t);
-/* Startup-only, bounded TLS correlation uses public SSL/LSQUIC APIs; no role policy lives in C. */
+/* Startup-only, bounded TLS correlation uses public session/TLS APIs; no role policy lives in C. */
 int rq_admit_peers(rq_transport *, unsigned slots, rq_admission_cb);
 /* Copied owner-bound observation, never a foreign pointer or an owning connection handle. */
 typedef struct rq_peer_ref { uint64_t owner, generation; unsigned slot; } rq_peer_ref;
@@ -48,11 +51,11 @@ int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Copy a server connection capacity before network processing/observer registration; failure is atomic. */
 int rq_set_peer_capacity(rq_transport *, unsigned maximum, int multiple);
 /* Generic startup options are copied before engine construction. Zero idle preserves the selected legacy profile. Explicit idle1..600 selects
- * keepalive0/1; pinned IETF LSQUIC schedules enabled probes at half the negotiated idle timeout. */
+ * keepalive0/1; the bridge schedules enabled QUICHE probes at half the configured idle timeout. */
 typedef struct rq_transport_options {
     int profile, server, ipv6, multi;
     unsigned idle_seconds, keepalive;
-    unsigned stream_window, connection_window; /* Zero preserves legacy defaults; explicit windows use public LSQUIC settings. */
+    unsigned stream_window, connection_window; /* Zero preserves legacy defaults; explicit windows set initial QUICHE receive credit. */
 } rq_transport_options;
 rq_transport *rq_transport_new_config(const rq_transport_options *, uint16_t local_port,
  const char *certificate, const char *key, const char *alpn, void *user,
@@ -107,4 +110,7 @@ void rq_stream_read_done(void *);
 /* Profile 3 retains a pair, 4 uses bounded crash expiry, 5 admits sixteen peers with eight remote streams each. */
 rq_transport *rq_transport_new_ipv6_profile(int profile, int server, uint16_t port, const char *cert,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
+#ifdef __cplusplus
+}
+#endif
 #endif

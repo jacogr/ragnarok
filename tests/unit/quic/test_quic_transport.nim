@@ -148,7 +148,8 @@ proc saturation(cert, key: string, ipv6: bool) =
   assert counts.peerStarts == 2 and counts.peerCloses == 1
   server.closeTransport()
   assert counts.peerCloses == 1 # Engine teardown must not fabricate a second observed close.
-  assert counts.failures == IncomingHandshakeSlots - 1 and counts.dropped == 2
+  assert counts.failures == IncomingHandshakeSlots - 1, "tracked attempts settle on teardown"
+  assert counts.dropped == 1, "one overflow attempt is observed once, including teardown"
   assert counts.refusals == 0 # Observation saturation never implies admission refusal.
   for active in counts.active: assert not active # Every tracked lifetime settled before storage retirement.
 
@@ -180,7 +181,7 @@ proc admissionRefusal(cert, key: string, ipv6: bool) =
   server.closeTransport()
   assert counts.refusals == 1 and counts.peerCloses == 0 # Refused connections never occupy a peer slot.
 
-# Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
+# Exercise native construction failure and success with the exact production I/O owner and QUICHE engine.
 type IdleStream = object ## One open bidirectional stream confirms the handshake before transport-only idle observation.
   handle: NativeStream
   sent, got, failed: bool
@@ -243,8 +244,8 @@ proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
     assert getMonoTime() < streamDeadline
     assert server.pollTransport(1) and client.pollTransport(1)
     assert not serverFlow.failed and not clientFlow.failed
-  # Pinned LSQUIC issues up to eight connection IDs at60/minute; those real control packets
-  # refresh idle during bootstrap. Observe beyond8s bootstrap +3s idle, rather than mistaking it for keepalive.
+  # Allow bootstrap control traffic plus the negotiated idle timeout.
+  # Silent expiry and enabled keepalive must remain distinguishable over the same observation.
   let deadline = getMonoTime()+initDuration(seconds = 14)
   while getMonoTime() < deadline:
     assert server.pollTransport(1) and client.pollTransport(1)

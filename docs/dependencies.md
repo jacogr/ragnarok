@@ -9,7 +9,7 @@ python3 tools/setup_submodules.py
 
 | Submodule | Purpose |
 | --- | --- |
-| `vendor/lsquic` | QUIC transport, including its recorded QPACK/HPACK children |
+| `vendor/quiche` | Google QUICHE raw QUIC transport |
 | `vendor/boringssl` | QUIC/TLS |
 | `vendor/ark-vrf` | Draft-29 release-reference ark-vrf 0.2.2 backend |
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
@@ -36,6 +36,6 @@ Bandersnatch and ordinary crypto primitives, and Nim under `src/` owns JAM codec
 remain in the source submodules; project-authored boundary and derived fixtures stay under `vectors/`.
 Derived JAM fixtures are checked against their complete original upstream cases.
 
-Generated CMake/Rust output, temporary fixture keys and logs live under ignored `build/`. For a
-deliberate dependency upgrade, update the gitlink together with its pins/hashes and run affected
+Retained native tools and build intermediates live under ignored `build-tools/`; temporary fixture
+keys and verification logs live under `build/`. For a deliberate dependency upgrade, update the gitlink together with its pins/hashes and run affected
 verification. Functional vector agreement does not replace dependency/security audit.

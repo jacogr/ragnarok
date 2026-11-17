@@ -1,0 +1,48 @@
+{
+  "platforms": {
+    "darwin-arm64": {
+      "download": {
+        "sha256": "22ff65b05869f6160e5157b1b425a14a62085d71d8baef571f462b8fe5a703a3",
+        "url": "https://releases.bazel.build/8.2.1/release/bazel-8.2.1-darwin-arm64"
+      },
+      "machines": [
+        "arm64"
+      ],
+      "system": "Darwin"
+    },
+    "darwin-x86_64": {
+      "download": {
+        "sha256": "366842d097b7aaf8dba4fff2c3ae333e48b28a9d2b440981183aa4afd8a4bf9f",
+        "url": "https://releases.bazel.build/8.2.1/release/bazel-8.2.1-darwin-x86_64"
+      },
+      "machines": [
+        "x86_64"
+      ],
+      "system": "Darwin"
+    },
+    "linux-arm64": {
+      "download": {
+        "sha256": "1f50df607751a56ace7775872ffb5dff4c15c25c11a2df30b7b0035ef53a9937",
+        "url": "https://releases.bazel.build/8.2.1/release/bazel-8.2.1-linux-arm64"
+      },
+      "machines": [
+        "aarch64",
+        "arm64"
+      ],
+      "system": "Linux"
+    },
+    "linux-x86_64": {
+      "download": {
+        "sha256": "7ff2b6a675b59a791d007c526977d5262ade8fa52efc8e0d1ff9e18859909fc0",
+        "url": "https://releases.bazel.build/8.2.1/release/bazel-8.2.1-linux-x86_64"
+      },
+      "machines": [
+        "x86_64",
+        "AMD64"
+      ],
+      "system": "Linux"
+    }
+  },
+  "schema": 1,
+  "version": "8.2.1"
+}

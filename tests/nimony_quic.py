@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Prepare pinned LSQUIC/TLS with the recorded public reset API patch and ignored fixture identities.
+"""Prepare pinned QUICHE/TLS without dependency patches and ignored fixture identities.
 
 Exposes prepare for the verification harness.
 """

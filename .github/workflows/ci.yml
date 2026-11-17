@@ -212,12 +212,13 @@ jobs:
         uses: *cache-action
         env: *cache-timeout
         with:
-          # Only the verified ABI and receipt: pristine sources and LSQUIC patch staging stay fresh.
+          # Only the verified ABI and receipt: both upstream source checkouts remain validated.
           path: |
+            build-tools/bazel/bazel-*
             build-tools/quic/native-environment.json
             build-tools/quic/*.so
             build-tools/quic/*.dylib
-          key: quic-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/quic-proof-pins.json', 'native/quic/**', 'tools/build_quic.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
+          key: quic-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/quic-proof-pins.json', 'spec/quiche-toolchain.json', 'native/quic/**', 'tools/build_quic.py', 'tools/setup_bazel.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
       - &polkavm-built-cache
         name: Cache built optional PolkaVM dependency
         if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}

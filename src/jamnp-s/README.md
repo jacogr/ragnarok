@@ -3,7 +3,7 @@
 [Source guide](../README.md) · [Networking guide](../../docs/networking.md)
 
 This folder owns JAMNP-S identity, stream policy and bounded peer scheduling over the maintained
-[LSQUIC C bridge](../../native/quic/README.md). Peer identity, protocol framing and application
+[QUICHE C bridge](../../native/quic/README.md). Peer identity, protocol framing and application
 adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |

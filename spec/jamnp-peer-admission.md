@@ -3,7 +3,7 @@
 Scope: generic synchronous server admission using the authenticated leaf certificate, selected
 ALPN and prospective native peer slot. JAMNP-S pin remains
 `aa0e2b8498c0b1bc1725af2903704d701c6577ab`. Nim owns validator/builder capacity policy;
-C supplies opaque TLS/LSQUIC facts only. Builder ALPN requests a reservation and grants no
+C supplies opaque TLS/QUICHE facts only. Builder ALPN requests a reservation and grants no
 protocol privileges. This prerequisite alone does not implement validator admission policy.
 
 The optional callback is installed once before IO. Exactly one permits retention. Refusal consumes
@@ -12,10 +12,10 @@ Both metadata byte spans are borrowed only during the callback after server auth
 Policy callbacks may update application state, but must not recursively poll, close or reopen
 the transport while its native admission stack is active.
 
-A startup-allocated registry tracks at most peer capacity plus 64 pending/live SSL objects. SSL
-ex-data cleanup clears entries before storage is freed. Each admission correlates using public
-`lsquic_ssl_to_conn` on the live SSL object after promotion; keys and socket tuples are never used
-as surrogate connection identity. Exhausted/missing correlation fails closed. No upstream changes.
+QUICHE sessions expose their own authenticated TLS stream. The bridge reads public SSL certificate
+and ALPN observations from that exact session, without a separate SSL correlation registry.
+Admission refusal records a pending close; the dispatcher closes after TLS packet processing
+returns. Application streams remain unpublished until admission succeeds. No upstream changes.
 
 Completion checks: real TLS base/builder concurrent attempts with the same client certificate,
 policy refusal before acceptance, capacity preservation/reuse, IPv4/IPv6, default TLS regression,

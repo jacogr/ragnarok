@@ -29,7 +29,7 @@ prefix. Both completed halves survive ordinary close. Explicit cancellation can 
 Ready input, but keeps the native binding until close. Deadlines use caller-supplied
 monotonic millisecond ticks with checked subtraction, never network wall-clock values.
 
-Exercise the production controller over real authenticated LSQUIC streams with tiny
+Exercise the production controller over real authenticated QUICHE streams with tiny
 read/write budgets: healthy, empty, malformed, premature close, absent FIN, explicit
 cancel, deterministic expiry and reset-event dispatch. Check wrong handles, generations,
 receiver addresses, duplicate binding, zero/oversized policies, late events and reuse.
@@ -40,7 +40,7 @@ Retain privacy, nominal and composite-copy compiler rejection checks and ARC evi
 
 `make unit SUITE=application_block_download` passes with the production stream
 controller replacing the test client's native read/write loop. Real authenticated
-LSQUIC exchanges cover healthy signed-block transfer, byte-at-a-time empty framing,
+QUICHE exchanges cover healthy signed-block transfer, byte-at-a-time empty framing,
 oversized response, premature close and complete bytes without FIN. Separate live
 streams exercise deterministic deadline expiry and injected reset-event routing;
 the latter is callback coverage, not evidence of a wire RESET_STREAM. All close

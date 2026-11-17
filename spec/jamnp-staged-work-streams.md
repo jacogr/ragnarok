@@ -20,7 +20,7 @@ and three body messages (exact extrinsics, exact raw segments, bounded proofs). 
 bundle remains at most 13904950 bytes. Imported CE133 witnesses are separately acquired; framing
 alone cannot manufacture availability or a completed report.
 
-Native connection factories use public pinned LSQUIC flow-control settings to bound unread input
+Native connection factories use public QUICHE initial flow-control settings to bound initially unread input
 while a route pauses: 64 KiB per stream and 256 KiB per connection for node connections, with
 window auto-growth disabled. Other endpoint profiles retain their defaults. Both primitive sides
 validate optional window values before engine construction. Native flow-control credit is separate
