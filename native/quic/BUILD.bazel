@@ -16,6 +16,8 @@ cc_library(
 cc_binary(
     name = "libquic_proof.so",
     srcs = [
+        "ragnarok/http_parser.cc",
+        "ragnarok/http_parser.h",
         "ragnarok/transport_bridge.cc",
         "ragnarok/transport_bridge.h",
     ],
@@ -23,6 +25,7 @@ cc_binary(
     linkshared = True,
     linkstatic = True,
     deps = [
+        ":balsa",
         ":quiche_core",
         ":ragnarok_cert_fields",
         "@boringssl//:crypto",

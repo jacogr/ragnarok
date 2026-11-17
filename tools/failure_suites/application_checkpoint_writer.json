@@ -36,5 +36,6 @@
     }
   ],
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "source": "tests/native/application_checkpoint_writer_results.nim"
 }

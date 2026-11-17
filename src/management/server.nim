@@ -14,8 +14,7 @@
 import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
 import ../lib/[socket_io, http_stream, logging]
-import std/http/httpmsg as http_msg
-import std/http/httpparse as http_parse
+import ../lib/http_head
 import ./[protocol, file_status, resources]
 import ../lib/utf8
 
@@ -35,9 +34,8 @@ type
     opened: bool
     stream: HttpStream
     input, output: string
-  ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
+  ManagementServer* = object ## Non-copyable local listener; an empty configuration opens nothing.
     logger: LogWriter
-    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, bound: bool
     fd: cint
     path: string
@@ -76,7 +74,6 @@ proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
   `=wasMoved`(server.info)
   `=wasMoved`(server.resources)
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
-  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Clear moved-from slot flags without retiring resources transferred to the destination.
@@ -86,7 +83,6 @@ proc `=destroy`*(server: ManagementServer) =
   ## Partial startup and normal ARC retirement close every native and dynamic owner.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
-  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
   `=destroy`(server.resources)
   `=destroy`(server.info)
@@ -103,7 +99,6 @@ proc close*(server: var ManagementServer) =
     slot.close() # Consumers retire before the listener.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
-  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.logger = default(LogWriter)
   server.bound = false
@@ -160,34 +155,34 @@ proc response(status, body = ""): string =
   "HTTP/1.1 " & status & "\r\nContent-Type: application/json\r\nContent-Length: " & $body.len &
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n" & body
 
-proc processHead(slot: var Connection, tags: http_msg.HttpTags, headBytes: int): int =
-  ## Validate the complete head while its parser tokens and tags remain local.
+proc processHead(slot: var Connection, headBytes: int): int =
+  ## Validate the complete head while its Balsa owner and copied fields remain local.
   ## A nonnegative result authorizes exactly that many body bytes.
   result = -1
-  if headBytes < 0:
+  if headBytes == HeadTooLarge:
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
-  # The request message retires on return. The listener keeps the vocabulary for later requests.
-  var head = http_msg.initHttpMsg(tags)
-  if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
-      headBytes: return
+  if headBytes <= 0 or headBytes > slot.input.len: return
+  var head = default(Head)
+  if head.findHeadEnd(toOpenArray(slot.input, 0, headBytes-1)) != headBytes: return
   for field in ["host", "content-type"]:
-    if head.countHeaderByName(field) > 1: return # Application selectors must be unambiguous.
-  if head.methodOf != http_msg.tag(http_msg.mPost) or head.target != "/":
+    if head.headerCount(field) > 1: return # Application selectors must be unambiguous.
+  if head.methodOf != "POST" or head.target != "/":
     slot.output = response("405 Method Not Allowed")
     return # Public WS methods and other HTTP routes acquire no management authority.
-  if head.getStr(http_msg.hHost).len == 0: return
+  if head.header("host").len == 0: return
   for forbidden in ["origin", "transfer-encoding", "upgrade", "expect", "content-encoding"]:
-    if head.countHeaderByName(forbidden) > 0: return # Browser and alternate body transports are refused.
-  let contentType = head.getStr(http_msg.hContentType).toLowerAscii()
+    if head.headerCount(forbidden) > 0: return # Browser and alternate body transports are refused.
+  let contentType = head.header("content-type").toLowerAscii()
   let length = head.contentLength
-  if contentType notin ["application/json", "application/json; charset=utf-8"] or length < 0: return
-  if length > MaxManagementBody:
+  if contentType notin ["application/json", "application/json; charset=utf-8"] or
+      not head.hasHeader("content-length"): return
+  if length > uint64(MaxManagementBody):
     slot.output = response("413 Content Too Large")
     return
   slot.output = ""
-  length
+  int(length)
 
 proc processBody(slot: var Connection, body: string, hasSuffix: bool, info: ManagementInfo) =
   ## Dispatch only a complete authorized body against this turn's context.
@@ -202,14 +197,6 @@ proc tick*(server: var ManagementServer) =
   if not server.opened: return
   server.resources.tick() # Scalar/path observations remain independent of every canonical lease.
   server.info.resources = server.resources.snapshot()
-  let existingTags = server.httpTags
-  let tags: http_msg.HttpTags =
-    if existingTags != nil:
-      existingTags # A running listener reuses its vocabulary.
-    else:
-      let vocabulary = http_msg.newHttpTags()
-      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
-      vocabulary
   pollHttpStreams()
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
@@ -249,8 +236,8 @@ proc tick*(server: var ManagementServer) =
     if not slot.stream.canSend: continue
     if slot.output.len == 0:
       let headBytes = slot.stream.receiveHead(slot.input)
-      if headBytes != http_parse.ParseIncomplete:
-        let length = slot.processHead(tags, headBytes)
+      if headBytes != HeadPending:
+        let length = slot.processHead(headBytes)
         slot.input = ""
         if length >= 0:
           slot.stream.requestBody(length)

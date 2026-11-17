@@ -1,8 +1,14 @@
 {
   "defines": [],
   "directory": "crypto",
-  "includes": ["crypto"],
-  "libraries": ["crypto"],
+  "includes": [
+    "crypto",
+    "quic"
+  ],
+  "libraries": [
+    "crypto",
+    "quic"
+  ],
   "observers": [],
   "prepared": false
 }

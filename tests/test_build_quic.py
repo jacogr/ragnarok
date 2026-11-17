@@ -115,7 +115,7 @@ class QuicheSourceStaging(unittest.TestCase):
             native = root/'native/quic'
             native.mkdir(parents=True)
             for name in ('BUILD.bazel', 'transport_bridge.cc', 'transport_bridge.h',
-                         'cert_fields.c', 'cert_fields.h'):
+                         'cert_fields.c', 'cert_fields.h', 'http_parser.cc', 'http_parser.h'):
                 # Distinct project inputs demonstrate that only embedding rules are appended.
                 (native/name).write_text('project '+name+'\n')
             with patch.object(build_quic, 'ROOT', root):

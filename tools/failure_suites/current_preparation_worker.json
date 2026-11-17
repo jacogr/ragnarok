@@ -14,6 +14,7 @@
     }
   ],
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "native_libraries": [
     "bandersnatch"
   ],

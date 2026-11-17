@@ -10,7 +10,7 @@
 ## request execution and subscription state.
 
 import std/[atomics, ioring, locks, streamio, threadpool]
-import std/http/httpparse as http_parse
+import ../lib/http_head
 import ./wire
 
 const PendingReadiness = low(int)
@@ -105,7 +105,7 @@ proc pump*(stream: RpcWireStream) =
 proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
   ## The single owner can safely change the shared stream deadline between operations.
   var (reader, writer) = openStreams(fd)
-  var scanner = default(http_parse.HeadScanner)
+  var scanner = default(Head)
   var readingHead = true
   var atEof = false
   var frameDeadline = never
@@ -127,7 +127,7 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
         if reader.buffered > 0:
           if readingHead:
             let extent = scanner.findHeadEnd(reader.peek)
-            if extent != http_parse.ParseIncomplete:
+            if extent != HeadPending:
               if extent < 0:
                 # Publish the framing failure and let the dispatcher retire the connection.
                 s.input = WireInput(kind: BadHead)
@@ -139,6 +139,7 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
                 reader.consume(extent)
                 s.input = WireInput(kind: UpgradeHead, head: move(head))
                 readingHead = false
+              scanner.close() # Upgrade policy reparses detached bytes on the dispatcher.
               frameDeadline = never
               atomicStore(s.inputReady, true, moRelease)
               atomicStore(s.bufferedInput, not atEof and reader.buffered > 0, moRelease)

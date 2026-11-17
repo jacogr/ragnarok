@@ -5,12 +5,14 @@
     "current_stf_trace_genesis_input"
   ],
   "includes": [
+    "bandersnatch",
     "crypto",
-    "bandersnatch"
+    "quic"
   ],
   "libraries": [
     "bandersnatch",
-    "crypto"
+    "crypto",
+    "quic"
   ],
   "observers": [],
   "prepared": false

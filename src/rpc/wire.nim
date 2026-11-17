@@ -12,12 +12,11 @@
 import std/[strutils, base64, sha1]
 import ../lib/utf8
 import std/websocket as stock
-import std/http/httpmsg as http_msg
-import std/http/httpparse as http_parse
+import ../lib/http_head
+from std/http/httpparse import ParseIncomplete
 export utf8
 
 const MaxMessage* = 16384
-const MaxHeader* = http_parse.MaxHeadLen
 const MaxClientFrameHeader* = 8 # Two base bytes, two length bytes and four mask bytes.
 
 proc frame*(payload: string, opcode = 1): string =
@@ -31,32 +30,31 @@ proc hasToken(value, expected: string): bool =
     if token.strip().toLowerAscii() == expected: return true
   false
 
-proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags()): string =
+proc upgrade*(header: string, uiPort: uint16 = 0): string =
   ## Accept a complete version-13 WebSocket upgrade at /, with no body and an optional exact UI browser Origin.
   ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
-  ## The stock request-head parser handles syntax. This routine owns Upgrade,
+  ## The Balsa request-head parser handles syntax. This routine owns Upgrade,
   ## endpoint, selector uniqueness and exact Origin policy.
   result = ""
-  # Each handshake owns its parsed message until return. The listener reuses the vocabulary.
-  var head = http_msg.initHttpMsg(tags)
-  if http_parse.parseRequestHead(toOpenArray(header, 0, header.len - 1), head) != header.len: return
-  if head.versionOf != http_msg.tag(http_msg.tV11): return # This endpoint uses the HTTP/1.1 Upgrade handshake.
+  var head = default(Head)
+  if not head.parse(header): return
+  if head.version != "HTTP/1.1": return # This endpoint uses the HTTP/1.1 Upgrade handshake.
   for field in ["host", "origin", "connection", "upgrade", "sec-websocket-key",
       "sec-websocket-version"]:
-    if head.countHeaderByName(field) > 1: return # Handshake selectors cannot have conflicting values.
-  if head.methodOf != http_msg.tag(http_msg.mGet) or head.target != "/": return
-  if head.contains(http_msg.hContentLength) or head.contains(http_msg.hTransferEncoding): return
+    if head.headerCount(field) > 1: return # Handshake selectors cannot have conflicting values.
+  if head.methodOf != "GET" or head.target != "/": return
+  if head.hasHeader("content-length") or head.hasHeader("transfer-encoding"): return
   var origin = ""
-  if head.contains(http_msg.hOrigin):
+  if head.hasHeader("origin"):
     # Browser origins remain an application allowlist checked before any upgrade response.
     let suffix = if uiPort == 80: "" else: ":" & $uiPort
-    origin = head.getStr(http_msg.hOrigin)
+    origin = head.header("origin")
     if uiPort == 0 or origin notin ["http://127.0.0.1" & suffix, "http://localhost" &
         suffix]: return
-  if head.getStr(http_msg.hHost).len == 0 or head.findHeader("sec-websocket-version") != "13" or
-      not hasToken(head.getStr(http_msg.hConnection), "upgrade") or
-      head.getStr(http_msg.hUpgrade).toLowerAscii() != "websocket": return
-  let key = head.findHeader("sec-websocket-key")
+  if head.header("host").len == 0 or head.header("sec-websocket-version") != "13" or
+      not hasToken(head.header("connection"), "upgrade") or
+      head.header("upgrade").toLowerAscii() != "websocket": return
+  let key = head.header("sec-websocket-key")
   if key.len != 24: return
   try: # The standard base64 decoder reports malformed input through its public error contract.
     let decoded = base64.decode(key)
@@ -110,7 +108,7 @@ proc decodeFrame*(input: openArray[char]): FrameResult =
     return FrameResult(state: invalid) # No extensions, unmasked input or 64-bit lengths.
   var header = default(stock.WsFrame)
   let start = stock.parseFrameHeader(input, header)
-  if start == http_parse.ParseIncomplete: return FrameResult(state: incomplete)
+  if start == ParseIncomplete: return FrameResult(state: incomplete)
   if start < 0 or header.len > MaxMessage: return FrameResult(state: invalid)
   if input.len < start + header.len: return FrameResult(state: incomplete)
   var payload = ""

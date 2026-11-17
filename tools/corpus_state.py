@@ -31,7 +31,7 @@ def guest_scenario(compiler, checks, libraries, oracle, fixtures, *, name, refer
         checks.folder/(name+'-requests.txt'), requests, expected, name+'-corpus',
         metadata=dict(**evidence, reference=reference), request_evidence=False,
         arguments=(FIXTURE_CONTRACTS['state_report'][1],),
-        crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     announce(message, corpus['passed'])
     return corpus
 
@@ -309,7 +309,7 @@ def current_stf_corpus(compiler, report, checks, libraries):
     require_fixture_contracts(('current_stf', 'state_report'))
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_driver.nim',
         'current-stf', crypto_library=libraries['crypto'],
-        native_libraries=(libraries['bandersnatch'],))
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   scope='complete current-schema same-epoch empty-body STF; two explicit services')
     compare_corpus(corpus, checks.command,
@@ -328,7 +328,7 @@ def current_stf_effects_corpus(compiler, report, checks, libraries):
     expected, evidence = expected_observations()
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_effects_driver.nim',
         'current-stf-effects', crypto_library=libraries['crypto'],
-        native_libraries=(libraries['bandersnatch'],))
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   scope='five two-block current STF chains; nonempty preimages and literal guest effects')
     compare_corpus(corpus, checks.command,
@@ -349,7 +349,7 @@ def current_stf_epoch_corpus(compiler, report, checks, libraries):
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_epoch_driver.nim',
         'current-stf-epoch', crypto_library=libraries['crypto'],
-        native_libraries=(libraries['bandersnatch'],))
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   **evidence)
     compare_corpus(corpus, checks.command,
@@ -388,7 +388,7 @@ def current_stf_eviction_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-eviction-proofs.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_eviction_driver.nim',
-        'current-stf-eviction', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-eviction', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence, nonretention_refusals=2,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
     compare_corpus(corpus, checks.command,
@@ -408,7 +408,7 @@ def current_stf_verdict_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-verdict-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_verdict_driver.nim',
-        'current-stf-verdicts', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-verdicts', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   reference='OpenSSL Ed25519, mathematical Thin and independent complete-map verdict/fault STF')
@@ -429,7 +429,7 @@ def current_stf_reporting_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-reporting-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_driver.nim',
-        'current-stf-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
@@ -450,7 +450,7 @@ def current_stf_epoch_reporting_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-epoch-reporting-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_epoch_reporting_driver.nim',
-        'current-stf-epoch-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-epoch-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
@@ -471,7 +471,7 @@ def current_stf_population_reporting_corpus(compiler, report, checks, libraries)
     source = checks.folder/'current-stf-population-reporting-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_population_reporting_driver.nim',
-        'current-stf-population-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-population-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
@@ -492,7 +492,7 @@ def current_stf_report_guests_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-report-guests-requests.txt'
     source.write_text('\n'.join(requests)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
-        'current-stf-report-guests', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-report-guests', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   reference='mathematical Thin, OpenSSL Ed25519, literal guest semantics and independent GP gas')
@@ -1049,7 +1049,7 @@ def current_stf_trace_files_corpus(compiler, report, checks, libraries):
     source = checks.folder/'current-stf-trace-files-requests.txt'
     source.write_text('\n'.join(invoke)+'\n')
     compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
-        'current-stf-trace-files', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-trace-files', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     corpus = dict(build=compiled, passed=False, **evidence,
                   reference='independent exact published files, signed STF blocks/complete maps and refusal isolation')
     compare_corpus(corpus, checks.command,

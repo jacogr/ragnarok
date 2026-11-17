@@ -48,7 +48,8 @@ def stage_quiche(source):
     native = ROOT/'native/quic'
     rules = Path('quiche/BUILD.bazel')
     files[rules] += b'\n'+(native/'BUILD.bazel').read_bytes()
-    for name in ('transport_bridge.cc', 'transport_bridge.h', 'cert_fields.c', 'cert_fields.h'):
+    for name in ('transport_bridge.cc', 'transport_bridge.h', 'cert_fields.c', 'cert_fields.h',
+                 'http_parser.cc', 'http_parser.h'):
         files[Path('quiche/ragnarok')/name] = (native/name).read_bytes()
     target.mkdir(parents=True, exist_ok=True)
     for path in sorted(target.rglob('*'), reverse=True):
