@@ -12,6 +12,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from native_dependencies import ROOT, require_submodule, run
@@ -96,6 +97,23 @@ def bazel_command(binary, boringssl):
     return command+['//quiche:libquic_proof.so']
 
 
+def run_bazel(command, source):
+    """Retain full compiler output and surface its bounded tail even if artifact upload fails."""
+    path = LOGS/'build.log'
+    try:
+        with path.open('w') as log:
+            subprocess.run(list(map(str, command)), cwd=source, stdout=log, stderr=log, check=True)
+    except subprocess.CalledProcessError:
+        # Failure reporting must survive unavailable artifact storage without dumping a whole build.
+        with path.open('rb') as log:
+            log.seek(0, os.SEEK_END)
+            log.seek(max(0, log.tell()-8192))
+            tail = log.read().decode('utf-8', errors='replace')
+        print('QUICHE build failed; final log bytes ('+str(path)+'):\n'+tail,
+              file=sys.stderr, flush=True)
+        raise
+
+
 def build_native(paths):
     """Reuse only a hash-validated ABI; otherwise compile the production provider."""
     system = platform.system()
@@ -117,11 +135,10 @@ def build_native(paths):
             (LOGS/'build.log').write_text('Reused validated native library: '+str(library)+'\n')
             return library
         source = stage_quiche(paths['quiche'])
-        with (LOGS/'build.log').open('w') as log:
-            command = bazel_command(binary, paths['boringssl'])
-            subprocess.run(list(map(str, command)), cwd=source, stdout=log, stderr=log, check=True)
-            shutil.copyfile(source/'bazel-bin/quiche/libquic_proof.so', library)
-            if system == 'Darwin':
-                # Consumers load one stable basename independent of the generated Bazel tree.
+        run_bazel(bazel_command(binary, paths['boringssl']), source)
+        shutil.copyfile(source/'bazel-bin/quiche/libquic_proof.so', library)
+        if system == 'Darwin':
+            # Consumers load one stable basename independent of the generated Bazel tree.
+            with (LOGS/'build.log').open('a') as log:
                 run(['install_name_tool', '-id', '@rpath/'+library.name, library], log)
     return library

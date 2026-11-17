@@ -3,6 +3,9 @@
 
 """Verify native ABI reuse and pristine QUICHE embedding without native compilation."""
 import sys
+import io
+import subprocess
+from contextlib import redirect_stderr
 import tempfile
 from pathlib import Path
 import unittest
@@ -61,6 +64,28 @@ class QuicLibraryReuse(unittest.TestCase):
                         self.assertEqual(build_quic.build_native({'quiche': root, 'boringssl': root}), library)
                         self.assertEqual(compile.called, change != 'reuse')
                         self.assertEqual(library.read_bytes(), b'compiled fixture')
+
+
+class QuicBuildDiagnostics(unittest.TestCase):
+    """A failed native builder remains diagnosable when CI cannot upload its artifact."""
+
+    def test_failure_tail_and_exit_status(self):
+        """Run a real failing child: retain all bytes, print only the tail, and preserve exit two."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            captured = io.StringIO()
+            command = [sys.executable, '-c',
+                       "import sys; sys.stdout.write('early diagnostic\\n'+'x'*20000); "
+                       "sys.stdout.flush(); sys.stderr.write('\\nfinal diagnostic\\n'); sys.exit(2)"]
+            with patch.object(build_quic, 'LOGS', root), redirect_stderr(captured):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    build_quic.run_bazel(command, root)
+            self.assertEqual(failure.exception.returncode, 2)
+            self.assertIn('final diagnostic', captured.getvalue())
+            self.assertNotIn('early diagnostic', captured.getvalue())
+            self.assertLess(len(captured.getvalue()), 8500)
+            self.assertEqual((root/'build.log').read_text(),
+                             'early diagnostic\n'+'x'*20000+'\nfinal diagnostic\n')
 
 
 class CryptoLibraryReuse(unittest.TestCase):
