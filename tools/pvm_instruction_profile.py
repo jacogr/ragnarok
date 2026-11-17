@@ -257,6 +257,37 @@ def final_return_dump(output, executions, owners=1):
     return parts[output.name+'.'+str(executions)]
 
 
+def validate_return_dump_identity(output, executions, scope, binary):
+    """Bind a bounded complete process to embedded ordinals, PID, exact command/return scope and events.
+
+    The ordinary reader still owns complete file/footer checks. This stronger original-image
+    contract rejects swapped intact files and foreign processes before any selected case is reported.
+    """
+    if type(executions) is not int or not 1 <= executions <= 143:
+        raise ValueError('invalid bounded return identity count')
+    process = None
+    for index in range(1, executions+2):
+        # Callgrind's unnumbered termination file carries the next part ordinal, not the last return.
+        final = index == executions+1
+        path = output if final else output.with_name(output.name+'.'+str(index))
+        text = path.read_text()
+        pid = re.findall(r'^pid: (.*)$', text, re.M)
+        part = re.findall(r'^part: (.*)$', text, re.M)
+        command = re.findall(r'^cmd:\s+(.+)$', text, re.M)
+        trigger = re.findall(r'^desc: Trigger: (.*)$', text, re.M)
+        if (len(pid) != 1 or re.fullmatch(r'[1-9][0-9]*', pid[0]) is None
+                or part != [str(index)] or command != [str(binary)]
+                or trigger != ['Program termination' if final else '--dump-after='+scope]):
+            raise ValueError('Foreign or reordered Callgrind return identity')
+        if process is None:
+            process = pid[0]
+        elif pid[0] != process:
+            raise ValueError('Mixed Callgrind return processes')
+        counts = profile_counts(text, allow_empty=final)
+        if list(counts) != ['Ir', 'Bc', 'Bcm', 'Bi', 'Bim'] or final and any(counts.values()):
+            raise ValueError('Incomplete return events or nonzero termination counters')
+
+
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
             dump_symbols=(), executions=1, arguments=(), deep=False, requests=False, owners=1):
     """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""

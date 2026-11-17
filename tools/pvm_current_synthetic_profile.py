@@ -18,7 +18,8 @@ from native_checks import NativeChecks, ROOT
 from pvm_benchmark_report import NAMES
 from pvm_ci_performance import execution_environment
 from pvm_guest_compare import unchanged
-from pvm_instruction_profile import calibrate_scope, collect, exclusive_costs, profile_counts
+from pvm_instruction_profile import (calibrate_scope, collect, exclusive_costs, profile_counts,
+                                     validate_return_dump_identity)
 from pvm_native_ci import host_identity
 from pvm_native_samples import match_measured_native_invocations, validate_native_sample_totals
 from pvm_performance_report import validate_current_report
@@ -71,8 +72,8 @@ def canonical_synthetic_plan(cohort, revision):
             RAGNAROK_PVM_BENCHMARK=str(fixture), RAGNAROK_PVM_PRICING='prepared',
             RAGNAROK_PVM_BENCH_ASSERT_PROBE='0')
         if (not fixture.is_absolute() or str(fixture) not in files or env != environment
-                or any(row['run']['benchmark_environment'] != environment or
-                       row['run']['command'] != [build['binary']] for row in rows)):
+                or rows[0]['run']['command'] != [build['binary']]
+                or any(row['run'] != rows[0]['run'] for row in rows)):
             raise ValueError('Canonical synthetic invocation recipe disagreement')
         processes.append(dict(role=role, rows=rows, environment=environment,
                               inputs={str(fixture): files[str(fixture)]}))
@@ -151,6 +152,7 @@ def profile_current_synthetic(cohort_path, revision, folder=None):
             executed, final = collect(checks, binary, name, scope,
                 execution_environment(**process['environment']), 1800,
                 dump_symbols=(scope,), executions=13, owners=len(NAMES))
+            validate_return_dump_identity(folder/(name+'.callgrind'), 13*len(NAMES), scope, binary)
             parsed = parse_synthetic(executed['output'], role, require_full=True)
             hashes = {part.name: hashlib.sha256(part.read_bytes()).hexdigest()
                       for part in sorted(folder.glob(name+'.callgrind*'))}

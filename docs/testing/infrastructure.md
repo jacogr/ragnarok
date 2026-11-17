@@ -517,7 +517,10 @@ It runs each original synthetic image once per policy, retaining all eleven owne
 calls in order. The stable public boundary includes scalar callbacks/resumes and publication;
 case-specific cold/final return dumps are selected afterward. Complete parsing and every raw part
 remain required, including unselected calls. Per-owner measured native work/state must match the
-canonical process. Checked fallback under JIT policy remains explicit. Calibration and reports
+canonical process. All case rows must identify the same original process receipt. Embedded part
+ordinals, PID, command and return scope bind raw counters to case positions; all five event columns
+and a completely zero program-termination dump remain mandatory. Checked fallback under JIT policy
+remains explicit. Calibration and reports
 are separate from the original guest files; no source/image rebuild or input filter is introduced.
 
 Current synthetic and guest drivers also report copied native counters after each complete,

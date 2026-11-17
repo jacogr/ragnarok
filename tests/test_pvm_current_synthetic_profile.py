@@ -38,6 +38,17 @@ def host_fallback(text):
     return '\n'.join(lines)+'\n'
 
 
+def raw_part(number, binary):
+    """Independent real-format metadata binds every raw counter body to its process/return ordinal."""
+    text = counters(number)
+    if number == 0:
+        text = text.replace('10 1 2 0', '0 0 0 0')
+    metadata = ('pid: 1234\ncmd:  '+str(binary)+'\npart: '+str(number or 144)+
+                '\ndesc: Trigger: '+('--dump-after=runPreparedSynthetic_literal' if number else
+                                      'Program termination')+'\n')
+    return text.replace('positions: line\n', metadata+'positions: line\n')
+
+
 def synthetic_cohort(root):
     """Seal independent synthetic image/input bytes and both complete original process recipes."""
     value = cohort(root)
@@ -69,6 +80,13 @@ def synthetic_cohort(root):
                     RAGNAROK_PVM_BACKEND=role, RAGNAROK_PVM_PERFORMANCE='1',
                     RAGNAROK_PVM_BENCHMARK=str(fixture), RAGNAROK_PVM_PRICING='prepared',
                     RAGNAROK_PVM_BENCH_ASSERT_PROBE='0'))
+        for order in (0, 1):
+            # The real runner copies one identical complete process receipt to its eleven case rows.
+            shared = next(row['run'] for row in value['runs'] if
+                          (row['case_id'], row['role'], row['order']) == (NAMES[0], role, order))
+            for row in value['runs']:
+                if row['role'] == role and row['order'] == order and row['case_id'] in NAMES:
+                    row['run'] = deepcopy(shared)
     return value
 
 
@@ -88,6 +106,7 @@ class CurrentSyntheticProfile(unittest.TestCase):
         self.change = lambda text: text
         self.mutate = None
         self.omit = None
+        self.raw_change = lambda number, text: text
 
     def run_profile(self):
         """Exercise real image guards, all-case parsing, counter qualification and numbered raw selection."""
@@ -103,8 +122,9 @@ class CurrentSyntheticProfile(unittest.TestCase):
                                    if str(arg).startswith('--callgrind-out-file=')))
                 for index in range(1, 144):
                     if index != self.omit:
-                        target.with_name(target.name+'.'+str(index)).write_text(counters(index))
-                target.write_text(counters(0).replace('10 1 2 0', '0 0 0 0'))
+                        target.with_name(target.name+'.'+str(index)).write_text(
+                            self.raw_change(index, raw_part(index, self.root/'synthetic-image')))
+                target.write_text(self.raw_change(0, raw_part(0, self.root/'synthetic-image')))
                 text = self.change(wire(role))
                 if self.mutate:
                     self.mutate()
@@ -196,4 +216,35 @@ class CurrentSyntheticProfile(unittest.TestCase):
                 row['parsed']['diagnostics']['scope_observations'].pop('native_observations')
             with self.subTest(broken=broken), self.assertRaises(ValueError):
                 self.run_profile()
+        self.assertEqual(self.processes, [])
+
+    def test_embedded_identity_and_complete_event_columns_bind_every_part(self):
+        """Intact swaps, foreign processes/triggers, missing events and leftover branch work all refuse."""
+        for broken in ('swapped', 'pid', 'command', 'scope', 'events', 'termination'):
+            def change(number, text):
+                """Change one independent identity dimension while retaining all 143 file names."""
+                if broken == 'swapped' and number in (1, 40):
+                    return raw_part(40 if number == 1 else 1, self.root/'synthetic-image')
+                if number == 40:
+                    if broken == 'pid': return text.replace('pid: 1234', 'pid: 5678')
+                    if broken == 'command': return text.replace('cmd:  ', 'cmd:  foreign-')
+                    if broken == 'scope': return text.replace('runPreparedSynthetic_literal', 'other')
+                    if broken == 'events': return text.replace('events: Ir Bc Bcm Bi Bim', 'events: Ir').replace(' 10 1 2 0', '')
+                if broken == 'termination' and number == 0:
+                    return text.replace('0 0 0 0 0', '0 1 0 0 0')
+                return text
+            self.raw_change = change
+            with self.subTest(broken=broken), self.assertRaises(ValueError):
+                self.run_profile()
+            result = json.loads((self.folder/'synthetic-results.json').read_text())
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(result['profiles'], [])
+
+    def test_one_case_cannot_claim_a_different_original_process(self):
+        """Equal command/environment cannot merge distinct canonical process receipts."""
+        row = next(row for row in self.value['runs'] if
+                   (row['case_id'], row['role'], row['order']) == (NAMES[3], 'jit', 0))
+        row['run']['log'] = 'different-original-process.log'
+        with self.assertRaisesRegex(ValueError, 'invocation recipe'):
+            self.run_profile()
         self.assertEqual(self.processes, [])
