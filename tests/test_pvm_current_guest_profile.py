@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Qualify current Sieve profiling with literal complete-state receipts and inert tool calls."""
+"""Qualify Sieve/Pinky profiling with literal complete-state receipts and inert tool calls."""
 from copy import deepcopy
 import hashlib
 import json
@@ -44,25 +44,29 @@ def cohort(root):
         '-d:pvmArm64JitOwnerReceipt', '--passC:-I'+str(root/'tests/performance'),
         '--passC:-I'+str(root/'native/pvm_jit'), '--nimcache:'+str(root/'cache'),
         '--out:'+str(binary), str(driver)]
-    for limit in (100000, 10000000):
+    for guest, limit in (('sieve', 100000), ('sieve', 10000000), ('pinky', 1)):
         # Distinct literal inputs expose accidental cross-size fixture selection.
-        folder = root/'inputs'/str(limit)
+        folder = root/'inputs'/str(limit) if guest == 'sieve' else root/'inputs/pinky/1'
         folder.mkdir(parents=True)
         data, expected = folder/('input-'+str(limit)+'.bin'), folder/('expected-'+str(limit)+'.bin')
         for member in (data, expected):
-            member.write_bytes(member.name.encode())
+            member.write_bytes((guest+':'+member.name).encode())
             files[str(member)] = digest(member.read_bytes())
         for row in value['runs']:
-            if row['case_id'] != 'sieve-'+str(limit) or row['role'] == 'reference':
+            if row['case_id'] != guest+'-'+str(limit) or row['role'] == 'reference':
                 continue
             role = row['role']
             row['run'].update(command=[str(binary)], benchmark_environment=dict(
                 RAGNAROK_PVM_BACKEND=role, RAGNAROK_PVM_PERFORMANCE='1',
-                RAGNAROK_PVM_GUEST='sieve', RAGNAROK_PVM_PRICING='prepared',
+                RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING='prepared',
                 RAGNAROK_PVM_SIEVE_SAMPLES='13', RAGNAROK_PVM_SIEVE_CLOCK='1',
                 RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
-                RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_ARTIFACT=str(artifact)))
-            native = dict(fragments=1, calls=12, operations=42, code_bytes=650, branches=12, headers=12)
+                RAGNAROK_PVM_SIEVE_EXPECTED=str(expected)))
+            if guest == 'sieve':
+                row['run']['benchmark_environment']['RAGNAROK_PVM_SIEVE_ARTIFACT'] = str(artifact)
+            native = (dict(fragments=1, calls=12, operations=42, code_bytes=650, branches=12, headers=12)
+                      if guest == 'sieve' else
+                      dict(fragments=2, calls=24, operations=420, code_bytes=4096, branches=24, headers=0))
             if role == 'interpreted': native = dict.fromkeys(native, 0)
             row['parsed']['native'] = native
             row['parsed']['policy'].update(actual=role, **{key: native[key] for key in
@@ -70,18 +74,23 @@ def cohort(root):
     return value
 
 
-def wire(limit, role):
+def wire(limit, role, guest='sieve'):
     """Literal full-call grammar retains actual ownership and native activity without a real executable."""
     body = 'PVM_MEASURE_SCOPE,1,full-invocation-v1,consume-before-reuse-v1,process-cpu\n'
+    if guest != 'sieve':
+        # The common scope receipt precedes the independent non-default family identity.
+        body += 'GUEST,'+guest+'\n'
     body += observed(samples=13, clocked=True).replace(',1000,', ','+str(limit)+',')
     if role == 'jit':
-        body += ('PVM_POLICY,1,jit,1,1,1,jit,1,12,42\n'
-                 'ARM_OWNER,sieve,1,12,42,650,0,12,12\n'
+        activity = ('1,12,42' if guest == 'sieve' else '2,24,420')
+        occupancy = ('650,0,12,12' if guest == 'sieve' else '4096,0,24,0')
+        body += ('PVM_POLICY,1,jit,1,1,1,jit,'+activity+'\n'
+                 'ARM_OWNER,'+guest+','+activity+','+occupancy+'\n'
                  'PVM_RUNTIME_OWNER,1,guest-process,application-process,prestarted,1\n'
                  'PVM_RUNTIME_CLOSE,1,guest-process,3,7\n')
     else:
         body += ('PVM_POLICY,1,interpreted,1,1,0,interpreted,0,0,0\n'
-                 'ARM_OWNER,sieve,0,0,0,0,0,0,0\n'
+                 'ARM_OWNER,'+guest+',0,0,0,0,0,0,0\n'
                  'PVM_RUNTIME_NONE,1,guest-process,interpreted-policy,1\n')
     return body+('PVM_NATIVE_COMPILATION,1,guest-process,0,0\n'
                  'PVM_OWNER_WINDOW,1,guest-process,1000000000,2000000000,includes-driver-oracles\n')
@@ -115,6 +124,7 @@ class CurrentGuestProfile(unittest.TestCase):
             """A worst-case unfair scheduler leaves the compiler idle; fair collection retains native work."""
             if '--tool=callgrind' in arguments:
                 role = options['environment']['RAGNAROK_PVM_BACKEND']
+                guest = options['environment']['RAGNAROK_PVM_GUEST']
                 limit = int(name.split('-')[1])
                 target = Path(next(arg.split('=', 1)[1] for arg in arguments
                                    if str(arg).startswith('--callgrind-out-file=')))
@@ -122,7 +132,7 @@ class CurrentGuestProfile(unittest.TestCase):
                 for index in range(1, 14):
                     target.with_name(target.name+'.'+str(index)).write_text(counters(99+index))
                 target.write_text(counters(0).replace('10 1 2 0', '0 0 0 0'))
-                output = wire(limit, role)
+                output = wire(limit, role, guest)
                 if role == 'jit' and '--fair-sched=yes' not in arguments:
                     output = output.replace('jit,1,1,1,jit,1,12,42', 'jit,1,1,1,interpreted,0,0,0')
                     output = output.replace('sieve,1,12,42,650,0,12,12', 'sieve,0,0,0,0,0,0,0')
@@ -145,12 +155,47 @@ class CurrentGuestProfile(unittest.TestCase):
         """Keep original call identities and cold/reused simulated counters without timing samples."""
         report = self.run_profile()
         self.assertEqual(report['status'], 'passed')
-        self.assertEqual([(row['limit'], row['role']) for row in report['profiles']],
-                         [(100000, 'interpreted'), (100000, 'jit'), (10000000, 'jit')])
+        self.assertEqual([(row['case'], row['limit'], row['role']) for row in report['profiles']],
+                         [('sieve', 100000, 'interpreted'), ('sieve', 100000, 'jit'),
+                          ('sieve', 10000000, 'jit'), ('pinky', 1, 'interpreted'), ('pinky', 1, 'jit')])
         for row in report['profiles']:
             self.assertEqual((row['checked_calls'], row['cold']['Ir'], row['reused']['Ir']), (13, 100, 112))
             self.assertEqual(len(row['profile_hashes']), 14) # Thirteen returns and the empty final dump.
             self.assertNotIn('invocation', row)
+
+    def test_pinky_requires_its_family_all_calls_and_native_working_set(self):
+        """Neither a Sieve receipt, missing frame call nor changed native image can pass as Pinky."""
+        diagnostics = dict(family='unknown execution output',
+            call='foreign or out-of-order execution sample',
+            native='native execution or code working set')
+        for mutation in ('family', 'call', 'native'):
+            def alter(text):
+                """Damage only Pinky after every preceding Sieve profile has passed its controls."""
+                if '\nGUEST,pinky\n' not in text: return text
+                if mutation == 'family': return text.replace('GUEST,pinky', 'GUEST,sieve')
+                if mutation == 'native':
+                    return text.replace('pinky,2,24,420,4096', 'pinky,2,24,420,4097')
+                return '\n'.join(line for line in text.splitlines()
+                    if not line.startswith('SIEVE,ragnarok_prepared,1,7,'))+'\n'
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, diagnostics[mutation]):
+                self.output_change = alter
+                self.run_profile()
+            self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'failed')
+
+    def test_pinky_snapshot_authority_cannot_be_replaced_by_an_extra_artifact(self):
+        """Pinky must retain its original self-contained snapshot recipe and both sealed files."""
+        for mutation in ('snapshot', 'expected', 'artifact', 'policy'):
+            value = deepcopy(self.value)
+            row = next(r for r in value['runs'] if (r['case_id'], r['role'], r['order']) ==
+                       ('pinky-1', 'jit', 0))
+            env = row['run']['benchmark_environment']
+            if mutation in ('snapshot', 'expected'):
+                key = 'RAGNAROK_PVM_SIEVE_'+('INPUT' if mutation == 'snapshot' else 'EXPECTED')
+                del value['identity']['files'][env[key]]
+            elif mutation == 'artifact': env['RAGNAROK_PVM_SIEVE_ARTIFACT'] = 'unrelated.polkavm'
+            else: row['parsed']['policy']['actual'] = 'interpreted'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                profile.canonical_guest_plan(value, REVISION, [100000])
 
     def test_changed_native_activity_cannot_pass(self):
         """A valid process with a different native working set cannot authorize attribution."""
