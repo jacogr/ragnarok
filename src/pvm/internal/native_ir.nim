@@ -71,10 +71,11 @@ func kind*(span: NativeSpan): NativeKind {.inline.} =
   ## Read the exact candidate kind without copying its call certificate.
   span.loopValue.kind
 
-proc promote*(span: var NativeSpan, loop: NativeLoopInfo) =
-  ## The session owns promotion authority and has validated the checked source certificate.
-  assert span.loopValue.sourceSpan == 0 and loop.sourceSpan != 0
+proc promote*(span: var NativeSpan, loop: NativeLoopInfo): bool {.discardable.} =
+  ## The session validates source geometry; a missing or repeated promotion preserves its earlier certificate.
+  if span.loopValue.sourceSpan != 0 or loop.sourceSpan == 0: return false
   span.loopValue = loop
+  true
 
 func initNativeSpan*(entry, first: uint32, epoch: uint64): NativeSpan =
   ## Start an unpublished candidate at an existing checked node and original source fact.

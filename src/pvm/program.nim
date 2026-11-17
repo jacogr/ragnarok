@@ -589,39 +589,41 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
 
 iterator admissionMaskBytes*(program: Program): byte =
   ## Copied marker bytes from an immutable, fully validated owner.
-  ## Bounds and canonical padding were established by decode; no borrowed storage escapes.
-  assert program.data != nil
+  ## Bounds and padding were established by decode. An absent owner enumerates no bytes;
+  ## admission callers still validate codeLength/instructionCount before granting a source capability.
   let data = program.data
-  let count = data.codeLength div 8 + int(data.codeLength mod 8 != 0)
-  for offset in 0..<count:
-    yield data.bytes[data.maskOffset+offset]
+  if data != nil:
+    let count = data.codeLength div 8 + int(data.codeLength mod 8 != 0)
+    for offset in 0..<count:
+      yield data.bytes[data.maskOffset+offset]
 
 iterator admissionMaskWords*(program: Program): uint64 =
   ## Copy zero-extended, little-endian groups of validated marker bytes.
-  assert program.data != nil
+  ## An absent owner has no mask words; this enumeration alone never validates a Program.
   let data = program.data
-  let count = data.codeLength div 8 + int(data.codeLength mod 8 != 0)
-  var offset = 0
-  # The full-word read stays inside the exact immutable mask extent.
-  var one = 1'u64
-  var lowByte = 0'u8
-  copyMem(addr lowByte, addr one, 1)
-  while count-offset >= 8:
-    var word = 0'u64
-    if lowByte == 1:
-      copyMem(addr word, unsafeAddr data.bytes[data.maskOffset+offset], 8)
-    else:
-      # Assemble the canonical order on hosts whose native word stores the high byte first.
-      for i in 0..<8:
+  if data != nil:
+    let count = data.codeLength div 8 + int(data.codeLength mod 8 != 0)
+    var offset = 0
+    # The full-word read stays inside the exact immutable mask extent.
+    var one = 1'u64
+    var lowByte = 0'u8
+    copyMem(addr lowByte, addr one, 1)
+    while count-offset >= 8:
+      var word = 0'u64
+      if lowByte == 1:
+        copyMem(addr word, unsafeAddr data.bytes[data.maskOffset+offset], 8)
+      else:
+        # Assemble the canonical order on hosts whose native word stores the high byte first.
+        for i in 0..<8:
+          word = word or (uint64(data.bytes[data.maskOffset+offset+i]) shl (8*i))
+      yield word
+      offset += 8
+    if offset < count:
+      # The final group sees implicit zeros past its validated, possibly short byte extent.
+      var word = 0'u64
+      for i in 0..<count-offset:
         word = word or (uint64(data.bytes[data.maskOffset+offset+i]) shl (8*i))
-    yield word
-    offset += 8
-  if offset < count:
-    # The final group sees implicit zeros past its validated, possibly short byte extent.
-    var word = 0'u64
-    for i in 0..<count-offset:
-      word = word or (uint64(data.bytes[data.maskOffset+offset+i]) shl (8*i))
-    yield word
+      yield word
 
 proc instructionHeader*(program: Program, address: CodeAddress): ProgramResult[InstructionHeader] =
   ## Copy marked instruction boundaries without decoding operands or resolving static destinations.

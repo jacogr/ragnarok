@@ -25,6 +25,9 @@
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
+## Source headers, operand payloads and rank lookups publish only complete original facts. A damaged
+## derived catalogue refuses through the existing preparation error boundary; optional native classifiers
+## cannot replace a failed source lookup with zero operands. Admission guards also precede quota subtraction.
 ## Scalar byte transfers and dirty-page admission refuse damaged private extents before publication.
 ## Both pages and dirty-index capacity are proved before a store; a failed overlay read preserves its
 ## destination candidate. These are local backend faults after the canonical guest permission check.
@@ -2022,19 +2025,22 @@ when defined(pvmSharedAsyncWitness):
             frame.dirtyPages != @[1'u64 shl 16] or frame.dirtyIndices != @[16'u32]: return false
     true
 
-proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
-  ## Retain the same eagerly validated source boundaries and logical admission units without rich payload storage.
-  assert decoded.error == ProgramError.None
+proc tryFlatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32,
+    fact: var FlatFact): bool =
+  ## Failed source headers or narrowed coordinates preserve the destination fact and publish no catalogue entry.
+  if decoded.error != ProgramError.None: return false
   let item = decoded.value
   let pc = uint64(item.address)
-  assert pc <= uint64(high(uint32))-25
-  FlatFact(pc: uint32(pc), next: uint32(pc+1+uint64(item.skip)), sourceCount: 0,
+  if pc >= uint64(high(uint32)) or uint64(item.skip) > uint64(high(uint32))-pc-1: return false
+  fact = FlatFact(pc: uint32(pc), next: uint32(pc+1+uint64(item.skip)), sourceCount: 0,
     priceIndex: priceIndex, opcode: item.opcode, ending: terminatesBlock(item.opcode),
     fallthrough: instructionHasFallthrough(decoded))
+  true
 
-func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
-  ## Pack the original operands and target-dependent handler; mutable stream arguments never grant source facts.
-  assert decoded.error == ProgramError.None
+func tryFlatSourcePayload(decoded: ProgramResult[Instruction],
+    payload: var FlatSourcePayload): bool =
+  ## Pack only a successful original decode; refusal preserves the previous complete output.
+  if decoded.error != ProgramError.None: return false
   let item = decoded.value
   let valid = instructionTargetStartsBlock(decoded)
   let fallthrough = instructionHasFallthrough(decoded)
@@ -2045,7 +2051,7 @@ func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
     # The fallthrough opcode uses the original marked successor as its destination.
     args.y = uint32(uint64(item.address)+1+uint64(item.skip))
   of 40, 80..90, 170..175:
-    # Pack the original coordinates. The decoded validity selects the refusal handler for negative targets.
+    # Checked target validity selects the original refusal handler for negative destinations.
     let pc = uint64(item.address)
     let target = if item.displacement < 0:
         if uint64(-item.displacement) <= pc: pc-uint64(-item.displacement) else: 0'u64
@@ -2056,24 +2062,36 @@ func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
       args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
       args.y = uint32(pc+1+uint64(item.skip))
   else:
-    discard # This handler consumes only the original decoded operands.
-  FlatSourcePayload(args: args, handler: flatHandler(item.opcode, valid, fallthrough))
+    discard # This original handler consumes only its decoded operands.
+  let handler = flatHandler(item.opcode, valid, fallthrough)
+  if handler == nil: return false
+  payload = FlatSourcePayload(args: args, handler: handler)
+  true
 
-proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
-  ## Query the exact immutable Program on the caller; no rich cache or source pointer reaches a worker.
+proc tryFlatSourcePayload(plan: FlatPlan, fact: FlatFact,
+    payload: var FlatSourcePayload): bool =
+  ## Bind copied source coordinates to this exact immutable Program before exposing operands.
+  ## A stale opcode or successor refuses without changing output or granting native admission.
   let decoded = instruction(plan.source, CodeAddress(uint64(fact.pc)))
-  assert decoded.error == ProgramError.None
+  if decoded.error != ProgramError.None: return false
   let item = decoded.value
-  assert item.opcode == fact.opcode and uint64(item.address)+1+uint64(item.skip) == uint64(fact.next)
-  result = flatSourcePayload(decoded)
+  if item.opcode != fact.opcode or uint64(item.address)+1+uint64(item.skip) != uint64(fact.next):
+    return false
+  var candidate = default(FlatSourcePayload)
+  if not tryFlatSourcePayload(decoded, candidate): return false
   if plan.singleStep:
     # Single-step dynamic transfers retain their bounded scalar-successor handlers.
-    if fact.opcode == 50: result.handler = flatDynamic[50, true]
-    elif fact.opcode == 180: result.handler = flatDynamic[180, true]
+    if fact.opcode == 50: candidate.handler = flatDynamic[50, true]
+    elif fact.opcode == 180: candidate.handler = flatDynamic[180, true]
+  payload = candidate
+  true
 
 proc sourceRanks(source: Program, extent: uint64, count: uint32,
     ranks: var nil FlatSourceRanks): FlatError =
   ## Build one rank per 64 code bytes; only the validated marker bitmap is traversed.
+  let sourceSize = codeLength(source)
+  if sourceSize.error != ProgramError.None or sourceSize.value != extent:
+    return FlatError.InvalidProgram
   let words = int(extent div 64 + uint64(int(extent mod 64 != 0)))
   var masks = newSeqUninit[uint64](words)
   var prefixes = newSeqUninit[uint32](words)
@@ -2098,13 +2116,18 @@ proc sourceRanks(source: Program, extent: uint64, count: uint32,
   ranks = owner
   FlatError.None
 
-func sourceOrdinal(ranks: FlatSourceRanks, pc: uint32): uint32 =
-  ## Select a genuine zero-based ordinal; only block materialization uses rank arithmetic.
+func trySourceOrdinal(ranks: FlatSourceRanks, pc: uint32, ordinal: var uint32): bool =
+  ## Rank only a present original marker inside both retained arrays; failed lookup preserves output.
   let slot = int(pc div 64)
+  if slot >= ranks.words.len or slot >= ranks.prefixes.len: return false
   let bit = 1'u64 shl int(pc mod 64)
   let word = ranks.words[slot]
-  assert (word and bit) != 0
-  ranks.prefixes[slot]+uint32(countSetBits(word and (bit-1)))
+  if (word and bit) == 0: return false
+  let before = uint32(countSetBits(word and (bit-1)))
+  let prefix = ranks.prefixes[slot]
+  if prefix > high(uint32)-before: return false
+  ordinal = prefix+before
+  true
 
 proc admitFlatPlan(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     extent: uint64, count: uint32, allowNative: bool): FlatResult[FlatPlan] =
@@ -2176,7 +2199,9 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   let decoded = instructionHeader(source, pc)
   if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
       status: FlatError.InvalidProgram)
-  var fact = flatFact(decoded, 0)
+  var fact = default(FlatFact)
+  if not tryFlatFact(decoded, 0, fact): return FlatResult[FlatPlan](
+      status: FlatError.InvalidProgram)
   fact.sourceCount = 1
   fact.nodeCount = 1
   var facts = singletonMetadataStore(fact)
@@ -2285,15 +2310,24 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     derived.facts = move(facts)
     f.plan = derived
   let owner = f.plan
+  if uint64(pc) >= uint64(owner.factAt.len):
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
   if owner.factAt[int(pc)] != 0: return true
   let containing = containingBlockStart(owner.source, CodeAddress(uint64(pc)))
-  assert containing.error == ProgramError.None
+  if containing.error != ProgramError.None:
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
   var at = uint64(containing.value)
   let ranks {.cursor.} = owner.ranks
   if ranks == nil:
     f.preparationFailure = FlatError.InvalidProgram
     return false
-  let first = int(sourceOrdinal(ranks, uint32(at)))
+  var ordinal = 0'u32
+  if not trySourceOrdinal(ranks, uint32(at), ordinal) or uint64(ordinal) >= uint64(owner.facts.len):
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
+  let first = int(ordinal)
   var past = first
   let priceIndex = uint32(owner.pricePcs.len)
   owner.pricePcs.add(containing.value)
@@ -2302,12 +2336,16 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     return false
   while true:
     # Immutable validation guarantees complete marked headers through the block terminator.
-    assert at < uint64(owner.codeBytes) and owner.factAt[int(at)] == 0
-    assert past < owner.facts.len and owner.materialized < owner.admittedFacts
+    if at >= uint64(owner.codeBytes) or at >= uint64(owner.factAt.len) or
+        owner.factAt[int(at)] != 0 or past >= owner.facts.len or
+        owner.materialized >= owner.admittedFacts:
+      f.preparationFailure = FlatError.InvalidProgram
+      return false
     let decoded = instructionHeader(owner.source, CodeAddress(at))
-    assert decoded.error == ProgramError.None
-    let fact = flatFact(decoded, priceIndex)
-    assert owner.facts[past].sourceCount == 0
+    var fact = default(FlatFact)
+    if not tryFlatFact(decoded, priceIndex, fact) or owner.facts[past].sourceCount != 0:
+      f.preparationFailure = FlatError.InvalidProgram
+      return false
     if not writeMetadata(owner.factAt, int(at), uint32(past+1)) or
         not writeMetadata(owner.facts, past, fact):
       f.preparationFailure = FlatError.StreamAllocationRefused
@@ -2330,7 +2368,9 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     if not writeMetadata(owner.facts, index, fact):
       f.preparationFailure = FlatError.StreamAllocationRefused
       return false
-  assert owner.factAt[int(pc)] != 0
+  if owner.factAt[int(pc)] == 0:
+    f.preparationFailure = FlatError.InvalidProgram
+    return false
   true
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
@@ -2353,7 +2393,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   # The source catalogue is already populated. These quotas guard executable nodes and compiled-PC entries.
   let ceiling = uint64(f.plan.limits.nodes)
   let occupied = uint64(f.handlers.len)
-  assert occupied <= ceiling
+  if occupied > ceiling:
+    f.preparationFailure = FlatError.StreamLimitExceeded
+    return flatStop
   let available = ceiling-occupied
   # Sealed non-noop suffix counts make admission constant-time, independently of guest source quotas.
   let required = 1'u64+uint64(f.plan.facts[start].nodeCount)
@@ -2363,12 +2405,16 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   # Node folding does not erase preparation cost: reserve both the emitted suffix span and its whole containing price span.
   let pricePc = f.plan.pricePcs[int(f.plan.facts[start].priceIndex)]
   let packedPrice = f.plan.factAt[int(uint64(pricePc))]
-  assert packedPrice != 0
+  if packedPrice == 0:
+    f.preparationFailure = FlatError.InvalidProgram
+    return flatStop
   let priceFact = int(packedPrice - 1)
   let neededWork = uint64(f.plan.facts[start].sourceCount)+uint64(f.plan.facts[
       priceFact].sourceCount)
   let workLimit = uint64(f.plan.limits.preparation)
-  assert f.preparationUsed <= workLimit
+  if f.preparationUsed > workLimit:
+    f.preparationFailure = FlatError.PreparationLimitExceeded
+    return flatStop
   if neededWork > workLimit-f.preparationUsed:
     f.preparationFailure = FlatError.PreparationLimitExceeded
     return flatStop
@@ -2442,9 +2488,14 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       if not flatEmit(f, charge, FlatArgs(x: needed, y: fact.sourceCount,
           slots: default(RegisterSlots)), uint32(index)): return flatStop
       first = false
-    let payload = flatSourcePayload(f.plan, fact)
+    var payload = default(FlatSourcePayload)
+    if not tryFlatSourcePayload(f.plan, fact, payload):
+      f.preparationFailure = FlatError.InvalidProgram
+      return flatStop
     var selected = payload.handler
-    assert selected != nil
+    if selected == nil:
+      f.preparationFailure = FlatError.InvalidProgram
+      return flatStop
     if fact.opcode != 2:
       # Bounded continuation prefixes stop at an original worker before the next chain begins.
       if continuations < chainLimit-1 and fact.fallthrough:
@@ -2550,7 +2601,8 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
   let branch = f.arguments[int(span.past)]
   let exitHeader = branch.y
   if uint32(branch.x shr 32) != header: return
-  let terminalPayload = flatSourcePayload(f.plan, terminal)
+  var terminalPayload = default(FlatSourcePayload)
+  if not tryFlatSourcePayload(f.plan, terminal, terminalPayload): return
   if uint32(terminalPayload.args.x shr 32) != first.pc or
       branch.slots != terminalPayload.args.slots or (branch.x and 0xffffffff'u64) !=
         (terminalPayload.args.x and 0xffffffff'u64) or
@@ -2564,7 +2616,8 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
     let args = f.arguments[node]
     if f.sites[node] != ordinal or fact.ending or not fact.fallthrough or
         fact.priceIndex != first.priceIndex or fact.next != f.plan.facts[int(ordinal)+1].pc: return
-    let payload = flatSourcePayload(f.plan, fact)
+    var payload = default(FlatSourcePayload)
+    if not tryFlatSourcePayload(f.plan, fact, payload): return
     if args.x != payload.args.x or args.slots != payload.args.slots or
         not matchesNativeOperation(f.nativeSession, index, fact.opcode, payload.args.slots,
           payload.args.x): return
@@ -2676,7 +2729,8 @@ proc installNative(f: var FlatFrame) =
       if fact.ending or not fact.fallthrough:
         invalidateNativeStream(f.nativeSession)
         return
-      let payload = flatSourcePayload(f.plan, fact)
+      var payload = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, payload): return
       if not matchesNativeOperation(f.nativeSession, operation, fact.opcode,
           payload.args.slots, payload.args.x):
         invalidateNativeStream(f.nativeSession)
@@ -2765,7 +2819,8 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
       if int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]: break
       let fact = f.plan.facts[int(f.sites[int(at)])]
       if fact.ending or not fact.fallthrough: break
-      let payload = flatSourcePayload(f.plan, fact)
+      var payload = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(f.plan, fact, payload): return
       if not span.add(fact.opcode, payload.args.slots, payload.args.x, f.sites[int(at)], at+1): break
       inc at
     if span.len >= NativeMinimumOperations and int(span.past) < f.handlers.len:
@@ -3299,7 +3354,8 @@ when defined(pvmX86Jit):
         for index in 0..<2:
           let fact = f.plan.facts[int(guard.ordinal)+index]
           if not supportedX86Opcode(fact.opcode): return false
-          let payload = flatSourcePayload(f.plan, fact)
+          var payload = default(FlatSourcePayload)
+          if not tryFlatSourcePayload(f.plan, fact, payload): return false
           emission.guardOperations[index] = X86WideOperation(opcode: fact.opcode,
             slots: payload.args.slots, immediate: payload.args.x)
         let guardBranch = f.arguments[int(guard.terminal)]
@@ -3315,7 +3371,8 @@ when defined(pvmX86Jit):
           if fact.opcode notin {52'u8..58'u8, 124'u8..130'u8} and
               not supportedX86Opcode(fact.opcode): return false
           if count >= uint32(emission.readOperations.len): return false
-          let payload = flatSourcePayload(f.plan, fact)
+          var payload = default(FlatSourcePayload)
+          if not tryFlatSourcePayload(f.plan, fact, payload): return false
           emission.readOperations[int(count)] = X86WideOperation(opcode: fact.opcode,
             slots: payload.args.slots, immediate: payload.args.x)
           inc count
@@ -4152,6 +4209,70 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   flatPromoteNativeLoop(f)
 
 when defined(pvmSharedAsyncWitness):
+  proc probeSourceAdmissionRefusals*(source: Program): bool =
+    ## Missing facts/ranks and stale original operands refuse without replacing outputs or running partial code.
+    var fact = FlatFact(pc: 17, next: 18, opcode: 1)
+    let saved = fact
+    if tryFlatFact(default(ProgramResult[InstructionHeader]), 0, fact) or fact !=
+        saved: return false
+    let decoded = instructionHeader(source, CodeAddress(0))
+    if not tryFlatFact(decoded, 0, fact): return false
+    var prepared = prepareFlatPlan(source, GasCycleLimit(1000000), defaultFlatLimits(), false)
+    if prepared.error != FlatError.None: return false
+    let plan = takeValue(prepared)
+    let sentinel = FlatSourcePayload(args: FlatArgs(x: 77, y: 88), handler: flatNoop)
+    for damage in 0..2:
+      # The same valid source is paired with a stale opcode, successor or physical coordinate.
+      var changed = fact
+      case damage
+      of 0: changed.opcode = changed.opcode xor 1
+      of 1: inc changed.next
+      else: changed.pc = high(uint32)
+      var payload = sentinel
+      if tryFlatSourcePayload(plan, changed, payload) or payload != sentinel: return false
+    var payload = sentinel
+    if not tryFlatSourcePayload(plan, fact, payload) or payload.handler == nil: return false
+    var missing: nil FlatSourceRanks = nil
+    if sourceRanks(default(Program), 64, 1, missing) != FlatError.InvalidProgram or missing != nil:
+      return false
+    var absent = 0
+    for value in admissionMaskBytes(default(Program)): inc absent
+    for value in admissionMaskWords(default(Program)): inc absent
+    if absent != 0: return false
+    var span = initNativeSpan(1, 0, 1)
+    if span.promote(default(NativeLoopInfo)) or span.kind != NativeKind.PurePrefix: return false
+    let ranks = FlatSourceRanks(words: @[1'u64 or (1'u64 shl 63)], prefixes: @[0'u32])
+    var ordinal = 99'u32
+    for pc in [1'u32, 64, high(uint32)]:
+      # Unmarked PCs and either missing rank array must not substitute ordinal zero.
+      if trySourceOrdinal(ranks, pc, ordinal) or ordinal != 99: return false
+    if not trySourceOrdinal(ranks, 63, ordinal) or ordinal != 1: return false
+    ranks.prefixes[0] = high(uint32)
+    ordinal = 99
+    if trySourceOrdinal(ranks, 63, ordinal) or ordinal != 99: return false
+    ranks.prefixes = @[]
+    if trySourceOrdinal(ranks, 0, ordinal) or ordinal != 99: return false
+    let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(12345))
+    block:
+      # Corrupt only the exclusive derived catalogue, never the retained immutable admission.
+      var frame = newFlatFrame(plan, [], info)
+      if not flatAdmitBlock(frame, 0): return false
+      var changed = frame.plan.facts[0]
+      changed.opcode = changed.opcode xor 1
+      if not writeMetadata(frame.plan.facts, 0, changed): return false
+      if flatResolve(frame, 0) != flatStop or frame.preparationFailure != FlatError.InvalidProgram:
+        return false
+      runFlat(frame, 64)
+      if frame.reason != oracle.StepError.InvalidPreparedProgram or frame.info != info: return false
+    block:
+      # A contradictory cumulative counter must refuse before subtraction can wrap or nodes can emit.
+      var frame = newFlatFrame(plan, [], info)
+      frame.preparationUsed = high(uint64)
+      if flatResolve(frame, 0) != flatStop or
+          frame.preparationFailure != FlatError.PreparationLimitExceeded or
+          frame.handlers.len != 0 or frame.info != info: return false
+    true
+
   proc probeScalarTransferRefusals*(): bool =
     ## Malformed spans, dirty extents and private overlays preserve bytes and unpublished load values.
     var bytes = @[0x11'u8, 0x22, 0x33, 0x44]
@@ -4369,9 +4490,14 @@ proc runFlatSingle*(f: var FlatFrame) =
     if priced != oracle.StepError.None:
       f.reason = priced
       return
-  let payload = flatSourcePayload(f.plan, fact)
+  var payload = default(FlatSourcePayload)
+  if not tryFlatSourcePayload(f.plan, fact, payload):
+    f.reason = oracle.StepError.BackendFailure
+    return
   let selected = payload.handler
-  assert selected != nil
+  if selected == nil:
+    f.reason = oracle.StepError.BackendFailure
+    return
   if not flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0) or
       (selected != nil and not flatEmit(f, selected, payload.args, 0)) or
       not flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(fact.next), y: 0,

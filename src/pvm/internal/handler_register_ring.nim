@@ -49,7 +49,8 @@ when declared(FlatFrame):
         let ordinal = first+uint32(position)
         let fact = f.plan.facts[int(ordinal)]
         if f.sites[node] != ordinal or fact.priceIndex != root.priceIndex: return
-        let original = flatSourcePayload(f.plan, fact)
+        var original = default(FlatSourcePayload)
+        if not tryFlatSourcePayload(f.plan, fact, original): return
         let cached = f.arguments[node]
         if cached.slots != original.args.slots: return
         if position == int(span)-1:

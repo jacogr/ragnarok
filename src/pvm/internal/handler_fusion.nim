@@ -99,7 +99,8 @@ when declared(FlatFrame):
       if original.opcode != fact.opcode or
           uint64(original.address)+1+uint64(original.skip) != uint64(fact.next): return false
       if fact.opcode == 2: continue
-      let payload = flatSourcePayload(decoded)
+      var payload = default(FlatSourcePayload)
+      if not tryFlatSourcePayload(decoded, payload): return false
       let args = f.arguments[int(node)]
       let worker = f.handlers[int(node)]
       if node != summary.terminal:
