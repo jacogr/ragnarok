@@ -102,6 +102,29 @@ proc `=destroy`*(image: NativeImage) =
   when NativeReadCycleEnabled:
     `=destroy`(image.fusionOffsets)
 
+when defined(pvmSharedAsyncWitness):
+  proc compilerImageAddress(handle: nil pointer): nil pointer {.cdecl,
+    importc: "pvm_mixed_arena_address", header: "mixed_arena_proof.h".}
+    ## Reuse the platform's exact executable mapping address while the image is owned.
+  proc compilerImageUnmapped(address: pointer): cint {.cdecl,
+    importc: "pvm_mixed_arena_unmapped", header: "mixed_arena_proof.h".}
+    ## Probe immediately after disposal, before another mapping can reuse the address.
+  proc compilerImageWritableAddress(handle: nil pointer): nil pointer {.cdecl,
+    importc: "pvm_mixed_arena_writable_address", header: "mixed_arena_proof.h".}
+    ## Capture the other alias too; Linux may retain separate writable and executable mappings.
+
+  proc nativeImageMappingAddress*(image: NativeImage): uint64 =
+    ## Witness-only copied address grants no executable capability or owning handle.
+    cast[uint64](compilerImageAddress(image.handle))
+
+  proc nativeImageWritableAddress*(image: NativeImage): uint64 =
+    ## The witness retains only a scalar address for immediate post-disposal OS observation.
+    cast[uint64](compilerImageWritableAddress(image.handle))
+
+  proc nativeImageMappingUnmapped*(address: uint64): bool =
+    ## Zero cannot qualify an allocation/publication failure as successful physical cleanup.
+    address != 0 and compilerImageUnmapped(cast[pointer](address)) == 1
+
 func nativePlatformSupported*(): bool =
   ## Declarative host capability only; there is no ISA-specific scheduling or profit rule.
   when defined(pvmX86Jit): defined(amd64) and defined(linux)

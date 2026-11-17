@@ -39,6 +39,11 @@
 ## A prefix without this evidence can still seed fusion once a call reaches its
 ## existing training floor. Recurrence is evidence of reuse, not measured profitability.
 
+## Invalid private claim/publication ownership stops this optional compiler with a copied reason.
+## The worker disposes its sole local image outside the mutex before acknowledging exit. Only an
+## exact empty Running row can release a credit; ambiguous rows stay quarantined through close.
+## Prepared owners then remain checked. Restart requires no live client, image or outstanding borrow.
+
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
 import ./[native_ir, native_platform, native_read_body, native_register_ring]
@@ -108,6 +113,7 @@ when defined(pvmSharedAsyncWitness):
       slot*: int
       generation*, ticket*, epoch*: uint64
       hasImage*: bool
+      mappingAddress*, writableAddress*: uint64
       kind*: NativeKind
 
 type
@@ -115,6 +121,9 @@ type
     Idle, Queued, Running, Done
   NativeState* {.pure.} = enum ## Profit deferral is reversible; unavailable lowering is not a timed guest failure.
     Absent, Deferred, Pending, Ready, Unavailable, Closed
+  NativeCompilerFailure* {.pure.} = enum
+    ## A broken private claim disables this optional compiler; it never becomes a guest exit.
+    None, InvalidClaim, InvalidPublication
   RegistrationState = enum
     Free, Live, Retiring, Exhausted
   WorkPhase {.pure.} = enum ## One compiler request; parked results belong to their registrations.
@@ -142,6 +151,8 @@ type
     changed: Cond
     thread: RawThread
     initialized, started, stopping: bool
+    compilerExited: bool
+    failure: NativeCompilerFailure
     work: WorkPhase
     slots: array[NativeSessionLimit, Registration]
     active: int
@@ -160,6 +171,7 @@ type
       paused, gateReached, gateReleased: bool
       rejectQueuedRequest: bool
       rejectReadRetirement: bool
+      misownCompletion: bool
       gate, followingGate: NativeCompilerPoint
       observation: NativeCompilerObservation
   NativeRuntimeData = ref object ## The named field has a supported stable address, unlike a ref payload cast.
@@ -207,6 +219,7 @@ type
   NativeSession* = object ## Shared prepared identity, used exclusively under PreparedStorage.busy.
     data: nil NativeSessionData
   NativeRuntimeInfo* = object ## Copied work and parked-result activity, never a borrowed session/cache view.
+    failure*: NativeCompilerFailure ## First ownership failure survives close; a safe empty restart clears it.
     phase*: NativePhase ## Auxiliary retirement can hold a credit with no queued or running compilation.
     registered*: int ## Image credits held by live/retiring requests, not cold prepared identities.
     active*: int     ## Whole public invocation leases, including calls with no image credit.
@@ -244,6 +257,8 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   runtime.initialized = false
   runtime.started = false
   runtime.stopping = false
+  runtime.compilerExited = false
+  runtime.failure = NativeCompilerFailure.None
 
 proc `=destroy`(runtime: var NativeRuntimeStorage) =
   ## Last host anchor must be closed. Sessions retain the allocation/locks after an explicit close.
@@ -300,7 +315,8 @@ func requestMatches(request: NativeRequest, key: JobKey): bool =
 
 func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   ## Caller holds the mutex; a live job keeps this generation occupied until physical cleanup.
-  if key.slot < 0 or key.slot >= runtime.slots.len: return false
+  if key.slot < 0 or key.slot >= runtime.slots.len or key.generation == 0 or
+      key.ticket == 0 or key.epoch == 0: return false
   runtime.slots[key.slot].generation == key.generation and
     sameKey(runtime.slots[key.slot].key, key)
 
@@ -392,10 +408,17 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
         release(runtime.lock)
         return RetirementRefused
       retireMixedLoopLocked(runtime)
-  runtime.slots[slot].state = Retiring
+  # Optional retirement can unlock. Reprove the primary before changing its live ownership.
+  if not matchesRow(runtime, key) or runtime.slots[slot].state != Live:
+    release(runtime.lock)
+    return RetirementRefused
   case runtime.slots[slot].location
   of CompletionLocation.Queued, CompletionLocation.Running:
     # Session.ticket may already be zero after invalidation; the row still owns the old obligation.
+    if image.ready or runtime.slots[slot].completion.ready:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].cancelled = true
     broadcast(runtime.changed)
     release(runtime.lock)
@@ -415,6 +438,8 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
       # An installed row cannot also own a parked completion.
       release(runtime.lock)
       return RetirementRefused
+    # Failed ownership checks above leave Live intact, so close cannot recycle a surviving image.
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].location = CompletionLocation.Reclaiming
     release(runtime.lock)
     image = default(NativeImage) # Actual unmapping is outside the mutex; credit is still occupied.
@@ -425,6 +450,10 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, key: JobKey,
     return if finished: Detached else: RetirementRefused
   of CompletionLocation.Reclaiming:
     # The worker or host that detached the image still owns physical retirement.
+    if image.ready or runtime.slots[slot].completion.ready:
+      release(runtime.lock)
+      return RetirementRefused
+    runtime.slots[slot].state = Retiring
     runtime.slots[slot].cancelled = true
     broadcast(runtime.changed)
     release(runtime.lock)
@@ -481,7 +510,10 @@ proc `=destroy`(session: NativeSessionStorage) =
 
 proc newNativeRuntime*(): NativeRuntime =
   ## Allocate code-independent synchronization only; explicit start is separately visible lifecycle work.
-  let anchor = NativeRuntimeData(storage: NativeRuntimeStorage(work: WorkPhase.Idle))
+  ## Refused optional owner allocation returns the ordinary absent runtime without constructing locks.
+  let anchor: nil NativeRuntimeData = NativeRuntimeData(storage: NativeRuntimeStorage(
+      work: WorkPhase.Idle))
+  if anchor == nil: return default(NativeRuntime)
   initLock(anchor.storage.lock)
   initCond(anchor.storage.changed)
   anchor.storage.initialized = true
@@ -489,12 +521,13 @@ proc newNativeRuntime*(): NativeRuntime =
 
 when defined(pvmSharedAsyncWitness):
   proc compilerGate(runtime: ptr NativeRuntimeStorage, key: JobKey,
-      point: NativeCompilerPoint, hasImage: bool) =
+      point: NativeCompilerPoint, hasImage: bool, mappingAddress = 0'u64,
+      writableAddress = 0'u64) =
     ## Called with the mutex held; wait releases it, and stop always bypasses a one-shot gate.
     if runtime.gate != point or runtime.stopping: return
     runtime.observation = NativeCompilerObservation(point: point, slot: key.slot,
       generation: key.generation, ticket: key.ticket, epoch: key.epoch, hasImage: hasImage,
-      kind: key.kind)
+      kind: key.kind, mappingAddress: mappingAddress, writableAddress: writableAddress)
     runtime.gateReached = true
     broadcast(runtime.changed)
     while not runtime.gateReleased and not runtime.stopping:
@@ -505,11 +538,48 @@ when defined(pvmSharedAsyncWitness):
     runtime.gateReleased = false
     broadcast(runtime.changed)
 
+proc stopFailedCompiler(runtime: ptr NativeRuntimeStorage, failure: NativeCompilerFailure) =
+  ## Caller holds the mutex. Stop admission without recycling any unproven row or image.
+  ## The worker still owns its local image until its ordinary unlocked disposal completes.
+  if runtime.failure == NativeCompilerFailure.None: runtime.failure = failure
+  runtime.stopping = true
+  broadcast(runtime.changed)
+
+proc finishCompilerThread(runtime: ptr NativeRuntimeStorage) =
+  ## Caller holds the mutex after disposing every worker local. Release waiters only now.
+  runtime.work = WorkPhase.Idle
+  runtime.key = default(JobKey)
+  runtime.compilerExited = true
+  broadcast(runtime.changed)
+  release(runtime.lock)
+
+proc rejectCompilerPublication(runtime: ptr NativeRuntimeStorage, key: JobKey,
+    image: var NativeImage) =
+  ## Return with the mutex held after physically disposing this worker's sole local image.
+  ## Only its exact empty Running row may retire; unrelated or ambiguous rows stay occupied.
+  let reclaim = matchesRow(runtime, key) and
+    runtime.slots[key.slot].location == CompletionLocation.Running and
+    not runtime.slots[key.slot].completion.ready
+  if reclaim:
+    runtime.slots[key.slot].state = Retiring
+    runtime.slots[key.slot].cancelled = true
+    runtime.slots[key.slot].location = CompletionLocation.Reclaiming
+  stopFailedCompiler(runtime, NativeCompilerFailure.InvalidPublication)
+  release(runtime.lock)
+  image = default(NativeImage)
+  acquire(runtime.lock)
+  if reclaim: discard finishRetirement(runtime, key)
+
 proc releaseCompilerClaim(runtime: ptr NativeRuntimeStorage, key: JobKey): bool {.inline.} =
   ## The worker already copied the selected payload. Sample cancellation after the witness gate.
   when defined(pvmSharedAsyncWitness):
     compilerGate(runtime, key, NativeCompilerPoint.AfterClaim, false)
-  result = not runtime.stopping and not runtime.slots[key.slot].cancelled
+  if not matchesRow(runtime, key) or
+      runtime.slots[key.slot].location != CompletionLocation.Running:
+    stopFailedCompiler(runtime, NativeCompilerFailure.InvalidClaim)
+    result = false
+  else:
+    result = not runtime.stopping and not runtime.slots[key.slot].cancelled
   release(runtime.lock)
 
 when NativeReadCycleEnabled:
@@ -522,14 +592,19 @@ when NativeReadCycleEnabled:
     true
 
   func mixedLoopQueued(runtime: ptr NativeRuntimeStorage): bool =
-    runtime.mixedKey.generation != 0 and
-      runtime.slots[runtime.mixedKey.slot].location == CompletionLocation.Queued
+    ## Invalid nonempty keys wake the worker to refuse them instead of indexing or waiting forever.
+    let key = runtime.mixedKey
+    key.generation != 0 and (not matchesRow(runtime, key) or
+      runtime.slots[key.slot].location == CompletionLocation.Queued)
 
   proc compileAuxiliary(runtime: ptr NativeRuntimeStorage) =
     ## Snapshot the self-loop request or borrow the stable moved fusion graph.
     ## The running auxiliary row keeps both the input and image alive through settlement.
     let key = runtime.mixedKey
-    assert matchesRow(runtime, key) and mixedLoopQueued(runtime)
+    if not matchesRow(runtime, key) or
+        runtime.slots[key.slot].location != CompletionLocation.Queued:
+      stopFailedCompiler(runtime, NativeCompilerFailure.InvalidClaim)
+      return
     runtime.slots[key.slot].location = CompletionLocation.Running
     var image = default(NativeImage)
     var refused = 0'u8
@@ -543,12 +618,19 @@ when NativeReadCycleEnabled:
         image = lowerNativeMixedLoops(requested, refused, pairRefused)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
-      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
-    assert sameKey(runtime.mixedKey, key) and matchesRow(runtime, key)
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready,
+        nativeImageMappingAddress(image), nativeImageWritableAddress(image))
+    if not sameKey(runtime.mixedKey, key) or not matchesRow(runtime, key) or
+        runtime.slots[key.slot].location != CompletionLocation.Running or
+        runtime.slots[key.slot].completion.ready:
+      rejectCompilerPublication(runtime, key, image)
+      return
     if refused != 0 and not runtime.stopping and not runtime.slots[key.slot].cancelled:
       let owner = runtime.mixedOwner
-      assert matchesRow(runtime, owner) and
-        runtime.slots[owner.slot].location == CompletionLocation.Installed
+      if not matchesRow(runtime, owner) or
+          runtime.slots[owner.slot].location != CompletionLocation.Installed:
+        rejectCompilerPublication(runtime, key, image)
+        return
       for proofIndex in 0..<int(requested.count):
         if (refused and (1'u8 shl proofIndex)) == 0: continue
         for index in 0..<NativeMixedLoopCandidateLimit:
@@ -589,15 +671,18 @@ proc compilerRun(raw: pointer) =
       when NativeReadCycleEnabled: runnable = runnable or mixedLoopQueued(runtime)
       when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
     if runtime.stopping:
-      release(runtime.lock)
+      finishCompilerThread(runtime)
       return
     when NativeReadCycleEnabled:
       if runtime.work != WorkPhase.Queued:
         compileAuxiliary(runtime)
         continue
     let key = runtime.key
-    assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
-    assert runtime.slots[key.slot].location == CompletionLocation.Queued, "compiler claim is not Queued"
+    if not matchesRow(runtime, key) or
+        runtime.slots[key.slot].location != CompletionLocation.Queued:
+      stopFailedCompiler(runtime, NativeCompilerFailure.InvalidClaim)
+      finishCompilerThread(runtime)
+      return
     runtime.work = WorkPhase.Running
     runtime.slots[key.slot].location = CompletionLocation.Running
     var image = default(NativeImage)
@@ -653,9 +738,14 @@ proc compilerRun(raw: pointer) =
       image = default(NativeImage)
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
-      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
-    assert sameKey(runtime.key, key) and matchesRow(runtime, key), "compiler publication certificate changed"
-    assert runtime.slots[key.slot].location == CompletionLocation.Running, "compiler local is not Running"
+      compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready,
+        nativeImageMappingAddress(image), nativeImageWritableAddress(image))
+    if not sameKey(runtime.key, key) or not matchesRow(runtime, key) or
+        runtime.slots[key.slot].location != CompletionLocation.Running or
+        runtime.slots[key.slot].completion.ready:
+      rejectCompilerPublication(runtime, key, image)
+      finishCompilerThread(runtime)
+      return
     if runtime.stopping or runtime.slots[key.slot].cancelled:
       # A worker local remains charged until its real mapping is destroyed outside the mutex.
       runtime.slots[key.slot].location = CompletionLocation.Reclaiming
@@ -671,7 +761,6 @@ proc compilerRun(raw: pointer) =
       broadcast(runtime.changed)
     else:
       # Destination is empty: synthesized assignment destruction cannot release a mapping here.
-      assert not runtime.slots[key.slot].completion.ready
       runtime.slots[key.slot].completion = move(image)
       runtime.slots[key.slot].location = CompletionLocation.Complete
       if runtime.completed < high(uint64): inc runtime.completed
@@ -688,15 +777,28 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
   let anchor {.cursor.} = runtime.data
   if anchor == nil or not nativePlatformSupported(): return false
   let data = addr anchor.storage
-  if data.started: return false
+  if data.started or data.active != 0: return false
   for index in 0..<data.slots.len:
-    if data.slots[index].state in {Live, Retiring}: return false # Closed live clients cannot cross a restarted namespace.
+    # A restart cannot erase surviving clients, an image or quarantined physical ownership.
+    if data.slots[index].state in {Live, Retiring} or
+        data.slots[index].location != CompletionLocation.Empty or
+        data.slots[index].completion.ready: return false
+  when NativeReadCycleEnabled:
+    if data.mixedBorrowed: return false
+    data.mixedKey = default(JobKey)
+    data.mixedOwner = default(JobKey)
+    data.mixedSet = default(NativeMixedLoopSet)
+    data.fusionSet = @[]
+    data.mixedPairRefused = false
   data.stopping = false
+  data.compilerExited = false
+  data.failure = NativeCompilerFailure.None
   when defined(pvmSharedAsyncWitness):
     # A restarted empty namespace cannot inherit a prior test gate or paused worker.
     data.paused = false
     data.rejectQueuedRequest = false
     data.rejectReadRetirement = false
+    data.misownCompletion = false
     data.gate = NativeCompilerPoint.None
     data.followingGate = NativeCompilerPoint.None
     data.gateReached = false
@@ -772,15 +874,19 @@ proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
     if data.slots[index].state in {Live, Retiring}: inc count
     if data.slots[index].location == CompletionLocation.Complete: inc completions
   let auxiliary = when NativeReadCycleEnabled:
-      if data.mixedKey.generation != 0: data.slots[data.mixedKey.slot].location
+      if data.mixedKey.generation != 0 and matchesRow(data, data.mixedKey):
+        data.slots[data.mixedKey.slot].location
       else: CompletionLocation.Empty
     else: CompletionLocation.Empty
-  let phase = if data.work == WorkPhase.Queued: NativePhase.Queued
+  let phase = if data.compilerExited and data.failure !=
+      NativeCompilerFailure.None: NativePhase.Idle
+    elif data.work == WorkPhase.Queued: NativePhase.Queued
     elif data.work == WorkPhase.Running: NativePhase.Running
     elif auxiliary == CompletionLocation.Queued: NativePhase.Queued
     elif auxiliary == CompletionLocation.Running: NativePhase.Running
     elif completions > 0: NativePhase.Done else: NativePhase.Idle
-  result = NativeRuntimeInfo(phase: phase, registered: count, active: data.active,
+  result = NativeRuntimeInfo(failure: data.failure, phase: phase, registered: count,
+    active: data.active,
     completions: completions, submitted: data.submitted, completed: data.completed,
     primaryCreditRefusals: data.primaryCreditRefusals)
   release(data.lock)
@@ -1215,6 +1321,12 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
   if anchor == nil: return
   let runtime = addr anchor.storage
   acquire(runtime.lock)
+  if runtime.failure != NativeCompilerFailure.None:
+    # Failed compiler ownership grants no new image entry or lease; ordinary checked execution remains usable.
+    data.allowed = false
+    data.state = NativeState.Unavailable
+    release(runtime.lock)
+    return
   if runtime.started and not runtime.stopping and runtime.active < high(int):
     inc runtime.active
     data.invocation = true
@@ -1614,17 +1726,48 @@ proc collectNative(session: NativeSession) =
   if anchor == nil: return
   let runtime = addr anchor.storage
   if not tryAcquire(runtime.lock): return
-  let key = data.retirementKey
-  if not matchesRow(runtime, key) or runtime.slots[data.slot].state != Live or
-      runtime.slots[data.slot].location != CompletionLocation.Complete or
-      runtime.slots[data.slot].cancelled:
+  if runtime.failure != NativeCompilerFailure.None:
+    # Keep uncertain credit ownership intact until explicit retirement/close, without waiting on a dead worker.
+    data.allowed = false
+    data.state = NativeState.Unavailable
     release(runtime.lock)
     return
-  assert not data.image.ready
-  # A wrong ready ABI leaves the image with its registration until retirement.
+  let key = data.retirementKey
+  let present = data.slot == key.slot and matchesRow(runtime, key)
+  if not present or runtime.slots[data.slot].state != Live or runtime.slots[data.slot].cancelled:
+    # A lost ticket cannot complete later, including after an empty compiler restart.
+    data.allowed = false
+    data.state = NativeState.Unavailable
+    release(runtime.lock)
+    return
+  if runtime.slots[data.slot].location != CompletionLocation.Complete:
+    # Genuine queued/running work may finish later; any other location grants no pending image.
+    if runtime.slots[data.slot].location notin {CompletionLocation.Queued,
+        CompletionLocation.Running}:
+      data.allowed = false
+      data.state = NativeState.Unavailable
+    release(runtime.lock)
+    return
+  when defined(pvmSharedAsyncWitness):
+    if runtime.misownCompletion:
+      runtime.misownCompletion = false
+      assert not data.image.ready and runtime.slots[data.slot].completion.ready,
+          "collection failure witness needs a real sole parked image"
+      data.image = move(runtime.slots[data.slot].completion)
+  if data.image.ready:
+    # Do not overwrite either owning image or release its credit on an ambiguous handoff.
+    stopFailedCompiler(runtime, NativeCompilerFailure.InvalidPublication)
+    data.allowed = false
+    data.state = NativeState.Unavailable
+    release(runtime.lock)
+    return
+  # An incompatible parked ABI retires through the ordinary unlocked credit path.
   if runtime.slots[data.slot].completion.ready and
       runtime.slots[data.slot].completion.kind != key.kind:
     release(runtime.lock)
+    data.allowed = false
+    data.state = NativeState.Unavailable
+    discard releaseNativeCredit(data)
     return
   if runtime.slots[data.slot].completion.ready:
     # Keep the exact key until installed-image retirement; the row cannot submit another job.
@@ -1669,6 +1812,7 @@ func observedNativeWork*(session: NativeSession): uint64 =
 
 proc nativeState*(session: NativeSession): NativeState =
   ## Default has no registered source, distinct from a deferred or ready native candidate.
+  ## Compiler ownership failure is Unavailable; only an orderly stopped runtime reports Closed.
   let data {.cursor.} = session.data
   if data == nil: return NativeState.Absent
   let anchor {.cursor.} = data.runtime
@@ -1676,7 +1820,9 @@ proc nativeState*(session: NativeSession): NativeState =
   let runtime = addr anchor.storage
   acquire(runtime.lock)
   let open = runtime.started and not runtime.stopping
+  let failed = runtime.failure != NativeCompilerFailure.None
   release(runtime.lock)
+  if failed: return NativeState.Unavailable
   if not open: return NativeState.Closed
   data.state
 
@@ -2131,6 +2277,51 @@ proc nativeOwnerStatistics*(session: NativeSession): array[5, uint64] =
     result[0] = addNativeCount(result[0], data.mixedPublications)
 
 when defined(pvmSharedAsyncWitness):
+  proc misownNextNativeCompletion*(runtime: NativeRuntime) =
+    ## Move one genuine parked image into its uncommitted destination before collection validates ownership.
+    let anchor {.cursor.} = runtime.data
+    assert anchor != nil
+    acquire(anchor.storage.lock)
+    anchor.storage.misownCompletion = true
+    release(anchor.storage.lock)
+
+  proc damageNativeCompilerOwnership*(runtime: NativeRuntime, point: NativeCompilerPoint,
+      auxiliary = false) =
+    ## Damage one exact queued/claimed/publishing identity only while the real worker is paused.
+    let anchor {.cursor.} = runtime.data
+    assert anchor != nil
+    let data = addr anchor.storage
+    acquire(data.lock)
+    var key = data.key
+    when NativeReadCycleEnabled:
+      if auxiliary: key = data.mixedKey
+    else:
+      assert not auxiliary
+    assert matchesRow(data, key) and data.failure == NativeCompilerFailure.None
+    if point == NativeCompilerPoint.None:
+      # The queued packet becomes out of range while its genuine credit remains intact.
+      assert data.paused and data.slots[key.slot].location == CompletionLocation.Queued
+      when NativeReadCycleEnabled:
+        if auxiliary: data.mixedKey.slot = data.slots.len
+        else: data.key.slot = data.slots.len
+      else:
+        data.key.slot = data.slots.len
+    else:
+      assert data.gateReached and data.observation.point == point
+      assert data.slots[key.slot].location == CompletionLocation.Running
+      if point == NativeCompilerPoint.AfterClaim:
+        # Losing the row certificate must quarantine it, even when no image was built.
+        data.slots[key.slot].key.ticket = key.ticket xor 1'u64
+      else:
+        # A real local mapping exists before the publication identity is damaged.
+        assert point == NativeCompilerPoint.BeforePublish and data.observation.hasImage
+        when NativeReadCycleEnabled:
+          if auxiliary: data.mixedKey.ticket = key.ticket xor 1'u64
+          else: data.key.ticket = key.ticket xor 1'u64
+        else:
+          data.key.ticket = key.ticket xor 1'u64
+    release(data.lock)
+
   proc rejectNextNativeCompilerRequest*(runtime: NativeRuntime) =
     ## Reject one real queued claim before lowering without changing its row or job key.
     let anchor {.cursor.} = runtime.data
@@ -2176,11 +2367,12 @@ when defined(pvmSharedAsyncWitness):
     template workPending(): bool =
       when NativeReadCycleEnabled:
         data.work != WorkPhase.Idle or (data.mixedKey.generation != 0 and
+          (not matchesRow(data, data.mixedKey) or
           data.slots[data.mixedKey.slot].location in {CompletionLocation.Queued,
-            CompletionLocation.Running, CompletionLocation.Reclaiming})
+            CompletionLocation.Running, CompletionLocation.Reclaiming}))
       else:
         data.work != WorkPhase.Idle
-    while data.started and workPending():
+    while data.started and not data.compilerExited and (data.stopping or workPending()):
       wait(data.changed, data.lock)
     release(data.lock)
 
