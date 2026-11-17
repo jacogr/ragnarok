@@ -313,7 +313,7 @@ jobs:
 
   # Tooling starts with the builds and runs independently of the second wave.
   tooling:
-    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'contract' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     name: Build / Tooling
     timeout-minutes: *ci-job-timeout
     strategy:
