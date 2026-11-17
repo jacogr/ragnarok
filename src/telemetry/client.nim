@@ -160,7 +160,7 @@ proc failed(client: var Client, now: int64, reason = default(ErrorCode)) =
   client.retryAt = now + 5000
   let detail = if reason == default(ErrorCode): "" else: " (" & $reason & ")"
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Warn,
-    "Telemetry collector connection unavailable" & detail & "; retrying in 5s")
+    "Telemetry collector connection unavailable; retrying in 5s" & detail)
 
 proc queue(client: var Client, bytes: openArray[byte], now: int64) =
   ## Retain one complete bounded frame; caller must have finished the preceding frame.
