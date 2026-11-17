@@ -246,6 +246,11 @@ when defined(pvmSharedAsyncWitness):
     ## Drop only a test borrow's data pointer; its real owner remains live for independent byte checks.
     view.data = nil
 
+func containsSpan*(view: RWView, first, count: int): bool {.inline.} =
+  ## Prove a nonempty synchronous extent without reading bytes or granting ownership.
+  first >= 0 and count > 0 and view.length >= count and first <= view.length-count and
+    view.data != nil
+
 proc tryReadScalar*[W: static[int]](view: RWView, at: int, value: var uint64): bool {.inline.} =
   ## Read exactly one little-endian scalar from this synchronous borrow. A missing pointer or
   ## incomplete extent returns false without changing value. The owner must remain stable/alive

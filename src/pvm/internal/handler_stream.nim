@@ -25,6 +25,9 @@
 ## Host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
+## Scalar byte transfers and dirty-page admission refuse damaged private extents before publication.
+## Both pages and dirty-index capacity are proved before a store; a failed overlay read preserves its
+## destination candidate. These are local backend faults after the canonical guest permission check.
 ## Native bridge installation and restoration preflight the complete bounded patch set.
 ## An invalid predecessor or image key refuses locally before any handler changes. The public
 ## boundary discards that stream and any tentative outcome before returning BackendFailure.
@@ -806,32 +809,38 @@ template flatBranchSelect(f: var FlatFrame, args: FlatArgs, Code: static[int],
         byte(Code), f.info.registers, Code): uint32(args.x shr 32)
       else: args.y
 
-proc flatReadSpan[W: static[int]](bytes: openArray[byte], at: int): uint64 {.inline.} =
-  ## Complete bounds precede reads; the private initialized word never aliases the immutable source span.
-  assert at >= 0 and bytes.len >= W and at <= bytes.len-W
-  result = 0
+proc flatReadSpan[W: static[int]](bytes: openArray[byte], at: int,
+    value: var uint64): bool {.inline.} =
+  ## Complete bounds precede reads; refusal preserves the caller's register candidate.
+  when W != 1 and W != 2 and W != 4 and W != 8: {.error: "scalar transfers require 1, 2, 4, or 8 bytes".}
+  if at < 0 or bytes.len < W or at > bytes.len-W: return false
+  var copied = 0'u64
   when W == 1:
-    # Preserve the original byte worker; only wider selected reads use the transferred primitive.
-    for i in 0..<W: result = result or (uint64(bytes[at+i]) shl(8*i))
+    # Preserve the ordinary single-byte equation after the complete extent check.
+    copied = uint64(bytes[at])
   else:
-    # Match master's little-endian, unaligned-safe scalar load after the unchanged region/permission checks.
+    # The disjoint initialized word permits unaligned-safe little-endian transfers.
     var endian = 1'u16
     var tag = default(array[2, byte])
     copyMem(addr tag[0], addr endian, 2)
     if tag[0] == 1:
-      copyMem(addr result, unsafeAddr bytes[at], W)
+      copyMem(addr copied, unsafeAddr bytes[at], W)
     else:
-      # Other host byte orders retain the original zero-extended little-endian byte equation.
-      for i in 0..<W: result = result or (uint64(bytes[at+i]) shl(8*i))
+      # Other host byte orders retain the portable byte equation.
+      for i in 0..<W: copied = copied or (uint64(bytes[at+i]) shl (8*i))
+  value = copied
+  true
 
-proc flatWriteSpan[W: static[int]](bytes: var openArray[byte], at: int, value: uint64) {.inline.} =
-  ## No bytes change until the complete selected region extent has passed.
-  assert at >= 0 and bytes.len >= W and at <= bytes.len-W
+proc flatWriteSpan[W: static[int]](bytes: var openArray[byte], at: int,
+    value: uint64): bool {.inline.} =
+  ## A refused extent changes no bytes; successful writes stay inside this synchronous borrow.
+  when W != 1 and W != 2 and W != 4 and W != 8: {.error: "scalar transfers require 1, 2, 4, or 8 bytes".}
+  if at < 0 or bytes.len < W or at > bytes.len-W: return false
   when W == 1:
-    # Preserve the original byte worker literally; the transfer targets only multi-byte stores.
-    for i in 0..<W: bytes[at+i] = byte((value shr (8*i)) and 255'u64)
+    # Preserve the original byte store after complete preflight.
+    bytes[at] = byte(value and 255)
   else:
-    # Match master's endian-tested primitive: only admitted bytes copy from a disjoint initialized stack word.
+    # Copy only an admitted span from a disjoint initialized stack word.
     var endian = 1'u16
     var tag = default(array[2, byte])
     copyMem(addr tag[0], addr endian, 2)
@@ -839,50 +848,58 @@ proc flatWriteSpan[W: static[int]](bytes: var openArray[byte], at: int, value: u
       var word = value
       copyMem(addr bytes[at], addr word, W)
     else:
-      # Other host byte orders retain the original portable little-endian equation.
-      for i in 0..<W: bytes[at+i] = byte((value shr (8*i)) and 255'u64)
+      # Other host byte orders retain the portable little-endian equation.
+      for i in 0..<W: bytes[at+i] = byte((value shr (8*i)) and 255)
+  true
 
-proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
-  ## Existing managed regions use the same checked little-endian byte equations.
-  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
-  flatReadSpan[W](bytes.toOpenArray(at, at+W-1), 0)
+proc flatRead[W: static[int]](bytes: seq[byte], at: int, value: var uint64): bool {.inline.} =
+  ## Managed regions use the same fallible span transfer without constructing an unchecked slice.
+  flatReadSpan[W](bytes, at, value)
 
-proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.inline.} =
-  ## Retain complete preflight before exposing a nonempty managed scalar span.
-  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
-  var span = bytes.toOpenArray(at, at+W-1)
-  flatWriteSpan[W](span, 0, value)
+proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64): bool {.inline.} =
+  ## Managed stores preserve the complete extent and failure contract of the borrowed primitive.
+  flatWriteSpan[W](bytes, at, value)
 
-proc flatRememberPage(f: var FlatFrame, page: int) {.noinline.} =
-  ## A first write records one admitted page; keep sequence bookkeeping outside repeated-store code.
-  assert f.dirtyIndices.len < f.sourcePages.len
-  f.dirtyIndices.add(uint32(page))
+func flatStoreMetadataValid[W: static[int]](f: FlatFrame, address: uint64): bool {.inline.} =
+  ## Prove both dirty words and all new index slots before the first byte or bitmap mutation.
+  when W != 1 and W != 2 and W != 4 and W != 8: {.error: "scalar transfers require 1, 2, 4, or 8 bytes".}
+  if address > uint64(high(uint32))-uint64(W-1) or
+      f.dirtyIndices.len > f.sourcePages.len: return false
+  let first = int(address shr 12)
+  let last = int((address+uint64(W-1)) shr 12)
+  let word = first shr 6
+  let lastWord = last shr 6
+  if word >= f.dirtyPages.len or lastWord >= f.dirtyPages.len: return false
+  var needed = int((f.dirtyPages[word] and (1'u64 shl (first and 63))) == 0)
+  if last != first and (f.dirtyPages[lastWord] and (1'u64 shl (last and 63))) == 0: inc needed
+  needed <= f.sourcePages.len-f.dirtyIndices.len
+
+proc flatRememberPage(f: var FlatFrame, page: int): bool {.noinline.} =
+  ## Record a newly dirty page only after proving both index capacity and its bitmap word.
+  if page < 0 or f.dirtyIndices.len >= f.sourcePages.len: return false
   let word = page shr 6
-  assert word < f.dirtyPages.len
+  if word >= f.dirtyPages.len: return false
+  let past = f.dirtyIndices.len+1
+  f.dirtyIndices.add(uint32(page))
+  if f.dirtyIndices.len != past: return false
   f.dirtyPages[word] = f.dirtyPages[word] or (1'u64 shl (page and 63))
+  true
 
-proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64) {.alwaysInline.} =
-  ## Mark only after complete store preflight; no allocation or guest-visible state changes occur here.
-  assert address <= uint64(high(uint32))-uint64(W-1)
+proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
+    discardable.} =
+  ## Whole-store metadata preflight precedes mutation, including a cross-page second word.
+  if not flatStoreMetadataValid[W](f, address): return false
   let first = int(address shr 12)
   let word = first shr 6
-  assert word < f.dirtyPages.len
-  let mask = 1'u64 shl (first and 63)
-  let before = f.dirtyPages[word]
-  if (before and mask) == 0:
-    # A dirty epoch needs one bit transition per page, even when the guest rewrites it repeatedly.
-    flatRememberPage(f, first)
+  if (f.dirtyPages[word] and (1'u64 shl (first and 63))) == 0:
+    # Repeated stores need no additional index; a new page keeps bookkeeping outside the hot worker.
+    if not flatRememberPage(f, first): return false
   when W > 1:
-    # A scalar can span at most two pages; rejected cross-page stores never reach this helper.
     let last = int((address+uint64(W-1)) shr 12)
-    if last != first:
-      let lastWord = last shr 6
-      assert lastWord < f.dirtyPages.len
-      let lastMask = 1'u64 shl (last and 63)
-      let lastBefore = f.dirtyPages[lastWord]
-      if (lastBefore and lastMask) == 0:
-        # The checked scalar may touch a second page in the same bitmap word or the following word.
-        flatRememberPage(f, last)
+    if last != first and (f.dirtyPages[last shr 6] and (1'u64 shl (last and 63))) == 0:
+      # Both pages and the complete required index count were admitted before the first change.
+      if not flatRememberPage(f, last): return false
+  true
 
 proc flatClearDirty(f: var FlatFrame) =
   ## A successful host checkpoint or input reset makes private bytes equal their immutable base again.
@@ -947,34 +964,56 @@ proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64): or
       return oracle.StepError.None
   oracle.StepError.None # The store uses one of the already resident primary runs.
 
-proc flatByte(f: FlatFrame, address: uint64, baseline: byte): byte =
-  ## The caller supplies a genuine checked scalar/page byte; logical membership selects any private overlay.
-  if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len): return f.stack[int(
-      address-f.stackBase)]
-  if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len): return f.rw[int(address-f.rwBase)]
-  if address >= f.roBase and address-f.roBase < uint64(f.ro.len): return f.ro[int(address-f.roBase)]
+proc flatByte(f: FlatFrame, address: uint64, baseline: byte, value: var byte): bool =
+  ## Refuse damaged private overlays instead of replacing a genuine checked source byte with zero.
+  if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len):
+    value = f.stack[int(address-f.stackBase)]
+    return true
+  if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len):
+    var copied = 0'u64
+    if not tryReadScalar[1](f.rw, int(address-f.rwBase), copied): return false
+    value = byte(copied)
+    return true
+  if address >= f.roBase and address-f.roBase < uint64(f.ro.len):
+    value = f.ro[int(address-f.roBase)]
+    return true
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
     if address >= r.first and address-r.first < uint64(r.size):
-      if r.bytes.len == 0: return baseline
-      assert r.bytes.len == r.size
-      return r.bytes[int(address-r.first)]
-  assert false, "validated readable byte must belong to a captured private region"
-  0
+      # An unmaterialized run uses the already checked immutable source byte.
+      if r.bytes.len == 0:
+        value = baseline
+        return true
+      if r.bytes.len != r.size: return false
+      value = r.bytes[int(address-r.first)]
+      return true
+  false
 
-proc flatSetByte(f: var FlatFrame, address: uint64, value: byte) =
-  ## Complete store preflight establishes writability across all involved regions before this helper mutates one byte.
-  if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len): f.stack[int(
-      address-f.stackBase)] = value; return
-  if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len): f.rw[int(
-      address-f.rwBase)] = value; return
+func flatByteWritable(f: FlatFrame, address: uint64): bool =
+  ## Prove one private byte target before a multi-byte slow store mutates any lane.
+  if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len): return true
+  if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len):
+    return containsSpan(f.rw, int(address-f.rwBase), 1)
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
     if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.size):
-      assert r.bytes.len == r.size # The whole store installed its complete payload before dirty marking.
+      return r.bytes.len == r.size
+  false
+
+proc flatSetByte(f: var FlatFrame, address: uint64, value: byte): bool =
+  ## Whole-store target preflight precedes writes; invalid private geometry returns no success.
+  if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len):
+    f.stack[int(address-f.stackBase)] = value
+    return true
+  if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len):
+    return tryWriteScalar[1](f.rw, int(address-f.rwBase), uint64(value))
+  for i in 0..<f.extra.len:
+    let r {.cursor.} = f.extra[i]
+    if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.size):
+      if r.bytes.len != r.size: return false
       f.extra[i].bytes[int(address-r.first)] = value
-      return
-  assert false, "validated writable byte must belong to a captured writable region"
+      return true
+  false
 
 proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool =
@@ -990,11 +1029,16 @@ proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
   let baseline = uint64(checked.value)
-  value = 0
+  var copied = 0'u64
   for i in 0..<W:
-    # Each baseline lane is genuine even when only part of this load has a private overlay.
+    # A failed later overlay lane must not publish a partial destination register.
     let original = byte((baseline shr (8*i)) and 255'u64)
-    value = value or (uint64(flatByte(f, address+uint64(i), original)) shl (8*i))
+    var lane = 0'u8
+    if not flatByte(f, address+uint64(i), original, lane):
+      discard flatLocal(f, off, oracle.StepError.BackendFailure)
+      return false
+    copied = copied or (uint64(lane) shl (8*i))
+  value = copied
   true
 
 proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value: uint64): bool =
@@ -1013,8 +1057,18 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
   if materialized != oracle.StepError.None:
     discard flatLocal(f, off, materialized)
     return false
-  flatMarkStore[W](f, address)
-  for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
+  for i in 0..<W:
+    # Validate all overlay targets before the first dirty bit or byte changes.
+    if not flatByteWritable(f, address+uint64(i)):
+      discard flatLocal(f, off, oracle.StepError.BackendFailure)
+      return false
+  if not flatMarkStore[W](f, address):
+    discard flatLocal(f, off, oracle.StepError.BackendFailure)
+    return false
+  for i in 0..<W:
+    if not flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64)):
+      discard flatLocal(f, off, oracle.StepError.BackendFailure)
+      return false
   true
 
 proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
@@ -1024,7 +1078,7 @@ proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
   if address >= 65536'u64 and address <= uint64(high(uint32))-uint64(W):
     if address >= f.stackBase:
       let at = int(address-f.stackBase)
-      if f.stack.len >= W and at <= f.stack.len-W: value = flatRead[W](f.stack, at); return true
+      if f.stack.len >= W and at <= f.stack.len-W: return flatRead[W](f.stack, at, value)
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
@@ -1035,7 +1089,7 @@ proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
         return true
     elif address >= f.roBase:
       let at = int(address-f.roBase)
-      if f.ro.len >= W and at <= f.ro.len-W: value = flatRead[W](f.ro, at); return true
+      if f.ro.len >= W and at <= f.ro.len-W: return flatRead[W](f.ro, at, value)
   false
 
 proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
@@ -1052,16 +1106,18 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
     if address >= f.stackBase:
       let at = int(address-f.stackBase)
       if f.stack.len >= W and at <= f.stack.len-W:
-        flatWrite[W](f.stack, at, value)
-        flatMarkStore[W](f, address)
+        if not flatStoreMetadataValid[W](f, address) or not flatWrite[W](f.stack, at, value) or
+            not flatMarkStore[W](f, address):
+          f.reason = oracle.StepError.BackendFailure
+          return false
         return true
     elif address >= f.rwBase:
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
-        if not tryWriteScalar[W](f.rw, at, value):
+        if not flatStoreMetadataValid[W](f, address) or not tryWriteScalar[W](f.rw, at, value) or
+            not flatMarkStore[W](f, address):
           f.reason = oracle.StepError.BackendFailure
           return false
-        flatMarkStore[W](f, address)
         return true
   flatStoreSlow[W](f, off, address, value)
 
@@ -1929,7 +1985,8 @@ when defined(pvmSharedAsyncWitness):
               frame.info != before: return false
       var bytes = @[0xa5'u8, 0x5a'u8]
       var frame = FlatFrame(plan: FlatPlan(), reason: oracle.StepError.None,
-        rwBase: 65536, stackBase: uint64(high(uint32)), arguments: @[FlatArgs(x: 65536)])
+        rwBase: 65536, stackBase: uint64(high(uint32)), arguments: @[FlatArgs(x: 65536)],
+        sourcePages: @[PageDescription(index: PageIndex(16), access: PageAccess.ReadWrite)])
       frame.rwStorage = takeManaged(bytes)
       frame.rw = borrowRW(frame.rwStorage)
       frame.info.gas = MachineGas(123)
@@ -4095,6 +4152,84 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   flatPromoteNativeLoop(f)
 
 when defined(pvmSharedAsyncWitness):
+  proc probeScalarTransferRefusals*(): bool =
+    ## Malformed spans, dirty extents and private overlays preserve bytes and unpublished load values.
+    var bytes = @[0x11'u8, 0x22, 0x33, 0x44]
+    for at in [-1, 3, high(int)]:
+      # Neither a short tail nor a wrapped/native-invalid coordinate grants a scalar transfer.
+      var value = 0xfedcba9876543210'u64
+      if flatReadSpan[2](bytes, at, value) or value != 0xfedcba9876543210'u64 or
+          flatWriteSpan[2](bytes, at, 0xabcd) or bytes != @[0x11'u8, 0x22, 0x33, 0x44]:
+        return false
+    var value = 0'u64
+    if not flatReadSpan[2](bytes, 1, value) or value != 0x3322: return false
+    if not flatWriteSpan[2](bytes, 1, 0xabcd) or bytes != @[0x11'u8, 0xcd, 0xab, 0x44]:
+      return false
+    let decoded = decodeProgram(@[0'u8, 0, 1, 0, 1], CodeAddress(0), ProgramByteLimit(64),
+        JumpCountLimit(0))
+    if decoded.error != ProgramError.None: return false
+    var prepared = prepareFlatPlan(decoded.value, GasCycleLimit(100000), defaultFlatLimits(), false)
+    if prepared.error != FlatError.None: return false
+    let plan = takeValue(prepared)
+    var pages = [PageImage(index: PageIndex(63), access: PageAccess.ReadWrite),
+      PageImage(index: PageIndex(64), access: PageAccess.ReadWrite)]
+    for page in 0..<2:
+      for at in 0..<4096: pages[page].bytes[at] = 0x5a
+    let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(12345))
+    let address = 64'u64*4096-1
+    for damage in 0..3:
+      # The scalar crosses bitmap words: refuse the entire store when the second word/index cannot fit.
+      var frame = newFlatFrame(plan, pages, info)
+      let header = flatResolve(frame, 0)
+      if header == flatStop: return false
+      case damage
+      of 0: frame.dirtyPages = @[0'u64]
+      of 1: frame.dirtyIndices = @[63'u32]
+      of 2: frame.dirtyIndices = @[63'u32, 64, 65]
+      else: discard # Positive control has complete zero bitmap and two admitted index slots.
+      let stored = flatStore[2](frame, header, address, 0xabcd)
+      let intact = borrowRW(frame.rwStorage)
+      if frame.info != info: return false
+      if damage < 3:
+        if stored or frame.reason != oracle.StepError.BackendFailure: return false
+        for at in 0..<intact.len:
+          if intact[at] != 0x5a: return false
+        for bits in frame.dirtyPages:
+          if bits != 0: return false
+        let expected = if damage == 1: @[63'u32] elif damage == 2: @[63'u32, 64, 65] else: @[]
+        if frame.dirtyIndices != expected: return false
+      else:
+        if not stored or frame.reason != oracle.StepError.None or
+            frame.dirtyPages != @[1'u64 shl 63, 1] or frame.dirtyIndices != @[63'u32, 64]:
+          return false
+        for at in 0..<intact.len:
+          # Independent two-byte literal also proves all surrounding resident bytes stayed intact.
+          let expected = if at == 4095: 0xcd'u8 elif at == 4096: 0xab'u8 else: 0x5a'u8
+          if intact[at] != expected: return false
+    block:
+      # A genuine source load succeeds, but only its first byte has a private overlay.
+      var frame = newFlatFrame(plan, pages, info)
+      let header = flatResolve(frame, 0)
+      if header == flatStop: return false
+      frame.rwBase = high(uint64)
+      frame.stackBase = address
+      frame.stack = @[0x5a'u8]
+      var value = 0xfedcba9876543210'u64
+      if flatLoadSlow[2](frame, header, address, value) or value != 0xfedcba9876543210'u64 or
+          frame.reason != oracle.StepError.BackendFailure: return false
+      frame.reason = oracle.StepError.None
+      if flatStoreSlow[2](frame, header, address, 0xabcd) or frame.stack != @[0x5a'u8] or
+          frame.reason != oracle.StepError.BackendFailure or frame.dirtyIndices.len != 0:
+        return false
+      for bits in frame.dirtyPages:
+        if bits != 0: return false
+      frame.reason = oracle.StepError.None
+      let loaded = flatLoadSlow[2](frame, header, 62'u64*4096, value)
+      if loaded or frame.reason != oracle.StepError.None: return false
+      if frame.exit != oracle.StepExit.Fault or uint32(frame.faultPage) != 62'u32*4096:
+        return false
+    true
+
   proc probeWordStoreBorrowRefusal*(): bool =
     ## A genuine byte-extraction loop exercises the combined word caller on success and lost-borrow failure.
     ## Refusal must precede its projected four iterations, gas, attempts and dirty-byte publication.
@@ -4433,8 +4568,9 @@ proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
     assert image.access == description.access
     for at in 0..<4096:
       # Inaccessible bytes have no resident region and remain solely in their immutable source page.
-      let current = if description.access == PageAccess.Inaccessible: image.bytes[at]
-        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at])
+      var current = image.bytes[at]
+      if description.access != PageAccess.Inaccessible:
+        assert flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at], current)
       assert current == byte(expected[offset+page*4096+at])
 
 proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
