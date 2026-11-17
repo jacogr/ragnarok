@@ -51,7 +51,7 @@ int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Copy a server connection capacity before network processing/observer registration; failure is atomic. */
 int rq_set_peer_capacity(rq_transport *, unsigned maximum, int multiple);
 /* Generic startup options are copied before engine construction. Zero idle preserves the selected legacy profile. Explicit idle1..600 selects
- * keepalive0/1; the bridge schedules enabled QUICHE probes at half the configured idle timeout. */
+ * keepalive0/1; the bridge schedules enabled QUICHE probes within the negotiated idle window for either role. */
 typedef struct rq_transport_options {
     int profile, server, ipv6, multi;
     unsigned idle_seconds, keepalive;

@@ -427,6 +427,8 @@ class Session final : public QuicSession {
     void OnTlsHandshakeComplete() override;
     void OnConnectionClosed(const QuicConnectionCloseFrame &frame,
                             ConnectionCloseSource source) override {
+        if (keepalive_alarm_)
+            keepalive_alarm_->Cancel();
         QuicSession::OnConnectionClosed(frame, source);
         owner->Retire(this);
     }
@@ -456,6 +458,21 @@ class Session final : public QuicSession {
     QuicStream *CreateIncomingStream(QuicStreamId id) override;
 
   private:
+    // This public QUICHE alarm uses the same bounded scheduler as transport alarms.
+    // The session destroys it before releasing its connection context.
+    class KeepaliveAlarm final : public QuicAlarm::DelegateWithContext {
+      public:
+        explicit KeepaliveAlarm(Session *session)
+            : DelegateWithContext(session->connection()->context()), session_(session) {}
+        void OnAlarm() override { session_->SendKeepalive(); }
+
+      private:
+        Session *session_;
+    };
+    void StartKeepalive();
+    void SendKeepalive();
+    std::unique_ptr<QuicAlarm> keepalive_alarm_;
+    QuicTime::Delta keepalive_interval_ = QuicTime::Delta::Zero();
     std::unique_ptr<QuicCryptoStream> crypto_;
     QuicCryptoClientStream *client_stream_ = nullptr;
     ProofHandler proof_handler_;
@@ -518,12 +535,6 @@ Session::Session(rq_transport *transport, QuicConnection *connection, Visitor *v
     keepalive = owner->options.idle_seconds
                     ? owner->options.keepalive != 0
                     : (!owner->options.server || owner->options.profile >= 4);
-    unsigned idle = owner->options.idle_seconds;
-    if (!idle && (owner->multi || owner->options.profile >= 4))
-        idle = 2;
-    if (keepalive)
-        connection->set_keep_alive_ping_timeout(
-            QuicTime::Delta::FromMilliseconds(idle ? idle * 500 : 15000));
     if (owner->options.server) {
         crypto_ =
             CreateCryptoServerStream(owner->server_crypto.get(), cache, this, &crypto_helper_);
@@ -557,6 +568,7 @@ Session::Session(rq_transport *transport, QuicConnection *connection, Visitor *v
 
 // Retire observer slots and detach native handles before destroying TLS and the connection.
 Session::~Session() {
+    keepalive_alarm_.reset();
     if (!retired)
         owner->Retire(this);
     if (!handshake_settled)
@@ -616,6 +628,36 @@ void Session::OnTlsHandshakeComplete() {
         owner->status = 1;
         ++owner->authenticated;
     }
+    StartKeepalive();
+}
+
+// Use negotiated idle credit for both roles. The stock keepalive deadline is client-only;
+// retransmittable-on-wire probes back off and have a lifetime cap, so neither alone
+// implements the caller's persistent server policy. Public alarms and SendPing do.
+void Session::StartKeepalive() {
+    if (!keepalive || !connection()->connected())
+        return;
+    auto timeout = config()->IdleNetworkTimeout();
+    if (timeout.IsInfinite() || timeout <= QuicTime::Delta::Zero())
+        return;
+    // QUICHE expires clients one second before the negotiated idle timeout when
+    // it exceeds one second. Probe halfway through that shorter window in both roles.
+    if (timeout > QuicTime::Delta::FromSeconds(1))
+        timeout = timeout - QuicTime::Delta::FromSeconds(1);
+    keepalive_interval_ =
+        QuicTime::Delta::FromMicroseconds(std::max<int64_t>(1, timeout.ToMicroseconds() / 2));
+    keepalive_alarm_.reset(owner->alarms->CreateAlarm(new KeepaliveAlarm(this)));
+    keepalive_alarm_->Set(owner->clock.Now() + keepalive_interval_);
+}
+
+// Send one probe per due alarm without catch-up bursts. QUICHE owns packet creation,
+// congestion control and retransmission; the shared writer retains its per-turn budget.
+void Session::SendKeepalive() {
+    if (retired || close_pending || !connection()->connected())
+        return;
+    connection()->SendPing();
+    if (!retired && !close_pending && connection()->connected())
+        keepalive_alarm_->Set(owner->clock.Now() + keepalive_interval_);
 }
 
 // Allocate a stable ABI handle before activating the stream; application notification is deferred.
