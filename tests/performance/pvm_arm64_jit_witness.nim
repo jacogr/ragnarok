@@ -4,6 +4,7 @@
 ## Checked frame/source histories and independent direct legacy ARM emitter/ABI/arena controls.
 
 import std/[assertions, syncio]
+import ../support/pvm_flat_witness
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas

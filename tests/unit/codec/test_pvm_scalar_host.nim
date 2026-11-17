@@ -7,6 +7,7 @@
 # @@Verification={"arc": "pvm_scalar_host_arc_release"}
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/handler_stream

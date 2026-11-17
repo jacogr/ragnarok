@@ -4,6 +4,7 @@
 ## Frozen full-state benchmark with the same decoded-fact/reset boundary as the historical local control.
 
 import std/[assertions, syncio, envvars]
+import ../support/pvm_flat_witness
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/handler_stream

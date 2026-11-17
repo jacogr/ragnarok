@@ -4,6 +4,7 @@
 ## A reused executable stream must not carry a sealed charge across pricing policies.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 import ../../../src/pvm/step

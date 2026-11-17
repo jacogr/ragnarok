@@ -5,6 +5,7 @@
 
 # @@Verification={"arc": "pvm_fresh_resident_arc_release"}
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step

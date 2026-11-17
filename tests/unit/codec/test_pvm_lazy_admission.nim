@@ -4,6 +4,7 @@
 ## Unvisited facts stay unfilled; private catalogues preserve global ordinals and stream isolation.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas

@@ -4,6 +4,7 @@
 ## Fragmented permission regions, exact whole-range faults, host continuation and immutable aliases.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]

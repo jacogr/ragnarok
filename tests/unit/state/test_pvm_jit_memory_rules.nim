@@ -4,6 +4,7 @@
 ## Literal GP store/load widths and grouped pointer choices stay checked until shared memory lowering exists.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/handler_stream

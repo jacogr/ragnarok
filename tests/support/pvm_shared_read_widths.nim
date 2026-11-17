@@ -4,6 +4,7 @@
 ## Literal scalar-read transactions and source-certified public native histories on either ISA.
 
 import std/[assertions, envvars, syncio]
+import ./pvm_flat_witness
 import ../../src/pvm/[machine, program, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[native_ir, native_pipeline, native_platform, native_read_body]

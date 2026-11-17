@@ -4,6 +4,7 @@
 ## Local lowering witness: exclusive frame/stream owners can move but cannot be duplicated for a later read.
 
 import std/[assertions, syncio]
+import ../support/pvm_flat_witness
 import ../../src/pvm/internal/handler_stream
 import ../../src/pvm/program
 import ../../src/pvm/gas/gas

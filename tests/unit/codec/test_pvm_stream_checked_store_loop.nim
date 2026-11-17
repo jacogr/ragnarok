@@ -4,6 +4,7 @@
 ## Checked-loop execution: literal byte effects and independent single-step CPU/accounting/fault outcomes.
 
 import std/[assertions, syncio]
+import ../../support/pvm_flat_witness
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
