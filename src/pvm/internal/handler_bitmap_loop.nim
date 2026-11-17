@@ -116,7 +116,8 @@ when declared(FlatFrame):
     if flatBitmapCertificate(f, root, proof.epoch) != proof:
       invalidateNativeStream(f.nativeSession)
       return
-    f.nativeOriginal = f.handlers[int(root)]
+    let original = f.handlers[int(root)]
+    if not flatInstallNativePatch(f, root, flatNativeBitmap): return
+    f.nativeOriginal = original
     f.nativeEntry = root
     f.nativeInstalledEpoch = proof.epoch
-    flatInstallNativePatch(f, root, flatNativeBitmap)

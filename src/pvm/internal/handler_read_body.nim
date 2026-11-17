@@ -168,7 +168,9 @@ when declared(FlatFrame):
 
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Rebuild the typed certificate before installing a body-only stream patch.
-    assert f.nativeOriginal == nil
+    if f.nativeOriginal != nil or f.plan == nil:
+      f.reason = oracle.StepError.BackendFailure
+      return
     if int(info.first) >= f.plan.facts.len:
       invalidateNativeStream(f.nativeSession)
       return
@@ -179,7 +181,12 @@ when declared(FlatFrame):
       invalidateNativeStream(f.nativeSession)
       return
     let entry = info.header+1
-    f.nativeOriginal = f.handlers[int(entry)]
+    if uint64(entry) >= uint64(f.handlers.len):
+      f.reason = oracle.StepError.BackendFailure
+      return
+    let original = f.handlers[int(entry)]
+    if not flatInstallNativePatch(f, entry,
+        if extended: flatNativeReadContinuation else: flatNativeReadBody): return
+    f.nativeOriginal = original
     f.nativeEntry = entry
     f.nativeInstalledEpoch = info.epoch
-    flatInstallNativePatch(f, entry, if extended: flatNativeReadContinuation else: flatNativeReadBody)

@@ -291,9 +291,17 @@ when declared(FlatFrame):
 
   proc finishNativeReadObservation*(f: var FlatFrame, success: bool) =
     ## Qualify the returned halt, then restore and revalidate the checked stream before retirement.
-    assert not f.readProbe.observing
+    when defined(pvmSharedAsyncWitness):
+      if damageNativeInstallationBeforePublication:
+        damageNativeInstallationBeforePublication = false
+        f.nativeInstallation.count = byte(f.nativeInstallation.patches.len+1)
+    if f.readProbe.observing or not flatNativeInstallationValid(f):
+      f.reason = oracle.StepError.BackendFailure
+      return
     when NativeReadCycleEnabled:
-      assert not f.readProbe.protectedActive
+      if f.readProbe.protectedActive:
+        f.reason = oracle.StepError.BackendFailure
+        return
     let key = nativeInstalledKey(f.nativeSession)
     let qualified = success and f.reason == oracle.StepError.None and
       f.exit == oracle.StepExit.Halt and f.attemptedExit and f.pricingKind == 0 and
@@ -304,8 +312,10 @@ when declared(FlatFrame):
       return
     let info = nativeReplacementReadInfo(f.nativeSession)
     if info.epoch == 0: return
-    assert f.barrier == flatStop
-    flatRestoreNativeInstallation(f)
+    if f.barrier != flatStop:
+      f.reason = oracle.StepError.BackendFailure
+      return
+    if not flatRestoreNativeInstallation(f): return
     var valid = false
     if int(info.first) < f.plan.facts.len:
       var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)

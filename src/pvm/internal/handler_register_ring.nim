@@ -75,20 +75,26 @@ when declared(FlatFrame):
       ring.blocks[index] = item
     if ring.complete: result = ring
 
-  proc flatSelectRingHandlers[Ring: static[bool]](f: var FlatFrame, headers: array[3, uint32]) =
+  proc flatSelectRingHandlers[Ring: static[bool]](f: var FlatFrame, headers: array[3,
+      uint32]): bool =
     ## Swap only the three certified headers after a complete checked round or ready revalidation.
     let a: FlatHandler = flatChargedShape[200, 139, 82, Ring]
     let b: FlatHandler = flatChargedShape[131, -1, 88, Ring]
     let c: FlatHandler = flatChargedShape[151, 152, 173, Ring]
     when Ring:
-      flatInstallNativePatch(f, headers[0], a)
-      flatInstallNativePatch(f, headers[1], b)
-      flatInstallNativePatch(f, headers[2], c)
+      return flatInstallNativePatches(f, [FlatNativePatchRequest(offset: headers[0], handler: a),
+        FlatNativePatchRequest(offset: headers[1], handler: b),
+        FlatNativePatchRequest(offset: headers[2], handler: c)])
     else:
       # Cold nomination changes only checked shape routing; no image owns these handlers.
+      for header in headers:
+        if uint64(header) >= uint64(f.handlers.len):
+          f.reason = oracle.StepError.BackendFailure
+          return false
       f.handlers[int(headers[0])] = a
       f.handlers[int(headers[1])] = b
       f.handlers[int(headers[2])] = c
+      return true
 
   proc flatObserveNativeRing(f: var FlatFrame, first, middle, last: uint32): bool {.noinline.} =
     ## Nominate a checked round once, then dispatch the stock checked worker until publication.
@@ -102,8 +108,7 @@ when declared(FlatFrame):
     let ring = flatRingCertificate(f, headers)
     if not ring.complete: return false
     nominateNativeRing(f.nativeSession, ring, epoch)
-    flatSelectRingHandlers[false](f, headers)
-    true
+    return flatSelectRingHandlers[false](f, headers)
 
   proc flatInstallNativeRing(f: var FlatFrame, ring: NativeRegisterRing) =
     ## Compare every source and pricing fact after restoring the same exclusive stream.
@@ -111,8 +116,7 @@ when declared(FlatFrame):
     if flatRingCertificate(f, headers) != ring:
       invalidateNativeStream(f.nativeSession)
     else:
-      flatSelectRingHandlers[true](f, headers)
-      f.nativeRingInstalled = true
+      if flatSelectRingHandlers[true](f, headers): f.nativeRingInstalled = true
 
   proc flatTryNativeRing(f: var FlatFrame, header: uint32, destination: var uint32): bool =
     ## A full unpaid entry may run natively. The original header handles partial, paid and gas stops.

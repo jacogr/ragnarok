@@ -190,7 +190,9 @@ when declared(FlatFrame):
 
   proc installFlatReadCycle(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Patch the same body entry only after rebuilding the complete connected certificate.
-    assert f.nativeOriginal == nil
+    if f.nativeOriginal != nil or f.plan == nil:
+      f.reason = oracle.StepError.BackendFailure
+      return
     if int(info.first) >= f.plan.facts.len:
       invalidateNativeStream(f.nativeSession)
       return
@@ -200,7 +202,11 @@ when declared(FlatFrame):
       invalidateNativeStream(f.nativeSession)
       return
     let entry = info.header+1
-    f.nativeOriginal = f.handlers[int(entry)]
+    if uint64(entry) >= uint64(f.handlers.len):
+      f.reason = oracle.StepError.BackendFailure
+      return
+    let original = f.handlers[int(entry)]
+    if not flatInstallNativePatch(f, entry, flatNativeReadCycle): return
+    f.nativeOriginal = original
     f.nativeEntry = entry
     f.nativeInstalledEpoch = info.epoch
-    flatInstallNativePatch(f, entry, flatNativeReadCycle)
