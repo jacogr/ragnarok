@@ -16,6 +16,9 @@
 ## A direct publisher does not grant admission to a prepared frame.
 ## Scalar bit counts use the baseline ISA without POPCNT, LZCNT or TZCNT requirements.
 ## Zero-word scans select the explicit 32/64 result before their otherwise undefined value is used.
+## Scalar and branch builders retain their first lowering refusal. Extraction, direct publication
+## and region composition reject that whole builder, including any earlier valid prefix.
+## A successful builder still needs the enclosing source and execution certificate before publication.
 
 import std/assertions
 import ../[program, machine]
@@ -148,8 +151,12 @@ when defined(pvmX86Jit):
         childCalls*: uint64
 
 type
+  X86EmissionError* {.pure.} = enum
+    ## Cold-builder refusals prevent every later publication; no guest state has been executed.
+    None, UnsupportedOpcode, InvalidDestination
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
+    failure: X86EmissionError
   X86Entry = object ## Only exact source coordinates own callable code offsets; zero is uncompiled and one is refused.
     code, ending, operations: uint32
     conditional: bool
@@ -201,8 +208,17 @@ proc newX86Jit*(): X86Jit =
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
 proc takeX86Instructions*(fragment: var X86Block): seq[byte] =
-  ## Transfer only machine bytes to the shared worker; no legacy admission/publication rule is invoked.
+  ## Transfer only a complete builder. A failed builder retains its refusal even after repeated takes.
+  if fragment.failure != X86EmissionError.None: return @[]
   move(fragment.bytes)
+
+func error*(fragment: X86Block): X86EmissionError =
+  ## Inspect the first local refusal without exposing mutable builder status or partial machine bytes.
+  fragment.failure
+
+proc refuseX86Emission(fragment: var X86Block, failure: X86EmissionError) =
+  ## Preserve the first cause. Keeping bytes private allows safe unwinding without publishing a prefix.
+  if fragment.failure == X86EmissionError.None: fragment.failure = failure
 
 func supportedX86Opcode*(opcode: byte): bool {.inline.} =
   ## Baseline x86-64 instructions implement these non-exiting scalar operations without optional CPU extensions.
@@ -210,6 +226,7 @@ func supportedX86Opcode*(opcode: byte): bool {.inline.} =
 
 proc put(fragment: var X86Block, bytes: openArray[byte]) =
   ## Every copied byte belongs to the cold builder, never to a source or invocation view.
+  if fragment.failure != X86EmissionError.None: return
   for value in bytes: fragment.bytes.add(value)
 
 proc immediate(fragment: var X86Block, operation: byte, value: uint64) =
@@ -239,134 +256,143 @@ when (defined(pvmX86Jit) and NativeCheckedReadEnabled) or defined(pvmX86Resident
 template emitX86OperationAccess(fragment: var X86Block, access: untyped, opcode: byte,
     slots: RegisterSlots, value: uint64) =
   ## Scratch RAX/RCX/RDX/R8 obey SysV caller-save rules; all aliases consume their old inputs first.
-  assert supportedX86Opcode(opcode)
-  if opcode in [20'u8, 51]:
-    immediate(fragment, 0xb8, value)
-  elif opcode in [147'u8, 148, 218, 219]:
-    # RDX preserves the chosen value while the old destination and predicate load into RAX/RCX.
-    if opcode < 190:
-      immediate(fragment, 0xba, value)
-    else:
-      readAccess(fragment, access, slots.aIndex, false)
-      put(fragment, [0x48'u8, 0x89, 0xc2]) # MOV RDX,RAX snapshots even a destination alias.
-    readAccess(fragment, access, slots.destinationIndex, false)
-    readAccess(fragment, access, slots.bIndex, true)
-    put(fragment, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX observes the complete predicate.
-    put(fragment, [0x48'u8, 0x0f, (if opcode in [147'u8, 218]: 0x44'u8 else: 0x45'u8),
-      0xc2]) # CMOVZ/CMOVNZ RAX,RDX leaves the old destination when false.
-  elif opcode in {101'u8..106}:
-    readAccess(fragment, access, slots.aIndex, false)
-    let narrow = opcode in [102'u8, 104, 106]
-    if narrow: put(fragment, [0x89'u8, 0xc0]) # MOV EAX,EAX discards the upper input word.
-    if opcode in [101'u8, 102]:
-      # Fixed disjoint-lane sum uses the baseline ISA, including on CPUs without POPCNT.
-      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xd1, 0xe9]) # MOV RCX,RAX; SHR RCX,1.
-      immediate(fragment, 0xba, 0x5555555555555555'u64)
-      put(fragment, [0x48'u8, 0x21, 0xd1, 0x48, 0x29, 0xc8]) # AND RCX,RDX; SUB RAX,RCX.
-      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 2])
-      immediate(fragment, 0xba, 0x3333333333333333'u64)
-      put(fragment, [0x48'u8, 0x21, 0xd0, 0x48, 0x21, 0xd1, 0x48, 0x01, 0xc8])
-      put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 4, 0x48, 0x01, 0xc8])
-      immediate(fragment, 0xba, 0x0f0f0f0f0f0f0f0f'u64)
-      put(fragment, [0x48'u8, 0x21, 0xd0])
-      for amount in [8'u8, 16, 32]:
-        put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, amount, 0x48, 0x01, 0xc8])
-      put(fragment, [0x83'u8, 0xe0, 127]) # AND EAX,127 retains the complete 0..64 count.
-    else:
-      # BSR/BSF leave their destination undefined at zero, but set ZF.
-      # MOV preserves ZF so CMOVZ selects the GP's explicit width result.
-      if not narrow: put(fragment, [0x48'u8])
-      put(fragment, [0x0f'u8, (if opcode in [103'u8, 104]: 0xbd'u8 else: 0xbc'u8), 0xc0])
-      put(fragment, [0xb9'u8, (if opcode in [103'u8, 104]:
-        (if narrow: 63'u8 else: 127'u8) else: (if narrow: 32'u8 else: 64'u8)), 0, 0, 0])
-      if not narrow: put(fragment, [0x48'u8])
-      put(fragment, [0x0f'u8, 0x44, 0xc1])
-      if opcode in [103'u8, 104]:
-        if not narrow: put(fragment, [0x48'u8])
-        put(fragment, [0x83'u8, 0xf0, (if narrow: 31'u8 else: 63'u8)])
-  elif opcode == 100 or opcode in {107'u8..110}:
-    readAccess(fragment, access, slots.aIndex, false)
-    case opcode
-    of 107: put(fragment, [0x48'u8, 0x0f, 0xbe, 0xc0]) # MOVSX RAX,AL.
-    of 108: put(fragment, [0x48'u8, 0x0f, 0xbf, 0xc0]) # MOVSX RAX,AX.
-    of 109: put(fragment, [0x0f'u8, 0xb7, 0xc0]) # MOVZX EAX,AX also clears the high word.
-    of 110: put(fragment, [0x48'u8, 0x0f, 0xc8]) # BSWAP RAX.
-    else: discard # The loaded A value is already the complete move result.
+  if fragment.failure != X86EmissionError.None:
+    discard # A later valid operation cannot make a refused builder publishable again.
+  elif not supportedX86Opcode(opcode):
+    refuseX86Emission(fragment, X86EmissionError.UnsupportedOpcode)
   else:
-    if opcode < 190:
-      readAccess(fragment, access, slots.bIndex, false)
-      immediate(fragment, 0xb9, value)
-    else:
-      readAccess(fragment, access, slots.aIndex, false)
+    if opcode in [20'u8, 51]:
+      immediate(fragment, 0xb8, value)
+    elif opcode in [147'u8, 148, 218, 219]:
+      # RDX preserves the chosen value while the old destination and predicate load into RAX/RCX.
+      if opcode < 190:
+        immediate(fragment, 0xba, value)
+      else:
+        readAccess(fragment, access, slots.aIndex, false)
+        put(fragment, [0x48'u8, 0x89, 0xc2]) # MOV RDX,RAX snapshots even a destination alias.
+      readAccess(fragment, access, slots.destinationIndex, false)
       readAccess(fragment, access, slots.bIndex, true)
-    if opcode in [141'u8, 154]:
-      put(fragment, [0x48'u8, 0x91]) # XCHG RAX,RCX makes immediate-minus-B preserve operand order.
-    if opcode in {136'u8, 137, 142, 143, 216, 217}:
-      let condition = case opcode
-        of 136, 216: 0x92'u8 # SETB unsigned less.
-        of 137, 217: 0x9c'u8 # SETL signed less.
-        of 142: 0x97'u8      # SETA unsigned greater.
-        else: 0x9f'u8        # SETG signed greater.
-      put(fragment, [0x48'u8, 0x39, 0xc8, 0x0f, condition, 0xc0, 0x0f, 0xb6, 0xc0])
-    else:
+      put(fragment, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX observes the complete predicate.
+      put(fragment, [0x48'u8, 0x0f, (if opcode in [147'u8, 218]: 0x44'u8 else: 0x45'u8),
+        0xc2]) # CMOVZ/CMOVNZ RAX,RDX leaves the old destination when false.
+    elif opcode in {101'u8..106}:
+      readAccess(fragment, access, slots.aIndex, false)
+      let narrow = opcode in [102'u8, 104, 106]
+      if narrow: put(fragment, [0x89'u8, 0xc0]) # MOV EAX,EAX discards the upper input word.
+      if opcode in [101'u8, 102]:
+        # Fixed disjoint-lane sum uses the baseline ISA, including on CPUs without POPCNT.
+        put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xd1, 0xe9]) # MOV RCX,RAX; SHR RCX,1.
+        immediate(fragment, 0xba, 0x5555555555555555'u64)
+        put(fragment, [0x48'u8, 0x21, 0xd1, 0x48, 0x29, 0xc8]) # AND RCX,RDX; SUB RAX,RCX.
+        put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 2])
+        immediate(fragment, 0xba, 0x3333333333333333'u64)
+        put(fragment, [0x48'u8, 0x21, 0xd0, 0x48, 0x21, 0xd1, 0x48, 0x01, 0xc8])
+        put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 4, 0x48, 0x01, 0xc8])
+        immediate(fragment, 0xba, 0x0f0f0f0f0f0f0f0f'u64)
+        put(fragment, [0x48'u8, 0x21, 0xd0])
+        for amount in [8'u8, 16, 32]:
+          put(fragment, [0x48'u8, 0x89, 0xc1, 0x48, 0xc1, 0xe9, amount, 0x48, 0x01, 0xc8])
+        put(fragment, [0x83'u8, 0xe0, 127]) # AND EAX,127 retains the complete 0..64 count.
+      else:
+        # BSR/BSF leave their destination undefined at zero, but set ZF.
+        # MOV preserves ZF so CMOVZ selects the GP's explicit width result.
+        if not narrow: put(fragment, [0x48'u8])
+        put(fragment, [0x0f'u8, (if opcode in [103'u8, 104]: 0xbd'u8 else: 0xbc'u8), 0xc0])
+        put(fragment, [0xb9'u8, (if opcode in [103'u8, 104]:
+          (if narrow: 63'u8 else: 127'u8) else: (if narrow: 32'u8 else: 64'u8)), 0, 0, 0])
+        if not narrow: put(fragment, [0x48'u8])
+        put(fragment, [0x0f'u8, 0x44, 0xc1])
+        if opcode in [103'u8, 104]:
+          if not narrow: put(fragment, [0x48'u8])
+          put(fragment, [0x83'u8, 0xf0, (if narrow: 31'u8 else: 63'u8)])
+    elif opcode == 100 or opcode in {107'u8..110}:
+      readAccess(fragment, access, slots.aIndex, false)
       case opcode
-      of 131, 190: put(fragment, [0x01'u8, 0xc8])
-      of 141, 191: put(fragment, [0x29'u8, 0xc8])
-      of 135, 192: put(fragment, [0x0f'u8, 0xaf, 0xc1])
-      of 138, 197: put(fragment, [0xd3'u8, 0xe0])
-      of 139, 198: put(fragment, [0xd3'u8, 0xe8])
-      of 140, 199: put(fragment, [0xd3'u8, 0xf8])
-      of 160, 223: put(fragment, [0xd3'u8, 0xc8])
-      of 132, 210: put(fragment, [0x48'u8, 0x21, 0xc8])
-      of 133, 211: put(fragment, [0x48'u8, 0x31, 0xc8])
-      of 134, 212: put(fragment, [0x48'u8, 0x09, 0xc8])
-      of 154, 201: put(fragment, [0x48'u8, 0x29, 0xc8])
-      of 150, 202: put(fragment, [0x48'u8, 0x0f, 0xaf, 0xc1])
-      of 151, 207: put(fragment, [0x48'u8, 0xd3, 0xe0])
-      of 152, 208: put(fragment, [0x48'u8, 0xd3, 0xe8])
-      of 153, 209: put(fragment, [0x48'u8, 0xd3, 0xf8])
-      of 158, 222: put(fragment, [0x48'u8, 0xd3, 0xc8])
-      of 213, 214, 215:
-        if opcode == 215:
-          # Mixed signed/unsigned high multiply subtracts sign(A)&B from the unsigned upper product.
-          put(fragment, [0x49'u8, 0x89, 0xc0, 0x49, 0xc1, 0xf8, 0x3f, 0x49, 0x21, 0xc8])
-        put(fragment, [0x48'u8, 0xf7, (if opcode == 213: 0xe9'u8 else: 0xe1'u8), 0x48, 0x89, 0xd0])
-        if opcode == 215: put(fragment, [0x4c'u8, 0x29, 0xc0])
-      of 224..226:
-        put(fragment, [0x48'u8, 0xf7, 0xd1]) # NOT RCX; these operations explicitly invert the right input.
-        put(fragment, [0x48'u8, (if opcode == 224: 0x21'u8 elif opcode ==
-            225: 0x09'u8 else: 0x31'u8), 0xc8])
-      else: put(fragment, [0x48'u8, 0x01, 0xc8]) # 149/200 full-width wrapping addition.
-      if opcode in {131'u8, 135, 138..141, 160, 190..192, 197..199, 223}:
-        put(fragment, [0x48'u8, 0x63, 0xc0]) # MOVSXD RAX,EAX restores the GP's signed low-word result.
-  writeAccess(fragment, access, slots.destinationIndex)
+      of 107: put(fragment, [0x48'u8, 0x0f, 0xbe, 0xc0]) # MOVSX RAX,AL.
+      of 108: put(fragment, [0x48'u8, 0x0f, 0xbf, 0xc0]) # MOVSX RAX,AX.
+      of 109: put(fragment, [0x0f'u8, 0xb7, 0xc0]) # MOVZX EAX,AX also clears the high word.
+      of 110: put(fragment, [0x48'u8, 0x0f, 0xc8]) # BSWAP RAX.
+      else: discard # The loaded A value is already the complete move result.
+    else:
+      if opcode < 190:
+        readAccess(fragment, access, slots.bIndex, false)
+        immediate(fragment, 0xb9, value)
+      else:
+        readAccess(fragment, access, slots.aIndex, false)
+        readAccess(fragment, access, slots.bIndex, true)
+      if opcode in [141'u8, 154]:
+        put(fragment, [0x48'u8, 0x91]) # XCHG RAX,RCX makes immediate-minus-B preserve operand order.
+      if opcode in {136'u8, 137, 142, 143, 216, 217}:
+        let condition = case opcode
+          of 136, 216: 0x92'u8 # SETB unsigned less.
+          of 137, 217: 0x9c'u8 # SETL signed less.
+          of 142: 0x97'u8      # SETA unsigned greater.
+          else: 0x9f'u8        # SETG signed greater.
+        put(fragment, [0x48'u8, 0x39, 0xc8, 0x0f, condition, 0xc0, 0x0f, 0xb6, 0xc0])
+      else:
+        case opcode
+        of 131, 190: put(fragment, [0x01'u8, 0xc8])
+        of 141, 191: put(fragment, [0x29'u8, 0xc8])
+        of 135, 192: put(fragment, [0x0f'u8, 0xaf, 0xc1])
+        of 138, 197: put(fragment, [0xd3'u8, 0xe0])
+        of 139, 198: put(fragment, [0xd3'u8, 0xe8])
+        of 140, 199: put(fragment, [0xd3'u8, 0xf8])
+        of 160, 223: put(fragment, [0xd3'u8, 0xc8])
+        of 132, 210: put(fragment, [0x48'u8, 0x21, 0xc8])
+        of 133, 211: put(fragment, [0x48'u8, 0x31, 0xc8])
+        of 134, 212: put(fragment, [0x48'u8, 0x09, 0xc8])
+        of 154, 201: put(fragment, [0x48'u8, 0x29, 0xc8])
+        of 150, 202: put(fragment, [0x48'u8, 0x0f, 0xaf, 0xc1])
+        of 151, 207: put(fragment, [0x48'u8, 0xd3, 0xe0])
+        of 152, 208: put(fragment, [0x48'u8, 0xd3, 0xe8])
+        of 153, 209: put(fragment, [0x48'u8, 0xd3, 0xf8])
+        of 158, 222: put(fragment, [0x48'u8, 0xd3, 0xc8])
+        of 213, 214, 215:
+          if opcode == 215:
+            # Mixed signed/unsigned high multiply subtracts sign(A)&B from the unsigned upper product.
+            put(fragment, [0x49'u8, 0x89, 0xc0, 0x49, 0xc1, 0xf8, 0x3f, 0x49, 0x21, 0xc8])
+          put(fragment, [0x48'u8, 0xf7, (if opcode == 213: 0xe9'u8 else: 0xe1'u8), 0x48, 0x89, 0xd0])
+          if opcode == 215: put(fragment, [0x4c'u8, 0x29, 0xc0])
+        of 224..226:
+          put(fragment, [0x48'u8, 0xf7, 0xd1]) # NOT RCX; these operations explicitly invert the right input.
+          put(fragment, [0x48'u8, (if opcode == 224: 0x21'u8 elif opcode ==
+              225: 0x09'u8 else: 0x31'u8), 0xc8])
+        else: put(fragment, [0x48'u8, 0x01, 0xc8]) # 149/200 full-width wrapping addition.
+        if opcode in {131'u8, 135, 138..141, 160, 190..192, 197..199, 223}:
+          put(fragment, [0x48'u8, 0x63, 0xc0]) # MOVSXD RAX,EAX restores the GP's signed low-word result.
+    writeAccess(fragment, access, slots.destinationIndex)
 
 template emitX86BranchAccess(fragment: var X86Block, access: untyped, opcode: byte,
     slots: RegisterSlots,
     value: uint64, yes, no: uint32) =
   ## Positive checked stream destinations become immediate scalar results; MOV/CMOV preserve the full-width comparison.
-  assert opcode in {81'u8..90, 170..175}
-  assert yes < 2147483646'u32 and no < 2147483646'u32
-  readAccess(fragment, access, slots.aIndex, false)
-  if opcode <= 90: immediate(fragment, 0xb9, value)
-  else: readAccess(fragment, access, slots.bIndex, true)
-  put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX consumes both original register/immediate values.
-  put(fragment, [0xb8'u8]) # MOV EAX,no leaves comparison flags intact and defines the complete return value.
-  for part in 0..<4: fragment.bytes.add(byte((no shr (part*8)) and 255))
-  put(fragment, [0xba'u8]) # MOV EDX,yes also preserves flags; RDX is caller-saved.
-  for part in 0..<4: fragment.bytes.add(byte((yes shr (part*8)) and 255))
-  let condition = case opcode
-    of 81, 170: 0x44'u8 # Equal.
-    of 82, 171: 0x45'u8 # Not equal.
-    of 83, 172: 0x42'u8 # Unsigned below.
-    of 84: 0x46'u8      # Unsigned below or equal.
-    of 85, 174: 0x43'u8 # Unsigned above or equal.
-    of 86: 0x47'u8      # Unsigned above.
-    of 87, 173: 0x4c'u8 # Signed less.
-    of 88: 0x4e'u8      # Signed less or equal.
-    of 89, 175: 0x4d'u8 # Signed greater or equal.
-    else: 0x4f'u8       # Signed greater.
-  put(fragment, [0x0f'u8, condition, 0xc2]) # CMOVcc EAX,EDX selects a scalar offset, never a host address.
+  if fragment.failure != X86EmissionError.None:
+    discard # Refusal remains sticky across different kinds of appended operation.
+  elif opcode notin {81'u8..90, 170..175}:
+    refuseX86Emission(fragment, X86EmissionError.UnsupportedOpcode)
+  elif yes >= 2147483646'u32 or no >= 2147483646'u32:
+    refuseX86Emission(fragment, X86EmissionError.InvalidDestination)
+  else:
+    readAccess(fragment, access, slots.aIndex, false)
+    if opcode <= 90: immediate(fragment, 0xb9, value)
+    else: readAccess(fragment, access, slots.bIndex, true)
+    put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX consumes both original register/immediate values.
+    put(fragment, [0xb8'u8]) # MOV EAX,no leaves comparison flags intact and defines the complete return value.
+    for part in 0..<4: fragment.bytes.add(byte((no shr (part*8)) and 255))
+    put(fragment, [0xba'u8]) # MOV EDX,yes also preserves flags; RDX is caller-saved.
+    for part in 0..<4: fragment.bytes.add(byte((yes shr (part*8)) and 255))
+    let condition = case opcode
+      of 81, 170: 0x44'u8 # Equal.
+      of 82, 171: 0x45'u8 # Not equal.
+      of 83, 172: 0x42'u8 # Unsigned below.
+      of 84: 0x46'u8      # Unsigned below or equal.
+      of 85, 174: 0x43'u8 # Unsigned above or equal.
+      of 86: 0x47'u8      # Unsigned above.
+      of 87, 173: 0x4c'u8 # Signed less.
+      of 88: 0x4e'u8      # Signed less or equal.
+      of 89, 175: 0x4d'u8 # Signed greater or equal.
+      else: 0x4f'u8       # Signed greater.
+    put(fragment, [0x0f'u8, condition, 0xc2]) # CMOVcc EAX,EDX selects a scalar offset, never a host address.
 
 proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
     value: uint64) =
@@ -408,7 +434,8 @@ proc refuseX86Entry*(jit: X86Jit, offset: uint32) =
 proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86Block,
     conditional: bool = false, shortPrefix: bool = false): bool =
   ## Only complete bounded pure spans become executable, with no guest pointer encoded in their bytes.
-  if jit.unavailable or int(offset) >= jit.entries.len:
+  if jit.unavailable or fragment.failure != X86EmissionError.None or
+      int(offset) >= jit.entries.len:
     return false
   let previous = jit.entries[int(offset)]
   if previous.code != 0 and not conditional:
@@ -637,7 +664,8 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       put(fragment, [0x4c'u8, 0x89, 0x5e, 16]) # MOV [RSI+16],R11: completed visits.
     of Return:
       put(fragment, [0xc3'u8]) # RET: the common StoreGuest action has restored the SysV stack.
-  if fragment.bytes.len > NativeImageByteLimit: return @[]
+  if fragment.failure != X86EmissionError.None or
+      fragment.bytes.len > NativeImageByteLimit: return @[]
   for fix in fixes:
     # The image ceiling proves a signed rel32, measured from after its four-byte field.
     let displacement = cast[uint32](int32(labels[fix.target]-(fix.at+4)))
@@ -699,7 +727,8 @@ proc x86RegionBytes(blocks: openArray[X86RegionBlock], rotating: bool,
     for index in 0..<count:
       let item = blocks[index]
       if item.header >= 262144 or item.span < 2 or item.span > 65 or
-          item.operations != item.span or item.body.bytes.len < 16: return @[]
+          item.operations != item.span or item.body.failure != X86EmissionError.None or
+          item.body.bytes.len < 16: return @[]
       let terminal = item.body.bytes.len
       # Only the existing emitter's MOV/MOV/CMOV scalar-selection tail can be replaced by native edges.
       if item.body.bytes[terminal-13] != 0xb8 or item.body.bytes[terminal-8] != 0xba or
@@ -1024,7 +1053,8 @@ when defined(pvmX86Jit):
       commitX86ResidentRegisters(code, bank)
       restoreX86ResidentRegisters(code, bank)
       put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3]) # Publish budgets and RET.
-      if code.bytes.len > byteCapacity or fixes.len != BitmapFixupCount: return @[]
+      if code.failure != X86EmissionError.None or code.bytes.len > byteCapacity or
+          fixes.len != BitmapFixupCount: return @[]
       for fix in fixes:
         if int(fix.target) >= labels.len or fix.at < 0 or fix.at > code.bytes.len-4:
           return @[]
@@ -1119,6 +1149,7 @@ when defined(pvmX86Jit):
         window: NativeReadWindow = default(NativeReadWindow)) =
       ## Preserve one guard and load emitter for standalone and transactional cycle reads.
       for index in 0..<count:
+        if code.failure != X86EmissionError.None: break
         let op = body.operation(index)
         let encoding = nativeReadEncodingOpcode(op.opcode)
         if not nativeReadOpcode(encoding):
@@ -1156,7 +1187,8 @@ when defined(pvmX86Jit):
 
     proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],
         labels: array[1+4*int(NativeReadFactLimit), int]): seq[byte] =
-      if code.bytes.len > NativeImageByteLimit: return @[]
+      if code.failure != X86EmissionError.None or
+          code.bytes.len > NativeImageByteLimit: return @[]
       for fix in fixes:
         # All targets are forward and fit rel32 under the image byte ceiling.
         let target = labels[int(fix.target)]
@@ -1230,6 +1262,7 @@ when defined(pvmX86Jit):
       var labels = default(array[1+4*int(NativeReadFactLimit), int])
       var nextLabel = 1'u8
       emitCheckedReadOperations(code, fixes, labels, body, access, body.len, 0, nextLabel)
+      if code.failure != X86EmissionError.None: return @[]
       assert access.written == dirty
       commitX86ResidentRegisters(code, access.bank)
       emitCheckedReadResidentReturn(code, access, NativeReadSuccess)
@@ -1734,6 +1767,10 @@ when defined(pvmX86Jit):
         let firstLabel = nextLabel
         emitCheckedReadOperations(read, readFixes, labels, body, access, readCycleBodyOps,
           readCyclePaidMiss, nextLabel)
+        if read.failure != X86EmissionError.None:
+          # Preserve nested refusal instead of appending its otherwise well-formed prefix.
+          refuseX86Emission(code, read.failure)
+          return
         assert access.written == dirty
         for slot in 0..12:
           # A later Read must observe the canonical state left by the previous roles.
@@ -1982,7 +2019,8 @@ when defined(pvmX86Jit):
           emitCheckedReadOperations(code, fixes, labels, cycle.read, roleAccess,
             readCycleBodyOps, readCyclePaidMiss, nextLabel)
           cycleEdge(code, fixes, 0, readComplete)
-        if code.bytes.len > NativeImageByteLimit: return @[]
+        if code.failure != X86EmissionError.None or
+          code.bytes.len > NativeImageByteLimit: return @[]
         for fix in fixes:
           # The complete image ceiling proves signed rel32 for both forward and backward edges.
           let delta = cast[uint32](int32(labels[int(fix.target)]-(fix.at+4)))
@@ -2190,7 +2228,8 @@ when defined(pvmX86Jit):
     cycleReturn(code, fixes, 2, candidate.outside.header)
     labels[int(cycleEpilogue)] = code.bytes.len
     put(code, [0x41'u8, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0xc3])
-    if code.bytes.len == 0 or code.bytes.len > 4096: return false
+    if code.failure != X86EmissionError.None or code.bytes.len == 0 or
+        code.bytes.len > 4096: return false
     for fix in fixes:
       if int(fix.target) >= labels.len or labels[int(fix.target)] <
           0: return false
@@ -2199,7 +2238,7 @@ when defined(pvmX86Jit):
       let encoded = cast[uint32](int32(delta))
       for shift in 0..<4:
         code.bytes[fix.at+shift] = byte((encoded shr (shift*8)) and 255)
-    image = move(code.bytes)
+    image = takeX86Instructions(code)
     true
 
   proc cycleNative(handle: nil pointer, offset: uint32, registers: pointer,
@@ -2539,7 +2578,8 @@ when defined(pvmX86Jit):
       labels[int(wideEpilogue)] = code.bytes.len
       put(code, [0x48'u8, 0x83, 0xc4, 0x68, 0x41, 0x5f, 0x41, 0x5e,
         0x41, 0x5d, 0x41, 0x5c, 0xc3])
-      if code.bytes.len == 0 or code.bytes.len > 4096: return false
+      if code.failure != X86EmissionError.None or code.bytes.len == 0 or
+        code.bytes.len > 4096: return false
       for fix in fixes:
         if int(fix.target) >= labels.len or labels[int(fix.target)] < 0:
           return false
@@ -2548,7 +2588,7 @@ when defined(pvmX86Jit):
           else: 0'u32-uint32(-displacement)
         for shift in 0..<4:
           code.bytes[fix.at+shift] = byte((value shr (shift*8)) and 255)
-      image = move(code.bytes)
+      image = takeX86Instructions(code)
       true
 
     proc wideNative(handle: nil pointer, offset: uint32, registers: pointer,
