@@ -45,7 +45,9 @@
 ## Prepared owners then remain checked. Restart requires no live client, image or outstanding borrow.
 ## Host invocation admission refuses reentry before touching the current lease. Auxiliary offers and
 ## borrows prove both complete row identities before indexing; a refused return keeps the image and
-## its lease owned. Callers must restore temporary handlers before returning the borrow, then finish
+## its lease owned. A last session reference cancels an abandoned lease without scheduling new work.
+## Final runtime drop joins the raw compiler before freeing its mailbox, images or synchronization.
+## Callers must restore temporary handlers before returning the borrow, then finish
 ## the invocation. Invalid optional source proofs never claim a credit or publish a compiler packet.
 
 import std/[assertions, locks, rawthreads]
@@ -150,7 +152,7 @@ type
     when NativeReadCycleEnabled:
       mixedRefusals: array[NativeMixedLoopCandidateLimit,
           uint32]       ## Source header tokens for this primary job key.
-  NativeRuntimeStorage = object ## Stable heap allocation owns synchronization until the last closed host handle drops.
+  NativeRuntimeStorage = object ## Stable heap allocation owns synchronization until the last anchor joins its worker.
     lock: Lock
     changed: Cond
     thread: RawThread
@@ -265,8 +267,16 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   runtime.failure = NativeCompilerFailure.None
 
 proc `=destroy`(runtime: var NativeRuntimeStorage) =
-  ## Last host anchor must be closed. Sessions retain the allocation/locks after an explicit close.
-  assert not runtime.started, "close NativeRuntime before releasing its last anchor"
+  ## Final-anchor shutdown joins the raw worker before destroying its stable mailbox or locks.
+  ## Explicit close remains the observable, refusal-capable shutdown path. Surviving sessions
+  ## retain this anchor, so last-drop cleanup cannot race a frame that still owns its session.
+  if runtime.initialized and runtime.started:
+    # A forgotten explicit close still wakes every compiler gate and waits for local image disposal.
+    acquire(runtime.lock)
+    runtime.stopping = true
+    broadcast(runtime.changed)
+    release(runtime.lock)
+    runtime.thread.join()
   for index in 0..<runtime.slots.len:
     # Closed surviving clients retain the anchor until their own image/credit retirement finishes.
     `=destroy`(runtime.slots[index])
@@ -503,10 +513,46 @@ proc `=wasMoved`(session: var NativeSessionStorage) {.nodestroy, inline,
   session.allowed = false
 
 proc `=destroy`(session: NativeSessionStorage) =
-  ## Native image release precedes freeing its bounded registration credit.
-  assert not session.invocation
-  `=destroy`(session.image)
+  ## Last session reference cancels an abandoned invocation rather than crashing or stranding its lease.
+  ## A live checked frame retains this session; raw auxiliary views require that same retained owner
+  ## until use ends. Final drop therefore has no executing segment to resume or qualify for compilation.
   let anchor {.cursor.} = session.runtime
+  if anchor != nil and session.invocation:
+    let runtime = addr anchor.storage
+    acquire(runtime.lock)
+    when NativeReadCycleEnabled:
+      if runtime.mixedBorrowed and sameKey(runtime.mixedOwner, session.retirementKey):
+        let key = runtime.mixedKey
+        let primary = session.retirementKey
+        let ownsPrimary = session.slot == primary.slot and matchesRow(runtime, primary) and
+          session.generation == primary.generation and session.epoch == primary.epoch and
+          runtime.slots[primary.slot].state == Live and
+          runtime.slots[primary.slot].location == CompletionLocation.Installed and
+          not runtime.slots[primary.slot].completion.ready and session.image.ready
+        if ownsPrimary and matchesRow(runtime, key) and key.epoch == primary.epoch and
+            key.kind in {NativeKind.MixedSelfLoop, NativeKind.StaticFusion} and
+            runtime.slots[key.slot].location == CompletionLocation.Complete and
+            runtime.slots[key.slot].completion.ready and
+            runtime.slots[key.slot].completion.kind == key.kind:
+          # No frame retains this last session reference: cancel its exact auxiliary before its primary.
+          runtime.mixedBorrowed = false
+          retireMixedLoopLocked(runtime)
+        else:
+          # Unknown physical ownership stays quarantined; shutdown cannot recycle a live borrow.
+          if runtime.failure == NativeCompilerFailure.None:
+            runtime.failure = NativeCompilerFailure.InvalidLease
+          runtime.stopping = true
+          broadcast(runtime.changed)
+    if runtime.active > 0:
+      dec runtime.active
+    else:
+      # Preserve the aggregate instead of underflowing or concealing a broken lease certificate.
+      if runtime.failure == NativeCompilerFailure.None:
+        runtime.failure = NativeCompilerFailure.InvalidLease
+      runtime.stopping = true
+      broadcast(runtime.changed)
+    release(runtime.lock)
+  `=destroy`(session.image)
   if anchor != nil:
     # Installed storage was released above, before the canonical helper returns its credit.
     var detached = default(NativeImage)
@@ -828,6 +874,11 @@ proc close*(runtime: NativeRuntime): bool =
   if data.active != 0:
     release(data.lock)
     return false
+  when NativeReadCycleEnabled:
+    if data.mixedBorrowed:
+      # Even a contradictory invocation count cannot authorize destruction of borrowed code.
+      release(data.lock)
+      return false
   data.stopping = true
   broadcast(data.changed)
   release(data.lock)
@@ -1239,7 +1290,7 @@ when NativeReadCycleEnabled:
     true
 
   type NativeFusionBorrow* = object
-    ## Both borrowed values are stable until the segment returns the auxiliary credit.
+    ## Both views require the segment to retain its session until use ends and the credit returns.
     image*: nil ptr NativeImage
     blocks*: nil ptr seq[NativeFusionBlock]
 
@@ -1274,6 +1325,7 @@ when NativeReadCycleEnabled:
       blocks: addr runtime.fusionSet)
 
   type NativeMixedLoopBorrow* = object
+    ## Raw image view requires the segment to retain its session until it returns this borrow.
     image*: nil ptr NativeImage
     refused*, pairRefused*, settled*, pending*: bool
     mask*, refusedMask*: uint8
