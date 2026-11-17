@@ -97,11 +97,16 @@ class FailureBundles(unittest.TestCase):
     def test_real_consumers_keep_ui_and_specialized_libraries(self):
         """Source-derived preparation keeps UI consumers safe while avoiding model tools and unused engines."""
         self.assertIn('ui-assets', preparation_targets())
-        for seed in ('first', 'second'):
-            for i in range(1,7):
-                targets = preparation_targets((i,6),seed)
-                self.assertNotIn('model-tools',targets)
-                self.assertNotIn('polkavm',failure_libraries((i,6),seed))
+        for count in (5, 6):
+            for seed in ('44070582432', 'second'):
+                for i in range(1, count + 1):
+                    # Every configured QUIC consumer must work on a fresh runner without a cached builder.
+                    shard = (i, count)
+                    targets = preparation_targets(shard, seed)
+                    libraries = failure_libraries(shard, seed)
+                    self.assertEqual('quic-tools' in targets, 'quic' in libraries)
+                    self.assertNotIn('model-tools', targets)
+                    self.assertNotIn('polkavm', libraries)
         pure = {'pvm_step': FAILURE_SUITES['pvm_step']}
         with patch('prepare_failures.failure_partition',return_value=({'pvm_step':[]},False)), \
              patch('prepare_failures.FAILURE_SUITES',pure), \
