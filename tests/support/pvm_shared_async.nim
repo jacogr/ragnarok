@@ -730,7 +730,9 @@ when defined(pvmSharedAsyncWitness):
   proc metadataHostOwned(context: var MetadataHostContext, stopped: StepOutcome): HostResponse =
     ## Return the original owned state; fault injection happens only after this real callback completes.
     inc context.calls
-    assert not close(context.runtime)
+    if nativePlatformSupported():
+      # Only a supported native session holds a compiler lease across this host callback.
+      assert not close(context.runtime)
     if context.damaged: damageNextHostMetadataForWitness()
     let cpu = machineInfo(stopped.machine).value
     HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
@@ -740,7 +742,9 @@ when defined(pvmSharedAsyncWitness):
       cpu: MachineInfo): ScalarHostResponse =
     ## Exercise the read-only continuation's returned failure without materializing an owned host reply.
     inc context.calls
-    assert not close(context.runtime)
+    if nativePlatformSupported():
+      # The other ISA still exercises metadata refusal through its checked fallback without a lease.
+      assert not close(context.runtime)
     if context.damaged: damageNextHostMetadataForWitness()
     ScalarHostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers)
 
@@ -749,7 +753,7 @@ when defined(pvmSharedAsyncWitness):
     true
 
   proc metadataHostFailure() =
-    ## Both public host paths drop damaged metadata, retain charged preparation, release leases and recover.
+    ## Both public host paths drop damaged metadata, retain charged preparation and recover on either ISA.
     let owner = hostOwner()
     let source = input(owner, 1)
     let original = machineInfo(source).value
@@ -757,7 +761,12 @@ when defined(pvmSharedAsyncWitness):
     for scalar in [false, true]:
       # A cold owner ensures the refused call's newly charged preparation work must survive its cleanup.
       let runtime = newNativeRuntime()
-      assert launch(runtime)
+      if nativePlatformSupported():
+        # Supported profiles additionally prove callback-time lease exclusion and final handback.
+        assert launch(runtime)
+      else:
+        # The other ISA must refuse its compiler service while retaining the same checked host path.
+        assert not launch(runtime)
       let code = prepared(owner, runtime)
       var context = MetadataHostContext(runtime: runtime, damaged: true)
       let failed = if scalar:
@@ -766,17 +775,21 @@ when defined(pvmSharedAsyncWitness):
       else:
         executeWithHost(source, context, metadataHostOwned, ExecutionStepLimit(32), HostCallLimit(
             2), code)
-      assert failed.error == StepError.BackendFailure and context.calls == 1
+      assert failed.error == StepError.BackendFailure and context.calls == 1,
+        "metadata refusal: scalar=" & $scalar & "; error=" & $failed.error &
+        "; callbacks=" & $context.calls
       assert runtimeInfo(runtime).active == 0 and runtimeInfo(runtime).registered == 0
       let held = preparedInfo(code).value
-      assert held.streamNodes == 0 and held.preparationUnits > 0
+      assert held.streamNodes == 0 and held.preparationUnits > 0,
+        "metadata refusal retained an unsafe stream or lost charged preparation"
       assert machineInfo(source).value == original
       assert pageImage(memoryOf(source).value, PageIndex(32)).value == page
       context.damaged = false
       context.calls = 0
       let recovered = executeWithHost(source, context, metadataHostOwned, ExecutionStepLimit(32),
         HostCallLimit(2), code)
-      assert recovered.error == StepError.None and recovered.value.exit == StepExit.Halt
+      assert recovered.error == StepError.None and recovered.value.exit == StepExit.Halt,
+        "metadata recovery: scalar=" & $scalar & "; error=" & $recovered.error
       assert context.calls == 2 and preparedInfo(code).value.preparationUnits >=
           held.preparationUnits
       assert uint64(machineInfo(recovered.value.machine).value.registers[7]) == 6
