@@ -30,7 +30,7 @@ const
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
   NativeFusionCycleLimit* = 8 ## Bound source-cycle analysis and compact receipt validation.
   NativeFusionCycleVisitLimit* = 4096 ## Bound scalar work per entry, including zero-priced cycles.
-  NativeFusionReceiptBits = 11 ## Fixed one-probe cache geometry; a bucket never grants path authority.
+  NativeFusionReceiptBits = 11                              ## Fixed record count; two ways share one bounded set.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
   NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
   NativeFusionGasOffset* = NativeMixedLoopContextBytes
@@ -88,10 +88,21 @@ type
     visits, gas: uint64
     entry, next: uint32
     receipt: NativeFusionExit
-  NativeFusionReceipts* = array[1 shl NativeFusionReceiptBits, NativeFusionReceipt]
-    ## One bounded 208 KiB call-local cache of successful proofs for exactly one borrowed graph.
-    ## Its 2048 records reduce repeated source walks across diverse long paths while retaining one lookup.
-    ## Only an active graph segment initializes this storage; no invocation borrow escapes it.
+  NativeFusionReceipts* = object
+    ## One bounded call-local cache of successful proofs for exactly one borrowed graph.
+    ## Adjacent ways retain 2048 records; 128 bytes of recent-way bits avoid alternating-path
+    ## collisions without growing the path capacity. Only an active segment initializes storage;
+    ## no invocation borrow escapes it. Replacement changes cost, never proof authority.
+    entries: array[1 shl NativeFusionReceiptBits, NativeFusionReceipt]
+    recent: array[(1 shl NativeFusionReceiptBits) div 128, uint64]
+
+when defined(pvmSharedAsyncWitness):
+  var fusionReceiptWalks {.threadvar.}: uint64
+    ## Thread storage starts at zero; only the witness verifier increments this counter.
+
+  proc witnessNativeFusionReceiptWalks*(): uint64 {.noinline.} =
+    ## Observe actual cache misses across mutable verifier calls without compiler-folding the counter.
+    fusionReceiptWalks
 
 func nativeFusionSlot*(token: uint32): int {.inline.} =
   ## A one-based source-header token hashes into the fixed 512-slot, at-most-half-full map.
@@ -359,6 +370,7 @@ proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[Na
   ## checks the final predicate and paid source site. Unwritten tail bytes have no authority.
   if state.visits == 0 or state.visits > uint64(NativeFusionVisitLimit) or
       state.paid > 1 or state.gas > gas or state.remaining > quota:
+    when defined(pvmSharedAsyncWitness): inc fusionReceiptWalks
     return nativeFusionExit(blocks, entry, next, gas, quota, state)
   let head = fusionPathWord(state.path, state.visits, 0)
   let short = state.visits <= 8
@@ -367,21 +379,32 @@ proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[Na
     # The ordinary one-word path keeps one scalar hash; longer paths include every later word.
     for index in 1..<int((state.visits+7) div 8):
       hash = (hash xor fusionPathWord(state.path, state.visits, index))*0x9e3779b97f4a7c15'u64
-  let index = int(hash shr (64-NativeFusionReceiptBits))
-  # Borrow the fixed cache slot; a value binding would copy the entire wider path on every hit.
-  let candidate = addr memo[index]
+  let index = int(hash shr (64-NativeFusionReceiptBits)) and not 1
+  let set = index shr 1
+  let word = set shr 6
+  let mask = 1'u64 shl (set and 63)
+  let first = index+int((memo.recent[word] shr (set and 63)) and 1)
   let paid = state.paid != 0
-  if candidate.visits == state.visits and candidate.entry == entry and candidate.next == next and
-      (candidate.receipt.paidHeader != 0) == paid and gas-state.gas == candidate.gas and
-      quota-state.remaining == uint64(candidate.receipt.attempted):
-    if short:
-      # A proved short key stores its canonical head, excluding unwritten tail bytes.
-      if candidate.path[0] == head: return candidate.receipt
-    elif sameFusionPath(candidate.path, state.path, state.visits):
+  for way in 0..1:
+    # Probe the recently used way first; borrowing avoids copying a wider path on every hit.
+    let candidate = addr memo.entries[first xor way]
+    if candidate.visits == state.visits and candidate.entry == entry and candidate.next == next and
+        (candidate.receipt.paidHeader != 0) == paid and gas-state.gas == candidate.gas and
+        quota-state.remaining == uint64(candidate.receipt.attempted):
+      if short:
+        # A proved short key stores its canonical head, excluding unwritten tail bytes.
+        if candidate.path[0] != head: continue
+      elif not sameFusionPath(candidate.path, state.path, state.visits):
+        continue
+      # A second-way hit becomes recent only after complete key equality.
+      if way != 0: memo.recent[word] = memo.recent[word] xor mask
       return candidate.receipt
+  when defined(pvmSharedAsyncWitness): inc fusionReceiptWalks
   result = nativeFusionExit(blocks, entry, next, gas, quota, state)
   if result.valid:
-    # The full verifier alone authorizes a new cache entry; copying fixed words happens only here.
-    memo[index] = NativeFusionReceipt(path: state.path, visits: state.visits,
+    # Only a full proof may replace the least recent way; refusals leave both ways untouched.
+    let victim = first xor 1
+    memo.entries[victim] = NativeFusionReceipt(path: state.path, visits: state.visits,
       gas: gas-state.gas, entry: entry, next: next, receipt: result)
-    if short: memo[index].path[0] = head
+    if short: memo.entries[victim].path[0] = head
+    memo.recent[word] = memo.recent[word] xor mask

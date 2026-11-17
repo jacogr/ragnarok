@@ -74,6 +74,51 @@ proc checkCollidingFusionReceipts() =
     state.path[0] = state.path[0] or 0xff00 # Unwritten tail bytes retain no authority.
     assert checkNativeFusionExit(memo, blocks, entry, next, 100, 100, state) == proven
 
+when defined(pvmSharedAsyncWitness):
+  proc checkFusionReceiptReplacement() =
+    ## Three independently priced paths share one set. Two alternating proofs must avoid
+    ## source replays; invalid third returns cannot displace them, and valid replacement is LRU.
+    let blocks = [
+      NativeFusionBlock(header: 10, terminal: 11, span: 1, price: 3,
+        targets: [638'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+      NativeFusionBlock(header: 20, terminal: 21, first: 1, span: 1, price: 7,
+        targets: [5625'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+      NativeFusionBlock(header: 30, terminal: 31, first: 2, span: 1, price: 11,
+        targets: [1617'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+    var memo = default(NativeFusionReceipts)
+    var states = default(array[3, NativeFusionContext])
+    var proofs = default(array[3, NativeFusionExit])
+    for index in 0..2:
+      # The uncached source verifier supplies the oracle independently of replacement policy.
+      states[index] = NativeFusionContext(gas: 100-blocks[index].price, remaining: 99, visits: 1)
+      states[index].path[0] = uint64(index+1)
+      proofs[index] = nativeFusionExit(blocks, blocks[index].header, blocks[index].targets[0],
+        100, 100, states[index])
+      assert proofs[index].valid and proofs[index].lastToken == uint32(index+1)
+    let before = witnessNativeFusionReceiptWalks()
+    for trial in 0..7:
+      # Repeated collisions retain both complete proofs after exactly two initial source walks.
+      let index = trial and 1
+      assert checkNativeFusionExit(memo, blocks, blocks[index].header,
+        blocks[index].targets[0], 100, 100, states[index]) == proofs[index]
+    assert witnessNativeFusionReceiptWalks()-before == 2
+
+    # A well-shaped third key with an incorrect debit must not evict either proved path.
+    assert not checkNativeFusionExit(memo, blocks, 30, 1617, 101, 100, states[2]).valid
+    for index in 0..1:
+      # Both prior keys must remain cached after the refused third receipt.
+      assert checkNativeFusionExit(memo, blocks, blocks[index].header,
+        blocks[index].targets[0], 100, 100, states[index]) == proofs[index]
+    assert witnessNativeFusionReceiptWalks()-before == 3
+
+    # Touch the first path, then admit the third: only the least recent second path is displaced.
+    assert checkNativeFusionExit(memo, blocks, 10, 638, 100, 100, states[0]) == proofs[0]
+    assert checkNativeFusionExit(memo, blocks, 30, 1617, 100, 100, states[2]) == proofs[2]
+    assert checkNativeFusionExit(memo, blocks, 10, 638, 100, 100, states[0]) == proofs[0]
+    assert witnessNativeFusionReceiptWalks()-before == 4
+    assert checkNativeFusionExit(memo, blocks, 20, 5625, 100, 100, states[1]) == proofs[1]
+    assert witnessNativeFusionReceiptWalks()-before == 5
+
 proc checkLongFusionReceipts() =
   ## Word-boundary paths keep complete identity, exact debits and paid/unpaid exit modes.
   let blocks = [
@@ -1166,6 +1211,7 @@ proc runStaticFusion*() =
   runMemoryWindows()
   checkRepeatedFusionReceipt()
   checkCollidingFusionReceipts()
+  when defined(pvmSharedAsyncWitness): checkFusionReceiptReplacement()
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
     checkScalarFusionCycles()
