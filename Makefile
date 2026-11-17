@@ -80,7 +80,12 @@ check-docker: docker-build
 	done 2>&1 | tee build/ci/docker-smoke.log
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-info bandersnatch-fetch
+setup: check-inventory toolchain model-tools sources rust-tools quic-tools ui-assets build-info bandersnatch-fetch
+
+# Provision the checksum-pinned QUICHE builder without a global installation.
+.PHONY: quic-tools
+quic-tools:
+	$(PYTHON) tools/setup_bazel.py
 
 # Share the unchanged pinned/offline Cargo fetch with dependency-scoped Contract setup.
 .PHONY: bandersnatch-fetch

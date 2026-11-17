@@ -1,0 +1,34 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Project-owned embedding rules, appended to a generated QUICHE build tree.
+# Keeping this target in QUICHE's package respects its private core target;
+# vendor source and upstream build files remain pristine.
+cc_library(
+    name = "ragnarok_cert_fields",
+    srcs = ["ragnarok/cert_fields.c"],
+    hdrs = ["ragnarok/cert_fields.h"],
+    # Nim calls these exports directly; there is no C++ reference to retain them.
+    alwayslink = True,
+    deps = ["@boringssl//:crypto"],
+)
+
+cc_binary(
+    name = "libquic_proof.so",
+    srcs = [
+        "ragnarok/transport_bridge.cc",
+        "ragnarok/transport_bridge.h",
+    ],
+    copts = ["-fPIC"],
+    linkshared = True,
+    linkstatic = True,
+    deps = [
+        ":quiche_core",
+        ":ragnarok_cert_fields",
+        "@boringssl//:crypto",
+        "@boringssl//:ssl",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:initialize",
+        "@com_google_absl//absl/log:log",
+    ],
+)

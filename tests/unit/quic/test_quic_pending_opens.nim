@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Real pinned LSQUIC stream credit distinguishes queued opens from live streams during cancellation.
+## Real pinned QUICHE stream credit distinguishes queued opens from live streams during cancellation.
 
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/quic/transport

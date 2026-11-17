@@ -173,7 +173,7 @@ proc event*(route: var ReadClientRoute, stream: NativeStream, kind: cint,
     if route.offset < route.output.len:
       let amount = streamWrite(stream, addr route.output[route.offset], csize_t(min(4096,
           route.output.len-route.offset)))
-      if amount == -2 or amount == 0: return # Public LSQUIC zero-progress writes are ordinary backpressure.
+      if amount == -2 or amount == 0: return # Transport zero-progress writes are ordinary backpressure.
       if amount < 0 or amount > int64(route.output.len-route.offset):
         route.refuse(ReadError.InvalidStream)
         return

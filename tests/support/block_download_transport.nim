@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Independent one-stream LSQUIC responder exercises real CE 128 bytes/FIN and close/cancellation lifetimes.
+## Independent one-stream QUICHE responder exercises real CE 128 bytes/FIN and close/cancellation lifetimes.
 
 import std/[assertions, envvars]
 import ../../src/codec/bounded
@@ -436,6 +436,10 @@ proc poll*(servers: var DownloadResponders): bool =
 proc unsolicited*(servers: var DownloadResponders): bool =
   ## Emit an independent server-initiated empty stream; the catalog must reject it without touching leased CE input.
   servers.second.transport.openStream()
+  for turn in 0..<8:
+    # Stream creation is dispatched asynchronously; do not poll the leased client catalog.
+    if servers.second.stream != NativeStream(nil): break
+    if not servers.second.transport.pollTransport(0): return false
   let stream = servers.second.stream
   if stream == NativeStream(nil): return false # An actual native stream is required; no fabricated reset count is used.
   wantRead(stream, 0)

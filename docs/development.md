@@ -39,9 +39,9 @@ Separate caches retain the built model checker, cryptographic Rust dependencies/
 ABI and optional PolkaVM Rust build. Keys include the hosted image, kernel, compiler paths/versions,
 workspace path and relevant source, patch, pin and build-helper contents. Model setup checks the
 checker identity and executable hash. Native preparation validates pristine upstream sources and
-its existing compiler/environment/output-hash receipt before reuse. LSQUIC patches are checked
-and freshly applied outside vendor sources even on a hit; only its verified final shared library
-is cached, avoiding timestamp-sensitive CMake/source restoration. Intact C libraries skip compilation;
+its compiler/environment/output-hash receipt before reuse. QUICHE uses a checksum-pinned Bazel
+from `spec/quiche-toolchain.json`; project embedding rules are added only to its generated build
+tree. The verified final shared library is cached independently of Bazel intermediates. Intact C libraries skip compilation;
 Rust adapter tests and builds still run with retained Cargo intermediates. Runtime suites and
 model verification always execute. Missing, changed or damaged output requires normal rebuilding.
 Separate library caches prevent a job that needs only crypto from publishing an incomplete QUIC

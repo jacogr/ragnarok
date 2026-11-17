@@ -25,31 +25,13 @@ for both directions, u32 maximum, count truncation, zero maximum, known empty ti
 pruned descending prefix, unknown anchor, header-only body, invalid direction, overlong/truncated
 requests and delayed request FIN. Test replies independently assemble the expected framing/order.
 
-## Approved native reset API build patch
+## Native stream reset
 
-On 2026-11-03 the maintainer authorized a public reset API build patch, preferring a pin upgrade
-if an equivalent upstream API already existed. Fresh GitHub source checks found no public
-stream-reset operation in either `iftech/lsquic` master
-[`0c9c6690`](https://github.com/iftech/lsquic/blob/0c9c66903b70ac25852d70d54672005aafb1a446/include/lsquic.h) or `litespeedtech/lsquic` master
-[`cd23e526`](https://github.com/litespeedtech/lsquic/blob/cd23e526e53387ad7a2fada9a4479d2353ee2b42/include/lsquic.h). Both retain only an internal reset helper.
-The LSQUIC pin therefore remains `fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52`.
+The QUICHE provider uses public `QuicStream::ResetWithError` with application error code zero.
+It can reset a request after its FIN while preserving healthy sibling streams. Native handles
+remain alive until their final close callback. No library patch is required.
 
-The approved patch adds `lsquic_stream_reset` to the public header and library implementation.
-It delegates to LSQUIC's existing reset machinery inside the library; the bridge uses only the
-public header/API. Reset before write shutdown reports success, while closed/write-finished
-streams report EBADF/EPIPE. `streamAbort` uses reset and falls back to ordinary close only when
-reset can no longer be sent. Existing native close callbacks retain lifetime responsibility.
-
-`spec/quic-proof-pins.json` binds the patch SHA-256 and both input/output file SHA-256 digests.
-`build_quic.py` first validates all pristine pinned vendor inputs, then creates a temporary
-build-directory copy including pinned nested submodules. Patch/input/output drift aborts before
-publishing that copy. Every preparation recreates the copy, discarding stale generated edits.
-The vendor checkout and gitlinks stay untouched; no private API is imported by the bridge.
-Verification provenance includes the same recorded patch as the production build.
-
-Observed local checks: formatter and `make unit SUITE=jamnp_block_service` pass, including
-an actual reset after request FIN followed by a successful second stream on the same TLS
-connection, foreign-reply refusal, 64-block cap, oversized-first refusal and oversized-later prefix.
-The earlier strict rejection regression observed EOF with zero bytes instead of reset; the test
-was retained unchanged in its rejection requirement. Shared transport/build verification is
-recorded with the PR. This does not complete ordinary Services integration or other CE methods.
+The `jamnp_block_service` suite requires an actual reset after request FIN followed by a successful
+second stream on the same authenticated connection, foreign-reply refusal, the 64-block cap and
+oversized-response handling. The production provider and its public pins are recorded in
+[`quic-proof-pins.json`](quic-proof-pins.json).

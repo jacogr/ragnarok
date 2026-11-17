@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Maintained LSQUIC adapter. One bounded POSIX dispatcher services nonblocking UDP and
+## Maintained QUICHE adapter. One bounded POSIX dispatcher services nonblocking UDP and
 ## deadlines. Native callbacks borrow this stack owner synchronously; no futures, callback
 ## closures are used; protocol policy remains in Nim and native inputs follow the recorded build pins.
 ##
@@ -26,7 +26,7 @@ type
   ConstByte* {.importc: "const uint8_t", header: BridgeHeader, pure,
       final.} = object ## Read-only C byte element makes callback signatures match the shared const uint8_t ABI exactly.
   NativeStreamId* = distinct uint64 ## A copied IETF stream number is independent of a native handle and its lifetime.
-  NativeStream* = distinct (nil pointer) ## Opaque LSQUIC stream handle; its lifetime ends at the native close callback.
+  NativeStream* = distinct (nil pointer) ## Opaque transport stream handle; its lifetime ends at the native close callback.
   CertFields* {.importc: "rq_cert_fields", header: CertHeader,
       bycopy.} = object ## Certificate observations copy bounded primitive fields; JAM identity policy stays in the peer.
     edKey* {.importc: "ed_key".}, edSignature* {.importc: "ed_signature".}: cint
@@ -163,7 +163,7 @@ proc nativeMetric(engine: nil pointer, metric: cint): uint64 {.importc: "rq_peer
   ## Observe connection lifecycle without retaining a raw native connection pointer.
 
 proc process(engine: nil pointer) {.importc: "rq_process", header: BridgeHeader, cdecl, raises: [].}
-  ## Progress LSQUIC callbacks and pending packet writes on the selector thread.
+  ## Progress QUICHE callbacks and pending packet writes on the selector thread.
 
 proc nextTick(engine: nil pointer): int64 {.importc: "rq_next_tick", header: BridgeHeader, cdecl,
     raises: [].}
@@ -215,7 +215,7 @@ proc streamFin*(stream: NativeStream) {.importc: "rq_stream_fin", header: Bridge
 
 proc readDone*(stream: NativeStream) {.importc: "rq_stream_read_done", header: BridgeHeader, cdecl,
     raises: [].}
-  ## Finish validated reading explicitly; LSQUIC EOF alone does not retire its application read owner.
+  ## Finish validated reading explicitly; EOF alone does not retire the application read owner.
 
 proc streamAbort*(stream: NativeStream) {.importc: "rq_stream_abort", header: BridgeHeader, cdecl,
     raises: [].}
@@ -293,7 +293,7 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
   if incomingPeers < 1 or incomingPeers > MaxIncomingPeers: return false
-  if streamWindow != 0 and streamWindow < 16384: return false # Pinned LSQUIC public minimum applies independently of profile.
+  if streamWindow != 0 and streamWindow < 16384: return false # The adapter minimum applies independently of profile.
   if connectionWindow != 0 and connectionWindow < 16384: return false
   if streamWindow != 0 and connectionWindow != 0 and streamWindow > connectionWindow: return false
   if idleSeconds == 0 and keepalive: return false # Default profiles cannot accept a partial timing override.

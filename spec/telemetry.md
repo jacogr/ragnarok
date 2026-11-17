@@ -56,8 +56,8 @@ cases instead hold the server's reply flight in a bounded test-only relay (64 da
 release it after registration and dropped-prefix replay, and require the original incoming ID on
 success or certificate rejection. The retained listener then accepts a fresh generation with a new
 ID; successful generations complete the mixed eight-request CE workload and close exactly once.
-The rejection callback runs at SSL destruction, freeing the first handshake slot before its next
-use. Rejection produces no admitted-peer close. The normal service profile avoids the idle client's
+The rejection callback settles the observed handshake; session retirement frees its slot before
+reuse. Rejection produces no admitted-peer close. The normal service profile avoids the idle client's
 two-second expiry while waiting for the exporter's five-second retry. It also checks exactly
 one disconnect after a graceful outgoing close,
 no disconnect for a failed handshake, and authenticated IPv6 peer loss despite an incomplete
@@ -75,9 +75,8 @@ production encoding, configuration, hashing and transport stay in Nim and the ma
 
 Capacity checks cover both IPv4 and IPv6 native listeners and a real IPv6 collector capture:
 16 admitted connections remain live while the seventeenth is explicitly refused. Saturating the
-separate handshake-observation table does not report a refusal. The pinned public
-`lsquic_engine_packet_in` return values also cover version negotiation, resets and ignored packets;
-they cannot establish a pre-TLS admission refusal and are not translated into event 20.
+separate handshake-observation table does not report a refusal. Packet-processing results also cover version negotiation, resets and ignored packets; they
+cannot establish a pre-TLS admission refusal and are not translated into event 20.
 
 Expiry/teardown collectors wait for both remote authentication and the current connection’s
 retained server slot before killing a peer or releasing an explicit stop gate. TLS-success

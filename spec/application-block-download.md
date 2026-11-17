@@ -40,7 +40,7 @@ before receiver reuse. A changed selected history cannot authorize stale work.
 Check independent literal request bytes, every frame split, byte-at-a-time header,
 early/exact/no FIN, empty response, oversized/trailing/second-message/multiple-block
 payloads, wrong generation, cancellation and reuse, source mutation and typed child
-failures. Exercise a real pinned LSQUIC stream with an independently framed signed
+failures. Exercise a real pinned QUICHE stream with an independently framed signed
 block response, then real guest preparation and later canonical adoption. Verify
 premature close/cancellation without hashing, malformed-response teardown and fresh retry.
 Native reset callbacks use generation-checked cancellation; the real transport
@@ -54,7 +54,7 @@ Checked optimized native `application_block_download` passes independent request
 bytes, defensive request-array copying, every two-fragment split with caller-byte
 mutation and genuine guest execution, both FIN orderings, empty/truncated/oversized/
 trailing frames, multiple-block refusal, stale generations and selected-history
-refusal. Real authenticated LSQUIC streams pass oversized response, premature close,
+refusal. Real authenticated QUICHE streams pass oversized response, premature close,
 complete-body-without-FIN cancellation and healthy signed-block transfer. Preparation
 occurs after native callback teardown; canonical adoption waits for the later service
 tick. All reception/native callbacks perform zero observed Blake2b calls. Handoff

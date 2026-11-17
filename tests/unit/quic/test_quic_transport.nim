@@ -148,7 +148,8 @@ proc saturation(cert, key: string, ipv6: bool) =
   assert counts.peerStarts == 2 and counts.peerCloses == 1
   server.closeTransport()
   assert counts.peerCloses == 1 # Engine teardown must not fabricate a second observed close.
-  assert counts.failures == IncomingHandshakeSlots - 1 and counts.dropped == 2
+  assert counts.failures == IncomingHandshakeSlots - 1, "tracked attempts settle on teardown"
+  assert counts.dropped == 1, "one overflow attempt is observed once, including teardown"
   assert counts.refusals == 0 # Observation saturation never implies admission refusal.
   for active in counts.active: assert not active # Every tracked lifetime settled before storage retirement.
 
@@ -180,7 +181,7 @@ proc admissionRefusal(cert, key: string, ipv6: bool) =
   server.closeTransport()
   assert counts.refusals == 1 and counts.peerCloses == 0 # Refused connections never occupy a peer slot.
 
-# Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
+# Exercise native construction failure and success with the exact production I/O owner and QUICHE engine.
 type IdleStream = object ## One open bidirectional stream confirms the handshake before transport-only idle observation.
   handle: NativeStream
   sent, got, failed: bool
@@ -221,7 +222,8 @@ proc idleStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raise
     wantWrite(handle, 0)
   else: discard # No other event changes the independently observed transcript.
 
-proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
+proc idlePolicy(cert, key: string, ipv6: bool, serverIdle, clientIdle: range[1..600],
+    serverKeepalive, clientKeepalive: bool) =
   ## No application stream/traffic can mask idle expiry: only configured QUIC pings keep this pair alive.
   var server, client = default(Transport)
   var serverFlow, clientFlow = default(IdleStream)
@@ -229,9 +231,10 @@ proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
     client.closeTransport()
     server.closeTransport()
   assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000", addr serverFlow,
-    acceptFixture, idleStream, multi = true, ipv6 = ipv6, idleSeconds = 3, keepalive = keepalive)
+    acceptFixture, idleStream, multi = true, ipv6 = ipv6, idleSeconds = serverIdle,
+    keepalive = serverKeepalive)
   assert client.openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000", addr clientFlow,
-    acceptFixture, idleStream, ipv6 = ipv6, idleSeconds = 3, keepalive = keepalive)
+    acceptFixture, idleStream, ipv6 = ipv6, idleSeconds = clientIdle, keepalive = clientKeepalive)
   assert client.connectTransport(server.localPort)
   let handshakeDeadline = getMonoTime()+initDuration(seconds = 3)
   while server.authenticatedConnections == 0 or client.authenticatedConnections == 0:
@@ -243,17 +246,18 @@ proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
     assert getMonoTime() < streamDeadline
     assert server.pollTransport(1) and client.pollTransport(1)
     assert not serverFlow.failed and not clientFlow.failed
-  # Pinned LSQUIC issues up to eight connection IDs at60/minute; those real control packets
-  # refresh idle during bootstrap. Observe beyond8s bootstrap +3s idle, rather than mistaking it for keepalive.
-  let deadline = getMonoTime()+initDuration(seconds = 14)
+  # Seven seconds exceeds both two-second idle and the early client deadline,
+  # and crosses the stock retransmittable-on-wire probe backoff threshold.
+  let keptAlive = serverKeepalive or clientKeepalive
+  let deadline = getMonoTime()+initDuration(seconds = 7)
   while getMonoTime() < deadline:
     assert server.pollTransport(1) and client.pollTransport(1)
-    if keepalive:
+    if keptAlive:
       assert not serverFlow.failed and not clientFlow.failed
       assert server.closedConnections == 0 and client.closedConnections == 0, "configured PING must prevent idle retirement"
     elif server.closedConnections > 0 or client.closedConnections > 0:
       return # Same idle policy without pings must actually expire, validating the positive control.
-  assert keepalive, "explicit silent timeout must expire without application traffic"
+  assert keptAlive, "explicit silent timeout must expire without application traffic"
 
 proc windowPolicy(cert, key: string) =
   ## Optional public receive windows refuse invalid domains atomically and accept the pinned minimum with real TLS resources.
@@ -326,9 +330,15 @@ proc main() {.raises.} =
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)
-  idlePolicy(args[0], args[1], false, false)
-  idlePolicy(args[0], args[1], false, true)
-  idlePolicy(args[0], args[1], true, true)
+  for ipv6 in [false, true]:
+    # Each role must maintain negotiated idle independently, including a longer local proposal.
+    idlePolicy(args[0], args[1], ipv6, 2, 2, false, false)
+    idlePolicy(args[0], args[1], ipv6, 2, 2, true, true)
+    idlePolicy(args[0], args[1], ipv6, 2, 30, true, true)
+    idlePolicy(args[0], args[1], ipv6, 30, 2, true, false)
+    idlePolicy(args[0], args[1], ipv6, 2, 30, true, false)
+    idlePolicy(args[0], args[1], ipv6, 30, 2, false, true)
+    idlePolicy(args[0], args[1], ipv6, 2, 30, false, true)
   echo "Nimony shared transport: 4 IPv4/IPv6 engine pairs passed"
   echo "Nimony transport: 16 IPv4/IPv6 native setup/teardown cycles passed"
 

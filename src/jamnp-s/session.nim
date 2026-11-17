@@ -631,7 +631,7 @@ proc runPeer*(options: Options): bool {.raises.} =
   var lastIdle = 0'u64
   var serviceStopped = false
   var authenticated, opened = false # Neither authentication nor application admission has happened at startup.
- # One dispatcher loop services all streams, UDP reads and LSQUIC/application deadlines.
+ # One dispatcher loop services all streams, UDP reads and QUICHE/application deadlines.
   while not peer.failed and not signals.stopping and (listening or peer.service or peer.completed < target):
     if timeout > 0 and (getMonoTime() - started).inMilliseconds >= timeout: break
     # Server metrics count authenticated peers; client status also requires a live slot after a close.

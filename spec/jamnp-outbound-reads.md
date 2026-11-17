@@ -12,8 +12,8 @@ serializes its one outstanding local open intent (UP0 or read). Required UP0 han
 usable before a local read starts; validator peers that require no UP0 can still exchange reads.
 Both connection directions may initiate CE streams, independently of UP0's initiator-only rule.
 
-The pinned public `lsquic_conn_n_pending_streams` and `lsquic_conn_cancel_pending_streams` APIs
-cancel delayed native opens without closing existing streams. Generation-checked bridge control
+The bridge owns a bounded pending-open counter per QUICHE session. Cancelling that counter
+prevents delayed stream creation without closing existing streams. Generation-checked bridge control
 never falls back to a sole/global connection. `NodeConnections.cancelStreamOpens` tombstones its
 queued peer intents and cancels native-delayed opens. Its caller owns all that peer's pending
 opens; `NodeService`'s serialization makes this one exact outbound intent. If native mapping fails,

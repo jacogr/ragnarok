@@ -6,7 +6,7 @@ This folder owns the nonblocking transport beneath JAMNP-S. [`io.nim`](io.nim) p
 POSIX UDP readiness and bounded polling. [`address.nim`](address.nim) owns copied numeric
 IP/port tuples; explicit address bindings preserve full source/destination routing while legacy
 port-only entry points retain their loopback scope. [`transport.nim`](transport.nim) owns the narrow
-LSQUIC/TLS bridge, callback lifetimes, UDP endpoints and primitive certificate observations.
+QUICHE/TLS bridge, callback lifetimes, UDP endpoints and primitive certificate observations.
 The maintained native bridge lives in [`native/quic/`](../../native/quic/README.md).
 
 JAM peer identities, ALPN use, message framing, stream semantics, sessions and download

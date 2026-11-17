@@ -19,3 +19,5 @@ __pycache__/
 
 # Retired dependency checkout may remain locally; it is no longer provisioned.
 /vendor/xkcp/
+
+/vendor/lsquic/

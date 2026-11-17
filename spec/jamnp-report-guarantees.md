@@ -316,8 +316,7 @@ large multi-callback requests, and six simultaneous directions between three act
 Managed job/actor integration, grace and CE135 handling remain outstanding.
 
 
-Pinned LSQUIC permits zero-progress writes when its send buffer/flow credit is exhausted
-(include/lsquic.h write contract and src/liblsquic/lsquic_stream.c stream_write_to_buffer).
+The transport ABI permits zero-progress writes when its send buffer or flow credit is exhausted.
 The large native request exposed treating zero as a fatal error. Sharing and ordinary read
 clients now retain their exact unsent offset and write subscription on zero/-2; only other
 negative returns fail. No vendor source, native ABI or dependency pin changes are needed.

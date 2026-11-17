@@ -1,6 +1,6 @@
 # Nonblocking JAM networking
 
-`src/quic/transport.nim` maintains a narrow adapter over pristine pinned LSQUIC/BoringSSL through
+`src/quic/transport.nim` maintains a narrow adapter over pristine pinned QUICHE/BoringSSL through
 `native/quic/`. `src/jamnp-s/` owns JAM identity checks, ALPN use, framing and stream policy.
 The [compliance inventory](../spec/jamnp-compliance.md) distinguishes implemented paths from
 missing pinned protocol behavior.
