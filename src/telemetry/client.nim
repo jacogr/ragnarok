@@ -1,21 +1,23 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Dispatcher-driven JIP-3 delivery over one nonblocking TCP socket and a fixed send buffer.
+## Dispatcher-owned JIP-3 delivery with one task-owned Socket/Writer connection.
+## Event IDs, registration, dropped ranges and status timing stay with this owner;
+## the task receives detached bytes only. Staging and in-flight batches share a single
+## 2 KiB credit budget, held until Writer.flush completes. Appending never extends a
+## batch deadline. The stream module owns partial sends and joined I/O cleanup.
 ##
-## Each connection starts with registration. The exporter counts observation positions across
-## connections, including omitted events. On reconnect a dropped prefix advances the new
-## collector to the current position, so a handshake outcome can still reference its original
-## attempt. The exporter disables delivery when the ID space is exhausted to prevent ID reuse.
-##
-## Collector failures discard queued bytes and schedule a retry without interrupting peer
-## work. Shutdown retires the descriptor without waiting for delivery. Wire layout belongs
-## to wire.nim and transport observations enter through observer.nim.
+## Reconnect registers again and advances the collector over every earlier observation
+## position, including omitted events. ID exhaustion disables delivery rather than wrapping.
+## Collector failures discard queued bytes and request task retirement without blocking a
+## dispatcher tick. Shutdown aborts output and joins the bounded operation before the shared
+## reactor stops. Wire layout belongs to wire.nim; native observations enter through observer.nim.
 
-import std/[strutils, oserrors, nativesocket]
+import std/[strutils, nativesocket, ioring]
 import std/posix/posix
 import ../lib/socket_io
 import ./wire
+import ./stream
 import ../lib/logging
 
 type
@@ -30,66 +32,51 @@ type
     when defined(macosx):
       # Darwin includes a sockaddr length byte; Linux has no such member.
       sin6_len: uint8
-  # Stack-local readiness entry is borrowed only for one zero-timeout poll.
-  PollEntry {.importc: "struct pollfd", header: "<poll.h>", bycopy.} = object
-    fd: cint
-    events, revents: cshort
-  Client* = object ## Fixed storage bounds memory regardless of collector speed; copies would duplicate the descriptor.
+  Client* = object ## One dispatcher and one exclusive stream keep the exporter bounded.
     enabled, opened, connecting: bool
-    fd: cint
+    stream: TelemetryStream
     address: Sockaddr_in
     address6: Sockaddr_in6
     ipv6: bool
     metadata: Metadata
     logWriter: LogWriter
-    buffer: array[2048, byte]
-    length, offset: int
+    buffer: array[MaxPendingBytes, byte]
+    length, inFlight: int
     retryAt, deadline, statusAt: int64
     nextEvent, lost: uint64
     firstLost, lastLost: Timestamp
 
-proc poll(entries: ptr PollEntry, count: culong, timeout: cint): cint {.importc: "poll",
-    header: "<poll.h>".}
-  ## Readiness never waits and reports connection completion through SO_ERROR below.
-
-proc getOption(fd, level, option: cint, value: pointer,
-    size: ptr SockLen): cint {.importc: "getsockopt", header: "<sys/socket.h>".}
-  ## Socket option calls expose only fixed scalar option storage.
-
-let
-  Writable {.importc: "POLLOUT", header: "<poll.h>".}: cshort
-  PollError {.importc: "POLLERR", header: "<poll.h>".}: cshort
-  Hangup {.importc: "POLLHUP", header: "<poll.h>".}: cshort
-  Invalid {.importc: "POLLNVAL", header: "<poll.h>".}: cshort
-  SocketError {.importc: "SO_ERROR", header: "<sys/socket.h>".}: cint
-
-proc `=copy`*(destination: var Client, source: Client) {.error: "Telemetry Client owns one descriptor".}
-  ## Native ownership may move but must never copy a live socket descriptor.
+proc `=copy`*(destination: var Client, source: Client) {.error: "Telemetry Client owns its stream task".}
+  ## Task ownership may move but must never duplicate a live mailbox or join obligation.
 
 proc `=dup`*(source: Client): Client {.error.}
-  ## Implicit duplication cannot duplicate native retirement authority.
+  ## Implicit duplication cannot duplicate task retirement authority.
 
 proc `=wasMoved`*(client: var Client) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   client.enabled = false
   client.opened = false
   client.connecting = false
-  client.fd = -1
+  `=wasMoved`(client.stream)
   `=wasMoved`(client.metadata)
 
 proc `=destroy`*(client: Client) =
-  ## Destruction releases the sole native resource, including exception and early-return paths.
-  # Default and explicitly closed clients do not own descriptor zero.
-  if client.opened: discard posix.close(client.fd)
+  ## Join the stream before its stable mailbox and borrowed runtime can retire.
+  `=destroy`(client.stream)
+  `=destroy`(client.metadata)
 
-proc close*(client: var Client) =
-  ## Close is idempotent and disables subsequent retries; pending telemetry is best effort on shutdown.
-  # Do not retry close after EINTR because the descriptor could already have been recycled.
-  if client.opened: discard posix.close(client.fd)
+proc disable(client: var Client) =
+  ## Revoke retries without waiting in event callbacks or dispatcher error paths.
+  client.stream.stop()
   client.opened = false
   client.enabled = false
   client.length = 0
-  client.offset = 0
+  client.inFlight = 0
+
+proc close*(client: var Client) =
+  ## Disable retries and abort best-effort delivery; the original I/O deadline bounds joining.
+  client.disable()
+  client.stream.close()
 
 proc enabled*(client: Client): bool =
   ## Observation adapters query this owner, not process-global command-line configuration.
@@ -100,7 +87,7 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   ## Configure once before ticking. Unsupported endpoints and metadata fail without opening any socket.
   ## An optional writer is borrowed; its logger must outlive this client.
   # Reconfiguration could replace native ownership or a partially sent frame.
-  if client.enabled or client.opened or metadata.coreCount == 0: return false
+  if client.enabled or client.stream.active or metadata.coreCount == 0: return false
   # IPv6 mixed notation needs at most 45 host bytes, brackets, colon and five port digits.
   if endpoint.len == 0 or endpoint.len > 53 or '\0' in endpoint: return false
   let ipv6 = endpoint[0] == '['
@@ -159,25 +146,26 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   client.enabled = true
   true
 
-proc failed(client: var Client, now: int64) =
+proc failed(client: var Client, now: int64, reason = default(ErrorCode)) =
   ## Retire a failed stream and schedule a retry.
   ## A new stream needs fresh registration, but pending handshakes retain their attempt IDs.
   ## Keep the exporter position so reconnect can account for discarded frames.
-  ## An established or in-progress descriptor has exactly one close on this path.
-  if client.opened: discard posix.close(client.fd)
+  ## Retirement is nonblocking here; a later tick collects Done before starting another attempt.
+  client.stream.stop()
   client.opened = false
   client.connecting = false
   client.length = 0
-  client.offset = 0
+  client.inFlight = 0
   client.lost = 0
   client.retryAt = now + 5000
+  let detail = if reason == default(ErrorCode): "" else: " (" & $reason & ")"
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Warn,
-    "Telemetry collector connection unavailable; retrying in 5s")
+    "Telemetry collector connection unavailable" & detail & "; retrying in 5s")
 
 proc queue(client: var Client, bytes: openArray[byte], now: int64) =
   ## Retain one complete bounded frame; caller must have finished the preceding frame.
   client.length = bytes.len
-  client.offset = 0
+  client.inFlight = 0
   client.deadline = now + 5000
   # Encoders are internally bounded below this fixed buffer's capacity.
   for i in 0..<bytes.len: client.buffer[i] = bytes[i]
@@ -188,18 +176,18 @@ proc event(client: var Client, bytes: openArray[byte], now: int64, timestamp: Ti
   result = EventId(client.nextEvent)
   if not client.enabled: return # Disabled instrumentation neither allocates IDs nor owns resources.
   if client.nextEvent == high(uint64):
-    client.close() # Never wrap correlation IDs into an older attempt's namespace.
+    client.disable() # Never wrap correlation IDs into an older attempt's namespace.
     return
   inc client.nextEvent
   if not client.opened: return # The next registration's dropped prefix accounts for this position.
   let markerSize = if client.lost > 0: 29 else: 0
-  if bytes.len + markerSize > client.buffer.len - client.length:
+  if bytes.len + markerSize > client.buffer.len - client.length - client.inFlight:
     if client.lost == 0: client.firstLost = timestamp # Bound storage for a contiguous missing run.
     client.lastLost = timestamp
     inc client.lost
     return
-  if client.length == 0:
-    client.offset = 0 # A new batch owns a new write deadline; appending cannot extend a stalled one.
+  if client.length == 0 and client.inFlight == 0:
+    # Credit remains occupied during a write; appending behind it keeps its original deadline.
     client.deadline = now + 5000
   if client.lost > 0:
     for item in dropped(client.firstLost, client.lastLost, client.lost):
@@ -232,33 +220,23 @@ proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
   discard client.event(disconnected(timestamp, identity), now, timestamp)
 
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
-  ## Open a nonblocking close-on-exec descriptor and start one numeric-address connection attempt.
+  ## Copy the validated numeric endpoint into the task and register before publishing event bytes.
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connecting to telemetry collector")
+  var address = default(Sockaddr_storage)
+  let size = if client.ipv6: sizeof(Sockaddr_in6) else: sizeof(Sockaddr_in)
+  if size > sizeof(Sockaddr_storage):
+    client.failed(now, IOError) # Refuse an unsupported platform layout before copying native address bytes.
+    return
+  if client.ipv6:
+    copyMem(addr address, addr client.address6, size)
+  else:
+    copyMem(addr address, addr client.address, size)
   let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
-  client.fd = socket(cint(ord(family)), cint(ord(nativesocket.SOCK_STREAM)), 0)
-  # Resource exhaustion must not fail the peer or cause a busy retry loop.
-  if client.fd < 0:
+  if not client.stream.start(address, SockLen(size), family):
     client.failed(now)
     return
   client.opened = true
-  # Failed shared descriptor setup retains telemetry's existing retry and cleanup policy.
-  if not nonblocking(client.fd):
-    client.failed(now)
-    return
-  var connected = -1.cint
-  if client.ipv6:
-    # The configured family and exact sockaddr extent must agree on every reconnect.
-    connected = connectSocket(client.fd, addr client.address6, SockLen(sizeof(Sockaddr_in6)))
-  else:
-    # IPv4 collectors retain the original native connect representation.
-    connected = connectSocket(client.fd, addr client.address, SockLen(sizeof(Sockaddr_in)))
-  # EINPROGRESS is normal; every other error schedules a bounded retry.
-  if connected != 0 and osLastError() != OSErrorCode(EINPROGRESS):
-    client.failed(now)
-    return
-  client.connecting = connected != 0
-  if not client.connecting:
-    log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
+  client.connecting = true
   client.statusAt = now + 2000
   var frames = registration(client.metadata)
   if client.nextEvent > 0:
@@ -268,60 +246,47 @@ proc begin(client: var Client, now: int64, timestamp: Timestamp) =
   client.queue(frames, now)
 
 proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) =
-  ## Perform at most one zero-timeout poll and one send per dispatcher turn.
-  ## Caller-provided monotonic time controls retry, status and connect/write deadlines.
-  ## Partial writes resume at the exact suffix, and queued events share the batch deadline
-  ## so fresh observations cannot keep a stalled collector alive.
-
-  # Disabled telemetry has no socket, clock, allocation or network work.
+  ## Drive completions and transfer at most one bounded batch per dispatcher turn.
+  ## Only the Writer task waits for connection/send progress. Completed credit retires before
+  ## status sampling, so a simultaneous lifecycle event and status cannot manufacture loss.
+  ## Caller monotonic time controls retry, status and the fixed deadline for queued bytes.
   if not client.enabled: return
+  if client.stream.active:
+    pollTelemetryStreams()
+    if client.stream.finished:
+      let error = client.stream.failure
+      client.stream.close() # Done guarantees this collection cannot wait on I/O.
+      if client.opened:
+        client.failed(now, error)
+    elif client.stream.ready:
+      client.inFlight = 0 # Writer.flush has finished borrowing the previous batch.
+      if client.connecting:
+        client.connecting = false
+        log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
   if not client.opened:
-    # Retry spacing applies to refusals, stalled connects and write failures equally.
-    if now < client.retryAt: return
+    # A retiring task keeps its mailbox until Done; retry cannot overwrite that borrow.
+    if client.stream.active or now < client.retryAt: return
     client.begin(now, timestamp)
-    if not client.opened: return # Failed setup is isolated from normal peer work.
-  # A collector cannot retain a pending connect or frame forever.
-  if (client.connecting or client.length > 0) and now >= client.deadline:
-    client.failed(now)
+    if not client.opened: return
+  if (client.connecting or client.length > 0 or client.inFlight > 0) and now >= client.deadline:
+    client.failed(now, TimeoutError)
     return
-  # Status is sampled every two seconds without catch-up loops after a delayed dispatcher turn.
   if now >= client.statusAt:
+    # No catch-up loop after a delayed dispatcher turn; appends retain the batch deadline.
     client.statusAt = now + 2000
     discard client.event(status(client.metadata, timestamp, peers), now, timestamp)
-  if not client.enabled: return # ID exhaustion may have retired the descriptor while sampling status.
-  var entry = PollEntry(fd: client.fd, events: Writable, revents: 0)
-  let ready = poll(addr entry, 1, 0)
-  # EINTR simply defers work; all other poll errors and terminal flags retire the socket.
-  if ready < 0:
-    if osLastError() != OSErrorCode(EINTR): client.failed(now)
-    return
-  if (entry.revents and (PollError or Hangup or Invalid)) != 0:
-    client.failed(now)
-    return
-  if ready == 0 or (entry.revents and Writable) == 0: return # Retry only on later dispatcher turns.
-  if client.connecting:
-    var error = 0.cint
-    var size = SockLen(sizeof(error))
-    # Writable alone does not establish connection success.
-    if getOption(client.fd, SocketLevel, SocketError, addr error, addr size) != 0 or error != 0:
-      client.failed(now)
-      return
-    client.connecting = false
-    log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
-  if client.length == 0: return # Connected idle clients have nothing to send.
-  let written = writePending(client.fd, addr client.buffer[0], client.length, client.offset)
-  if written == WriteComplete:
-    # Retire the fixed frame only after its complete suffix entered the kernel.
-    client.length = 0
-    client.offset = 0
-  elif written == WriteFailed:
-    client.failed(now) # Permanent failure starts a fresh connection on the existing retry schedule.
+  if not client.enabled: return # Event-ID exhaustion may have retired the stream.
+  if client.length > 0 and client.stream.ready:
+    let remaining = client.deadline - now
+    if client.stream.send(toOpenArray(client.buffer, 0, client.length-1), afterMs(int(remaining))):
+      client.inFlight = client.length
+      client.length = 0 # The detached mailbox now holds these bytes against the same credit budget.
 
 proc omit*(client: var Client, timestamp: Timestamp) =
   ## Account for a native observation that lacked bounded tracking space or usable metadata.
   if not client.enabled: return # Disabled clients do not consume positions.
   if client.nextEvent == high(uint64):
-    client.close() # Correlation IDs never wrap.
+    client.disable() # Correlation IDs never wrap.
     return
   inc client.nextEvent
   if not client.opened: return # The next registration accounts for all missing positions.

@@ -29,9 +29,9 @@ interpretation, pins and focused evidence.
 ## Shared boundaries
 
 Shared utilities live in `src/lib/`, including the [JSON writer](../src/lib/json/writer.nim).
-RPC, UI, MCP, management and telemetry share [POSIX socket mechanics](../src/lib/socket_io.nim).
-Services retain descriptor ownership, admission, protocol parsing, deadlines and queue policy;
-the shared module performs no scheduling and each pending-write call sends at most once.
+RPC, UI, MCP, management and telemetry share [POSIX socket setup](../src/lib/socket_io.nim).
+Their stream tasks use Nimony Reader/Writer for delivery. Dispatchers retain admission,
+protocol policy and bounded queues; task owners retire before the shared reactor stops.
 
 Protocol logic remains native Nim. Private acyclic ARC owners retain immutable snapshots;
 borrowed operations have explicit lifetimes, and failed/default results expose no success payload.

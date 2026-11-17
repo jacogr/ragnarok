@@ -3,7 +3,10 @@
 [Design overview](../design.md) · [Telemetry source guide](../../src/telemetry/README.md)
 
 Application options and certificate/chain setup live under `src/app/`, shared with RPC and UI.
-The peer dispatcher drives the exporter and keeps it alive through native transport teardown.
+The peer dispatcher owns [exporter policy](../../src/telemetry/client.nim) and keeps it alive
+through native transport teardown. A [stream task](../../src/telemetry/stream.nim) owns the
+collector connection and Writer; only detached bounded bytes cross that boundary. Service close
+joins its stream before the application stops the shared I/O runtime.
 Transport callbacks lend addresses and certificate data to the observer. The observer turns
 those borrows into owned observations before returning.
 

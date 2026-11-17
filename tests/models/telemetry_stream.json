@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "assignments": {},
+      "expected": "pass",
+      "role": "base"
+    },
+    {
+      "name": "premature-credit",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated",
+      "role": "mutant"
+    },
+    {
+      "name": "unjoined-storage",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated",
+      "role": "mutant"
+    },
+    {
+      "name": "borrowed-stop-retired",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated",
+      "role": "witness"
+    }
+  ]
+}
