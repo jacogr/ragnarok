@@ -20,10 +20,11 @@ from history_transition_fixtures import output_root
 
 FIXTURE = Path(__file__).parent/'fixtures/jam-fuzzer-full-profile.json'
 RING = Path(__file__).parent/'fixtures/jam-full-ring-input.json'
+# Historical block/state authority is unchanged; VALUES separately tracks current Full startup gas.
 GP = 'fad0ded4a433052397bf7234352a57fe491883f7'
 CORES, VALIDATORS, EPOCH = 341, 1023, 600
 WIDTHS = (8,8,8,2,4,4,8,8,8,8,2,2,2,2,4,2,2,2,2,2,2,4,4,4,4,4,4,4,4)
-VALUES = (10,1,100,341,19200,600,10000000,50000000,5000000000,3500000000,
+VALUES = (10,1,100,341,19200,600,47000000,235000000,23500000000,16450000000,
           8,16,8,16,14400,8,6,80,10,128,5,196608,13791360,4000000,3072,49152,128,3072,500)
 
 

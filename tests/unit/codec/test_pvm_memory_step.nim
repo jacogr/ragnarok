@@ -177,6 +177,7 @@ proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
     if expectedExit == StepExit.Panic:
       # Recursive Psi normalizes a final panic PC regardless of its memory/trap origin.
       executedInfo.pc = CodeAddress(0)
+      executedInfo.blockCharged = false
     if expectedExit == StepExit.Fault:
       # Normalization must preserve the fault page rather than losing exit metadata.
       assert uint32(executed.value.faultPage) == fault
@@ -300,7 +301,9 @@ proc overflowRetryCycle() =
       samePages(memoryOf(panic.machine).value, [image])
       let completed = execute(present, ExecutionStepLimit(1), GasCycleLimit(0)).value
       assert completed.exit == StepExit.Panic
-      same(machineInfo(completed.machine).value, paid)
+      var terminalPaid = paid
+      terminalPaid.blockCharged = false
+      same(machineInfo(completed.machine).value, terminalPaid)
       samePages(memoryOf(completed.machine).value, [image])
       var hidden = image
       hidden.access = PageAccess.Inaccessible

@@ -494,6 +494,35 @@ proc dynamicTargetWorkingSets() =
 
 dynamicTargetWorkingSets()
 
+proc terminalRestart() =
+  ## Recursive halt/panic clears paid state; each restart at zero pays again, including prepaid initial inputs.
+  for halt in [false, true]:
+    # Trap and the distinguished halt destination exercise both recursive terminal alternatives.
+    let program = owner(if halt: @[@[50'u8, 0]] else: @[@[0'u8]])
+    let prepared = cache(program)
+    let cost = uint64(blockGas(program, CodeAddress(0), GasCycleLimit(1000)).value)
+    assert cost > 0
+    let memory = captureMemory([], PageLimit(0)).value
+    for prepaid in [false, true]:
+      # Initial prepaid state is consumed once; subsequent invocations have no paid-block credit.
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(4*cost), blockCharged: prepaid)
+      info.registers[0] = RegisterValue(0xffff0000'u64)
+      var source = captureMachine(program, memory, info).value
+      var remaining = 4*cost
+      for invocation in 0..<3:
+        # Exact gas deltas prove the flag affects execution rather than only the published receipt.
+        let done = execute(source, ExecutionStepLimit(10), prepared)
+        assert done.error == StepError.None
+        assert done.value.exit == (if halt: StepExit.Halt else: StepExit.Panic)
+        if invocation != 0 or not prepaid: remaining -= cost
+        let cpu = done.value.machine.machineInfo.value
+        assert uint64(cpu.pc) == 0 and not cpu.blockCharged
+        assert uint64(cpu.gas) == remaining
+        assert cpu.registers == info.registers
+        source = done.value.machine
+
+terminalRestart()
+
 proc dynamicTargetLifecycle(input: Machine, prepared: PreparedProgram) =
   ## A collision-heavy invocation retires its target facts on both completed and scheduling-failure exits.
   let complete = execute(input, ExecutionStepLimit(100000), prepared)

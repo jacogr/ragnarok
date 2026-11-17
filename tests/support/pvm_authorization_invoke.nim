@@ -96,6 +96,9 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   result.package = decodeWorkPackage(wire.toOpenArray(0, size-1), config).value.owner
   var parameterBytes = default(array[122, byte])
   for index in 0..<122: parameterBytes[index] = 255 # Full E2 core domain with valid fixed parameter fields.
+  for index in 0..<8:
+    # Keep the full core domain but bind the genuine authorizer to the current GP gas allowance.
+    parameterBytes[42+index] = byte((235000000'u64 shr (8*index)) and 255)
   result.parameters = decodeParameters(parameterBytes).value
 
 proc authorizationRun*(fixture: AuthorizationFixture, cap = authorizationLimits(),
@@ -107,6 +110,6 @@ proc authorizationRun*(fixture: AuthorizationFixture, cap = authorizationLimits(
 proc authorizationPrice*(fixture: AuthorizationFixture): uint64 =
   ## The separately verified gas component prices entry block structure; protocol host prices remain literal expectations.
   let cpu = initializeMachine(fixture.envelope, [0x34'u8, 0x12], CodeAddress(0), MachineGas(
-      50000000),
+      235000000),
     authorizationLimits().initialization).value
   uint64(blockGas(cpu.programOf.value, CodeAddress(0), GasCycleLimit(1000)).value)

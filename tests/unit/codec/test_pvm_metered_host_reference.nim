@@ -74,7 +74,7 @@ for row in [(newSeq[byte](0), 0'u64), (@[0'u8], 0'u64), (@[127'u8], 127'u64),
     if scenario == 0:
       assert checked.error == StepError.None and checked.value.exit == StepExit.Halt
       let final = machineInfo(checked.value.machine).value
-      assert uint64(final.gas) == 7 and uint64(final.pc) == 0 and final.blockCharged
+      assert uint64(final.gas) == 7 and uint64(final.pc) == 0 and not final.blockCharged
       for index in 0..<13:
         let expected = if index == 7: 7'u64 elif index == 8 or index == 10: 42'u64
           elif index == 9: 41'u64 else: uint64(registers[index])

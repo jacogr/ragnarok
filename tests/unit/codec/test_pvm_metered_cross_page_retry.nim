@@ -114,7 +114,7 @@ for row in 0..<48:
     sameMemory(memoryOf(stored.machine).value, expected)
     let completed = execute(repairedLower, ExecutionStepLimit(2), GasCycleLimit(0)).value
     assert completed.exit == StepExit.Panic
-    sameCpu(completed.machine, registers, budget - 25, true, 0)
+    sameCpu(completed.machine, registers, budget - 25, false, 0)
     sameMemory(memoryOf(completed.machine).value, expected)
     sameMemory(memoryOf(repairedLower).value, writable)
     sameMemory(memoryOf(second.machine).value, higher)

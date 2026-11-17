@@ -130,6 +130,8 @@ when declared(ExecutionCursor):
       ## Foreign memory is copied before private instance reuse; snapshots never borrow mutable Rust storage.
       let captured = captureBackendMemory(cursor)
       if captured != StepError.None: return StepResult(status: captured)
+      if terminalExit(effect.kind):
+        cursor.cpu.info.blockCharged = false # GP0.8.1 recursive terminal restart must repay its entry block.
       let machine = captureTerminalMachine(cursor.cpu.program, cursor.cpu.memory, cursor.cpu.info)
       if machine.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
       case effect.kind

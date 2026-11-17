@@ -128,6 +128,11 @@ proc boundaries(base: OwnedReport): InitialAccumulationRound =
   let empty = queue([])
   let noFree = privileges(@[])
   var config = cfg()
+  # Tiny retains its explicit block setting, but the new report/core floor determines the effective budget.
+  config.reportGas = Gas(47_000_000)
+  config.blockGas = Gas(20_000_000)
+  assert uint64(planInitialAccumulation(empty, noFree, config).value.roundInfo.value.budget) == 94_000_000
+  config.reportGas = Gas(0)
   config.blockGas = Gas(0)
   let stopped = planInitialAccumulation(empty, noFree, config).value
   assert not stopped.roundInfo.value.dispatch
@@ -142,6 +147,15 @@ proc boundaries(base: OwnedReport): InitialAccumulationRound =
   assert uint64(planInitialAccumulation(source, noFree, config).value.roundInfo.value.prefix) == 1
   config.blockGas = Gas(10)
   assert uint64(planInitialAccumulation(source, noFree, config).value.roundInfo.value.prefix) == 3
+  # Isolate scheduler arithmetic above E4 without report-admission policy: exact Full budget and its next unit.
+  let wide = queue([reportFor(base, 0, [4_294_967_296'u64]),
+    reportFor(base, 1, [12_155_032_704'u64]), reportFor(base, 0, [1'u64])])
+  config.blockGas = Gas(16_450_000_000'u64)
+  let full = planInitialAccumulation(wide, noFree, config).value.roundInfo.value
+  assert uint64(full.budget) == 16_450_000_000'u64
+  assert uint64(full.reportGas) == 16_450_000_000'u64 and uint64(full.prefix) == 2
+  config.blockGas = Gas(16_449_999_999'u64)
+  assert uint64(planInitialAccumulation(wide, noFree, config).value.roundInfo.value.prefix) == 1
   # Even a mathematical digest sum above uint64 simply makes its whole report unaffordable.
   let large = queue([reportFor(base, 0, [high(uint64), 1'u64])])
   config.blockGas = Gas(high(uint64))

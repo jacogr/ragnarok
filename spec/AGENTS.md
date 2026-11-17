@@ -59,3 +59,9 @@ that matters to interpreting evidence. Passing local tests is not proof of compl
   vector preview is separately pinned for selected compatible consumers, not an
   authority to remove production metadata or host calls. See
   [the compatibility decision](gp-preimages-preview-reconciliation.md).
+
+- On 2026-11-17 the maintainer authorized released Gray Paper v0.8.1 at
+  `b7044addaf48a09f235531f6188c5e7418bed410`. Adopt all four Full gas ceilings
+  and recursive halt/panic paid-block reset. Preserve explicit Tiny/Fuzz refinement/block
+  overrides, vector/JAMNP-S pins and existing scoped exceptions. See
+  [release qualification](graypaper-0.8.1.md).

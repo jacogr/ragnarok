@@ -89,8 +89,8 @@ proc verifyState(result, source: Machine, iterations: uint64, addend = 3'u8) =
   assert uint64(initial.pc) == 0 and uint64(initial.gas) == 1000000 and
       uint64(initial.gasDeficit) == 0 and not initial.blockCharged,
       "verify.sourceCPU: original literal input remains unchanged"
-  assert uint64(info.pc) == 0 and uint64(info.gasDeficit) == 0 and info.blockCharged,
-      "verify.2: uint64(info.pc) == 0 and uint64(info.gasDeficit) == 0 and info.blockCharged" &
+  assert uint64(info.pc) == 0 and uint64(info.gasDeficit) == 0 and not info.blockCharged,
+      "verify.2: uint64(info.pc) == 0 and uint64(info.gasDeficit) == 0 and not info.blockCharged" &
       "; pc=" & $uint64(info.pc) & "; deficit=" & $uint64(info.gasDeficit) & "; charged=" &
       $info.blockCharged
   # GP0.8 pipeline: overlapping ADD_IMM_32 pair then BRANCH_LT_U costs22 per loop block;
@@ -620,7 +620,7 @@ when defined(pvmSharedAsyncWitness):
       assert answer.value.backend == PvmBackend.Jit and answer.value.exit == StepExit.Halt
       assert baseline.value.exit == StepExit.Halt
       let cpu = machineInfo(answer.value.machine).value
-      assert cpu == machineInfo(baseline.value.machine).value and cpu.blockCharged
+      assert cpu == machineInfo(baseline.value.machine).value and not cpu.blockCharged
       assert uint64(cpu.registers[8]) == 1089
       let final = pageImage(memoryOf(answer.value.machine).value, PageIndex(32)).value
       assert final == pageImage(memoryOf(baseline.value.machine).value, PageIndex(32)).value
@@ -1267,21 +1267,21 @@ when defined(pvmSharedAsyncWitness):
       ReadyCase(name: "quota before unaffordable next charge", budget: 4098, bound: 2048,
         gas: 30052, r7: 4098, r10: 1366, operations: 4098),
       ReadyCase(name: "paid header", budget: 4096, bound: 1, gas: 22, paid: true,
-        remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true, stop: ReadyStop.Halt),
+        remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: false, stop: ReadyStop.Halt),
       ReadyCase(name: "paid cached interior", budget: 4096, bound: 1, gas: 22, paid: true,
-        startPc: 3, startR7: 3, remaining: 4093, r7: 3, r10: 1, outPaid: true,
+        startPc: 3, startR7: 3, remaining: 4093, r7: 3, r10: 1, outPaid: false,
         stop: ReadyStop.Halt),
       ReadyCase(name: "zero bound still visits once", budget: 4096, gas: 1000000,
-        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true,
+        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: false,
         stop: ReadyStop.Halt),
       ReadyCase(name: "one visit", budget: 4096, bound: 1, gas: 1000000,
-        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true,
+        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: false,
         stop: ReadyStop.Halt),
       ReadyCase(name: "two visits", budget: 4096, bound: 2, gas: 1000000,
-        outGas: 999934, remaining: 4089, r7: 6, r10: 2, operations: 6, outPaid: true,
+        outGas: 999934, remaining: 4089, r7: 6, r10: 2, operations: 6, outPaid: false,
         stop: ReadyStop.Halt),
       ReadyCase(name: "sixteen visits", budget: 4096, bound: 16, gas: 1000000,
-        outGas: 999626, remaining: 4047, r7: 48, r10: 16, operations: 48, outPaid: true,
+        outGas: 999626, remaining: 4047, r7: 48, r10: 16, operations: 48, outPaid: false,
         stop: ReadyStop.Halt),
       ReadyCase(name: "unsigned high bound and signed word wrap", budget: 4096,
         bound: 0x8000000000000000'u64, gas: 44, startR7: 0x7ffffffe, startR10: high(uint64),
@@ -1400,7 +1400,7 @@ when defined(pvmSharedAsyncWitness):
         var expected = cpu
         expected.pc = CodeAddress(0)
         expected.gas = MachineGas(7)
-        expected.blockCharged = true
+        expected.blockCharged = false
         expected.registers[10] = RegisterValue(10000)
         checkImmediateResult(execute(suffix.value, ExecutionStepLimit(attempts), code), expected,
           StepExit.Halt, PvmBackend.Interpreted)
@@ -1442,7 +1442,7 @@ when defined(pvmSharedAsyncWitness):
       let budget = if highBit: ExecutionStepLimit(6145) else: ExecutionStepLimit(30001)
       var expected = cpu
       expected.gas = MachineGas(7)
-      expected.blockCharged = true
+      expected.blockCharged = false
       expected.registers[7] = RegisterValue(if highBit: 6144'u64 else: 30000'u64)
       expected.registers[10] = RegisterValue(if highBit: 0xffffffff80000800'u64 else: 10000'u64)
       checkImmediateResult(execute(source.value, budget, native.value), expected, StepExit.Halt,
@@ -1848,7 +1848,7 @@ when defined(pvmSharedAsyncWitness):
         # The folded instruction still consumes an attempt and affects the checked block price.
         let expected = cold.value.machine.machineInfo.value
         let actual = ready.value.machine.machineInfo.value
-        assert uint64(actual.pc) == 0 and actual.blockCharged, "folded PC/paid"
+        assert uint64(actual.pc) == 0 and not actual.blockCharged, "folded PC/paid"
         assert uint64(actual.gas) == uint64(expected.gas) and
           uint64(actual.gasDeficit) == uint64(expected.gasDeficit), "folded gas/deficit"
         assert uint64(actual.registers[7]) == 6144 and uint64(actual.registers[10]) == 2048, "folded values"

@@ -4,7 +4,7 @@
   "transitions": 28,
   "initial_slot": 4,
   "initial_ancestry_slot": 3,
-  "full_guests_sha256": "b6b62bc3b41b9039011c4a503e39468055663231125361418fbb769723151e74",
+  "full_guests_sha256": "89a8ed2ada9088a350cf982d4a755fc203ab16de4815831c189d3978d542e705",
   "successor_roots": [
     "07c474e42df618331a39d8f819b8dfe063429cceea2b75a6194ce9dfc32829b8",
     "df7842538c5703096b10dd8fad1a48841c9934e63b75437d2e9113bddd679dbb",

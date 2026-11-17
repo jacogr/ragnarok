@@ -204,7 +204,7 @@ for row in 0..<32:
           if scenario < 2:
             # Successful dynamic halt normalizes the native PC after paying the final block exactly once.
             assert outcome.exit == StepExit.Halt and uint64(posterior.pc) == 0 and
-                posterior.blockCharged
+                not posterior.blockCharged
             assert uint64(posterior.gas) == budget - total
           else:
             # Both underfunded boundaries preserve the current block's uncharged state and completed prefix.

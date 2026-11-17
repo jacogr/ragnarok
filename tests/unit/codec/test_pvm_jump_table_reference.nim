@@ -89,7 +89,8 @@ proc qualify(owner: Program, reachesHost: bool) =
         var expected = registers
         expected[12] = RegisterValue(uint64(context.calls))
         let gas = 607-(if prepaid: 0'u64 else: 100'u64)-(if reachesHost: 300'u64 else: 0'u64)
-        verify(outcome.machine, expected, 0, gas, true, memory)
+        verify(outcome.machine, expected, 0, gas, reachesHost,
+            memory) # A terminal host reply retains its suspension credit; guest Psi panic clears it.
         verify(source, registers, 2, 607, prepaid, memory)
       assert gasMemoInfo(learned.value).value.pricedBlocks == (if mode < 2 or (prepaid and
           not reachesHost): 0'u64 else: 1'u64)
@@ -137,6 +138,7 @@ proc qualifyHotOrdinals() =
       stepped = once.value.machine
     var expected = machineInfo(stepped).value
     expected.pc = CodeAddress(0)
+    expected.blockCharged = false
     assert uint64(expected.registers[1]) == (if terminal == StepExit.Halt: 7'u64 else: 1'u64)
     for repeat in 0..<3:
       # Repeated whole calls reuse the code owner and restore the original CPU and cache scope.

@@ -273,7 +273,7 @@ proc completeLiteral(done: StepResult, source: Machine, value, wide: uint64, sta
   assert done.error == StepError.None and done.value.exit == StepExit.Halt, "literal public halt"
   let actual = machineInfo(done.value.machine).value
   assert uint64(actual.pc) == 0 and uint64(actual.gas) == EndGas-extraGas and
-    uint64(actual.gasDeficit) == 0 and actual.blockCharged, "literal public CPU/gas"
+    uint64(actual.gasDeficit) == 0 and not actual.blockCharged, "literal public CPU/gas"
   var expected = machineInfo(source).value.registers
   expected[2] = RegisterValue(value)
   expected[3] = RegisterValue(value)
@@ -501,7 +501,7 @@ proc hostReentry(form: int) =
   registers[7] = RegisterValue(3*PrefixTrips)
   registers[9] = RegisterValue(1)
   registers[10] = RegisterValue(PrefixTrips)
-  assert cpu.registers == registers and uint64(cpu.pc) == 0 and cpu.blockCharged and
+  assert cpu.registers == registers and uint64(cpu.pc) == 0 and not cpu.blockCharged and
     uint64(cpu.gasDeficit) == 0, "literal current-memory registers after host reentry"
   let activity = preparedInfo(owner).value
   assert activity.nativeFragments == 1 and activity.nativeCalls == ReadTrips+1 and

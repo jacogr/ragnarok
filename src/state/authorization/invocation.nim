@@ -214,6 +214,8 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
     core: CoreIndex, parameters: Parameters, limits: AuthorizationInvocationLimits):
     AuthorizationInvocationResult[AuthorizationInvocation] =
   ## Resolve, initialize and execute only this source's authorizer; every refusal retires all private scratch owners.
+  ## Initialize with parameters.maxIsAuthorizedGas (235M for GP0.8.1 Full), also exposed by fetch.
+  ## Validate remaining credit against that same allowance before subtracting consumption.
   template fail(reason: AuthorizationInvocationError) =
     return AuthorizationInvocationResult[AuthorizationInvocation](status: reason)
   if not parameters.valid: fail(AuthorizationInvocationError.InvalidParameters)
@@ -245,9 +247,10 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
   if hash.error != CryptoError.None: fail(AuthorizationInvocationError.BackendFailure)
   if array[32, byte](hash.value) != array[32, byte](described.value.codeHash):
     fail(AuthorizationInvocationError.InvalidState) # A synthetic map under the wrong key cannot certify authorization code.
+  let allowance = parameters.get(maxIsAuthorizedGas) # The configured Appendix B allowance also reaches fetch selector zero.
   let arguments = [byte(uint64(core) and 255), byte((uint64(core) shr 8) and 255)]
   let initialized = initializeJamProgram(preimage, arguments, CodeAddress(0),
-      MachineGas(50000000), limits.initialization)
+      MachineGas(allowance), limits.initialization)
   if initialized.error in [InitializationError.InvalidEnvelope, InitializationError.InvalidProgram]:
     return complete(source, WorkKind.Panic, Gas(0), @[])
   if initialized.error != InitializationError.None:
@@ -284,9 +287,9 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
     fail(AuthorizationInvocationError.InvalidExecution)
   let terminal = executed.value
   let cpu = terminal.machine.machineInfo
-  if cpu.error != MachineError.None or uint64(cpu.value.gas) > 50000000:
+  if cpu.error != MachineError.None or uint64(cpu.value.gas) > allowance:
     fail(AuthorizationInvocationError.InvalidExecution) # Prove subtraction; terminal deficit contributes no extra consumption.
-  let used = Gas(50000000'u64-uint64(cpu.value.gas))
+  let used = Gas(allowance-uint64(cpu.value.gas))
   case terminal.exit
   of StepExit.OutOfGas:
     complete(source, WorkKind.OutOfGas, used, @[])

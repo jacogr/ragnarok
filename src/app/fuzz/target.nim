@@ -298,7 +298,7 @@ proc runFuzzTarget*(arguments: openArray[string], logging: LogWriter = default(
   try:
     var generation = 0'u64
     var backend = initFuzzBackend(config.backend).value
-    stdout.writeLine("FUZZ_READY protocol=1 gp=0.8.0 features=3")
+    stdout.writeLine("FUZZ_READY protocol=1 gp=0.8.1 features=3")
     stdout.flushFile()
     while atomicLoad(stopFlag) == 0:
       server.tick() # IO is bounded and never executes a guest inside its callback.

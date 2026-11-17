@@ -1,6 +1,6 @@
 # Bounded Is-Authorized invocation
 
-Pins: GP 0.8.0 [`dc9a3bf79acd044ac004f756cff88a8acc9c416d`](https://github.com/gavofyork/graypaper/blob/dc9a3bf79acd044ac004f756cff88a8acc9c416d/text/pvm_invocations.tex),
+Pins: GP 0.8.1 [`b7044addaf48a09f235531f6188c5e7418bed410`](https://github.com/gavofyork/graypaper/blob/b7044addaf48a09f235531f6188c5e7418bed410/text/pvm_invocations.tex),
 `pvm_invocations.tex` isauthinvocation/isauthorizedmutator, work-package historical
 authorization-code definition, Psi_M and standard initialization; vector pin
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` remains unchanged. Existing grow_heap
@@ -12,7 +12,7 @@ A complete program blob above 196,608 bytes yields BIG with zero gas before copy
 Eligible blobs require a local copy budget and verification of the declared
 preimage hash. The shared initializer consumes the opaque metadata prefix.
 Malformed metadata, images or programs yield PANIC with zero gas. Initialize entry zero with exactly E2(core) and
-50000000 gas, after checking the core's full-width chain and E2 domains.
+the configured `maxIsAuthorizedGas` allowance (235000000 for Full), after checking the core's full-width chain and E2 domains.
 
 Dispatch only gas, grow_heap and fetch. Configure parameters and the original
 package; entropy, trace, current item, external inputs and accumulation operands

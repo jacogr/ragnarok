@@ -152,7 +152,7 @@ proc accumulationWitness(selected: PvmBackend) =
   expectedRegisters[7] = RegisterValue(9851)
   assert actual.registers == expectedRegisters
   assert uint64(actual.gas) == 9851 and uint64(actual.gasDeficit) == 0
-  assert uint64(actual.pc) == 0 and actual.blockCharged
+  assert uint64(actual.pc) == 0 and not actual.blockCharged
 
 proc checkedMemoryWitness(selected: PvmBackend) =
   ## The unported indirect-memory shape remains checked and must still use each invocation's own RAM.
@@ -183,7 +183,7 @@ proc checkedMemoryWitness(selected: PvmBackend) =
   expectedRegisters[11] = RegisterValue(196608)
   assert cpu.registers == expectedRegisters
   assert uint64(cpu.gas) == 9850 and uint64(cpu.gasDeficit) == 0 # Independent GP102 plus host48.
-  assert uint64(cpu.pc) == 0 and cpu.blockCharged
+  assert uint64(cpu.pc) == 0 and not cpu.blockCharged
   assert original.value.machine.memoryOf.value.pageImage(PageIndex(48)).value.bytes[0] == 81
   assert current.value.machine.memoryOf.value.pageImage(PageIndex(48)).value.bytes[0] == 91
   let observed = workerInfo(worker).value

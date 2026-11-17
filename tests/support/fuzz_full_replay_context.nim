@@ -38,8 +38,8 @@ proc profileReplayConfig(cores, validators, slots, tickets, rotation, tail,
   let authorization = AuthorizationConfig(cores: frame.cores,
     maxHashes: ElementLimit(cores * 80), maxBytes: ByteLimit(1000000))
   result.candidate.reporting.reports.policy.pools = authorization
-  result.candidate.reporting.reports.policy.reportGas = ReportGasLimit(10000000)
-  result.candidate.reporting.reports.policy.refinementGas = RefinementGasLimit(5000000000)
+  result.candidate.reporting.reports.policy.reportGas = ReportGasLimit(47000000)
+  result.candidate.reporting.reports.policy.refinementGas = RefinementGasLimit(23500000000)
   var historyLimits = result.candidate.completion.composition.recent.history
   historyLimits.cores = frame.cores
   historyLimits.perBlock = ElementLimit(cores) # One reported package per full-profile core can enter a block.
@@ -74,7 +74,7 @@ proc profileReplayConfig(cores, validators, slots, tickets, rotation, tail,
   let privileges = PrivilegeConfig(cores: frame.cores, maxAlways: ElementLimit(2),
       maxBytes: ByteLimit(4096))
   result.candidate.round.privileges = privileges
-  result.candidate.round.reportGas = Gas(10000000)
+  result.candidate.round.reportGas = Gas(47000000)
   result.candidate.round.blockGas = Gas(blockGas)
   var contexts = result.candidate.completion.execution.initial.guests.contexts
   contexts.validators = frame.validators
@@ -123,7 +123,7 @@ proc profileReplayConfig(cores, validators, slots, tickets, rotation, tail,
 
 proc fuzzFullReplayConfig*(): FuzzBackendConfig =
   ## Preserve the existing Full profile and every historical resource ceiling.
-  profileReplayConfig(341, 1023, 600, 16, 10, 500, 3500000000'u64)
+  profileReplayConfig(341, 1023, 600, 16, 10, 500, 16450000000'u64)
 
 proc fuzzNetworkReplayConfig*(): FuzzBackendConfig =
   ## Issue215 geometry retains explicit finite host bounds; expected Parameters remain independently supplied.

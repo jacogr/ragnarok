@@ -129,7 +129,7 @@ for row in 0..<count:
     assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
     let cpu = machineInfo(completed.value.machine).value
     assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == 7 and uint64(cpu.gasDeficit) == 0 and
-        cpu.blockCharged
+        not cpu.blockCharged
     assert memoryOf(completed.value.machine).value == empty
     for index in 0..<13:
       let wanted = if index == destination: expected else: uint64(original[index])

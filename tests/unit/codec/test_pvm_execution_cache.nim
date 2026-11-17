@@ -55,10 +55,12 @@ proc input(program: Program, count: uint64, charged = false): Machine =
 
 proc same(actual, expected: MachineInfo) =
   ## Complete CPU parity includes every untouched register, unsigned gas and paid-block flag.
-  assert uint64(actual.pc) == uint64(expected.pc)
+  assert uint64(actual.pc) == uint64(expected.pc), "pc actual=" & $uint64(actual.pc) &
+      " expected=" & $uint64(expected.pc)
   assert uint64(actual.gas) == uint64(expected.gas)
   assert uint64(actual.gasDeficit) == uint64(expected.gasDeficit)
-  assert actual.blockCharged == expected.blockCharged
+  assert actual.blockCharged == expected.blockCharged, "paid state actual=" & $actual.blockCharged &
+      " expected=" & $expected.blockCharged
   for index in 0..<13: assert uint64(actual.registers[index]) == uint64(expected.registers[index])
 
 proc compareSteps(source: Machine, attempts: int, terminal = StepExit.Panic,
@@ -74,7 +76,8 @@ proc compareSteps(source: Machine, attempts: int, terminal = StepExit.Panic,
       assert once.value.exit == terminal
       result = machineInfo(once.value.machine).value
       if terminal in {StepExit.Panic, StepExit.Halt}:
-        result.pc = CodeAddress(0) # Outer Psi normalizes final Panic/Halt while retaining all posterior CPU values.
+        result.pc = CodeAddress(0) # GP0.8.1 Psi resets terminal PC and paid-block credit.
+        result.blockCharged = false
       elif terminal == StepExit.Host:
         result.pc = machineInfo(current).value.pc # Recursive host publication retains the independently stepped causing PC.
     else:
@@ -633,7 +636,9 @@ proc staticConditions() =
       let run = execute(source, ExecutionStepLimit(1), GasCycleLimit(0))
       assert once.error == StepError.None and once.value.exit == StepExit.Panic
       assert run.error == StepError.None and run.value.exit == StepExit.Panic
-      same(machineInfo(once.value.machine).value, machineInfo(run.value.machine).value)
+      var expected = machineInfo(once.value.machine).value
+      expected.blockCharged = false # Raw Psi_1 preserves paid credit; recursive terminal publication clears it.
+      same(machineInfo(run.value.machine).value, expected)
       assert uint64(machineInfo(source).value.registers[0]) == count
       var unpaid = machineInfo(source).value
       unpaid.blockCharged = false
@@ -667,7 +672,9 @@ proc finalFallthrough() =
     let run = execute(source, ExecutionStepLimit(1), GasCycleLimit(0))
     assert once.error == StepError.None and once.value.exit == StepExit.Panic, "final conditional single step"
     assert run.error == StepError.None and run.value.exit == StepExit.Panic, "final conditional execute"
-    same(machineInfo(once.value.machine).value, machineInfo(run.value.machine).value)
+    var expected = machineInfo(once.value.machine).value
+    expected.blockCharged = false # Recursive panic normalizes paid credit separately from Psi_1.
+    same(machineInfo(run.value.machine).value, expected)
     assert execute(source, ExecutionStepLimit(0), GasCycleLimit(0)).error ==
         StepError.StepLimitExceeded
     assert uint64(machineInfo(source).value.registers[0]) == count
@@ -779,7 +786,7 @@ proc dynamicTargets(count = 64, full = true) =
         assert outcome.exit == (if terminal == 0xffff0000'u64: StepExit.Halt else: StepExit.Panic)
         var expected = cpu
         expected.gas = MachineGas(7)
-        expected.blockCharged = true
+        expected.blockCharged = false
         expected.registers = context.previous
         same(machineInfo(outcome.machine).value, expected)
         same(machineInfo(source).value, cpu)
@@ -864,7 +871,7 @@ proc controlSuccessors() =
             var final = expected
             final.pc = CodeAddress(0)
             final.gas = MachineGas(27)
-            final.blockCharged = true
+            final.blockCharged = false
             same(machineInfo(completed.value.machine).value, final)
             same(machineInfo(source).value, cpu)
   for alias in [false, true]:
@@ -889,7 +896,7 @@ proc controlSuccessors() =
         let source = captureMachine(owner, memory, cpu).value
         var expected = cpu
         expected.gas = MachineGas(7)
-        expected.blockCharged = true
+        expected.blockCharged = false
         expected.registers[if alias: 8 else: 0] = RegisterValue(99)
         for mode in 0..<3:
           let stopped = controlRun(source, mode, 1, plan, memo)
@@ -926,7 +933,7 @@ proc absentControlSuccessors() =
         let source = captureMachine(owner, memoryOf(original).value, cpu).value
         var expected = cpu
         expected.gas = MachineGas(7)
-        expected.blockCharged = true
+        expected.blockCharged = false
         for mode in 0..<3:
           # Missing successors panic after charging regardless of the predicate, preserving the causing PC and every register.
           let stopped = controlRun(source, mode, 1, prepared.value, learned.value)

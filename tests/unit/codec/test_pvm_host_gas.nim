@@ -52,7 +52,7 @@ for unknown in [false, true]:
     let outcome = evaluated.value
     let cpu = machineInfo(outcome.machine).value
     let prior = machineInfo(original).value
-    assert cpu.blockCharged
+    assert cpu.blockCharged == (available < cost)
     assert pageImage(memoryOf(outcome.machine).value, PageIndex(16)).value.bytes[0] == 99
     assert pageImage(memoryOf(outcome.machine).value, PageIndex(16)).value.access ==
         PageAccess.ReadOnly

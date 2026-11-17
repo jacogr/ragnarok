@@ -49,7 +49,7 @@ proc cycle() =
         let outcome = completed.value
         let cpu = machineInfo(outcome.machine).value
         assert outcome.exit == (if available < 2: StepExit.OutOfGas else: StepExit.Panic)
-        assert uint64(cpu.pc) == 0 and cpu.blockCharged == (available >= 2)
+        assert uint64(cpu.pc) == 0 and not cpu.blockCharged
         assert uint64(cpu.gas) == (if available < 2: available else: available - 2)
         assert uint64(cpu.gasDeficit) == 0
         for r in 0..<13:

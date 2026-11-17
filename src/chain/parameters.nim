@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Immutable GP 0.8.0 fetch-parameter snapshots. Fixed-width decoding owns every value;
+## Immutable GP 0.8.1 fetch-parameter snapshots. Fixed-width decoding owns every value;
 ## it does not initialize genesis state or infer validator-dependent settings.
 ##
 ## Exposes Parameter field identifiers, immutable Parameters and guarded ParameterResult accessors,

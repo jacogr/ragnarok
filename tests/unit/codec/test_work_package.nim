@@ -37,10 +37,10 @@ for field in 0..<2:
   for extra in 0..1:
     var exact = package()
     if field == 0:
-      exact.items[0].refineGas = Gas(4_999_999_999'u64)
+      exact.items[0].refineGas = Gas(23_499_999_999'u64)
       exact.items[1].refineGas = Gas(uint64(1+extra))
     else:
-      exact.items[0].accumulateGas = Gas(9_999_999)
+      exact.items[0].accumulateGas = Gas(46_999_999)
       exact.items[1].accumulateGas = Gas(uint64(1+extra))
     var bytes = newSeq[byte](2048)
     let encoded = encodeWorkPackage(exact, config, bytes)

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 reporting_assurance.tex: parent authorizer membership, per-report gas and service
+## GP 0.8.1 reporting_assurance.tex: parent authorizer membership, per-report gas and service
 ## code/minimum gas. This read-only stage consumes certified credentials; complete report
 ## context and C(10) publication follow later.
 ##
@@ -116,7 +116,7 @@ proc inspectPolicyReport(report: OwnedReport, parent: StateStoreSnapshot,
       break
   if not authorized:
     return ReportPolicyError.Unauthorized # Parent C(1), never C(2) or a posterior pool.
-  if uint64(info.authGas) > 50_000_000 or uint32(info.header.bundleLength) > 13_904_950:
+  if uint64(info.authGas) > 235_000_000 or uint32(info.header.bundleLength) > 13_904_950:
     return ReportPolicyError.RefinementLoadExceeded # Independent fixed package authorization/bundle limits.
   var refineGas = 0'u64
   var imports = 0'u64

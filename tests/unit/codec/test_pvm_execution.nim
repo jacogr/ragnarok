@@ -116,13 +116,14 @@ assert uint64(machineInfo(halt.machine).value.registers[0]) == 7
 
 # The invalid-entry deblob branch panics without charge, while a default machine is a local API error.
 for pc in [2'u64, 99'u64, high(uint64)]:
-  let info = MachineInfo(pc: CodeAddress(pc), gas: MachineGas(91), blockCharged: false,
+  let info = MachineInfo(pc: CodeAddress(pc), gas: MachineGas(91), blockCharged: true,
     registers: registers)
   let invalid = captureTerminalMachine(trapProgram, memory, info).value
   let run = execute(invalid, ExecutionStepLimit(1), GasCycleLimit(0)).value
   assert run.exit == StepExit.Panic
   var expected = info
   expected.pc = CodeAddress(0)
+  expected.blockCharged = false
   same(machineInfo(run.machine).value, expected)
   assert stepOnce(invalid, GasCycleLimit(0)).error == StepError.InvalidMachine
 assert execute(default(Machine), ExecutionStepLimit(0), GasCycleLimit(0)).error ==
@@ -145,7 +146,7 @@ for count in [1'u64, 2'u64, 17'u64, 10000'u64]:
   var expected = machineInfo(input).value
   expected.pc = CodeAddress(0)
   expected.gas = MachineGas(0)
-  expected.blockCharged = true
+  expected.blockCharged = false
   expected.registers[0] = RegisterValue(0)
   same(machineInfo(finished.machine).value, expected)
   assert uint64(machineInfo(input).value.registers[0]) == count
@@ -386,7 +387,9 @@ proc workspaceCase(count: int, ending: WorkspaceExit, baseRegisters: RegisterFil
   let run = execute(input, ExecutionStepLimit(uint64(count*2+extra+1)), GasCycleLimit(1000))
   assert run.error == StepError.None and run.value.exit == expectedExit and once.exit == expectedExit
   var expected = machineInfo(once.machine).value
-  if expectedExit in {StepExit.Panic, StepExit.Halt}: expected.pc = CodeAddress(0)
+  if expectedExit in {StepExit.Panic, StepExit.Halt}:
+    expected.pc = CodeAddress(0)
+    expected.blockCharged = false # Recursive terminal publication removes paid credit.
   elif expectedExit == StepExit.Host: expected.pc = machineInfo(beforeExit).value.pc
   same(machineInfo(run.value.machine).value, expected)
   if expectedExit == StepExit.Fault: assert uint32(run.value.faultPage) == 69632
@@ -457,7 +460,7 @@ proc workspaceHostCycle(baseRegisters: RegisterFile) =
       completed = run.value
     assert completed.exit == StepExit.Halt and context.calls == 1
     let cpu = machineInfo(completed.machine).value
-    assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == 0 and cpu.blockCharged
+    assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == 0 and not cpu.blockCharged
     for index in 0..<13:
       let wanted = if index == 0: 8'u64 elif index == 1: 99'u64 elif index ==
           10: 77'u64 else: uint64(registers[index])

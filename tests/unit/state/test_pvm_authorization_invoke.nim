@@ -64,8 +64,22 @@ check(gasResult, WorkKind.Success, gasUsed)
 var remaining = 0'u64
 for index, octet in gasResult.authorizationTrace.value: remaining = remaining or (uint64(
     octet) shl (8*index))
-assert remaining == 50000000'u64-gasUsed
-# Metadata never contributes to the 196608-byte code ceiling; exact-sized code remains executable.
+assert remaining == 235000000'u64-gasUsed
+# Configured chains supply the same allowance to execution and fetch; terminal consumption uses it unchanged.
+var alternate = gasFixture
+var alternateParameters = encodeParameters(alternate.parameters)
+for index in 0..<8:
+  # A small independently configured allowance catches a fallback to either historical or current Full gas.
+  alternateParameters[42+index] = byte((10000'u64 shr (8*index)) and 255)
+alternate.parameters = decodeParameters(alternateParameters).value
+let alternateResult = authorizationRun(alternate).value
+check(alternateResult, WorkKind.Success, gasUsed)
+var alternateRemaining = 0'u64
+for index, octet in alternateResult.authorizationTrace.value:
+  # Guest gas host output is an observable check on the actual configured execution allowance.
+  alternateRemaining = alternateRemaining or (uint64(octet) shl (8*index))
+assert alternateRemaining == 10000'u64-gasUsed
+# The complete metadata-prefixed blob obeys the 196608-byte ceiling; exact-sized blobs remain executable.
 let metadata = authorizationFixture([halt], metadata = newSeq[byte](196608))
 assert metadata.preimage.len > 196608
 check(authorizationRun(metadata).value, WorkKind.Big, 0)
@@ -155,15 +169,15 @@ for ending in [@[0'u8], @[52'u8, 7, 0, 0, 0, 1]]:
 # Requested-length charging occurs even for absent trace; huge requests yield exact saturated guest OOG.
 let debt = authorizationFixture([refinementImmediate(9, high(uint64)), refinementImmediate(10, 2),
     @[10'u8, 2], halt])
-check(authorizationRun(debt).value, WorkKind.OutOfGas, 50000000)
+check(authorizationRun(debt).value, WorkKind.OutOfGas, 235000000)
 # Spend all but one credit on an absent fetch, then enter a new unaffordable block: instruction OOG preserves that credit.
 var oogCode = @[refinementImmediate(9, 0), refinementImmediate(10, 2), @[10'u8, 2], @[40'u8, 2],
   refinementImmediate(7, 1), refinementImmediate(8, 2), halt]
 let firstPrice = authorizationPrice(authorizationFixture(oogCode))
-let charged = 50000000'u64-firstPrice-80-1
+let charged = 235000000'u64-firstPrice-80-1
 let requested = charged*32 div 3 # ceil(96*z/1024) equals charged for this exact constructed natural.
 oogCode[0] = refinementImmediate(9, requested)
-check(authorizationRun(authorizationFixture(oogCode)).value, WorkKind.OutOfGas, 49999999)
+check(authorizationRun(authorizationFixture(oogCode)).value, WorkKind.OutOfGas, 234999999)
 # All preparation stages retain typed local reasons; no partial trace/CPU/gas escapes local policy failures.
 assert authorizationRun(default(AuthorizationFixture)).error ==
     AuthorizationInvocationError.InvalidParameters

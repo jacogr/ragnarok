@@ -37,7 +37,7 @@ proc verifyOutcome(done: StepResult, source: Machine, original: PageImage) =
   assert done.error == StepError.None and done.value.exit == StepExit.Halt
   let initial = machineInfo(source).value
   let actual = machineInfo(done.value.machine).value
-  assert uint64(actual.pc) == 0 and actual.blockCharged and uint64(actual.gasDeficit) == 0
+  assert uint64(actual.pc) == 0 and not actual.blockCharged and uint64(actual.gasDeficit) == 0
   assert uint64(actual.gas) == EndGas
   assert uint64(initial.pc) == 0 and not initial.blockCharged and uint64(initial.gas) == GasStart
   var expected = initial.registers

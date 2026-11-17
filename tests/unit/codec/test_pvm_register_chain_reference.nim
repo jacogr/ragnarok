@@ -169,8 +169,8 @@ for row in 0..<8:
         let calls = if scenario < 2: 85 else: blocked * 17
         assert context.calls == calls and uint64(cpu.gasDeficit) == 0
         if scenario < 2:
-          # Final trap normalizes PC only at the recursive execution boundary.
-          assert outcome.exit == StepExit.Panic and uint64(cpu.pc) == 0 and cpu.blockCharged
+          # Final trap resets PC and paid credit at the recursive execution boundary.
+          assert outcome.exit == StepExit.Panic and uint64(cpu.pc) == 0 and not cpu.blockCharged
           assert uint64(cpu.gas) == budget - total
         else:
           # A refused block publishes no arithmetic or host prefix from that block.

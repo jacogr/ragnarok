@@ -97,7 +97,7 @@ for row in 0..<count:
       echo "control register mismatch: row=", row, " register=", index
       assert false
     assert uint64(machineInfo(source).value.registers[index]) == uint64(registers[index])
-  verify(answer.value.machine, expected, 0, 10000-total, true, memory)
+  verify(answer.value.machine, expected, 0, 10000-total, false, memory)
   let prepared = newGasPlan(program, GasPlanLimits(blocks: GasPlanBlockLimit(3),
     bytes: GasPlanByteLimit(512), cycles: GasCycleLimit(1000)))
   let learned = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(512),
@@ -111,7 +111,7 @@ for row in 0..<count:
     let completed = run(source, mode, steps, prepared.value, learned.value)
     assert completed.error == StepError.None and completed.value.exit == (if exit ==
         0: StepExit.Halt else: StepExit.Panic)
-    verify(completed.value.machine, expected, 0, 10000-total, true, memory)
+    verify(completed.value.machine, expected, 0, 10000-total, false, memory)
     verify(source, registers, 0, 10000, false, memory)
     let limited = run(source, mode, steps-1, prepared.value, learned.value)
     assert limited.error == StepError.StepLimitExceeded
@@ -135,7 +135,7 @@ for row in 0..<count:
     let terminal = run(paid, mode, steps, prepared.value, learned.value)
     assert terminal.error == StepError.None and terminal.value.exit == (if exit ==
         0: StepExit.Halt else: StepExit.Panic)
-    verify(terminal.value.machine, expected, 0, 7, true, memory)
+    verify(terminal.value.machine, expected, 0, 7, false, memory)
     verify(paid, registers, 0, paidBudget, true, memory)
     assert gasMemoInfo(learned.value).value.pricedBlocks == (if mode < 2: 0'u64 else: uint64(blockCount))
   var traced = source

@@ -7,7 +7,7 @@
 # @@Verification={"arc": "pvm_fetch_parameters_arc_release"}
 
 import std/[assertions, syncio]
-import ../../../src/chain/parameters
+import ../../../src/chain/[parameters, presets]
 import ../../../src/codec/work/package as work_package
 import ../../../src/codec/bounded
 import ../../../src/pvm/[program, machine]
@@ -16,20 +16,20 @@ import ../../../src/pvm/step
 import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/arc_evidence
 
-# Literal GP 0.8.0 values and wire octets are independent of the production width table/encoder.
-const Values = [10'u64, 1'u64, 100'u64, 341'u64, 19200'u64, 600'u64, 10000000'u64, 50000000'u64,
-    5000000000'u64, 3500000000'u64, 8'u64, 16'u64, 8'u64, 16'u64, 14400'u64, 8'u64, 6'u64, 80'u64,
+# Literal GP 0.8.1 values and wire octets are independent of the production width table/encoder.
+const Values = [10'u64, 1'u64, 100'u64, 341'u64, 19200'u64, 600'u64, 47000000'u64, 235000000'u64,
+    23500000000'u64, 16450000000'u64, 8'u64, 16'u64, 8'u64, 16'u64, 14400'u64, 8'u64, 6'u64, 80'u64,
     10'u64, 128'u64, 5'u64, 196608'u64, 13791360'u64, 4000000'u64, 3072'u64, 49152'u64, 128'u64,
     3072'u64, 500'u64]
 const Wire = [10'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 1'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8,
     0'u8, 0'u8, 100'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 85'u8, 1'u8, 0'u8, 75'u8, 0'u8,
-    0'u8, 88'u8, 2'u8, 0'u8, 0'u8, 128'u8, 150'u8, 152'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 128'u8,
-    240'u8, 250'u8, 2'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 242'u8, 5'u8, 42'u8, 1'u8, 0'u8, 0'u8, 0'u8,
-    0'u8, 195'u8, 157'u8, 208'u8, 0'u8, 0'u8, 0'u8, 0'u8, 8'u8, 0'u8, 16'u8, 0'u8, 8'u8, 0'u8,
-    16'u8, 0'u8, 64'u8, 56'u8, 0'u8, 0'u8, 8'u8, 0'u8, 6'u8, 0'u8, 80'u8, 0'u8, 10'u8, 0'u8, 128'u8,
-    0'u8, 5'u8, 0'u8, 0'u8, 0'u8, 3'u8, 0'u8, 128'u8, 112'u8, 210'u8, 0'u8, 0'u8, 9'u8, 61'u8,
-    0'u8, 0'u8, 12'u8, 0'u8, 0'u8, 0'u8, 192'u8, 0'u8, 0'u8, 128'u8, 0'u8, 0'u8, 0'u8, 0'u8, 12'u8,
-    0'u8, 0'u8, 244'u8, 1'u8, 0'u8, 0'u8]
+    0'u8, 88'u8, 2'u8, 0'u8, 0'u8, 192'u8, 41'u8, 205'u8, 2'u8, 0'u8, 0'u8, 0'u8, 0'u8, 192'u8,
+    208'u8, 1'u8, 14'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 139'u8, 181'u8, 120'u8, 5'u8, 0'u8, 0'u8,
+    0'u8, 128'u8, 20'u8, 127'u8, 212'u8, 3'u8, 0'u8, 0'u8, 0'u8, 8'u8, 0'u8, 16'u8, 0'u8, 8'u8,
+    0'u8, 16'u8, 0'u8, 64'u8, 56'u8, 0'u8, 0'u8, 8'u8, 0'u8, 6'u8, 0'u8, 80'u8, 0'u8, 10'u8, 0'u8,
+    128'u8, 0'u8, 5'u8, 0'u8, 0'u8, 0'u8, 3'u8, 0'u8, 128'u8, 112'u8, 210'u8, 0'u8, 0'u8, 9'u8,
+    61'u8, 0'u8, 0'u8, 12'u8, 0'u8, 0'u8, 0'u8, 192'u8, 0'u8, 0'u8, 128'u8, 0'u8, 0'u8, 0'u8, 0'u8,
+    12'u8, 0'u8, 0'u8, 244'u8, 1'u8, 0'u8, 0'u8]
 
 # Valid invocation base without configured chain parameters.
 proc base(): FetchContext =
@@ -54,6 +54,7 @@ for field in low(Parameter)..high(Parameter):
   # Every field must decode at the independently specified offset and width.
   assert decoded.value.get(field) == Values[ord(field)]
 assert encodeParameters(decoded.value) == Wire
+assert encodeParameters(presetParameters(ChainPreset.Full).value) == Wire
 assert not default(Parameters).valid
 var maximal = default(array[122, byte])
 for i in 0..<122:

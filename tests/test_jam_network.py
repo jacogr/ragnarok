@@ -33,8 +33,8 @@ class NetworkPreset(unittest.TestCase):
     def test_exact_nine_full_overrides(self):
         """Unchanged Full constants, six-second clock and both gas widths survive preset selection."""
         changed = {index:(before,after) for index,(before,after) in enumerate(zip(full.VALUES,reference.VALUES)) if before != after}
-        self.assertEqual(changed,{3:(341,85),4:(19200,900),5:(600,60),8:(5000000000,1250000000),
-                                  9:(3500000000,875000000),13:(16,4),14:(14400,600),18:(10,5),28:(500,50)})
+        self.assertEqual(changed,{3:(341,85),4:(19200,900),5:(600,60),8:(23500000000,1250000000),
+                                  9:(16450000000,875000000),13:(16,4),14:(14400,600),18:(10,5),28:(500,50)})
         self.assertEqual(len(reference.parameters()),122)
         self.assertIn('existsEnv("JAM_FUZZ")',(ROOT/'src/ragnarok.nim').read_text())
 
@@ -77,7 +77,7 @@ class NetworkPreset(unittest.TestCase):
         """Host policy must not accidentally retain Full consensus constants or the fixture's16-header retention."""
         text = (ROOT/'src/app/fuzz/policy.nim').read_text().split('"""',2)[1]
         replacements = dict(cores=85,validators=255,epoch=60,tickets=4,tail=50,rotation=5,lookup=600,
-            blockGas=875000000,reportGas=10000000,queueHashes=6800,historyPackages=680,
+            blockGas=875000000,reportGas=47000000,queueHashes=6800,historyPackages=680,
             projectionRows=510,comparisons=65025,ancestors=601)
         for token,value in replacements.items(): text = text.replace('@'+token+'@',str(value))
         values = dict(line.split('=',1) for line in text.splitlines() if '=' in line)

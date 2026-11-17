@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_OFFENDER_GUESTS",
   "files": {
-    "jam-fuzzer-full-offender-guests.json": "23b422952f1763ff0d272d25349dc242cb4f1f8e12e1370f906ae90556e0a35f"
+    "jam-fuzzer-full-offender-guests.json": "38e965e9e07df0c0bf660b4bb12b9db6b346212a424f25679342403eb6f8debe"
   },
   "target": "jam-fuzzer-full-offender-guests.json"
 }
