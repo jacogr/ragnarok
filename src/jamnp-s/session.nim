@@ -500,8 +500,8 @@ proc runPeer*(options: Options): bool {.raises.} =
       8]: return false # Reject malformed trusted invocation before endpoint setup.
   let port = parseInt(options.argument(2))
   let timeout = parseInt(options.argument(7))
-  let timeoutLimit = if options.argumentCount() == 8 and options.argument(8) ==
-      "offload": MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
+  let timeoutLimit = if options.argument(1) == "server" and options.argumentCount() == 8 and
+      options.argument(8) in ["overload", "offload"]: MaxLoadTimeoutMs else: MaxPeerTimeoutMs
   # Guard host-to-native conversions before any endpoint is created.
   if port < 1 or port > 65535 or timeout < 0 or timeout > timeoutLimit: return false
   let server = options.argument(1) == "server"

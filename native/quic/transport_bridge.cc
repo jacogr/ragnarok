@@ -986,7 +986,14 @@ rq_transport *rq_transport_new_config(const rq_transport_options *options, uint1
         owner->config.SetMaxUnidirectionalStreamsToSend(0);
         unsigned idle = options->idle_seconds ? options->idle_seconds
                                               : ((owner->multi || options->profile >= 4) ? 2 : 30);
-        owner->config.SetIdleNetworkTimeout(QuicTime::Delta::FromSeconds(idle));
+        const auto idle_timeout = QuicTime::Delta::FromSeconds(idle);
+        owner->config.SetIdleNetworkTimeout(idle_timeout);
+        // The endpoint's idle policy also bounds startup. QUICHE otherwise uses
+        // a separate five-second initial idle timeout, closing normal peers
+        // before their application deadline during a delayed first flight.
+        owner->config.set_max_idle_time_before_crypto_handshake(idle_timeout);
+        owner->config.set_max_time_before_crypto_handshake(
+            std::max(owner->config.max_time_before_crypto_handshake(), idle_timeout));
         const bool missing = std::strcmp(certificate, "-") == 0 && std::strcmp(key, "-") == 0;
         auto chain = missing ? std::vector<std::string>{} : Certificates(certificate);
         std::unique_ptr<CertificatePrivateKey> private_key;

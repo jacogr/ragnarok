@@ -307,10 +307,21 @@ proc paired(ipv6: bool) =
   let active = first.request(firstPeer, blocks)
   assert active.error == NodeError.None
   assert first.poll(getMonoTime(), 0)
-  let competing = first.request(firstPeer, blocks)
-  assert competing.error == NodeError.None
-  assert first.poll(getMonoTime(), 0)
-  assert first.request(firstPeer, blocks).error == NodeError.LimitExceeded
+  var competing = first.request(firstPeer, blocks)
+  let openDeadline = getMonoTime()+initDuration(seconds = 2)
+  while competing.error == NodeError.Unavailable:
+    # Poll only the sender: asynchronous native open must drain without completing the first read.
+    assert getMonoTime() < openDeadline, "first native open releases its pending-intent reservation"
+    assert first.poll(getMonoTime(), 0)
+    competing = first.request(firstPeer, blocks)
+  assert competing.error == NodeError.None, "second outstanding read is admitted"
+  var excess = first.request(firstPeer, blocks)
+  while excess.error == NodeError.Unavailable:
+    # The pending-open guard precedes the per-peer read limit; observe that limit after dispatch.
+    assert getMonoTime() < openDeadline, "second native open releases its pending-intent reservation"
+    assert first.poll(getMonoTime(), 0)
+    excess = first.request(firstPeer, blocks)
+  assert excess.error == NodeError.LimitExceeded, "two live reads retain the per-peer ceiling"
   assert first.cancelRequest(competing.value)
   assert first.requestLive(active.value), "cancelling a sibling leaves the original outbound request live"
   assert first.cancelRequest(active.value)
