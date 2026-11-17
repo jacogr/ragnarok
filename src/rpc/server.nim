@@ -128,7 +128,7 @@ proc `=destroy`*(server: Server) =
   ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
   requireChainReleased(server)
   if server.opened and server.fd >= 0:
-    # Default and detached instances never close stdin.
+    # Unopened instances never close stdin.
     discard posix.close(server.fd)
   for slot in server.connections: # Slots are owned solely by this server, without reference cycles.
     slot.stream.stop()
@@ -246,7 +246,7 @@ proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: Sta
 
 proc initializeContext(server: var Server, port: uint16, role: string,
     parameters: ParameterResult, genesis: GenesisResult, uiPort: uint16, identity: ChainIdentity) =
-  ## Both socket and detached transports retain exactly the same dispatcher-owned query context.
+  ## Retain the listener's query context on the dispatcher; stream tasks receive detached bytes.
   server.started = getMonoTime().ticks div 1_000_000
   server.port = port
   server.uiPort = uiPort
