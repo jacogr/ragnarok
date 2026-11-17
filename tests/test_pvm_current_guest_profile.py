@@ -21,6 +21,23 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def native_log(guest, role):
+    """Independent literal cumulative snapshots publish on call one and retain exact final receipts."""
+    rows = []
+    for sample in range(13):
+        # Warm work is distributed deterministically; interpreted calls never publish an image.
+        if role == 'jit' and sample:
+            calls = sample*(2 if guest == 'pinky' else 1)
+            values = dict(fragments=2 if guest == 'pinky' else 1, calls=calls,
+                          operations=sample*(420 if guest == 'pinky' else 42)//12,
+                          code_bytes=4096 if guest == 'pinky' else 650,
+                          branches=calls, headers=0 if guest == 'pinky' else calls)
+        else:
+            values = dict(fragments=0, calls=0, operations=0, code_bytes=0, branches=0, headers=0)
+        rows.append(dict(sample=sample, **values))
+    return dict(samples=rows)
+
+
 def cohort(root):
     """Supply a complete passed canonical matrix with real selected input and image files."""
     value = json.loads(json.dumps(invocation_observations('all', 'x86_64')).replace(
@@ -71,6 +88,9 @@ def cohort(root):
             row['parsed']['native'] = native
             row['parsed']['policy'].update(actual=role, **{key: native[key] for key in
                                                         ('fragments', 'calls', 'operations')})
+            scope = row['parsed']['diagnostics']['scope_observations']
+            scope['native_sample'] = {'guest-process': native_log(guest, role)}
+            scope['native_observations'] = {'guest-process': dict(code_owners=1, samples=13)}
     return value
 
 
@@ -92,6 +112,11 @@ def wire(limit, role, guest='sieve'):
         body += ('PVM_POLICY,1,interpreted,1,1,0,interpreted,0,0,0\n'
                  'ARM_OWNER,'+guest+',0,0,0,0,0,0,0\n'
                  'PVM_RUNTIME_NONE,1,guest-process,interpreted-policy,1\n')
+    body += 'PVM_NATIVE_OBSERVATIONS,1,guest-process,1,13\n'
+    for row in native_log(guest, role)['samples']:
+        # Wire order is independent of the production field tuple and structured validator.
+        body += ('PVM_NATIVE_SAMPLE,1,guest-process,'+','.join(str(row[key]) for key in
+                 ('sample', 'fragments', 'calls', 'operations', 'code_bytes', 'branches', 'headers'))+'\n')
     return body+('PVM_NATIVE_COMPILATION,1,guest-process,0,0\n'
                  'PVM_OWNER_WINDOW,1,guest-process,1000000000,2000000000,includes-driver-oracles\n')
 
@@ -162,6 +187,9 @@ class CurrentGuestProfile(unittest.TestCase):
             self.assertEqual((row['checked_calls'], row['cold']['Ir'], row['reused']['Ir']), (13, 100, 112))
             self.assertEqual(len(row['profile_hashes']), 14) # Thirteen returns and the empty final dump.
             self.assertNotIn('invocation', row)
+            self.assertEqual(row['native_comparison']['measured_samples'], [0, *range(3, 13)])
+            self.assertEqual(row['native_comparison']['warmup_differences'], [])
+            self.assertEqual(row['actual_by_phase'], dict(cold='interpreted', reused=row['role']))
 
     def test_pinky_requires_its_family_all_calls_and_native_working_set(self):
         """Neither a Sieve receipt, missing frame call nor changed native image can pass as Pinky."""
@@ -174,7 +202,7 @@ class CurrentGuestProfile(unittest.TestCase):
                 if '\nGUEST,pinky\n' not in text: return text
                 if mutation == 'family': return text.replace('GUEST,pinky', 'GUEST,sieve')
                 if mutation == 'native':
-                    return text.replace('pinky,2,24,420,4096', 'pinky,2,24,420,4097')
+                    return text.replace(',4096,', ',4097,')
                 return '\n'.join(line for line in text.splitlines()
                     if not line.startswith('SIEVE,ragnarok_prepared,1,7,'))+'\n'
             with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, diagnostics[mutation]):
@@ -199,10 +227,59 @@ class CurrentGuestProfile(unittest.TestCase):
 
     def test_changed_native_activity_cannot_pass(self):
         """A valid process with a different native working set cannot authorize attribution."""
-        self.output_change = lambda text: text.replace('sieve,1,12,42,650', 'sieve,1,12,42,651')
+        self.output_change = lambda text: text.replace(',650,', ',651,')
         with self.assertRaisesRegex(ValueError, 'native execution or code working set'):
             self.run_profile()
         self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'failed')
+
+    def test_warmup_admission_difference_is_retained_without_changing_measured_work(self):
+        """A consistent later warmup publication does not invalidate identical cold and reused calls."""
+        def delayed(text):
+            """Move the first Sieve native call from warmup one to two and update its independent totals."""
+            if 'PVM_POLICY,1,jit,' not in text or 'SIEVE,ragnarok_prepared,100000,' not in text:
+                return text
+            lines = []
+            for line in text.splitlines():
+                # Shift only cumulative warmup work; every measured call keeps the same native delta.
+                if line.startswith('PVM_NATIVE_SAMPLE,1,guest-process,'):
+                    fields = line.split(',')
+                    sample = int(fields[3])
+                    if sample == 1:
+                        fields[4:] = ['0']*6
+                    elif sample >= 2:
+                        for index, debit in [(5, 1), (6, 3), (8, 1), (9, 1)]:
+                            fields[index] = str(int(fields[index])-debit)
+                    line = ','.join(fields)
+                lines.append(line)
+            return ('\n'.join(lines)+'\n').replace('jit,1,12,42', 'jit,1,11,39').replace(
+                'sieve,1,12,42,650,0,12,12', 'sieve,1,11,39,650,0,11,11')
+        self.output_change = delayed
+        report = self.run_profile()
+        row = next(row for row in report['profiles'] if (row['case'], row['limit'], row['role']) ==
+                   ('sieve', 100000, 'jit'))
+        proof = row['native_comparison']
+        self.assertEqual(proof['warmup_differences'], [1, 2])
+        self.assertEqual(proof['canonical'][-1]['calls'], 12)
+        self.assertEqual(proof['profiled'][-1]['calls'], 11)
+        self.assertEqual(proof['reused']['calls'], 1)
+
+    def test_redistributed_measured_work_refuses_even_with_identical_process_totals(self):
+        """The old aggregate equality is insufficient when a measured call's native work changed."""
+        self.output_change = lambda text: text.replace(
+            'PVM_NATIVE_SAMPLE,1,guest-process,4,1,4,14,650,4,4',
+            'PVM_NATIVE_SAMPLE,1,guest-process,4,1,4,15,650,4,4')
+        with self.assertRaisesRegex(ValueError, 'native execution or code working set at call 4'):
+            self.run_profile()
+
+    def test_old_cohort_without_per_call_evidence_is_readable_but_cannot_be_profiled(self):
+        """Historical aggregates cannot be reconstructed into invented per-call working sets."""
+        row = next(row for row in self.value['runs'] if (row['case_id'], row['role'], row['order']) ==
+                   ('pinky-1', 'jit', 0))
+        observations = row['parsed']['diagnostics']['scope_observations']
+        observations.pop('native_sample')
+        observations.pop('native_observations')
+        with self.assertRaisesRegex(ValueError, 'no per-invocation native evidence'):
+            profile.canonical_guest_plan(self.value, REVISION, [100000])
 
     def test_missing_public_call_cannot_pass(self):
         """Successful exit status cannot replace a missing full-state public invocation."""

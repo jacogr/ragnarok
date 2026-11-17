@@ -502,6 +502,13 @@ covers both runtime policies, while large Sieve profiles JIT only to bound colle
 Pinky profiles both policies from the same sealed, initialized frame snapshot, including native
 handoffs and receipt validation. Its profile remains distinct from Sieve by guest and input identity.
 The PVM artifact includes the original raw Callgrind parts, annotations and source-bound report.
+The v2 attribution report requires the original per-invocation native logs. It compares exact
+native work, observed publications and previous/current owner occupancy for cold sample zero
+and every reused sample three through twelve. Only excluded warmup samples one/two may differ;
+both complete histories and those differences remain in the report. Matching process-wide totals
+alone cannot qualify shifted work between measured calls. Phase-specific actual engines follow
+the native-operation deltas, so a JIT-policy cold call can honestly remain interpreted. These
+are counter/occupancy observations, not additional clocks or exact executor-entry timestamps.
 
 Current synthetic and guest drivers also report copied native counters after each complete,
 checked invocation and outside its primary clocks. One public `PreparedInfo` checkpoint is captured

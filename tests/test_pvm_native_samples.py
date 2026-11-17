@@ -5,7 +5,7 @@ from copy import deepcopy
 import unittest
 
 from pvm_benchmark_report import NAMES
-from pvm_native_samples import validate_native_sample_log
+from pvm_native_samples import validate_native_sample_log, match_measured_native_invocations
 from pvm_performance_report import validate_current_report
 from pvm_performance_synthetic import parse_synthetic
 from pvm_performance_fixtures import invocation_observations
@@ -132,6 +132,80 @@ class NativeInvocationTests(unittest.TestCase):
                 observed['native_sample']['synthetic-0']['samples'][-1]['calls'] += 1
             with self.subTest(edit=edit), self.assertRaises(ValueError):
                 validate_current_report(bad)
+
+
+def activity_history(first=1):
+    """Give each active call four original operations and one branch/header from a 64-byte image."""
+    rows = []
+    for sample in range(13):
+        # Native admission starts at a literal caller-selected sample; snapshots remain cumulative.
+        calls = max(0, sample-first+1)
+        rows.append(dict(sample=sample, fragments=int(calls > 0), calls=calls,
+                         operations=calls*4, code_bytes=64 if calls else 0,
+                         branches=calls, headers=calls))
+    return dict(samples=rows)
+
+
+class MeasuredNativeInvocationTests(unittest.TestCase):
+    """Compare identical measured calls despite explicit warmup scheduling, without aggregate-only guesses."""
+
+    def test_different_warmup_readiness_keeps_exact_cold_and_reused_activity(self):
+        """Earlier warmup admission changes totals, while every retained measurement has equal work/state."""
+        canonical, profiled = activity_history(2), activity_history(1)
+        result = match_measured_native_invocations(canonical, profiled, 'jit')
+        self.assertEqual(result['measured_samples'], [0, *range(3, 13)])
+        self.assertEqual(result['warmup_differences'], [1, 2])
+        self.assertEqual(result['cold']['calls'], 0)
+        self.assertEqual(result['reused']['operations'], 4)
+        self.assertEqual(result['canonical'][-1]['calls'], 11)
+        self.assertEqual(result['profiled'][-1]['calls'], 12)
+
+    def test_every_measured_call_is_required_not_only_final_reuse(self):
+        """An extra native call at any cold/reused point refuses, even when all guest calls completed."""
+        original = activity_history(1)
+        for sample in [0, *range(3, 13)]:
+            bad = deepcopy(original)
+            for row in bad['samples'][sample:]:
+                # Preserve monotonic cumulative values while changing exactly this call's native work.
+                row['calls'] += 1
+                row['operations'] += 4
+                row['branches'] += 1
+                row['headers'] += 1
+            with self.subTest(sample=sample), self.assertRaisesRegex(ValueError, 'at call '+str(sample)):
+                match_measured_native_invocations(original, bad, 'jit')
+
+    def test_identical_process_totals_do_not_hide_redistributed_measured_work(self):
+        """A single cumulative checkpoint moves one operation between calls four/five without changing totals."""
+        original = activity_history()
+        bad = deepcopy(original)
+        bad['samples'][4]['operations'] += 1
+        self.assertEqual(original['samples'][-1], bad['samples'][-1])
+        with self.assertRaisesRegex(ValueError, 'at call 4'):
+            match_measured_native_invocations(original, bad, 'jit')
+
+    def test_footprint_and_observed_publications_remain_exact(self):
+        """Warmup differences cannot change the owner state carried into a measured call."""
+        original = activity_history()
+        for kind in ['current-bytes', 'previous-bytes', 'publication']:
+            bad = deepcopy(original)
+            if kind == 'current-bytes':
+                # A measured post-clock owner has a different current footprint.
+                bad['samples'][4]['code_bytes'] = 128
+            elif kind == 'previous-bytes':
+                # The warmup ends with different occupancy, so call three cannot claim equal state.
+                bad['samples'][2]['code_bytes'] = 128
+            else:
+                # An additional observed physical publication is retained in all later checkpoints.
+                for row in bad['samples'][4:]: row['fragments'] += 1
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                match_measured_native_invocations(original, bad, 'jit')
+
+    def test_partial_or_unbounded_logs_cannot_replace_real_call_evidence(self):
+        """No fabricated empty history or invalid integer becomes an accepted zero-work comparison."""
+        original = activity_history()
+        for bad in [None, {}, dict(samples=[]), dict(samples=original['samples'][:-1])]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                match_measured_native_invocations(original, bad, 'jit')
 
 
 if __name__ == '__main__':

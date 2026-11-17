@@ -8,6 +8,7 @@ are current occupancy and may decrease on retirement. No counter grants executab
 
 NATIVE_SAMPLE_FIELDS = ('fragments', 'calls', 'operations', 'code_bytes', 'branches', 'headers')
 CUMULATIVE_FIELDS = tuple(key for key in NATIVE_SAMPLE_FIELDS if key != 'code_bytes')
+MEASURED_NATIVE_SAMPLES = (0, *range(3, 13))
 
 
 def validate_native_sample_log(observation, role):
@@ -45,3 +46,32 @@ def validate_native_sample_totals(observations, native, role, label):
     if any(final[key] != native[key] for key in NATIVE_SAMPLE_FIELDS if key in native):
         raise ValueError('Native invocation observations disagree with final owner')
     return observation
+
+
+def _native_invocation_activity(rows, sample):
+    """Derive guest work and observed owner state from validated post-clock checkpoints, never time.
+
+    Publication/occupancy observations can include asynchronous progress between calls; they are
+    not clocks or proof of the exact executor-entry footprint. The caller proves index 0..12.
+    """
+    current = rows[sample]
+    previous = rows[sample-1] if sample else dict.fromkeys(NATIVE_SAMPLE_FIELDS, 0)
+    return dict(fragments=current['fragments'], observed_publications=current['fragments']-previous['fragments'],
+                previous_code_bytes=previous['code_bytes'], code_bytes=current['code_bytes'],
+                **{key: current[key]-previous[key] for key in ('calls', 'operations', 'branches', 'headers')})
+
+
+def match_measured_native_invocations(measured, profiled, role):
+    """Require exact cold/reused work and code histories; retain explicit differences in excluded warmups."""
+    canonical_rows = validate_native_sample_log(measured, role)['samples']
+    profiled_rows = validate_native_sample_log(profiled, role)['samples']
+    canonical = [_native_invocation_activity(canonical_rows, sample) for sample in range(13)]
+    observed = [_native_invocation_activity(profiled_rows, sample) for sample in range(13)]
+    for sample in MEASURED_NATIVE_SAMPLES:
+        # Changed guest work or observed owner state at any measured call refuses attribution.
+        if canonical[sample] != observed[sample]:
+            raise ValueError('Profile changed measured native execution or code working set at call '+str(sample))
+    return dict(measured_samples=list(MEASURED_NATIVE_SAMPLES),
+                warmup_differences=[sample for sample in (1, 2) if canonical[sample] != observed[sample]],
+                canonical=measured['samples'], profiled=profiled['samples'],
+                cold=canonical[0], reused=canonical[12])
