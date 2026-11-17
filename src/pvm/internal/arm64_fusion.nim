@@ -26,8 +26,17 @@ when declared(ArmBlock):
     words[at] = 0x14000000'u32 or (uint32(delta) and 0x3ffffff'u32)
     true
 
-  proc armWindowCondition(words: var seq[uint32], at, target: int, condition: uint32): bool =
+  proc armFusionBranchWord(words: var ArmWords, at, delta: int): bool =
+    ## Cold composition retains relocation failure; finalized public fusion parts keep their checked bool patch API.
+    if words.failure != ArmEmissionError.None: return false
+    if not armFusionBranchWord(words.data, at, delta):
+      refuseArmWords(words, ArmEmissionError.InvalidFixup)
+      return false
+    true
+
+  proc armWindowCondition(words: var ArmWords, at, target: int, condition: uint32): bool =
     ## Patch a local forward staging edge; the enclosing encoder still owns every instruction.
+    if words.failure != ArmEmissionError.None: return false
     if at < 0 or at >= words.len or target < 0 or target > words.len or condition > 15:
       return false
     let delta = int64(target)-int64(at)
@@ -36,8 +45,9 @@ when declared(ArmBlock):
       (uint32(cast[uint64](delta) and 0x7ffff'u64) shl 5) or condition
     true
 
-  proc armWindowAddress(words: var seq[uint32], window: NativeMemoryWindow) =
+  proc armWindowAddress(words: var ArmWords, window: NativeMemoryWindow) =
     ## X3 captures the original modulo-32 minimum address without changing a guest lane.
+    if words.failure != ArmEmissionError.None: return
     if window.absolute:
       armCompactImmediate(words, 3, uint64(window.displacement))
     else:
@@ -47,11 +57,12 @@ when declared(ArmBlock):
         armCompactImmediate(words, 2, uint64(window.displacement))
         words.add(0x0b020063'u32) # ADD W3,W3,W2 wraps the original address once.
 
-  proc armWindowRegions(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+  proc armWindowRegions(words: var ArmWords, fixes: var seq[ArmMemoryCycleFixup],
       window: NativeMemoryWindow, refusal: int): bool =
     ## Select the first nonempty region intersecting the whole window. Partial overlap declines
     ## at the first original site, preserving descriptor priority and checked partial behavior.
     ## X3 is the proved virtual start; X17 receives the sole accepted host-window pointer.
+    if words.failure != ArmEmissionError.None: return false
     let writing = window.kind == NativeWindowKind.Write
     let regions = if writing: 2 else: 3
     let first = if writing: uint32(NativeCycleWritableOffset) else: 0'u32
@@ -97,10 +108,11 @@ when declared(ArmBlock):
       if not armFusionBranchWord(words, accepted[region], following-accepted[region]): return false
     true
 
-  proc armFusionWindowGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+  proc armFusionWindowGuard(words: var ArmWords, fixes: var seq[ArmMemoryCycleFixup],
       window: NativeMemoryWindow, refusal: int): bool =
     ## Preflight true bounds and existing dirty authority before the group's first mutation.
     ## At most two pages cover a 4 KiB window. Dirty checks preserve X3 and never set a bit.
+    if words.failure != ArmEmissionError.None: return false
     if not window.ready or window.span == 0 or window.span > 4096 or
         window.baseLane < 0 or window.baseLane > 12: return false
     armWindowAddress(words, window)
@@ -125,9 +137,10 @@ when declared(ArmBlock):
       if not armWindowCondition(words, samePage, words.len, 0): return false
     armWindowRegions(words, fixes, window, refusal)
 
-  proc armFusionWindowOperation(words: var seq[uint32], op: NativeOperation,
+  proc armFusionWindowOperation(words: var ArmWords, op: NativeOperation,
       window: NativeMemoryWindow): bool =
     ## A whole-view proof covers each original scalar transfer, including signed/unaligned loads.
+    if words.failure != ArmEmissionError.None: return false
     let encoding = nativeWindowOpcode(op.opcode)
     if encoding < 120 or encoding > 130: return false
     let width = indirectMemoryAccess(range[120..130](encoding)).width
@@ -162,11 +175,12 @@ when declared(ArmBlock):
     code.words[code.table div 4] = 0x10000002'u32 or ((value and 3) shl 29) or ((value shr 2) shl 5)
     true
 
-  proc armFusionIndirect(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+  proc armFusionIndirect(words: var ArmWords, fixes: var seq[ArmMemoryCycleFixup],
       labels: var array[int(NativeReadFactLimit)+4, int], item: NativeFusionBlock,
       refusal, probe, found: int): int =
     ## Guard a checked cache tag before probing immutable source-authorized native entries.
     ## X0..X3/X17 are scratch; D17 retains the pre-write address across later bodies.
+    if words.failure != ArmEmissionError.None: return -1
     let branch = item.branch
     let base = uint32(if branch.opcode == 50: branch.slots.aIndex else: branch.slots.bIndex)+4
     words.add(0x2a0003e0'u32 or (base shl 16)) # MOV W0,Wbase discards the high guest address bits.
@@ -216,17 +230,19 @@ when declared(ArmBlock):
       armCompactImmediate(words, uint32(branch.slots.aIndex)+4, item.indirectValue)
     words.add(0xd61f0060'u32) # BR X3 preserves the resident bank, budgets and original host return.
 
-  proc armFusionReturn(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+  proc armFusionReturn(words: var ArmWords, fixes: var seq[ArmMemoryCycleFixup],
       next: uint32, paid: bool, finish: int) =
     ## Set the original continuation and paid marker before one block-local restoration tail.
     ## X0 and X2 are reserved host scratch; the resident guest bank is still untouched.
+    if words.failure != ArmEmissionError.None: return
     armCompactImmediate(words, 0, uint64(next))
     armCompactImmediate(words, 2, uint64(ord(paid)))
     cycleEdge(words, fixes, finish, 16)
 
-  proc armFusionFinish(words: var seq[uint32], useIndirect: bool, horizon: uint32) =
+  proc armFusionFinish(words: var ArmWords, useIndirect: bool, horizon: uint32) =
     ## Commit the original guest bank, debits, path length and pre-write address exactly once.
     ## X0 carries the original continuation and X2 the paid marker from every return stub.
+    if words.failure != ArmEmissionError.None: return
     for slot in 0..12:
       cycleStore(words, uint32(slot+4), 19, uint32(slot*8))
     cycleStore(words, 21, 20, uint32(NativeFusionGasOffset))
@@ -258,8 +274,8 @@ when declared(ArmBlock):
     let compact = item.cycleNext != 0
     let horizon = uint32(if compact: NativeFusionCycleVisitLimit else: NativeFusionVisitLimit)
     let finish = count+4
-    var words = newSeqOfCap[uint32](capacity)
-    if words.rawData == nil: return
+    var words = ArmWords(data: newSeqOfCap[uint32](capacity))
+    if words.data.rawData == nil: return
     # Each memory guard retains its body edges and one return-stub edge to the common tail.
     var fixes = newSeqOfCap[ArmMemoryCycleFixup](count*12+(if useIndirect: 28 else: 12))
     if fixes.rawData == nil: return
@@ -268,10 +284,10 @@ when declared(ArmBlock):
     var table = -1
     var scratch = default(ArmReadSpan)
     scratch.body = newArmRegionBody()
-    scratch.body.words = newSeqOfCap[uint32](operationWords)
-    scratch.body.terminal = newSeqOfCap[uint32](5)
+    scratch.body.words = ArmWords(data: newSeqOfCap[uint32](operationWords))
+    scratch.body.terminal = ArmWords(data: newSeqOfCap[uint32](5))
     scratch.guards = newSeqOfCap[ArmReadGuard](1)
-    if scratch.body.words.rawData == nil or scratch.body.terminal.rawData == nil or
+    if scratch.body.words.data.rawData == nil or scratch.body.terminal.data.rawData == nil or
         scratch.guards.rawData == nil: return
 
     words.add(0xd100c3ff'u32) # SUB SP,SP,#48.
@@ -330,7 +346,7 @@ when declared(ArmBlock):
         else:
           emitArmOperation(scratch.body, op.opcode, op.slots, op.immediate)
           if scratch.body.failure != ArmEmissionError.None: return
-          for word in scratch.body.words: words.add(word)
+          words.add(scratch.body.words)
     if words.len > capacity-returnWords*(3+countSetBits(item.guards))-epilogueWords-8: return
 
     var edges = [-1, -1]
@@ -350,7 +366,7 @@ when declared(ArmBlock):
         let condition = armBranchCompare(scratch.body, branch.opcode,
           branch.slots.aIndex, branch.slots.bIndex, branch.immediate)
         if scratch.body.failure != ArmEmissionError.None: return
-        for word in scratch.body.terminal: words.add(word)
+        words.add(scratch.body.terminal)
         words.add(0x54000040'u32 or condition) # B.cond over the false edge.
       for edge in 0..1:
         if item.targets[edge] != NativeEntryFailure:
@@ -370,4 +386,5 @@ when declared(ArmBlock):
     labels[finish] = words.len
     armFusionFinish(words, useIndirect, horizon)
     if words.len <= capacity and armMacroPatch(words, fixes, labels):
-      result = ArmFusionEncoding(words: move(words), inner: inner*4, edges: edges, table: table)
+      if words.failure != ArmEmissionError.None: return default(ArmFusionEncoding)
+      result = ArmFusionEncoding(words: takeArmWords(words), inner: inner*4, edges: edges, table: table)

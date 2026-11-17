@@ -77,7 +77,7 @@ when NativeReadCycleEnabled:
       assert addReadBodyOperation(result, readHeader+offset, 1+offset, op),
         "append one source Read operation"
 
-  proc cycleFixture(overlap = false, outside = false, receiptLayout = layout,
+  proc cycleFixture*(overlap = false, outside = false, receiptLayout = layout,
       epoch = 1'u64): NativeReadCycle =
     ## Extend the same paid Read with setup and the certified connected route.
     var read = readFixture(overlap, epoch)
