@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_EPOCHS",
   "files": {
-    "jam-fuzzer-full-epochs.json": "33af2eab1b5bb0b34692079e696520e4e774f70421badd5b4c60d943fe7f0ef2"
+    "jam-fuzzer-full-epochs.json": "b5c9ed71d1eaebda0d044ca6b6a2805a9ccce058376b1ac4d45856777b9377fe"
   },
   "target": "jam-fuzzer-full-epochs.json"
 }

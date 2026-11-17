@@ -7,14 +7,14 @@ Defaults/refusals carry only typed reasons, with no partial values or gas totals
 
 ## Normative scope
 
-Gray Paper 0.8.0 (`07f041dabd073f9018b418e9ee72e79dd2185401`),
+Gray Paper 0.8.1 (`b7044addaf48a09f235531f6188c5e7418bed410`),
 `text/reporting_assurance.tex`, `reportcoresareunused`, `reportgas` and `reportcodesarecorrect`:
 
 - Read **parent C(1)**, not the advanced authorization pools or C(2) queues. Each report's
   authorizer must occur in its own core's pool. Preserve order/repeated hashes; no normalization.
 - Sum accumulation gas separately for each report, rejecting before addition when the next value
   exceeds remaining capacity. This also prevents uint64 wrapping under Nimony. The caller supplies
-  `ReportGasLimit`; both pinned profiles use `Creportaccgas = 10,000,000`.
+  `ReportGasLimit`; both pinned profiles use `Creportaccgas = 47,000,000`.
 - Resolve every digest's exact C(255,service) account. Missing service is a distinct refusal;
   present-empty, malformed, unsupported-version and suffixed metadata are invalid state.
   Require the predicted code hash and at least the service's minimum accumulation gas, including
@@ -30,7 +30,7 @@ module does not independently authenticate that relationship or make loose extra
 admission certificates. Core vacancy is the other half of `reportcoresareunused` and must use the
 **post-assurance** C(10), so it intentionally remains outside this parent-policy stage.
 
-## Evidence
+## Historical vector evidence
 
 Twenty unchanged tiny/full `stf/reports` cases at jam-conformance/jam-test-vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` are pinned individually in `spec/pins.json`.
@@ -65,7 +65,7 @@ block execution remain later work.
 Target `fad0ded4a433052397bf7234352a57fe491883f7` adds `reportrefineload`.
 Each report bounds refinement gas against the explicit profile-bound `refinementGas`, imports
 and exports against3072, extrinsics against128, import-footprint plus extrinsic bytes against
-13,791,360, encoded bundle bytes against13,904,950 and authorization gas against50,000,000.
+13,791,360, encoded bundle bytes against13,904,950 and authorization gas against235,000,000.
 Availability segment count must equal total digest exports. Check remaining capacities before
 adding and bound imports before multiplying by4488. Failed work digests carry the same load checks.
 All aggregates reset for each report. Computed and assured admission bind the refinement ceiling

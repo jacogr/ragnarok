@@ -45,14 +45,14 @@ class SpecificationTests(unittest.TestCase):
         self.assertIn('--> [Judgment]', judgments)
 
     # The checked-out release, its version marker and all consumed chapters must match the recorded pin.
-    def test_graypaper_unreleased_revision(self):
+    def test_graypaper_release_revision(self):
         entry = PINS['graypaper']
         path = require_submodule(dict(entry, repository=entry['repository'].removeprefix('https://github.com/')))
-        self.assertEqual((path/'VERSION').read_text().strip(), '0.8.0')
-        self.assertNotIn('tag', entry)
-        self.assertEqual(entry['release_status'], 'unreleased')
-        self.assertEqual(entry['base_release'], 'v0.8.0')
-        self.assertEqual(entry['commit'], 'dc9a3bf79acd044ac004f756cff88a8acc9c416d')
+        self.assertEqual((path/'VERSION').read_text().strip(), '0.8.1')
+        self.assertEqual(entry['tag'], 'v0.8.1')
+        self.assertEqual(entry['release_status'], 'released')
+        self.assertEqual(entry['base_release'], 'v0.8.1')
+        self.assertEqual(entry['commit'], 'b7044addaf48a09f235531f6188c5e7418bed410')
         # Verify whole upstream chapter files rather than relying on a mutable tag name alone.
         for name, digest in entry['source_sha256'].items():
             self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)

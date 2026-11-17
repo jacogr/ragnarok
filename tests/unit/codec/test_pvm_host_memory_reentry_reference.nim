@@ -184,7 +184,7 @@ proc admitEligibleTail(program: Program, memory: Memory, registers: RegisterFile
   var expected = registers
   expected[10] = RegisterValue(iterations)
   let expectedCpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(0), gasDeficit: GasDeficit(0),
-    blockCharged: true, registers: expected)
+    blockCharged: false, registers: expected)
   check(Retained(machine: executed.value.machine, cpu: expectedCpu, scalar: initial,
     marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite]), address)
   check(Retained(machine: source, cpu: cpu, scalar: initial,
@@ -235,7 +235,8 @@ proc entryTraces(program: Program, memory: Memory, registers: RegisterFile, init
             let scalar = if not refused and entry == 5: initial+1 else: initial
             let expectedCpu = MachineInfo(pc: CodeAddress(pc),
               gas: MachineGas(if paid or refused: credit else: credit-charge),
-              gasDeficit: GasDeficit(0), blockCharged: not refused, registers: expected)
+              gasDeficit: GasDeficit(0), blockCharged: not refused and entry != 20,
+                  registers: expected)
             check(Retained(machine: outcome.machine, cpu: expectedCpu, scalar: scalar,
               marks: [33'u8, 33'u8], access: [PageAccess.ReadWrite, PageAccess.ReadWrite]), address)
           check(original, address) # Every unpublished partial write and successful successor leave the real source unchanged.
@@ -358,7 +359,7 @@ proc runCase(program: Program, memory: Memory, registers: RegisterFile, initial,
     # Initial or final block refusal retains the independently expected unpaid PC and balance.
     assert final.exit == StepExit.OutOfGas
   retain(context, final.machine, (if scenario == 2: 20'u64 else: 0'u64), gas,
-    scenario < 2, expected, scalar, marks)
+    false, expected, scalar, marks)
   if mode == PricingMode.Memo:
     # Learned facts survive refusals without being mistaken for paid guest gas.
     assert gasMemoInfo(selected).value.pricedBlocks == (if warm or progressed: 2'u64 else: 1'u64)

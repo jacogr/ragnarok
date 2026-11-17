@@ -1,6 +1,6 @@
 # Work-package input codecs
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`. Normative definitions:
+Target: Gray Paper v0.8.1 `b7044addaf48a09f235531f6188c5e7418bed410`. Normative definitions:
 Appendix C.1/C.2 context/package/item and `I` import-reference encoding; reporting/assurance
 `workcontext`; work-packages/reports `workpackage`, `workitem`, dependency bound,
 `limitworkpackagebandwidth`, `checkextractsize`, `segmentfootprint` and `wplimits`; corresponding
@@ -66,7 +66,7 @@ policy. Both gas sums are **at most** their configured ceilings, following `wpli
 Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`. Input footprint remains
 13,791,360 bytes; the distinct encoded bundle limit is13,904,950 bytes.
 Zero ceilings are invalid configurations. `fullPackageConfig(maxBytes)` selects the published
-5,000,000,000 refinement and 10,000,000 accumulation ceilings. Other chain profiles supply their
+23,500,000,000 refinement and 47,000,000 accumulation ceilings. Other chain profiles supply their
 actual parameters explicitly. The gas domain remains the existing nominal `Gas` unit. Standalone
 items use one item's package-compatible resources with no authorization/context costs. The fixed
 context/import/commitment APIs require no chain configuration.

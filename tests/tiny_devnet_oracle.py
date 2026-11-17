@@ -27,7 +27,7 @@ SEEDS = [hashlib.blake2b(b'jam_val_key_bandersnatch'+index.to_bytes(4,'little')*
 PUBLIC = {encode(multiply(G,secret_from_seed(seed))):secret_from_seed(seed) for seed in SEEDS}
 
 WIDTHS = (8,8,8,2,4,4,8,8,8,8,2,2,2,2,4,2,2,2,2,2,2,4,4,4,4,4,4,4,4)
-VALUES = (10,1,100,2,32,12,10000000,50000000,1000000000,20000000,
+VALUES = (10,1,100,2,32,12,47000000,235000000,1000000000,20000000,
           8,16,8,3,24,8,6,80,4,128,5,196608,13791360,4000000,3072,49152,128,3072,10)
 
 

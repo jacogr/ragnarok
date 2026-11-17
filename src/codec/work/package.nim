@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 C.2 work-package inputs; see spec/work-package.md for policy and ownership.
+## GP 0.8.1 C.2 work-package inputs; see spec/work-package.md for policy and ownership.
 ##
 ## Exposes refinement contexts, explicit import alternatives, work-item/package codecs and
 ## retained item/blob access.
@@ -154,7 +154,7 @@ func packageImport*(package: PackageHash, index: ImportIndex): ImportReference =
 
 proc fullPackageConfig*(maxBytes: ByteLimit): PackageConfig {.raises: [].} =
   ## Construct the published full-profile gas ceilings while retaining an explicit caller byte budget.
-  PackageConfig(refineGas: Gas(5_000_000_000'u64), accumulateGas: Gas(10_000_000),
+  PackageConfig(refineGas: Gas(23_500_000_000'u64), accumulateGas: Gas(47_000_000),
       maxBytes: maxBytes)
 
 proc validConfig(config: PackageConfig): bool {.raises: [].} =

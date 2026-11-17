@@ -35,7 +35,7 @@ proc witness(code: openArray[byte], terminalPc: uint64) =
   let completed = execute(source, ExecutionStepLimit(2), GasCycleLimit(0))
   assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
   let posterior = machineInfo(completed.value.machine).value
-  assert uint64(posterior.pc) == 0 and uint64(posterior.gas) == 123 and posterior.blockCharged
+  assert uint64(posterior.pc) == 0 and uint64(posterior.gas) == 123 and not posterior.blockCharged
   for index in 0..<13:
     # Only the successful prefix writes r7; the original CPU remains untouched in every case.
     assert uint64(posterior.registers[index]) == (if index == 7: 7'u64 else: 0'u64)

@@ -1,5 +1,8 @@
 # Current Gray Paper qualification
 
+Current release target: [Gray Paper 0.8.1 qualification](graypaper-0.8.1.md).
+The source-upgrade evidence below records its earlier adoption increment.
+
 The subsequent [accumulation/dispute vector refresh](vector-accumulation-disputes-upgrade.md)
 records the current preview source and its bounded coverage. Historical vector
 identities below describe this qualification's original evidence.

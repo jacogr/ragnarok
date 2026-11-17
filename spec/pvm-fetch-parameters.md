@@ -1,8 +1,8 @@
 # Protocol-parameter fetch
 
 Scope: fetch selector 0 returns the configured chain's fixed 122-byte protocol-parameter
-tuple. Normative source: Gray Paper 0.8.0, gitlink
-`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/pvm_invocations.tex`, General
+tuple. Normative source: Gray Paper 0.8.1, gitlink
+`b7044addaf48a09f235531f6188c5e7418bed410`, `text/pvm_invocations.tex`, General
 Functions, Omega_Y selector 0; `text/definitions.tex`, CgasYc/CgasYl entry 0 and the
 29 referenced parameter definitions. Field order and E2/E4/E8 widths follow the tuple
 exactly. There is no count prefix and no compact encoding. Cost is always 390,

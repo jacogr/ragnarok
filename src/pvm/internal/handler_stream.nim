@@ -4382,6 +4382,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   ## The offset-returning dispatch reserves attempts at complete headers or actual paid cached-body entries.
   ## A zero budget returns StepLimitExceeded before the frame's preparation failure
   ## can return InvalidPreparedProgram. Local refusals produce no guest snapshot.
+  ## Recursive halt/panic clears paid-block credit under GP0.8.1; raw runFlatSingle retains Psi_1 semantics.
   ## A cold bitmap backedge stays with the exclusive cached stream across short calls.
   ## The first segment with enough settled work consumes it for a source proof.
   defer:
@@ -4499,6 +4500,8 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       f.bitmapCandidate = 0
       observeFlatBitmap(f, root)
   flatPromoteNativeLoop(f)
+  if f.reason == oracle.StepError.None and f.exit in [oracle.StepExit.Halt, oracle.StepExit.Panic]:
+    f.info.blockCharged = false # Restart at PC zero must pay the entry block again.
 
 when defined(pvmSharedAsyncWitness):
   proc probeMetadataExecutionRefusals*(source: Program): bool =

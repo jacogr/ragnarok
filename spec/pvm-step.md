@@ -189,3 +189,13 @@ does not establish complete JAM invocation parity. See the current
 [readiness map](pvm-interpreter-readiness.md). Branch pricing and wrapping-memory
 ordering follow the approved PolkaVM adoptions.
 These APIs do not establish full JAM parity or unrestricted PVM conformance.
+
+## GP 0.8.1 terminal restart
+
+Recursive `execute` normalizes halt/panic to PC zero and clears `blockCharged`,
+including an invalid-entry panic. Restart therefore pays for the entry block again.
+The shared recursive runner in `src/pvm/internal/handler_stream.nim` owns this rule for interpreted
+and native execution; the independent foreign cross-check adapter applies it too.
+Raw single-step Psi_1 retains instruction-level semantics. Fault/Host/OOG retain
+their existing suspension credit. `test_pvm_prepared_blocks.nim` checks repeated
+halt/panic restarts from both paid and unpaid inputs with exact gas consumption.

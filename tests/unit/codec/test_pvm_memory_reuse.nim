@@ -236,6 +236,7 @@ block literal_crossing_publication_and_reuse:
     let published = execute(literalSource, ExecutionStepLimit(3), literalPrepared)
     assert published.error == StepError.None and published.value.exit == StepExit.Panic
     var expectedCpu = initial
+    expectedCpu.blockCharged = false
     expectedCpu.registers[1] = RegisterValue(0x0123456789abcdef'u64)
     assert machineInfo(published.value.machine).value == expectedCpu
     let held = memoryOf(published.value.machine).value
@@ -366,6 +367,7 @@ block sparse_physical_overlap_readback:
       same(actual.value.machine, expected.value.machine)
       var expectedCpu = reading
       expectedCpu.pc = CodeAddress(0)
+      expectedCpu.blockCharged = false
       expectedCpu.registers[1] = RegisterValue(if variant == 0: 0xe5d4c3b2a1726b64'u64
         else: 0x5c554e4740726b64'u64)
       expectedCpu.registers[2] = RegisterValue(if variant == 0: 0xa6'u64 else: 0xee'u64)
@@ -687,6 +689,7 @@ proc appendedArgumentReuse() =
       let actual = execute(source, ExecutionStepLimit(4), retained)
       assert actual.error == StepError.None and actual.value.exit == StepExit.Panic
       var expectedCpu = initial
+      expectedCpu.blockCharged = false
       expectedCpu.registers[0] = RegisterValue(uint64(value))
       expectedCpu.registers[1] = RegisterValue(7)
       assert machineInfo(actual.value.machine).value == expectedCpu
@@ -709,6 +712,7 @@ proc appendedArgumentReuse() =
     let source = captureMachine(argumentOwner, expanded, initial).value
     let fallback = execute(source, ExecutionStepLimit(4), retained)
     assert fallback.error == StepError.None and fallback.value.exit == StepExit.Panic
+    initial.blockCharged = false # This copied terminal expectation no longer carries paid credit.
     initial.registers[0] = RegisterValue(31)
     initial.registers[1] = RegisterValue(7)
     assert machineInfo(fallback.value.machine).value == initial

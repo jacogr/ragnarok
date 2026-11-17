@@ -580,10 +580,13 @@ func actualIndependentBackend(usedNative: bool): PvmBackend =
 
 proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
     original: CodeAddress = CodeAddress(0), nativeBaseline: uint64 = 0): StepResult =
-  ## The one engine publishes exact recursive exits or the public Psi_1 PC convention at this adapter.
+  ## Publish recursive Psi exits with terminal PC zero and an unpaid block under GP0.8.1.
+  ## Raw Psi_1 retains its instruction-level PC/paid-state convention; Host/Fault/OOG preserve paid credit.
   let engine = actualIndependentBackend(nativeOperations(frame) != nativeBaseline)
   var cpu = frame.info
   var kind = frame.exit
+  if not single and terminalExit(kind):
+    cpu.blockCharged = false # Normalize every recursive publication, including alternate engine exits.
   if single:
     if frame.reason == StepError.StepLimitExceeded: kind = StepExit.Continued
     if kind in [StepExit.Panic, StepExit.Halt]:
@@ -700,6 +703,7 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   if instructionOpcode(owner, cpu.pc).error != ProgramError.None:
     if single: return StepResult(status: StepError.InvalidMachine)
     cpu.pc = CodeAddress(0)
+    cpu.blockCharged = false # Invalid-entry panic follows the same recursive restart rule.
     let terminal = captureTerminalMachine(owner, memory, cpu)
     if terminal.error == MachineError.LimitExceeded:
       return StepResult(status: StepError.ResidentAllocationRefused)

@@ -216,6 +216,20 @@ proc loadBoundaries(base: OwnedReport) =
   let raw = reportBytes(seed)
   let parent = newStateStore(entriesFor([seed]), limits()).value.snapshot.value
   let config = policy(2)
+  for field in 0..<2:
+    # Current GP report/refinement equality and one-over apply after genuine credential verification.
+    for extra in 0..1:
+      var current = policy(2, 47_000_000)
+      current.refinementGas = RefinementGasLimit(23_500_000_000'u64)
+      let gas = if field == 0: 47_000_000'u64+uint64(extra) else: 10'u64
+      let load = RefineLoad(gasUsed: Gas(if field == 1: 23_500_000_000'u64+uint64(
+          extra) else: 0'u64))
+      let report = reportFor(base, 0, [gas], refinement = load)
+      let verdict = checkReportPolicy(certify([report]), parent, current)
+      let expected = if extra == 0: ReportPolicyError.None elif field == 0:
+        ReportPolicyError.ReportGasExceeded else: ReportPolicyError.RefinementLoadExceeded
+      assert verdict.error == expected
+      assert inspectReportPolicy(report, parent, current) == expected
   for field in 0..<8:
     # Each pair isolates one exact upper bound and its one-over refusal on otherwise valid reports.
     for extra in 0..1:
@@ -238,7 +252,7 @@ proc loadBoundaries(base: OwnedReport) =
       of 5:
         report.header.bundleLength = BundleLength(uint32(13_904_950+extra))
       of 6:
-        report.authGas = Gas(uint64(50_000_000+extra))
+        report.authGas = Gas(uint64(235_000_000+extra))
       else:
         report.digests[0].refine.exports = ExportCount(1)
         report.header.segmentCount = SegmentCount(uint16(1+extra))

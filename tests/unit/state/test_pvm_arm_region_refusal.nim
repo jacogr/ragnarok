@@ -99,7 +99,7 @@ proc runSmall(frame: var FlatFrame) =
   expected.pc = CodeAddress(0)
   expected.gas = MachineGas(InitialGas-3*(SmallPrice+TailPrice)-TrapPrice)
   expected.registers[0] = RegisterValue(6)
-  expected.blockCharged = true
+  expected.blockCharged = false
   for visit in 0..<3:
     # Repeated calls retain the same owner but reset only invocation-local state at the explicit boundary.
     resetFlatFrame(frame, input)

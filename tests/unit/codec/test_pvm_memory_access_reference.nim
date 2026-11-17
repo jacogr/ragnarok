@@ -162,7 +162,7 @@ for row in 0..<4050:
       var current = evaluated.value
       assert current.exit == (if exit == 0: StepExit.Panic else: StepExit.Fault)
       if exit == 2: assert uint64(uint32(current.faultPage)) == expectedFault
-      verifySnapshot(current.machine, data, at, 0, 7, true, false, accesses)
+      verifySnapshot(current.machine, data, at, 0, 7, current.exit == StepExit.Fault, false, accesses)
       verifySnapshot(original, data, at, 0, uint64(cpu.gas), prepaid, true, accesses)
       var repairedAccess = accesses
       var retained: seq[StepOutcome] = @[]
@@ -198,7 +198,7 @@ for row in 0..<4050:
                   PageAccess.Inaccessible:
             expectedPage = 0x11000 # Keep only the documented GP-PVM-008 adapter over the selected frozen row.
           assert uint64(uint32(current.faultPage)) == expectedPage
-        verifySnapshot(current.machine, data, repairedAt, 0, 7, true, false, repairedAccess)
+        verifySnapshot(current.machine, data, repairedAt, 0, 7, repairFault, false, repairedAccess)
       for i in 0..<retained.len:
         verifySnapshot(retained[i].machine, data, at, 0, 7, true, true, retainedAccess[
             i]) # Later repairs/writes cannot mutate any earlier frozen fault.
@@ -224,7 +224,7 @@ for row in 0..<4050:
         for completed in [limited, dynamic]:
           assert completed.error == StepError.None and completed.value.exit == (if exit ==
               0: StepExit.Panic else: StepExit.Fault)
-          verifySnapshot(completed.value.machine, data, at, 0, 7, true, false, accesses)
+          verifySnapshot(completed.value.machine, data, at, 0, 7, exit != 0, false, accesses)
       else:
         assert limited.error == StepError.GasCycleLimitExceeded and dynamic.error ==
             StepError.GasCycleLimitExceeded

@@ -1,7 +1,7 @@
 {
   "graypaper": {
     "repository": "https://github.com/gavofyork/graypaper",
-    "commit": "dc9a3bf79acd044ac004f756cff88a8acc9c416d",
+    "commit": "b7044addaf48a09f235531f6188c5e7418bed410",
     "serialization_source_sha256": "6638b901e3187be42083ace5e23094a04a94967ced5cb737844c00091e3e9ec1",
     "path": "vendor/graypaper",
     "source_sha256": {
@@ -15,7 +15,7 @@
       "text/erasure_coding.tex": "472683fd5c8ccb30aa7526698f70e820d1ea5f24420df42086bb5dc577a34a2f",
       "biblio.bib": "4432ba011be7772e2cd5d0e83a885f58f6ad5bd29f05a4b898cc5c1d7007a855",
       "text/judgments.tex": "b7712190612ab78dee30134de0f233c6c028cab0f3a414c44779bf47c37e9a11",
-      "text/definitions.tex": "c81f9826a0be4f2d26622465bd2e1ae61732870605a60b4b670c5d2af513ad76",
+      "text/definitions.tex": "3e63b27cf91e5dcc9000f8b9fa94526370cf651a8403f88241851767c863b7ef",
       "text/accumulation.tex": "774f8007d90bbab1696840a65e0f3b6874ff0bded2952d58b4d0047c0f77a26b",
       "text/merklization.tex": "30e11a6e52cf16a0ae9b90b5090316648e2f642b0ddf819c19b0919a0c311aea",
       "text/authorization.tex": "9873bce01eeb25d657aa32955e3f487388eeb6029128ffebb7ae312b0af1ca81",
@@ -25,12 +25,15 @@
       "text/statistics.tex": "b7aa008f19f5626d2e90a814065378c94c1e6b06a0ab8d93bfa2a3a54d472cd8",
       "text/pvm_invocations.tex": "ecf84b575cd427b48f8648ae18bae992a8ed3fd9c01203dbe1978e573905137d",
       "text/utilities.tex": "66f096f97269d4152316ebb68a18d67f15b8052ecfe3034f29299cff7f36ff60",
-      "text/pvm.tex": "70f0e9b0c8cd873defba689eecf24918de65a1dee48b313be3110b9fe3cdd06d",
-      "preamble.tex": "7d3f0a3f6f71e7bbe94877198c8bb459de5e35a5deba6fdc1db643e690c5e50b"
+      "text/pvm.tex": "3ff6bad61502a358e6867333512190f37c6bb2857a8209bb6f539da3ffd7c944",
+      "preamble.tex": "7d3f0a3f6f71e7bbe94877198c8bb459de5e35a5deba6fdc1db643e690c5e50b",
+      "VERSION": "aaf6721dc37c40b4233accfc081f25776ff3bd1d2a4b9d5cea760d1c2cf86665",
+      "context.tex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
-    "version": "0.8.0",
-    "release_status": "unreleased",
-    "base_release": "v0.8.0"
+    "version": "0.8.1",
+    "release_status": "released",
+    "tag": "v0.8.1",
+    "base_release": "v0.8.1"
   },
   "vectors": {
     "repository": "https://github.com/jam-conformance/jam-test-vectors",

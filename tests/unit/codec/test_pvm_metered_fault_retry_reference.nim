@@ -39,7 +39,7 @@ for opcode in 52'u8..62'u8:
     let completed = execute(repaired, ExecutionStepLimit(1), GasCycleLimit(0)).value
     assert completed.exit == StepExit.Panic
     let final = machineInfo(completed.machine).value
-    assert uint64(final.pc) == 0 and uint64(final.gas) == 7 and final.blockCharged
+    assert uint64(final.pc) == 0 and uint64(final.gas) == 7 and not final.blockCharged
     for index in 0..<13:
       # Only the completed prefix changes r8; failed memory instructions and repairs write no registers.
       let expected = if index == 8: 11'u64 else: uint64(registers[index])
