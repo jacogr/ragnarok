@@ -2231,6 +2231,7 @@ when defined(pvmSharedAsyncWitness):
 
   proc cancelledPhysicalRetirement() =
     ## A cancelled compiler local retains its physical owner and row after its last session disappears.
+    if not nativePlatformSupported(): return
     let runtime = newNativeRuntime()
     assert launch(runtime)
     let source = input(loopOwner(), 2048)
@@ -2260,6 +2261,7 @@ when defined(pvmSharedAsyncWitness):
 
   proc partialPhysicalAcquisition() =
     ## Fail after a real first mapping; an unpublished lowerer result still carries a charged physical owner.
+    if not nativePlatformSupported(): return
     let runtime = newNativeRuntime()
     assert launch(runtime)
     let source = input(loopOwner(), 2048)
@@ -2719,8 +2721,10 @@ proc runSharedAsync*() =
     invalidPhysicalRetirement()
     cancelledPhysicalRetirement()
     partialPhysicalAcquisition()
-    let physicalProof = nativeArenaRetirementProofForWitness()
-    assert physicalProof == 0, "native arena retirement proof stage " & $physicalProof
+    if nativePlatformSupported():
+      # Physical cleanup evidence must use the selected ISA's real arena, never its unsupported stub.
+      let physicalProof = nativeArenaRetirementProofForWitness()
+      assert physicalProof == 0, "native arena retirement proof stage " & $physicalProof
     invalidCompilerOwnership()
     diagnosticPhase("invalidCollectionOwnership")
     invalidCollectionOwnership()
