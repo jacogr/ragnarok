@@ -178,6 +178,25 @@ class InstructionProfileTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 final_return_dump(output, 2)
 
+    def test_complete_multi_owner_process_preserves_every_return(self):
+        """The canonical eleven-owner process needs all 143 calls; no arbitrary count extension is allowed."""
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)/'owners.callgrind'
+            output.write_text(profile(0))
+            for index in range(1, 144):
+                Path(str(output)+'.'+str(index)).write_text(profile(index))
+            self.assertEqual(final_return_dump(output, 13, owners=11).name, 'owners.callgrind.143')
+            for executions, owners in ((14, 1), (13, 12), (13, True), (12, 11), (13, 0)):
+                with self.subTest(executions=executions, owners=owners), self.assertRaises(ValueError):
+                    final_return_dump(output, executions, owners)
+            middle = Path(str(output)+'.70')
+            middle.write_text('partial')
+            with self.assertRaises(ValueError):
+                final_return_dump(output, 13, owners=11)
+            middle.unlink()
+            with self.assertRaises(ValueError):
+                final_return_dump(output, 13, owners=11)
+
     def test_generated_sources_preserve_recorded_paths_and_identity(self):
         """Copied source reproduces relative DWARF paths; missing/changed copies or originals fail."""
         with tempfile.TemporaryDirectory() as directory:

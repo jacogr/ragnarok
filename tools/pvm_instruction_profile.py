@@ -238,10 +238,13 @@ def disassembly_passed(result):
             and re.search(r'^\s*[0-9a-f]+:\s+[a-z][a-z0-9]*\b', text, re.M) is not None)
 
 
-def final_return_dump(output, executions):
+def final_return_dump(output, executions, owners=1):
     """Require every complete bounded function-return part and an empty final dump; retain the last raw part unchanged."""
-    if type(executions) is not int or not 1 <= executions <= 13:
+    if (type(executions) is not int or not 1 <= executions <= 13
+            or type(owners) is not int or not 1 <= owners <= 11
+            or owners != 1 and executions != 13):
         raise ValueError('invalid bounded execution dump count')
+    executions *= owners
     parts = {path.name: path for path in output.parent.glob(output.name+'.*')}
     expected = {output.name+'.'+str(index) for index in range(1, executions+1)}
     if set(parts) != expected:
@@ -254,8 +257,39 @@ def final_return_dump(output, executions):
     return parts[output.name+'.'+str(executions)]
 
 
+def validate_return_dump_identity(output, executions, scope, binary):
+    """Bind a bounded complete process to embedded ordinals, PID, exact command/return scope and events.
+
+    The ordinary reader still owns complete file/footer checks. This stronger original-image
+    contract rejects swapped intact files and foreign processes before any selected case is reported.
+    """
+    if type(executions) is not int or not 1 <= executions <= 143:
+        raise ValueError('invalid bounded return identity count')
+    process = None
+    for index in range(1, executions+2):
+        # Callgrind's unnumbered termination file carries the next part ordinal, not the last return.
+        final = index == executions+1
+        path = output if final else output.with_name(output.name+'.'+str(index))
+        text = path.read_text()
+        pid = re.findall(r'^pid: (.*)$', text, re.M)
+        part = re.findall(r'^part: (.*)$', text, re.M)
+        command = re.findall(r'^cmd:\s+(.+)$', text, re.M)
+        trigger = re.findall(r'^desc: Trigger: (.*)$', text, re.M)
+        if (len(pid) != 1 or re.fullmatch(r'[1-9][0-9]*', pid[0]) is None
+                or part != [str(index)] or command != [str(binary)]
+                or trigger != ['Program termination' if final else '--dump-after='+scope]):
+            raise ValueError('Foreign or reordered Callgrind return identity')
+        if process is None:
+            process = pid[0]
+        elif pid[0] != process:
+            raise ValueError('Mixed Callgrind return processes')
+        counts = profile_counts(text, allow_empty=final)
+        if list(counts) != ['Ir', 'Bc', 'Bcm', 'Bi', 'Bim'] or final and any(counts.values()):
+            raise ValueError('Incomplete return events or nonzero termination counters')
+
+
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False):
+            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False, owners=1):
     """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
@@ -275,7 +309,7 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
         raise RuntimeError('Callgrind did not produce a profile: '+name)
     if dump_symbols:
         # Returning raw numbered output preserves Callgrind bytes and its original dump identity.
-        output = final_return_dump(output, executions)
+        output = final_return_dump(output, executions, owners)
     return result, output
 
 

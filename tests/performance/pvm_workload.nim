@@ -51,6 +51,19 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
   HostResponse(action: response.action, gas: response.gas, gasDeficit: response.gasDeficit,
     registers: response.registers, memory: memoryOf(suspension.machine).value)
 
+proc runPreparedSynthetic(source: Machine, context: var HostContext, kind: uint64,
+    steps: ExecutionStepLimit, hosts: HostCallLimit,
+        prepared: PreparedProgram): StepResult {.noinline.} =
+  ## Stable public-call scope includes restoration, host callbacks/resumes and owned publication.
+  ## Keep the complete original process; external return dumps select cases without changing admission.
+  if kind == 2:
+    # Authored scalar callbacks keep the same public host capability and terminal snapshot contract.
+    executeWithHost(source, context, respond, steps, hosts, prepared, scalarBenchmarkHost,
+      respondScalar)
+  else:
+    # Plain guest calls share the same profiler boundary, outside constructor and independent oracles.
+    execute(source, steps, prepared)
+
 template runBenchmark(source: Machine, context: var HostContext, kind: uint64,
     steps: ExecutionStepLimit, hosts: HostCallLimit, cycles: GasCycleLimit,
     plannedMode: bool, plan: GasPlan, memo: GasMemo): StepResult =
@@ -256,11 +269,8 @@ for row in 0..<11:
       # Proven work keeps the maximum from a single completed call, never a lifetime sum.
       # The modern host role explicitly consumes scalar CPU callbacks; final owned publication stays timed.
       # Guest attempts, callback/context arithmetic and complete memory oracles are unchanged.
-      if kind == 2:
-        executeWithHost(source, context, respond, ExecutionStepLimit(
-            perLoop*iterations+1),
-          HostCallLimit(2*iterations), prepared, scalarBenchmarkHost, respondScalar)
-      else: execute(source, ExecutionStepLimit(perLoop*iterations+1), prepared)
+      runPreparedSynthetic(source, context, kind, ExecutionStepLimit(perLoop*iterations+1),
+        HostCallLimit(2*iterations), prepared)
     else:
       runBenchmark(source, context, kind, ExecutionStepLimit(
           perLoop*iterations+1),

@@ -46,7 +46,7 @@ name: CI
         default: jit
 
       pvm_guest_profile:
-        description: "After bench-pvm timing, profile original Sieve and Pinky images on their x86 runner"
+        description: "After bench-pvm timing, profile original guest and synthetic images on their x86 runner"
         required: false
         type: boolean
         default: false
@@ -901,7 +901,7 @@ jobs:
         run: make host-tools PVM_ASSET_TOOLS=1
       - name: Qualify and compare current PVM backends
         run: make bench-pvm-performance
-      - name: Attribute retained Sieve and Pinky public invocations
+      - name: Attribute retained guest and synthetic public invocations
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' && inputs.pvm_guest_profile && matrix.family.group == 'x86_64' }}
         run: make profile-pvm-current-guest PVM_PROFILE_REVISION="$GITHUB_SHA"
       - name: Show complete current-source comparison
@@ -935,6 +935,9 @@ jobs:
             build/tests/pvm-guest-profile/*.json
             build/tests/pvm-guest-profile/*.log
             build/tests/pvm-guest-profile/*.callgrind*
+            build/tests/pvm-synthetic-profile/*.json
+            build/tests/pvm-synthetic-profile/*.log
+            build/tests/pvm-synthetic-profile/*.callgrind*
             build/ci/*.log
 
   pvm-fuzz:

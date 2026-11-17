@@ -494,7 +494,7 @@ timings from different CI machines or operating systems do not establish a runti
 Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.
 
-For current x86 Sieve and Pinky attribution, add `pvm_guest_profile=true` to the focused `bench-pvm`
+For current x86 guest and synthetic attribution, add `pvm_guest_profile=true` to the focused `bench-pvm`
 dispatch. Profiling runs after timing in the same native job, using the exact retained canonical
 image and inputs. It retains all thirteen complete-state calls and calibrated cold/final reused
 instruction and simulated branch counts; instrumented clocks are discarded. The short input
@@ -511,6 +511,20 @@ independently validated logs: work needs a call, and header/branch deltas cannot
 respective branch/call deltas. Async publication/occupancy remains independent. Actual engines follow
 the native-operation deltas, so a JIT-policy cold call can honestly remain interpreted. These
 are counter/occupancy observations, not additional clocks or exact executor-entry timestamps.
+
+The same request retains host/memory attribution in `build/tests/pvm-synthetic-profile/`.
+It runs each original synthetic image once per policy, retaining all eleven owners and143 public
+calls in order. The stable public boundary includes scalar callbacks/resumes and publication;
+case-specific cold/final return dumps are selected afterward. Complete parsing and every raw part
+remain required, including unselected calls. Per-owner measured native work/state must match the
+canonical process. All case rows must identify the same original process receipt. Embedded part
+ordinals, PID, command and return scope bind raw counters to case positions; all five event columns
+and a completely zero program-termination dump remain mandatory. Checked fallback under JIT policy
+remains explicit. Calibration and reports
+are separate from the original guest files; no source/image rebuild or input filter is introduced.
+An instrumentation-induced native scheduling difference retains an explicit owner refusal and both
+histories. Later owners are still checked from the same complete raw process. Any refusal keeps the
+overall report failed with a nonzero exit; qualified individual rows do not certify a complete pass.
 
 Current synthetic and guest drivers also report copied native counters after each complete,
 checked invocation and outside its primary clocks. One public `PreparedInfo` checkpoint is captured

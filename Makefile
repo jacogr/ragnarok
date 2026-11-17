@@ -740,6 +740,7 @@ profile-pvm-x86-jit:
 .PHONY: profile-pvm-current-guest
 profile-pvm-current-guest:
 	$(PYTHON) tools/pvm_current_guest_profile.py --report build/tests/pvm-performance/results.json --revision "$(PVM_PROFILE_REVISION)"
+	$(PYTHON) tools/pvm_current_synthetic_profile.py --report build/tests/pvm-performance/results.json --revision "$(PVM_PROFILE_REVISION)"
 
 # Consume an explicitly qualified live image; never provision/rebuild a guest to obtain symbols.
 export PVM_COLD_REPORT ?=
