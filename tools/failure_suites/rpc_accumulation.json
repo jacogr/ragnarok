@@ -2,6 +2,7 @@
   "source": "tests/native/rpc_accumulation_results.nim",
   "build_name": "rpc-accumulation-results",
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "native_libraries": ["bandersnatch"],
   "cases": [
     {"identity": {"reason": "default"}, "arguments": ["default"], "name": "rpc-accumulation-default", "diagnostic": "outcome.status == None", "description": "RPC accumulation default extraction guard"},

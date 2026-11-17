@@ -2,6 +2,7 @@
   "source": "tests/native/current_block_input_results.nim",
   "build_name": "current-block-input-results",
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "native_libraries": [
     "bandersnatch"
   ],

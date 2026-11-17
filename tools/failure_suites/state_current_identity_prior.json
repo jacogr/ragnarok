@@ -25,6 +25,7 @@
     }
   ],
   "crypto_library": "observer",
+  "quic_library": "quic",
   "native_libraries": [
     "bandersnatch_observer",
     "bandersnatch"

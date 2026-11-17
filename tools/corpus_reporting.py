@@ -21,7 +21,7 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inve
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
     built, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_scenarios_driver.nim',
-        'current-stf-reporting-scenarios'+('-late-histories' if 'lateHistories' in defines else '-late-retention' if 'lateRetention' in defines else '-rotation-incarnations' if 'rotationIncarnations' in defines else '-rotation-requests' if 'rotationRequests' in defines else '-rotation-code' if 'rotationCode' in defines else '-rotation-lifecycle' if 'rotationLifecycle' in defines else '-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-reporting-scenarios'+('-late-histories' if 'lateHistories' in defines else '-late-retention' if 'lateRetention' in defines else '-rotation-incarnations' if 'rotationIncarnations' in defines else '-rotation-requests' if 'rotationRequests' in defines else '-rotation-code' if 'rotationCode' in defines else '-rotation-lifecycle' if 'rotationLifecycle' in defines else '-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference='GP mathematical Thin, independent Ed25519 signatures and complete-map equations')

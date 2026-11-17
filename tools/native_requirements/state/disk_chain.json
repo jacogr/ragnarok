@@ -6,13 +6,15 @@
     "state_report"
   ],
   "includes": [
+    "bandersnatch",
     "crypto",
-    "bandersnatch"
+    "quic"
   ],
   "libraries": [
     "bandersnatch_observer",
     "bandersnatch",
-    "observer"
+    "observer",
+    "quic"
   ],
   "observers": [
     "verify",

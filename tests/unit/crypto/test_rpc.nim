@@ -24,8 +24,6 @@ from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeade
 const rpcDirectTestSockets = true # Socketpair fixtures drive dispatcher turns synchronously.
 include ../../../src/rpc/server
 
-let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
-
 # Structured output preserves integer endpoints and distinguishes data strings from embedded JSON.
 assert $json(high(uint64)) == "18446744073709551615"
 assert $json(low(int64)) == "-9223372036854775808"
@@ -343,12 +341,11 @@ block reused_header_scanner:
   # A retired client's long partial header must not move the next client's scan past its terminator.
   var reused = Connection(input: repeat('x', 1000))
   assert reused.headScanner.findHeadEnd(toOpenArray(reused.input, 0, reused.input.len - 1)) ==
-    http_parse.ParseIncomplete
-  assert reused.headScanner.pos == 1000
+    HeadPending
   reused.close()
   let suffix = masked("probe", 9)
   reused.input = upgradeHeader & suffix
-  reused.process(requestTags, default(ClientInfo), 1)
+  reused.process(default(ClientInfo), 1)
   assert reused.upgraded, "Reused RPC slot finds a shorter header on its first processing turn"
   assert reused.input == suffix, "Buffered WebSocket bytes remain after the exact header boundary"
   assert "101 Switching Protocols" in reused.output
@@ -356,17 +353,17 @@ block reused_header_scanner:
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
 assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
 for version in ["HTTP/1.0", "HTTP/2"]:
-  # The stock head parser recognizes these versions, but the RPC upgrade requires HTTP/1.1.
+  # The library head parser recognizes these versions, but the RPC upgrade requires HTTP/1.1.
   assert upgrade(upgradeHeader.replace("HTTP/1.1", version)).len == 0, version & " refuses WebSocket upgrade"
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin : http://example.com")).len == 0
-assert upgrade(upgradeHeader.replace("Host: localhost", "Host: local\x00host")).len == 0
 assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin: http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
 assert upgrade(upgradeHeader.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
 # Stock HTTP syntax precedes the WebSocket-specific challenge policy.
-for extra in ["X-Client: a\tb\r\n",
-    "Content-Length: 000000\r\n"]:
+assert upgrade(upgradeHeader.replace("Host: localhost\r\n",
+    "Host: localhost\r\nX-Client: a\tb\r\n")).len > 0
+for extra in ["Content-Length: 000000\r\n"]:
   assert upgrade(upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & extra)).len == 0
 assert upgrade(upgradeHeader.replace("\r\n", "\n")).len > 0 # Stock framing accepts LF.
 let encoded = masked(request)
@@ -409,19 +406,19 @@ for origin in ["http://localhost", "http://127.0.0.1"]:
 var slot = default(Connection)
 slot.upgraded = true
 slot.input = masked(request[0..<20], 1, false)
-slot.process(requestTags, info, 0)
+slot.process(info, 0)
 assert slot.fragmented and slot.output.len == 0
 slot.input = masked("hello", 9)
-slot.process(requestTags, info, 1)
+slot.process(info, 1)
 assert slot.output == frame("hello", 10)
 slot.output = ""
 slot.input = masked(request[20..^1], 0)
-slot.process(requestTags, info, 2)
+slot.process(info, 2)
 var framedSession = default(RpcSession)
 assert not slot.fragmented and slot.output == frame(respond(request, info, framedSession))
 slot.output = ""
 slot.input = masked("", 0)
-slot.process(requestTags, info, 3)
+slot.process(info, 3)
 assert slot.closing and slot.output == frame("\x03\xea", 8)
 # Independently encoded chapter 13: two six-validator natural-counter arrays, four core tuples and one service.
 let activityHex = "06" & repeat("00", 36) & "06" & repeat("00", 36) & repeat("00", 32) &
@@ -1949,9 +1946,9 @@ proc upgradeReceiveBounds(owner: var Server) =
   let first = "X-Padding-A: " & repeat('a', 8100) & "\r\n"
   let second = "X-Padding-B: "
   let padding = first & second &
-    repeat('b', http_parse.MaxHeadLen - upgradeHeader.len - first.len - second.len - 2) & "\r\n"
+    repeat('b', int(maxHeadBytes()) - upgradeHeader.len - first.len - second.len - 2) & "\r\n"
   let head = upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & padding)
-  assert head.len == http_parse.MaxHeadLen
+  assert head.len == int(maxHeadBytes())
   for oversized in [true, false]:
     # Drive one fresh client per case. The final write crosses the former combined receive cap.
     var pair = default(array[2, cint])

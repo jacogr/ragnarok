@@ -3,7 +3,7 @@
 
 ## UI, MCP, and management hand each accepted connection to one task that owns
 ## its Reader and Writer. The dispatcher checks the stream deadline before
-## handling a request or reading another asset chunk. The task scans one
+## handling a request or reading another asset chunk. The task uses Balsa to parse one
 ## bounded head. The dispatcher applies policy before authorizing any body
 ## read and handles the completed request with the current application state.
 ##
@@ -12,7 +12,7 @@
 ## shuts down that reactor after every service has joined its stream tasks.
 
 import std/[atomics, ioring, streamio, strutils, threadpool]
-import std/http/httpparse as http_parse
+import ./http_head
 import ./logging
 
 type
@@ -55,7 +55,7 @@ proc fillRequest(reader: var Reader, deadline: Deadline) {.passive, raises.} =
 proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
   ## Both halves stay with this task, so the standing deadline is immutable.
   var (reader, writer) = openStreams(fd, deadline)
-  var scanner = default(http_parse.HeadScanner)
+  var scanner = default(Head)
   try:
     while not atomicLoad(s.stopping, moAcquire):
       case s.observedPhase
@@ -65,12 +65,13 @@ proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
         # body bytes stay there until the dispatcher authorizes their length.
         while true:
           let extent = scanner.findHeadEnd(reader.peek)
-          if extent != http_parse.ParseIncomplete:
+          if extent != HeadPending:
             s.headBytes = extent
             if extent > 0:
               let bytes = reader.peek
               for index in 0..<extent: s.data.add(bytes[index])
               reader.consume(extent)
+            scanner.close() # Only detached head bytes cross to the dispatcher.
             s.publish(HeadReady)
             break
           reader.fillRequest(deadline)
@@ -194,7 +195,7 @@ proc receiveHead*(stream: var HttpStream, head: var string): int =
   ## Transfer one complete head or the scanner's over-limit result.
   let s = stream.exchange
   if s == nil or s.observedPhase != HeadReady or ioring.expired(s.deadline):
-    return http_parse.ParseIncomplete
+    return HeadPending
   head = move(s.data)
   result = s.headBytes
   s.publish(Ready)

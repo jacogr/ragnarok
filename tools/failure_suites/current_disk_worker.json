@@ -2,6 +2,7 @@
   "source": "tests/native/current_disk_worker_results.nim",
   "build_name": "current-disk-worker-results",
   "crypto_library": "crypto",
+  "quic_library": "quic",
   "cases": [
     {
       "identity": {

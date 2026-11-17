@@ -8,19 +8,17 @@ import ../../../src/rpc/protocol as public_protocol
 from ../../../src/lib/stop_signal import ignorePipeSignal
 include ../../../src/management/server
 
-proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo) =
+proc process(slot: var Connection, info: ManagementInfo) =
   ## Run the same header and body policy against an in-memory wire fixture.
-  var scanner = default(http_parse.HeadScanner)
+  var scanner = default(Head)
   let headBytes = scanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-  if headBytes == http_parse.ParseIncomplete: return
-  let length = slot.processHead(tags, headBytes)
+  if headBytes == HeadPending: return
+  let length = slot.processHead(headBytes)
   if length >= 0 and slot.input.len >= headBytes + length:
     let total = headBytes + length
     let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
     slot.processBody(body, slot.input.len > total, info)
     slot.input = ""
-
-let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
 
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
@@ -69,33 +67,33 @@ for head in ["GET / HTTP/1.1\r\nHost: x\r\n\r\n",
     "POST / HTTP/1.1\r\nHost: x\r\n Content-Length: 0\r\n\r\n",
     packet(request) & packet(request)]:
   var slot = Connection(input: head)
-  slot.process(requestTags, admin)
+  slot.process(admin)
   assert "200 OK" notin slot.output and "\"result\"" notin slot.output
 var partial = Connection(input: packet(request).substr(0, packet(request).len - 2))
-partial.process(requestTags, admin)
+partial.process(admin)
 assert partial.output.len == 0 # Partial bodies cannot dispatch.
 partial.input.add('}')
-partial.process(requestTags, admin)
+partial.process(admin)
 assert "200 OK" in partial.output
 var capped = Connection(input: "POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 8193\r\n\r\n")
-capped.process(requestTags, admin)
+capped.process(admin)
 assert "413" in capped.output
-# The stock parser rejects unsupported whitespace before application dispatch.
+# Balsa accepts interior field HTAB without rewriting request bytes.
 for extra in ["X-Client: a\tb\r\n"]:
   var refused = Connection(input: packet(request).replace("Content-Length:", extra &
       "Content-Length:"))
-  refused.process(requestTags, admin)
-  assert "400 Bad Request" in refused.output
+  refused.process(admin)
+  assert "200 OK" in refused.output
 var normalized = Connection(input: packet(request).replace("Content-Length: " & $request.len,
   "Content-Length: 000000" & $request.len))
-normalized.process(requestTags, admin)
+normalized.process(admin)
 assert "200 OK" in normalized.output
 for wire in [packet(request).replace("\r\n", "\n"),
     packet(request).replace("HTTP/1.1", "HTTP/1.0"),
     packet(request).replace("Content-Length:", "X-Client: a\r\nx-client: b\r\nContent-Length:")]:
   # Stock grammar owns framing and ordinary repeated fields; management authorization stays separate.
   var accepted = Connection(input: wire)
-  accepted.process(requestTags, admin)
+  accepted.process(admin)
   assert "200 OK" in accepted.output
 
 var directory = "/tmp/ragnarok-management-" & $processId()
