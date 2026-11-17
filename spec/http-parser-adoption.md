@@ -10,7 +10,8 @@ Services retain their endpoint access policies and authorize bounded bodies afte
 
 The `http_head` native suite exercises fragmented input, the head/body boundary, owned fields,
 exclusive moves, ordinary repeated fields, full-width checked Content-Length, ambiguous framing
-refusal and the library head limit. `rpc`, `ui`, `mcp` and `management_http` cover actual service
+refusal and the library-derived wire head limit, including fragmented leading blank lines and
+bounded heads with large coalesced bodies. `rpc`, `ui`, `mcp` and `management_http` cover actual service
 policies, partial reads, request retirement and connection shutdown. Balsa accepts interior HTAB
 in unrelated field values without rewriting; the former Nimony tab-refusal witnesses now check
 this library behavior. Selector ambiguity and application body limits remain explicit refusals.

@@ -8,6 +8,8 @@
 ## Library defaults determine syntax and the head limit; only ambiguous body framing
 ## is disabled through Balsa's public validation policy. Services own all access,
 ## selector-uniqueness and body-authorization decisions. Reader/Writer owns I/O.
+## The library-derived limit includes leading blank lines in our retained wire head:
+## Balsa skips these in its own accounting, but Reader keeps them until completion.
 
 type
   NativeHead {.importc: "rq_http_head", header: "http_parser.h", incompleteStruct.} = object
@@ -67,6 +69,8 @@ proc close*(head: var Head) =
 
 proc findHeadEnd*(head: var Head, input: openArray[char]): int =
   ## Feed the current unread buffer; append-only input must remain unchanged through completion.
+  ## Refuse an incomplete wire head at maxHeadBytes before the caller fills again.
+  ## A complete head within that limit may have arbitrarily larger buffered suffix bytes.
   if head.raw == nil:
     head.raw = newHead()
     if head.raw == nil: return HeadInvalid

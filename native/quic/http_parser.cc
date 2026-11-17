@@ -6,6 +6,7 @@
 // processes only the new suffix of the unchanged unread buffer. It stops at
 // HeaderDone before any body or WebSocket bytes, with sticky failure outcomes.
 #include "http_parser.h"
+#include <algorithm>
 #include <limits>
 #include <new>
 #include "quiche/balsa/balsa_frame.h"
@@ -59,10 +60,14 @@ extern "C" int rq_http_head_scan(rq_http_head *head, const char *input, size_t l
     if (head->result != 0) return head->result;
     if (length < head->consumed || (!input && length)) return head->result = -1;
     try {
-        // Balsa copies new header bytes and returns before processing a coalesced body.
+        // Balsa excludes skipped leading CR/LF from its internal header accounting.
+        // The Reader retains those bytes, so apply the same library limit to the
+        // complete wire head. Cap the feed rather than rejecting a large unread
+        // buffer: a bounded head may arrive with a much larger coalesced body.
+        const size_t limit = head->frame.max_header_length();
         if (length > head->consumed)
             head->consumed += head->frame.ProcessInput(input + head->consumed,
-                                                       length - head->consumed);
+                std::min(length - head->consumed, limit - head->consumed));
         if (head->frame.Error())
             return head->result = head->frame.ErrorCode() == quiche::BalsaFrameEnums::HEADERS_TOO_LONG
                                       ? -2 : -1;
@@ -72,6 +77,9 @@ extern "C" int rq_http_head_scan(rq_http_head *head, const char *input, size_t l
                 return head->result = -1;
             return head->result = static_cast<int>(head->consumed);
         }
+        // Completion at exactly the limit is valid; an incomplete head at that
+        // extent cannot fit. Refuse before the caller fills its Reader again.
+        if (length >= limit) return head->result = -2;
         return 0;
     } catch (...) { return head->result = -1; }
 }

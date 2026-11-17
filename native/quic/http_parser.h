@@ -16,7 +16,8 @@ rq_http_head *rq_http_head_new(void);
 void rq_http_head_free(rq_http_head *head);
 size_t rq_http_max_head_bytes(void);
 /* Input is the accumulated unread buffer; prior bytes must remain unchanged.
- * Returns 0 while incomplete, -1 on invalid input, -2 on the library head limit,
+ * Returns 0 while incomplete, -1 on invalid input, -2 on the library head limit
+ * applied to the wire extent including leading blank lines,
  * or the positive head extent. Body/upgrade suffix bytes are never consumed. */
 int rq_http_head_scan(rq_http_head *head, const char *input, size_t length);
 /* Views are valid until free and exposed only after a successful head scan.

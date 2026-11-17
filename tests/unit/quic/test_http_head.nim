@@ -59,4 +59,41 @@ block:
   large.close()
   assert large.parse("GET / HTTP/1.1\r\nHost: reset\r\n\r\n")
 
+block:
+  # Skipped blank lines still occupy the Reader's accumulated unread buffer.
+  var head = default(Head)
+  var input = ""
+  let limit = int(maxHeadBytes())
+  while input.len < limit:
+    # Fragment both CR/LF pairs and the preamble itself across scans.
+    input.add(if input.len mod 2 == 0: '\r' else: '\n')
+    let expected = if input.len == limit: HeadTooLarge else: HeadPending
+    assert head.findHeadEnd(toOpenArray(input, 0, input.len-1)) == expected
+  input.add("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+  assert head.findHeadEnd(toOpenArray(input, 0, input.len-1)) == HeadTooLarge
+  assert head.methodOf == "" and head.headerCount("host") == 0
+  assert not head.parse("GET / HTTP/1.1\r\nHost: fresh\r\n\r\n")
+  head.close()
+  assert head.parse("GET / HTTP/1.1\r\nHost: reset\r\n\r\n")
+
+block:
+  # One oversized preamble cannot hide a valid head beyond the retained wire budget.
+  var head = default(Head)
+  let input = repeat("\r\n", int(maxHeadBytes())) & "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
+  assert head.findHeadEnd(toOpenArray(input, 0, input.len-1)) == HeadTooLarge
+  assert head.target == "" and not head.hasHeader("host")
+
+for exactLimit in [false, true]:
+  # Balsa still accepts bounded blank lines, even with a body larger than the head budget.
+  var head = default(Head)
+  let limit = int(maxHeadBytes())
+  let request = "POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Length: " & $(limit*2) & "\r\n\r\n"
+  let room = limit - request.len
+  let preamble = if exactLimit: repeat("\r\n", room div 2) & repeat('\n', room mod 2) else: "\r\n"
+  let wire = preamble & request
+  let input = wire & repeat('b', limit*2)
+  assert head.findHeadEnd(toOpenArray(input, 0, input.len-1)) == wire.len
+  assert head.target == "/mcp" and head.contentLength == uint64(limit*2)
+  assert input.substr(wire.len) == repeat('b', limit*2)
+
 echo "Balsa HTTP heads: fragmentation, ownership, framing and bounds passed"
