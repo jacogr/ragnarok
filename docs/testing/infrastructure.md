@@ -504,7 +504,10 @@ handoffs and receipt validation. Its profile remains distinct from Sieve by gues
 The PVM artifact includes the original raw Callgrind parts, annotations and source-bound report.
 
 Current synthetic and guest drivers also report copied native counters after each complete,
-checked invocation and outside its primary clocks. Each prepared owner has thirteen ordered
+checked invocation and outside its primary clocks. One public `PreparedInfo` checkpoint is captured
+immediately after the clocks stop, held until independent checks pass, and reused for cache,
+sample and final policy/compilation/owner records. A later auxiliary publication cannot change
+only one terminal record. Each prepared owner has thirteen ordered
 snapshots, declared before the clocks start so an entirely missing log refuses. Publication and
 work counters remain cumulative; executable bytes are current occupancy
 and may shrink on retirement. Parsers bind every log to its exact case and final owner receipt.

@@ -129,8 +129,11 @@ positive after current owned bytes return to zero.
 
 Synthetic and guest drivers declare their per-call counter logs with
 `PVM_NATIVE_OBSERVATIONS,1,<process>,<code-owners>,13` before invocation clocks.
-After each full result passes its independent checks, `PVM_NATIVE_SAMPLE` records
-the logical owner, sample index and copied cumulative fragment/call/operation,
+Immediately after clocks stop, one copied `PreparedInfo` checkpoint is captured.
+After all independent checks pass, that same copy supplies cache and `PVM_NATIVE_SAMPLE`
+records and, for the last call, every policy/compilation/owner receipt. The reporters
+cannot query the owner again and mix in a later asynchronous auxiliary publication.
+`PVM_NATIVE_SAMPLE` records the logical owner, sample index and cumulative fragment/call/operation,
 current-code-byte, cumulative branch/header counters. All thirteen ordered records
 are required for every declared owner. Counter regressions, foreign ownership,
 interpreted native activity and contradictions with final aggregate receipts refuse.

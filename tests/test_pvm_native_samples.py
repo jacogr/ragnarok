@@ -75,6 +75,18 @@ class NativeInvocationTests(unittest.TestCase):
             with self.subTest(role=role), self.assertRaises(ValueError):
                 parse_synthetic(full_cohort(role)+native_wire(), role, require_full=True)
 
+    def test_later_auxiliary_publication_cannot_be_mixed_into_terminal_records(self):
+        """Keep rejecting mixed checkpoints even when only publication/occupancy advanced, without guest work."""
+        original = full_cohort('jit')+native_wire()
+        self.assertEqual(len(parse_synthetic(original, 'jit', require_full=True)), 11)
+        # This models the legal asynchronous observation from review #2304; producers must freeze one copy.
+        late = original.replace('SYNTHETIC_NATIVE,1,0,2,24,168,512,101',
+                                'SYNTHETIC_NATIVE,1,0,3,24,168,768,101').replace(
+            'SYNTHETIC_POLICY,1,0,jit,1,1,1,jit,2,24,168',
+            'SYNTHETIC_POLICY,1,0,jit,1,1,1,jit,3,24,168')
+        with self.assertRaisesRegex(ValueError, 'disagree with final owner'):
+            parse_synthetic(late, 'jit', require_full=True)
+
     def test_structured_samples_keep_integer_and_monotonic_contracts(self):
         """Untrusted JSON gets the same complete ordering, range and policy checks as the wire."""
         parsed = parse_synthetic(full_cohort('jit')+native_wire(), 'jit', require_full=True)
