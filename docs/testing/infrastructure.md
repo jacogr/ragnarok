@@ -507,6 +507,8 @@ native work, observed publications and previous/current owner occupancy for cold
 and every reused sample three through twelve. Only excluded warmup samples one/two may differ;
 both complete histories and those differences remain in the report. Matching process-wide totals
 alone cannot qualify shifted work between measured calls. Phase-specific actual engines follow
+independently validated logs: work needs a call, and header/branch deltas cannot exceed their
+respective branch/call deltas. Async publication/occupancy remains independent. Actual engines follow
 the native-operation deltas, so a JIT-policy cold call can honestly remain interpreted. These
 are counter/occupancy observations, not additional clocks or exact executor-entry timestamps.
 

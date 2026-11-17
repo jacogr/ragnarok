@@ -145,6 +145,9 @@ Current guest instruction attribution v2 requires these original per-call observ
 the canonical and profiled process. Native call/operation/branch/header deltas, cumulative and
 newly observed publication counts, and previous/current checkpoint occupancy must match for
 sample0 and every sample3–12. Changed native work cannot hide behind equal process totals.
+Each log independently requires operation increases to have a call increase, with header-call
+delta at most branch-call delta at most call delta. Publication/occupancy may change independently;
+a successful native read entry may record no work. Matching malformed histories cannot qualify.
 Only the excluded warmup samples1/2 may differ. Both complete histories and those differences
 are retained; no call is omitted or replaced, and all thirteen independent full-state checks
 remain mandatory. Phase-specific actual engines follow native-operation deltas. Publication

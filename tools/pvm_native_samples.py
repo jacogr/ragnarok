@@ -26,6 +26,12 @@ def validate_native_sample_log(observation, role):
             raise ValueError('Malformed or unordered native invocation observation')
         if any(row[key] < previous[key] for key in CUMULATIVE_FIELDS):
             raise ValueError('Native invocation counter moved backwards')
+        delta = {key: row[key]-previous[key] for key in CUMULATIVE_FIELDS}
+        # Accepted entry records one call, at most one branch call and at most one header call.
+        # Read entries can do no work; async publication/retirement does not execute guest operations.
+        if ((delta['operations'] and not delta['calls'])
+                or not delta['headers'] <= delta['branches'] <= delta['calls']):
+            raise ValueError('Impossible native invocation call/control activity')
         if role == 'interpreted' and any(row[key] for key in NATIVE_SAMPLE_FIELDS):
             raise ValueError('Interpreted invocation contains native activity')
         previous = row

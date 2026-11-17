@@ -191,6 +191,22 @@ class CurrentGuestProfile(unittest.TestCase):
             self.assertEqual(row['native_comparison']['warmup_differences'], [])
             self.assertEqual(row['actual_by_phase'], dict(cold='interpreted', reused=row['role']))
 
+    def test_matching_impossible_final_call_refuses_profile(self):
+        """Valid final totals and matching logs cannot certify four operations executed by zero entries."""
+        row = next(row for row in self.value['runs'] if
+                   (row['case_id'], row['role'], row['order']) == ('sieve-100000', 'jit', 0))
+        samples = row['parsed']['diagnostics']['scope_observations']['native_sample']['guest-process']['samples']
+        for key in ('calls', 'branches', 'headers'):
+            samples[11][key] = samples[12][key]
+        self.output_change = lambda text: text.replace(
+            'PVM_NATIVE_SAMPLE,1,guest-process,11,1,11,38,650,11,11',
+            'PVM_NATIVE_SAMPLE,1,guest-process,11,1,12,38,650,12,12')
+        with self.assertRaisesRegex(ValueError, 'Impossible native'):
+            self.run_profile()
+        result = json.loads((self.folder/'results.json').read_text())
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['profiles'], [])
+
     def test_pinky_requires_its_family_all_calls_and_native_working_set(self):
         """Neither a Sieve receipt, missing frame call nor changed native image can pass as Pinky."""
         diagnostics = dict(family='unknown execution output',

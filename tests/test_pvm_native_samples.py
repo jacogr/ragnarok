@@ -28,6 +28,25 @@ def native_wire(role='jit'):
 class NativeInvocationTests(unittest.TestCase):
     """Observe real parser bindings and malformed observations without a compiler or candidate VM."""
 
+    def test_identical_impossible_histories_cannot_qualify_each_other(self):
+        """Matching logs and sound final totals cannot hide work or controls without an accepted entry."""
+        for key in ('operations', 'branches', 'headers'):
+            bad = activity_history()
+            # Preserve every terminal count while assigning the last operation/control to no call.
+            bad['samples'][11]['calls'] = bad['samples'][12]['calls']
+            bad['samples'][11]['branches'] = bad['samples'][12]['branches']
+            bad['samples'][11]['headers'] = bad['samples'][12]['headers']
+            if key != 'operations':
+                bad['samples'][11]['operations'] = bad['samples'][12]['operations']
+                bad['samples'][11][key] -= 1
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'Impossible native'):
+                match_measured_native_invocations(bad, deepcopy(bad), 'jit')
+        # Publication and occupancy may progress without a call; a successful read may execute no work.
+        legal = activity_history()
+        legal['samples'][0].update(fragments=1, code_bytes=64)
+        legal['samples'][1]['operations'] = 0
+        validate_native_sample_log(legal, 'jit')
+
     def test_full_owner_logs_keep_clocks_and_actual_admission(self):
         """Every case gets only its own thirteen snapshots; existing primary clocks remain unchanged."""
         for role in ('interpreted', 'jit'):
