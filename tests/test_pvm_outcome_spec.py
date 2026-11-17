@@ -42,7 +42,7 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
         self.assertEqual(adoption['source_sha256'],
                          'e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd')
         self.assertEqual(adoption['base_graypaper_commit'], '07f041dabd073f9018b418e9ee72e79dd2185401')
-        self.assertEqual(pins['graypaper']['release_status'], 'unreleased')
+        self.assertEqual(pins['graypaper']['release_status'], 'released')
         self.assertEqual(adoption['vectors_commit'], pins['vectors']['base_release_commit'])
         self.assertIn('regular X', adoption['scope'])
 

@@ -80,7 +80,8 @@ for sample in 0..<samples:
     for at in 0..<4096: assert image.bytes[at] == byte(expected[120+page*4096+at])
   let elapsed = afterExecution-before
   assert frame.reason == oracle.StepError.None and frame.exit == oracle.StepExit.Halt
-  assert uint64(frame.info.pc) == 0 and frame.info.blockCharged and uint64(frame.info.gasDeficit) == 0
+  assert uint64(frame.info.pc) == 0 and not frame.info.blockCharged and uint64(
+      frame.info.gasDeficit) == 0
   assert uint64(frame.info.gas) == word(expected, 8, 8)
   for i in 0..<13: assert uint64(frame.info.registers[i]) == word(expected, 16+i*8, 8)
   checkFlatReference(frame, expected)

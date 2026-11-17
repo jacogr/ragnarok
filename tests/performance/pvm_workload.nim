@@ -277,7 +277,7 @@ for row in 0..<11:
       if modern: echo "SYNTHETIC_PREPARE,1,", row, ",", preparationCpu, ",", preparationWall
     # Complete result validation happens after the clock stops; failed outcomes never emit a sample.
     assert uint64(final.gas) == 7 and uint64(final.pc) == 0 and
-        final.blockCharged
+        not final.blockCharged
     assert uint64(final.gasDeficit) == 0
     assert context.calls == (if kind == 2: 2 * iterations else: 0'u64)
     for i in 0..<13:

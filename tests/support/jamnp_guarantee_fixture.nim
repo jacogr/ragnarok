@@ -57,7 +57,7 @@ proc guaranteeLimits*(): WorkEligibilityLimits =
         disputeItems: ElementLimit(128)),
     policy: ReportPolicyConfig(pools: AuthorizationConfig(cores: CoreCount(2),
         maxHashes: ElementLimit(16), maxBytes: ByteLimit(4096)),
-      accountBytes: ByteLimit(ServiceMetadataBytes), reportGas: ReportGasLimit(10000000),
+      accountBytes: ByteLimit(ServiceMetadataBytes), reportGas: ReportGasLimit(47000000),
           refinementGas: RefinementGasLimit(1000000000)),
     pipeline: ReportPackageConfig(availability: AvailabilityConfig(guarantee: GuaranteeConfig(
         cores: CoreCount(2),
@@ -284,7 +284,7 @@ proc guaranteeBoundaries*(fixture: GuaranteeFixture, signer, otherSigner: WorkSi
   let bounded = fixture.qualify(limits)
   assert bounded.error == WorkEligibilityError.LimitExceeded
   limits = guaranteeLimits()
-  limits.policy.reportGas = ReportGasLimit(10000001)
+  limits.policy.reportGas = ReportGasLimit(47000001)
   let relaxed = fixture.qualify(limits)
   assert relaxed.error == WorkEligibilityError.InvalidPolicy
   let detached = qualifyWorkGuarantee(fixture.transcript, default(WorkSubmissionHeader),

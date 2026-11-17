@@ -687,12 +687,14 @@ for pattern in [0'u8, 17, 128, 255]:
           runFlat(frame, budget)
           let wanted = machineInfo(current).value
           assert frame.reason == reason and frame.exit == expectedExit, "reason/exit"
-          # Ordinary execution normalizes halt/panic PC to zero; stepOnce deliberately retains its terminal source site.
-          let wantedPc = if expectedExit in [StepExit.Halt, StepExit.Panic]: 0'u64 else: uint64(wanted.pc)
+          # GP0.8.1 recursive halt/panic resets PC and paid credit; Psi_1 retains instruction state.
+          let terminal = expectedExit in [StepExit.Halt, StepExit.Panic]
+          let wantedPc = if terminal: 0'u64 else: uint64(wanted.pc)
           assert uint64(frame.info.pc) == wantedPc, "PC"
           assert uint64(frame.info.gas) == uint64(wanted.gas), "gas"
           assert uint64(frame.info.gasDeficit) == uint64(wanted.gasDeficit), "deficit"
-          assert frame.info.blockCharged == wanted.blockCharged, "charged"
+          let paid = if terminal: false else: wanted.blockCharged
+          assert frame.info.blockCharged == paid, "charged"
           for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot], "register"
           checkFlatSource(frame, [])
           inc cases
@@ -1059,13 +1061,15 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   if exit == StepExit.Host:
     assert frame.hostCall == wantedHost
   if exit == StepExit.Fault: assert frame.faultPage == wantedFault
-  let pc = if exit in [StepExit.Halt, StepExit.Panic]: 0'u64
+  let terminal = exit in [StepExit.Halt, StepExit.Panic]
+  let pc = if terminal: 0'u64
     elif exit == StepExit.Host: uint64(wantedHostPc)
     else: uint64(wanted.pc)
   if uint64(frame.info.pc) != pc: echo "CONTROL_PC,", uint64(frame.info.pc), ",", pc
   assert uint64(frame.info.pc) == pc
   assert frame.info.gas == wanted.gas and frame.info.gasDeficit == wanted.gasDeficit
-  assert frame.info.blockCharged == wanted.blockCharged
+  let paid = if terminal: false else: wanted.blockCharged
+  assert frame.info.blockCharged == paid
   for slot in 0..<13:
     if frame.info.registers[slot] != wanted.registers[slot]:
       echo "CONTROL_REGISTER,", slot, ",", uint64(frame.info.registers[slot]), ",", uint64(
@@ -1591,7 +1595,7 @@ when defined(pvmArm64Jit):
         assert frame.exit == StepExit.Host and frame.info.pc == CodeAddress(18)
       else:
         assert frame.exit == StepExit.Panic
-      assert frame.info.blockCharged
+      assert frame.info.blockCharged == (frame.exit notin [StepExit.Halt, StepExit.Panic])
       echo "ARM_IMMEDIATE_FOLLOW,", mode, ",", frame.exit, ",",
           uint64(frame.info.pc), ",", frame.info.blockCharged
 

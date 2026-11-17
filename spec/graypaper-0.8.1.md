@@ -51,3 +51,19 @@ scheduling, configured authorizer gas, selector-zero bytes and terminal restarts
 The pin/source and fixture-provenance checks remain strict. Local qualification and
 published-head Smoke results are recorded in the upgrade PR; this does not claim a
 complete JAM implementation or a full Linux replay qualification.
+
+## Master CI consumer repair
+
+The first full master run exposed stale test expectations beyond the scoped unit
+qualification: performance single-step adapters, real/synthetic guest drivers,
+lazy admission and pricing ownership, the managed Tiny work-guarantee fixture and a historical-adoption
+release-status assertion. Performance adapters now normalize terminal paid credit
+when projecting Psi_1 traces into recursive expectations. Host/Fault/OOG and raw
+single-step credit checks remain distinct; complete CPU, gas, memory, output and
+intentional refusal checks remain strict. The managed guarantee policy uses the
+same 47M report allowance as its current Tiny Parameters. Production behavior and
+all source/dependency pins are unchanged by this test repair.
+
+The repair qualifies both ISA performance and backend jobs on its published head,
+plus the affected native units and Python tooling. Exact run links and observed
+results belong to the repair PR.

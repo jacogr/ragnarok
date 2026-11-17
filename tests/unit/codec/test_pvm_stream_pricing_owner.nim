@@ -20,10 +20,11 @@ proc newMemo(source: Program, cycles: uint64): GasMemo =
   created.value
 
 proc checkHalt(frame: FlatFrame, initial: MachineInfo, price: uint64) =
+  ## Recursive halt retires paid credit; reusable price facts must not grant another invocation free execution.
   assert frame.reason == StepError.None and frame.exit == StepExit.Halt
   assert uint64(frame.info.pc) == uint64(initial.pc)
   assert uint64(frame.info.gas) == uint64(initial.gas)-price
-  assert frame.info.blockCharged and frame.info.registers == initial.registers
+  assert not frame.info.blockCharged and frame.info.registers == initial.registers
 
 proc checkCycleRefusal(frame: FlatFrame, initial: MachineInfo) =
   assert frame.reason == StepError.GasCycleLimitExceeded and frame.exit == StepExit.Continued

@@ -244,7 +244,7 @@ for sample in 0..<samples:
   if sample == 0 and requestedPreparation == "1":
     echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", preparationCpuElapsed
     if performance: echo "API_PREPARE_WALL,prepared,", preparationWallElapsed
-  assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
+  assert uint64(cpu.pc) == 0 and not cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8), "doom terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16+i*8, 8)
   let finalMemory = memoryOf(done.value.machine).value
