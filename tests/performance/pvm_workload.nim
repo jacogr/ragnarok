@@ -71,7 +71,9 @@ if getEnv("RAGNAROK_PVM_BENCH_ASSERT_PROBE") == "1":
   assert false, "pvm synthetic native assertion control"
 
 let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
-if fullInvocation: fullInvocationHeader()
+if fullInvocation:
+  fullInvocationHeader()
+  nativeInvocationHeader("synthetic-process", 11)
 
 let requestedProtocol = getEnv("RAGNAROK_PVM_PERFORMANCE")
 assert requestedProtocol in ["", "0", "1"]
@@ -325,6 +327,7 @@ for row in 0..<11:
       # Emit genuine CPU and wall deltas only after all independent state/source checks pass.
       assert cpuElapsed > 0, "pvm synthetic execution CPU below clock resolution"
       echo "SYNTHETIC_SAMPLE,1,", row, ",", sample, ",", cpuElapsed, ",", elapsed
+      reportNativeInvocation(prepared, "synthetic-" & $row, sample)
     else:
       # Historical consumers retain their wall-only sample framing.
       echo "sample\t", row, "\t", sample, "\t", elapsed, "\t", prepareNs

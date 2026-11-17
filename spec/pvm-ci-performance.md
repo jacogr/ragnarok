@@ -127,6 +127,17 @@ shared pure-only images have zero guest-branch/header counts. Positive owned cod
 bytes require a collected image; cumulative collected/native-work counts may stay
 positive after current owned bytes return to zero.
 
+Synthetic and guest drivers declare their per-call counter logs with
+`PVM_NATIVE_OBSERVATIONS,1,<process>,<code-owners>,13` before invocation clocks.
+After each full result passes its independent checks, `PVM_NATIVE_SAMPLE` records
+the logical owner, sample index and copied cumulative fragment/call/operation,
+current-code-byte, cumulative branch/header counters. All thirteen ordered records
+are required for every declared owner. Counter regressions, foreign ownership,
+interpreted native activity and contradictions with final aggregate receipts refuse.
+Current code bytes may decrease on retirement. These are supplementary observations,
+never time components or readiness waits; old artifacts without this declaration
+remain readable. DOOM retains its existing aggregate diagnostic contract.
+
 
 Each process emits thirteen raw validated calls. Sample0 is the cold call;
 samples1–12 are resident. Reused statistics use exactly samples3–12, independently

@@ -95,7 +95,9 @@ proc check(machine: Machine, cpu: MachineInfo, indices: seq[PageIndex], access: 
 
 let guest = selectedGuest(getEnv("RAGNAROK_PVM_GUEST"))
 let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
-if fullInvocation: fullInvocationHeader()
+if fullInvocation:
+  fullInvocationHeader()
+  nativeInvocationHeader("guest-process")
 
 if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
   assert false, "pvm sieve native assertion control"
@@ -324,6 +326,9 @@ for sample in 0..<samples:
   assert not original.blockCharged
   for i in 0..<13: assert uint64(original.registers[i]) == uint64(
       info.registers[i])
+  if fullInvocation:
+    # Complete source/output oracles precede this untimed snapshot; no readiness wait is introduced.
+    reportNativeInvocation(prepared, "guest-process", sample)
 
 if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
