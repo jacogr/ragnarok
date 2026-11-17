@@ -21,6 +21,7 @@ from pvm_sieve_report import limits_for_guest
 from pvm_reference_lifetime import CODE_LIFETIME, validate_invocation_instance
 from pvm_invocation_scope import (DEMAND_STARTED, PRESTARTED, measurement_identity,
                                   validate_scope_observations)
+from pvm_native_samples import validate_native_sample_totals
 import pvm_performance_history_v1 as history_v1
 import pvm_performance_history_v2 as history_v2
 
@@ -314,6 +315,11 @@ def validate_report(report):
                     _integer(value, clock, 0, (1 << 63)-1)
 
         observed = validate_scope_observations(diagnostics.get('scope_observations'), key[1])
+        if 'native_sample' in observed:
+            # Rebind untrusted per-call counters to this cohort row, not an arbitrary embedded label.
+            owner = ('synthetic-'+str(NAMES.index(case['case_id'])) if case['family'] == 'synthetic'
+                     else 'doom-process' if case['family'] == 'doom' else 'guest-process')
+            validate_native_sample_totals(observed, parsed.get('native'), key[1], owner)
         if any(owner['creation'] != runtime_start for owner in observed.get('runtime_owner', {}).values()):
             raise ValueError('JIT runtime start disagrees with measurement cohort')
         if 'native_compilation_accounting_raw_ns' in diagnostics:

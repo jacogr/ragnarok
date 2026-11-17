@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Canonical full-call identity and strict opt-in framing; legacy clocks are never relabelled."""
 import re
+from pvm_native_samples import (NATIVE_SAMPLE_FIELDS, validate_native_sample_log,
+                                validate_native_sample_totals)
 
 BOUNDARY = 'full-invocation-v1'
 OUTPUT = 'consume-before-reuse-v1'
@@ -36,7 +38,8 @@ def scope_diagnostics(output, role):
     """Consume actual runtime/owner observations, retaining explicit unavailable subsidiary clocks."""
     calls, diagnostics = [], {}
     for line in output.splitlines():
-        if not line.startswith(('PVM_RUNTIME_', 'PVM_OWNER_WINDOW', 'PVM_NATIVE_COMPILATION')):
+        if not line.startswith(('PVM_RUNTIME_', 'PVM_OWNER_WINDOW', 'PVM_NATIVE_COMPILATION',
+                                'PVM_NATIVE_SAMPLE', 'PVM_NATIVE_OBSERVATIONS')):
             calls.append(line)
             continue
         fields = line.split(',')
@@ -45,13 +48,28 @@ def scope_diagnostics(output, role):
             raise ValueError('Malformed invocation lifecycle identity')
         label = fields[2]
         key = (kind, label)
-        if key in diagnostics:
+        if key in diagnostics and kind != 'PVM_NATIVE_SAMPLE':
             raise ValueError('Duplicate invocation lifecycle observation')
         def number(text):
             if re.fullmatch('0|[1-9][0-9]{0,18}', text) is None or int(text) >= 1 << 63:
                 raise ValueError('Invalid invocation lifecycle integer')
             return int(text)
-        if kind == 'PVM_RUNTIME_OWNER' and len(fields) == 6:
+        if kind == 'PVM_NATIVE_OBSERVATIONS' and len(fields) == 5:
+            # A current producer promises every owner log; losing all sample lines is still a refusal.
+            value = dict(code_owners=number(fields[3]), samples=number(fields[4]))
+            if not 1 <= value['code_owners'] <= 11 or value['samples'] != 13:
+                raise ValueError('Foreign native invocation declaration')
+        elif kind == 'PVM_NATIVE_SAMPLE' and len(fields) == 10:
+            # One complete owner log is interleaved with its already checked public-call receipts.
+            if role == 'reference':
+                raise ValueError('Interpreter reference cannot supply native invocation counters')
+            value = diagnostics.setdefault(key, dict(samples=[]))
+            numbers = [number(text) for text in fields[3:]]
+            if numbers[0] != len(value['samples']) or numbers[0] >= 13:
+                raise ValueError('Duplicate or unordered native invocation observation')
+            value['samples'].append(dict(zip(('sample', *NATIVE_SAMPLE_FIELDS), numbers)))
+            continue
+        elif kind == 'PVM_RUNTIME_OWNER' and len(fields) == 6:
             if (fields[3] != 'application-process' or fields[4] not in RUNTIME_START_POLICIES or
                     not 1 <= number(fields[5]) <= 11):
                 raise ValueError('Foreign runtime lifecycle ownership')
@@ -86,13 +104,29 @@ def scope_diagnostics(output, role):
     result = {}
     for (kind, label), value in diagnostics.items():
         result.setdefault(kind.removeprefix('PVM_').lower(), {})[label] = value
+    if 'native_sample' in result or 'native_observations' in result:
+        # Every observed owner has its own compilation receipt; no extra or omitted log is hidden.
+        group = result.get('native_sample', {})
+        if set(group) != set(result.get('native_compilation', {})):
+            raise ValueError('Native invocation and compilation owner sets differ')
+        owners = result.get('runtime_owner') or result.get('runtime_none') or {}
+        declarations = result.get('native_observations', {})
+        if set(declarations) != set(owners):
+            raise ValueError('Missing or foreign native invocation declaration')
+        owner = next(iter(owners.values()))
+        if (len(group) != owner['code_owners'] or
+                next(iter(declarations.values())) != dict(code_owners=owner['code_owners'], samples=13)):
+            raise ValueError('Native invocation owner count disagrees with runtime')
+        for observation in group.values():
+            validate_native_sample_log(observation, role)
     return '\n'.join(calls)+'\n', result
 
 
 
 def validate_scope_observations(value, role):
     """Revalidate structured lifecycle metadata independently of its untrusted artifact envelope."""
-    kinds = {'runtime_owner', 'runtime_none', 'runtime_close', 'owner_window', 'native_compilation'}
+    kinds = {'runtime_owner', 'runtime_none', 'runtime_close', 'owner_window', 'native_compilation',
+             'native_sample', 'native_observations'}
     if not isinstance(value, dict) or set(value)-kinds or not value.get('owner_window'):
         raise ValueError('Missing invocation owner diagnostics')
     def integer(number):
@@ -104,7 +138,16 @@ def validate_scope_observations(value, role):
         for label, observation in rows.items():
             if not isinstance(label, str) or re.fullmatch('[a-z0-9-]{1,64}', label) is None or not isinstance(observation, dict):
                 raise ValueError('Invalid lifecycle observation identity')
-            if kind == 'runtime_owner':
+            if kind == 'native_observations':
+                # The declaration is owned by the actual application runtime, even after case selection.
+                if (set(observation) != {'code_owners', 'samples'} or
+                        type(observation['code_owners']) is not int or not 1 <= observation['code_owners'] <= 11 or
+                        type(observation['samples']) is not int or observation['samples'] != 13):
+                    raise ValueError('Foreign native invocation declaration')
+            elif kind == 'native_sample':
+                # Structured artifacts receive the same independent checks as the original wire.
+                validate_native_sample_log(observation, role)
+            elif kind == 'runtime_owner':
                 if (set(observation) != {'ownership', 'creation', 'code_owners'} or
                         observation['ownership'] != 'application-process' or
                         observation['creation'] not in RUNTIME_START_POLICIES):
@@ -145,6 +188,16 @@ def validate_scope_observations(value, role):
           not set(value['runtime_owner']) <= set(value['owner_window']) or
           'runtime_none' in value or not value.get('native_compilation')):
         raise ValueError('Incomplete JIT runtime lifecycle or compilation availability')
+    if 'native_sample' in value and set(value['native_sample']) != set(value.get('native_compilation', {})):
+        raise ValueError('Native invocation and compilation owner sets differ')
+    if 'native_sample' in value or 'native_observations' in value:
+        owners = value.get('runtime_owner') or value.get('runtime_none') or {}
+        declarations = value.get('native_observations', {})
+        if not value.get('native_sample') or set(declarations) != set(owners):
+            raise ValueError('Incomplete native invocation declaration or logs')
+        for label, declaration in declarations.items():
+            if declaration['code_owners'] != owners[label]['code_owners']:
+                raise ValueError('Native invocation declaration disagrees with runtime')
     return value
 
 
@@ -155,6 +208,11 @@ def full_parsed(parsed, observed=None, label=None):
                    if key not in ('samples', 'reference_instance', 'reference')}
     if observed is not None:
         observed = {kind: dict(rows) for kind, rows in observed.items()}
+        if 'native_sample' in observed:
+            # Synthetic processes contain independent owners; select only the current case's log.
+            if label not in observed['native_sample']:
+                raise ValueError('Missing native invocation owner')
+            observed['native_sample'] = {label: observed['native_sample'][label]}
         if label in observed.get('owner_window', {}):
             observed['owner_window'] = {label: observed['owner_window'][label]}
         if parsed.get('native') is not None:
@@ -167,6 +225,8 @@ def full_parsed(parsed, observed=None, label=None):
                 raise ValueError('Contradictory native compilation accounting')
         diagnostics['scope_observations'] = validate_scope_observations(
             observed, 'reference' if parsed.get('native') is None else parsed['policy']['requested'])
+        validate_native_sample_totals(observed, parsed.get('native'),
+            'reference' if parsed.get('native') is None else parsed['policy']['requested'], label)
     native = parsed.get('native')
     if native is not None and 'compilation_ns' in native:
         diagnostics['native_compilation_accounting_raw_ns'] = native.pop('compilation_ns')

@@ -95,7 +95,9 @@ proc check(machine: Machine, cpu: MachineInfo, indices: seq[PageIndex], access: 
 
 let guest = selectedGuest(getEnv("RAGNAROK_PVM_GUEST"))
 let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
-if fullInvocation: fullInvocationHeader()
+if fullInvocation:
+  fullInvocationHeader()
+  nativeInvocationHeader("guest-process")
 
 if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
   assert false, "pvm sieve native assertion control"
@@ -166,6 +168,8 @@ for page in 0..<pageCount:
 let ownerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var invocationRuntime = if fullInvocation and requestedBackend == "jit":
     startInvocationRuntime() else: default(InvocationRuntime)
+# Initialize diagnostic storage before the cold clock; one copy survives through all final records.
+var terminalNative = default(reference.PreparedInfo)
 let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var owner = default(Program)
 var memory = default(Memory)
@@ -291,6 +295,9 @@ for sample in 0..<samples:
   let finalCpu = machineInfo(done.value.machine).value
   let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
   let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
+  if preparedMode:
+    # A later public query could observe a newly completed auxiliary without another guest call.
+    terminalNative = reference.preparedInfo(prepared).value
   if sample == 0:
     if artifactAdmission:
       # The expanded fixture remains an independent oracle, checked after the complete cold call.
@@ -312,7 +319,7 @@ for sample in 0..<samples:
   echo "SIEVE,", engine, ",", limit, ",", sample, ",", elapsed, ",", cpuElapsed
   if preparedMode:
     # Cache occupancy and preparation progress remain explicit for cold and reused executions.
-    let observed = reference.preparedInfo(prepared).value
+    let observed = terminalNative
     assert observed.streamNodes > 0
     assert observed.streamNodes <= uint64(observed.limits.resources.nodes)
     echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",",
@@ -324,6 +331,9 @@ for sample in 0..<samples:
   assert not original.blockCharged
   for i in 0..<13: assert uint64(original.registers[i]) == uint64(
       info.registers[i])
+  if fullInvocation:
+    # Complete oracles authorize emission of the already captured copy; no second query or wait.
+    reportNativeInvocation(terminalNative, "guest-process", sample)
 
 if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
@@ -333,7 +343,7 @@ when declared(reference.DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode
-    let policy = reference.preparedInfo(prepared).value
+    let policy = terminalNative
     assert policy.backend == selectedBackend
     if fullInvocation: reportNativeCompilation("guest-process",
         policy.nativeCompilationMeasured, policy.nativeCompilationNs)
@@ -356,7 +366,7 @@ when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
   assert preparedMode
   if fullInvocation:
-    reportInvocationOwner(prepared, getEnv("RAGNAROK_PVM_GUEST"))
+    reportInvocationOwner(terminalNative, getEnv("RAGNAROK_PVM_GUEST"))
   else:
     let native = reference.preparedArmStatistics(prepared).value
     echo "ARM_OWNER,", getEnv("RAGNAROK_PVM_GUEST"), ",", native[0], ",", native[

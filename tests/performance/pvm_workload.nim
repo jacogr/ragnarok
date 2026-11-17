@@ -71,7 +71,9 @@ if getEnv("RAGNAROK_PVM_BENCH_ASSERT_PROBE") == "1":
   assert false, "pvm synthetic native assertion control"
 
 let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
-if fullInvocation: fullInvocationHeader()
+if fullInvocation:
+  fullInvocationHeader()
+  nativeInvocationHeader("synthetic-process", 11)
 
 let requestedProtocol = getEnv("RAGNAROK_PVM_PERFORMANCE")
 assert requestedProtocol in ["", "0", "1"]
@@ -143,6 +145,8 @@ for row in 0..<11:
       let offset = if kind == 4: (page div 2)*4 + page mod 2 else: page
       originalLayout.add(PageDescription(index: PageIndex(uint32(16 + offset)),
           access: PageAccess.ReadWrite))
+  # One copied checkpoint binds all later terminal records without a second asynchronous query.
+  var terminalNative = default(PreparedInfo)
   let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
   let preparation = getMonoTime().ticks
   var wire: seq[byte] = @[]
@@ -265,6 +269,9 @@ for row in 0..<11:
     let final = machineInfo(evaluated.value.machine).value
     let elapsed = getMonoTime().ticks - start
     let cpuElapsed = if modern: cpuNanoseconds()-cpuStart else: 0'i64
+    if modern:
+      # Capture before independent oracles give the compiler more time; emit only after they pass.
+      terminalNative = preparedInfo(prepared).value
     if sample == 0:
       # Independent pricing/source oracles and receipt printing never enter the full clock.
       assert uint64(blockGas(program, CodeAddress(0), GasCycleLimit(
@@ -325,6 +332,7 @@ for row in 0..<11:
       # Emit genuine CPU and wall deltas only after all independent state/source checks pass.
       assert cpuElapsed > 0, "pvm synthetic execution CPU below clock resolution"
       echo "SYNTHETIC_SAMPLE,1,", row, ",", sample, ",", cpuElapsed, ",", elapsed
+      reportNativeInvocation(terminalNative, "synthetic-" & $row, sample)
     else:
       # Historical consumers retain their wall-only sample framing.
       echo "sample\t", row, "\t", sample, "\t", elapsed, "\t", prepareNs
@@ -333,7 +341,7 @@ for row in 0..<11:
     echo "gas-memo-end\t", row, "\t", gasMemoInfo(memo).value.pricedBlocks
   if modern:
     # Idle public diagnostics report actual completed work, including honest interpreted fallback.
-    let policy = preparedInfo(prepared).value
+    let policy = terminalNative
     assert policy.backend == selectedBackend
     let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
     reportNativeCompilation("synthetic-" & $row,

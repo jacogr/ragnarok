@@ -78,6 +78,23 @@ proc reportNativeCompilation*(label: string, measured: bool, rawNs: uint64) =
   ## Availability is explicit; zero accounting never silently becomes a measured compiler clock.
   echo "PVM_NATIVE_COMPILATION,1,", label, ",", int(measured), ",", rawNs
 
+proc nativeInvocationHeader*(label: string, codeOwners: int = 1) =
+  ## Declare complete per-owner logs before invocation clocks; absent records cannot look historical.
+  assert codeOwners >= 1 and codeOwners <= 11
+  echo "PVM_NATIVE_OBSERVATIONS,1,", label, ",", codeOwners, ",13"
+
+proc reportNativeInvocation*(info: PreparedInfo, label: string, sample: int) =
+  ## Serialize the caller's copied post-clock checkpoint only after all result checks passed.
+  ## No owner query here can observe a later auxiliary publication between related records.
+  assert sample >= 0 and sample < 13
+  echo "PVM_NATIVE_SAMPLE,1,", label, ",", sample, ",", info.nativeFragments, ",",
+    info.nativeCalls, ",", info.nativeOperations, ",", info.nativeCodeBytes, ",",
+    info.nativeBranchCalls, ",", info.nativeHeaderCalls
+
+proc reportInvocationOwner*(info: PreparedInfo, label: string) =
+  ## Final records share the exact last per-call copy, even if the compiler publishes afterward.
+  echo invocationOwnerRecord(info, label)
+
 proc reportInvocationOwner*(prepared: PreparedProgram, label: string) =
-  ## Full invocation output observes the owner after guest execution and timing.
-  echo invocationOwnerRecord(preparedInfo(prepared).value, label)
+  ## Existing aggregate-only consumers retain their one public owner observation outside clocks.
+  reportInvocationOwner(preparedInfo(prepared).value, label)
