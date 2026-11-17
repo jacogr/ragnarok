@@ -12,6 +12,9 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   import ../../src/pvm/internal/native_pipeline
 
 when NativeReadCycleEnabled:
+  when defined(pvmSharedAsyncWitness):
+    from ../../src/pvm/internal/handler_stream import witnessFlatMixedSegmentBoundary
+
   when defined(pvmReadCycleCreditWitness):
     proc hasCreditReservation(image: openArray[byte]): bool =
       ## Match the R9 minimum of the gas and quota credits in the emitted entry setup.
@@ -1141,6 +1144,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert nativeOwnerStatistics(renderer) == parked
     assert returnNativeMixedLoop(renderer)
     assert not returnNativeMixedLoop(renderer), "repeated return has no authority"
+    witnessFlatMixedSegmentBoundary(renderer, candidates(queuedProof))
     assert finishNativeInvocation(renderer, NativeInvocationFloor)
     invalidateNativeStream(queuedPriority)
     invalidateNativeStream(renderer)
