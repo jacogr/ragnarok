@@ -1843,10 +1843,9 @@ proc yieldIdleNativeImage*(session: NativeSession) =
     data.replacementArmed = false
     data.laterRead = default(NativeReadCandidate)
   when NativeReadCycleEnabled:
-    # The auxiliary owner belonged to the retired primary ticket.
+    # The auxiliary image belonged to the retired ticket. The same source epoch
+    # still owns its once-only fusion window and offer history.
     data.mixedOffered = false
-    data.fusionOffered = false
-    data.fusionSampled = false
 
 when NativeCheckedReadEnabled:
   proc discardNativeReplacement*(session: NativeSession) =

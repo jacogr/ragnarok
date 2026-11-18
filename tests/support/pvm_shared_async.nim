@@ -1128,7 +1128,7 @@ when defined(pvmSharedAsyncWitness):
       when NativeReadCycleEnabled:
         # Prove the real auxiliary admission can install and execute with one other resident.
         assert runtime.runtimeInfo.registered == 1
-        checkPublicScalarFusion(runtime)
+        checkPublicScalarFusion(runtime, yieldAfter = true)
       else:
         # Primary-only builds reclaim exactly one credit for a fifth source.
         let first = execute(sources[4], ExecutionStepLimit(6145), codes[4])
