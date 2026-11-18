@@ -127,7 +127,7 @@ proc checkLongFusionReceipts() =
 
 proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
     conditional: bool = false, windows: bool = false, hostPrelude: int = 0,
-    scalarOnly: bool = false): Program =
+    scalarOnly: bool = false, pressureEntry = false): Program =
   ## The two loop blocks are independently priced. One has a load after a store,
   ## and the other has an ordinary static branch back to the first.
   var code: seq[byte] = @[]
@@ -208,6 +208,9 @@ proc fusionGuest(late: bool = false, wide: bool = false, mode: byte = 0,
     # The hot source graph can publish at this real host boundary before final halt.
     emit([10'u8, 43])
   emit([50'u8, 3]) # Dynamic halt sentinel in R3.
+  if pressureEntry:
+    # An alternate entry emits a new node before the otherwise identical hot path.
+    jump([40'u8], 0)
   var wire = if mode == 0: @[0'u8, 0] else: @[1'u8, 1]
   let size = encode(JamNatural(uint64(code.len)))
   for index in 0..<size.len: wire.add(size.bytes[index])
@@ -767,6 +770,65 @@ when NativeReadCycleEnabled:
         waitNativeCompiler(runtime)
       assert preparedNativeState(jit.value).value == NativeState.Ready
       assert runtime.runtimeInfo.submitted == before+1
+
+  proc checkFusionRetentionPressure*() =
+    ## Grow a warm stream while its primary is ready and the exact hot source can offer fusion.
+    let program = fusionGuest(scalarOnly = true, pressureEntry = true)
+    let policy = defaultPreparedLimits()
+    let checked = newPreparedProgram(program, policy, PvmBackend.Interpreted)
+    assert checked.error == PreparationError.None
+    let memory = captureMemory([PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)],
+      PageLimit(2)).value
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000000))
+    info.registers[0] = RegisterValue(165)
+    info.registers[3] = RegisterValue(0xffff0000'u64)
+    info.registers[5] = RegisterValue(65536)
+    info.registers[12] = RegisterValue(200000)
+    let initial = captureMachine(program, memory, info).value
+    info.pc = CodeAddress(codeLength(program).value-5)
+    let growth = captureMachine(program, memory, info).value
+    let limit = ExecutionStepLimit(2000000)
+    let expected = execute(initial, limit, checked.value)
+    assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+    let before = preparedInfo(checked.value).value.retainedCodePayloadBytes
+    let expanded = execute(growth, limit, checked.value)
+    assert expanded.error == StepError.None and expanded.value.exit == StepExit.Halt
+    let after = preparedInfo(checked.value).value.retainedCodePayloadBytes
+    assert after > before
+    for retainGrowth in [false, true]:
+      # Same source and two exact measured sizes isolate the last handback decision.
+      let runtime = newNativeRuntime()
+      try:
+        assert start(runtime)
+      except:
+        assert false, "retention-pressure runtime failed to start"
+      block:
+        let codeBudget = newRetainedMemoryBudget(RetainedMemoryByteLimit(
+          if retainGrowth: after else: before))
+        let cache = newPreparedProgramCache(runtime, codeBudget = codeBudget)
+        let jit = cachedPreparedProgram(cache, program, policy, PvmBackend.Jit)
+        assert jit.error == PreparationError.None
+        assertSameFusionResult(execute(initial, limit, jit.value), expected)
+        assert preparedInfo(jit.value).value.retainedCodePayloadBytes == before
+        assert runtime.runtimeInfo.submitted == 1
+        waitNativeCompiler(runtime)
+        assertSameFusionResult(execute(growth, limit, jit.value), expanded)
+        if retainGrowth:
+          # The accepted handback queues the real graph, which must execute on the next call.
+          assert runtime.runtimeInfo.submitted == 2
+          waitNativeCompiler(runtime)
+          let admitted = preparedInfo(jit.value).value
+          assert admitted.retainedCodePayloadBytes == after
+          assertSameFusionResult(execute(growth, limit, jit.value), expanded)
+          let completed = preparedInfo(jit.value).value
+          assert completed.nativeFragments == 2
+          assert completed.nativeOperations-admitted.nativeOperations >= 1000000
+        else:
+          # A refused handback never acquires an auxiliary credit or loses the completed result.
+          assert runtime.runtimeInfo.submitted == 1
+          assert preparedInfo(jit.value).value.streamNodes == 0
+          assert runtime.runtimeInfo.registered == 0
+      assert close(runtime)
 
   proc checkScalarFusionCycles() =
     ## Compare both native lowerers against independent visit/debit equations, including rotation,

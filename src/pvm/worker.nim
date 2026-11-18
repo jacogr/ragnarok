@@ -8,7 +8,9 @@
 ## selects checked execution even for requested Jit. Native image credits do not account for
 ## retained decoded facts or memory: convenience execution uses defaultPreparedLimits with
 ## a 64 MiB idle baseline/private-payload ceiling per prepared owner. The embedding may supply
-## a narrower shared idle budget across workers within its exclusive scheduling turn.
+## a shared scratch budget and a separate code budget within its exclusive scheduling turn.
+## The independently replaceable decode and preparation caches each account for their own
+## source edge. A full code budget leaves the current call able to run without keeping it.
 
 import ./[program, machine, initialize, step]
 import ./gas/gas
@@ -21,10 +23,12 @@ type
     data: nil WorkerData
 
 proc newExecutionWorker*(nativeRuntime: NativeRuntime = default(NativeRuntime),
-    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): ExecutionWorker =
-  ## Allocate one empty bounded worker slot, optionally sharing its idle allowance with other slots.
+    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget),
+    codeBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): ExecutionWorker =
+  ## Allocate one worker, optionally sharing separate code and scratch limits with other workers.
   ## Retiring the last owner releases code, executable storage and its idle charge.
-  ExecutionWorker(data: WorkerData(prepared: newPreparedProgramCache(nativeRuntime, memoryBudget)))
+  ExecutionWorker(data: WorkerData(initialization: newInitializationCode(codeBudget),
+    prepared: newPreparedProgramCache(nativeRuntime, memoryBudget, codeBudget)))
 
 func initialized*(worker: ExecutionWorker): bool =
   ## A default worker selects ordinary one-shot behavior; explicit creation enables retained code lifetimes.

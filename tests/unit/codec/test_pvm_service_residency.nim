@@ -154,9 +154,12 @@ proc witness() =
       GasCycleLimit(1000), PvmBackend.Jit, lease)
     assert done.error == HostExecutionError.None and host.calls == 1
   assert context.residentMemoryPayloadBytes == 16384
+  let codeBytes = context.residentCodePayloadBytes
+  assert codeBytes > 32'u64 and codeBytes <= uint64(DefaultRetainedCodeBytes)
   let moved = move(context)
   assert moved.residentServices == 4 and context.residentServices == 0
   assert moved.residentMemoryPayloadBytes == 16384 and context.residentMemoryPayloadBytes == 0
+  assert moved.residentCodePayloadBytes == codeBytes and context.residentCodePayloadBytes == 0
   let fresh = capture(context, 88, 55)
   block:
     # The emptied context starts a new independent ledger on its next admission.
@@ -167,6 +170,7 @@ proc witness() =
       GasCycleLimit(1000), PvmBackend.Interpreted, lease)
     assert done.error == HostExecutionError.None and host.calls == 1
   assert context.residentMemoryPayloadBytes == 16384 and moved.residentMemoryPayloadBytes == 16384
+  assert context.residentCodePayloadBytes > 8 and moved.residentCodePayloadBytes == codeBytes
 
 witness()
 let before = getOccupiedMem()
