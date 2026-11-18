@@ -282,17 +282,25 @@ proc waitBatch*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Rea
   ## Copy at most64 ready events fairly; values belong only to this synchronous dispatch turn.
   collectReady(dispatcher, maximumMs, ready, min(ready.len, MaxReadyBatch))
 
-proc send*(endpoint: UdpEndpoint, data: pointer, length: int, target: NetworkEndpoint): int =
-  ## Send one complete borrowed datagram; -2 means retryable, -1 means failed/invalid input.
-  if not endpoint.opened or not target.valid or length < 0 or length > 2048: return -1
-  if target.address.ipv6 != endpoint.ipv6: return -1 # Families never change through a port-only alias.
+proc sendError*(endpoint: UdpEndpoint, data: pointer, length: int,
+    target: NetworkEndpoint): cint =
+  ## Send one complete borrowed datagram and return zero on success or the OS error.
+  ## The transport needs errno to distinguish a failed destination from a failed socket.
+  if not endpoint.opened: return EBADF
+  if not target.valid or length < 0 or length > 2048: return EINVAL
+  if target.address.ipv6 != endpoint.ipv6: return EAFNOSUPPORT
   var destination = socketAddress(target)
   let sent = sendTo(endpoint.descriptor, data, csize_t(length), 0, addr destination, addressSize(endpoint.ipv6))
-  if sent < 0:
-    # Preserve the existing retry policy for would-block and interrupted datagram sends.
-    return if osLastError().int in [EAGAIN.int, EWOULDBLOCK.int, EINTR.int]: -2 else: -1
-  if sent != length: return -1 # Partial datagrams cannot count as delivered packets.
-  sent
+  if sent < 0: return cint(osLastError().int)
+  if sent != length: return EIO # Partial datagrams cannot count as delivered packets.
+  0
+
+proc send*(endpoint: UdpEndpoint, data: pointer, length: int, target: NetworkEndpoint): int =
+  ## Return the complete length, -2 for a retryable condition, or -1 for any other error.
+  let error = endpoint.sendError(data, length, target)
+  if error == 0: return length
+  if error in [EAGAIN, EWOULDBLOCK, EINTR]: return -2
+  -1
 
 proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int =
   ## Legacy proof sends retain the original exact loopback target.
