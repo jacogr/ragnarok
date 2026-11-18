@@ -268,19 +268,10 @@ func fusionPathToken(state: NativeFusionContext, index: uint64): uint32 =
   if index >= state.visits or index >= uint64(NativeFusionVisitLimit): return 0
   uint32((state.path[int(index div 8)] shr (int(index and 7)*8)) and 255)
 
-func fusionPathWord(path: NativeFusionPath, visits: uint64, index: int): uint64 =
-  ## Ignore every byte after the returned prefix, including stale bytes in its last word.
-  ## The caller has checked the visit bound and iterates only the used words.
-  let tail = int(visits and 7)*8
-  let words = int((visits+7) div 8)
-  if index < 0 or index >= path.len or index >= words: return 0
-  let value = path[index]
-  if index == words-1 and tail != 0: value and ((1'u64 shl tail)-1) else: value
-
-func sameFusionPath(left, right: NativeFusionPath, visits: uint64): bool =
-  ## Full used-word equality authorizes a cache key; the hash alone grants no proof.
-  for index in 0..<int((visits+7) div 8):
-    if fusionPathWord(left, visits, index) != fusionPathWord(right, visits, index): return false
+func sameFusionPrefix(left, right: NativeFusionPath, last: int): bool =
+  ## The caller compares the sealed last word separately. Earlier words are entirely written.
+  for index in 0..<last:
+    if left[index] != right[index]: return false
   true
 
 func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32,
@@ -360,28 +351,31 @@ proc checkNativeFusionExit*(memo: var NativeFusionReceipts, blocks: openArray[Na
   if state.visits == 0 or state.visits > uint64(NativeFusionVisitLimit) or
       state.paid > 1 or state.gas > gas or state.remaining > quota:
     return nativeFusionExit(blocks, entry, next, gas, quota, state)
-  let head = fusionPathWord(state.path, state.visits, 0)
-  let short = state.visits <= 8
+  # The nonzero visit bound proves the occupied word index. Only that word can
+  # contain unwritten bytes, so hash it and compare it using the same single mask.
+  let lastVisit = state.visits-1
+  let lastWord = int(lastVisit shr 3)
+  let tail = state.path[lastWord] and (high(uint64) shr int((7-(lastVisit and 7))*8))
+  let head = if lastWord == 0: tail else: state.path[0]
   var hash = ((uint64(next) shl 25) xor state.visits xor head)*0x9e3779b97f4a7c15'u64
-  if not short:
-    # The ordinary one-word path keeps one scalar hash; longer paths include every later word.
-    for index in 1..<int((state.visits+7) div 8):
-      hash = (hash xor fusionPathWord(state.path, state.visits, index))*0x9e3779b97f4a7c15'u64
+  if lastWord != 0:
+    # A longer path hashes every completely written middle word and its masked tail.
+    for index in 1..<lastWord:
+      hash = (hash xor state.path[index])*0x9e3779b97f4a7c15'u64
+    hash = (hash xor tail)*0x9e3779b97f4a7c15'u64
   let index = int(hash shr (64-NativeFusionReceiptBits))
   # Borrow the fixed cache slot; a value binding would copy the entire wider path on every hit.
   let candidate = addr memo[index]
   let paid = state.paid != 0
   if candidate.visits == state.visits and candidate.entry == entry and candidate.next == next and
       (candidate.receipt.paidHeader != 0) == paid and gas-state.gas == candidate.gas and
-      quota-state.remaining == uint64(candidate.receipt.attempted):
-    if short:
-      # A proved short key stores its canonical head, excluding unwritten tail bytes.
-      if candidate.path[0] == head: return candidate.receipt
-    elif sameFusionPath(candidate.path, state.path, state.visits):
-      return candidate.receipt
+      quota-state.remaining == uint64(candidate.receipt.attempted) and
+      candidate.path[lastWord] == tail and
+      (lastWord == 0 or sameFusionPrefix(candidate.path, state.path, lastWord)):
+    return candidate.receipt
   result = nativeFusionExit(blocks, entry, next, gas, quota, state)
   if result.valid:
     # The full verifier alone authorizes a new cache entry; copying fixed words happens only here.
     memo[index] = NativeFusionReceipt(path: state.path, visits: state.visits,
       gas: gas-state.gas, entry: entry, next: next, receipt: result)
-    if short: memo[index].path[0] = head
+    memo[index].path[lastWord] = tail
