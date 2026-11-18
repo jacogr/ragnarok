@@ -1486,6 +1486,16 @@ proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(NativeRunti
   PreparedProgramCache(data: PreparedCacheData(nativeRuntime: nativeRuntime,
       memoryBudget: memoryBudget, codeBudget: codeBudget))
 
+func initialized*(cache: PreparedProgramCache): bool =
+  ## An empty allocated slot can own a later preparation. A default cache is one-shot.
+  cache.data != nil
+
+when defined(pvmInnerPreparedReceipt):
+  func preparedCacheAttempts*(cache: PreparedProgramCache): uint64 =
+    ## Read actual construction attempts even when budget pressure leaves the slot empty.
+    let slot {.cursor.} = cache.data
+    if slot == nil: 0'u64 else: slot.preparations
+
 proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedCacheInfo] =
   ## Copy bounded occupancy/activity without exposing a cached handle or fabricating zero work from a busy owner.
   let slot = cache.data
