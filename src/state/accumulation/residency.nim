@@ -112,6 +112,17 @@ proc bindNativeRuntime*(context: var ServiceExecutionContext, runtime: NativeRun
   assert residentServices(context) == 0
   context.nativeRuntime = runtime
 
+proc yieldPackageNativeCapacity*(context: var ServiceExecutionContext) =
+  ## During an exclusive managed package turn, make room for both a primary and an auxiliary image.
+  ## Try the replacement cursor first. No operation waits for a compiler job or assumes physical
+  ## retirement succeeded. A shortfall leaves ordinary checked execution available.
+  if context.busy: return
+  for offset in 0..<context.slots.len:
+    if not idleNativeImagePressure(context.nativeRuntime, 2): return
+    let index = (context.next+offset) mod context.slots.len
+    if context.slots[index].ready:
+      yieldIdleNativeImage(context.slots[index].worker)
+
 proc acquireServiceExecution*(context: var ServiceExecutionContext, service: ServiceIndex,
     version: CodeHash, backend: PvmBackend): ServiceExecutionLease =
   ## Caller has already rechecked account/preimage/envelope/size classification on this invocation.

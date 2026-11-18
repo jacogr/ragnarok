@@ -28,13 +28,14 @@ from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
 from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
 import ../../state/[store, input_refinement, authorized_refinement]
+from ../../state/accumulation/residency import ServiceExecutionContext, yieldPackageNativeCapacity
 import ../../state/report/identity
 import ../../state/authorization/invocation
 import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
 import ../../codec/work/report as work_report
 import ../../chain/parameters
-from ../../pvm/step import NativeRuntime
+from ../../pvm/step import NativeRuntime, PvmBackend
 
 type
   WorkJobError* {.pure.} = enum ## Local capture refusals contain no source-bearing input capability.
@@ -156,8 +157,9 @@ type
     ## Closed capability is bound only to the actual implementation in this module.
   CancellableWorkRunner = proc(data: WorkJobData, control: AssuranceScanControl): WorkJobResult {.nimcall.}
     ## Only private closed factories select this runner; live cancellation control is supplied at execution and is never stored in a queued job.
-  RefinementWorkRunner = proc(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult {.nimcall.}
-    ## Receives the optional runtime only on the exclusive execution lease.
+  RefinementWorkRunner = proc(data: WorkJobData, nativeRuntime: NativeRuntime,
+      residency: nil ptr ServiceExecutionContext): WorkJobResult {.nimcall.}
+    ## Receives optional native capacity and residency only on the exclusive execution lease.
   WorkJobData = ref object ## Detached bounded bytes accompany immutable selected-state owners; no stream pointer crosses the CPU boundary.
     run: nil WorkRunner
     cancellable: nil CancellableWorkRunner
@@ -632,10 +634,16 @@ proc authorize(data: WorkJobData): WorkJobResult =
         duty: duty, imports: imports, recovery: recovered)))
 
 proc refine(context: WorkContextData, inputs: VerifiedImportInputs,
-    nativeRuntime: NativeRuntime): WorkJobResult =
+    nativeRuntime: NativeRuntime, residency: nil ptr ServiceExecutionContext): WorkJobResult =
   ## Every path executes the same original source, core and immutable refinement policy after complete input binding.
   let source = context.source
   let described = context.grant.submissionInfo.value
+  if residency != nil and source.execution.refinement.refinement.invocation.backend ==
+      PvmBackend.Jit:
+    # Only an original, fully bound multi-item package can use images retained across item calls.
+    let shape = importInputsInfo(inputs)
+    if shape.error == ImportInputsError.None and shape.value.items > 1:
+      yieldPackageNativeCapacity(residency[])
   let executed = runInputRefinement(source.state, inputs, described.core, source.parameters,
       source.execution, nativeRuntime)
   if executed.error != InputRefinementError.None:
@@ -656,7 +664,8 @@ proc retryRecovery(data: WorkJobData): WorkJobResult =
     return WorkJobResult(status: WorkJobResultKind.RecoveryFailure, recoveryReason: completed)
   WorkJobResult(status: WorkJobResultKind.RecoveryUpdated, recovered: completed.value)
 
-proc completeRecovered(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult =
+proc completeRecovered(data: WorkJobData, nativeRuntime: NativeRuntime,
+    residency: nil ptr ServiceExecutionContext): WorkJobResult =
   ## The exact original grant owns both recovery and complete binding before real source-bound execution.
   let context = data.context.data
   if context == nil: return default(WorkJobResult)
@@ -665,9 +674,10 @@ proc completeRecovered(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJob
   if completed.error != WorkRecoveryError.None:
     return WorkJobResult(status: WorkJobResultKind.RecoveryCompletionFailure,
         recoveryCompletionReason: completed)
-  refine(context, completed.value, nativeRuntime)
+  refine(context, completed.value, nativeRuntime, residency)
 
-proc complete(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult =
+proc complete(data: WorkJobData, nativeRuntime: NativeRuntime,
+    residency: nil ptr ServiceExecutionContext): WorkJobResult =
   ## Validate only the original grant's body, then execute from the same immutable source and fixed original policy.
   let context = data.context.data
   if context == nil: return default(WorkJobResult)
@@ -681,7 +691,7 @@ proc complete(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult =
     completePackageSubmission(context.grant, data.extrinsics, data.imports, data.lookup, source.limits)
   if inputs.error != WorkSubmissionError.None:
     return WorkJobResult(status: WorkJobResultKind.BodyFailure, bodyReason: inputs)
-  refine(context, inputs.value, nativeRuntime)
+  refine(context, inputs.value, nativeRuntime, residency)
 
 proc report(data: WorkJobData): WorkJobResult =
   ## Original refinement stays under the same graph lease through every bounded encoding/hash stage.
@@ -1498,14 +1508,16 @@ proc captureWorkPackage*(context: AuthorizedWorkContext, extrinsics: openArray[b
     extrinsics: copied(extrinsics), imports: rows, lookup: dictionary)))
 
 proc executeWorkSubmission*(job: WorkSubmissionJob, control: AssuranceScanControl = default(
-    AssuranceScanControl), nativeRuntime: NativeRuntime = default(NativeRuntime)): WorkJobResult =
+    AssuranceScanControl), nativeRuntime: NativeRuntime = default(NativeRuntime),
+    residency: nil ptr ServiceExecutionContext = nil): WorkJobResult =
   ## The worker invokes a private genuine capability outside native callbacks and retires all activation aliases before Done.
+  ## A residency borrow, when supplied, belongs to the matching compiler runtime and exclusive proof turn.
   let data = job.data
   if data == nil: return default(WorkJobResult)
   let cancellable = data.cancellable
   if cancellable != nil: return cancellable(data, control)
   let refinement = data.refinement
-  if refinement != nil: return refinement(data, nativeRuntime)
+  if refinement != nil: return refinement(data, nativeRuntime, residency)
   let run = data.run
   if run == nil: return default(WorkJobResult)
   run(data)

@@ -34,7 +34,7 @@ when defined(polkavmRuntime):
   import ./internal/polkavm
 import ./internal/[handler_stream, execution_types, native_pipeline, retained_memory_budget]
 export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo, NativeCompilerFailure
-export start, close, runtimeInfo
+export start, close, runtimeInfo, idleNativeImagePressure
 export RetainedMemoryBudget, RetainedMemoryByteLimit, newRetainedMemoryBudget, isBound,
   retainedMemoryPayloadBytes
 when defined(pvmSharedAsyncDiagnostic):
@@ -1462,6 +1462,15 @@ proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[Prepared
     return PreparationResult[PreparedCacheInfo](status: observed.error)
   PreparationResult[PreparedCacheInfo](status: PreparationError.None, completed: PreparedCacheInfo(
       preparations: slot.preparations, hits: slot.hits, prepared: observed.value))
+
+proc yieldIdleNativeImage*(cache: PreparedProgramCache) =
+  ## Return optional native capacity without retiring the prepared code or its idle scratch.
+  ## Callers must exclusively own the whole cache turn, including the runtime's ARC ingress.
+  let slot {.cursor.} = cache.data
+  if slot == nil: return
+  let prepared {.cursor.} = slot.owner.data
+  if prepared != nil and not prepared.busy:
+    yieldIdleNativeImage(prepared.native)
 
 func samePreparedLimits(a, b: PreparedLimits): bool =
   ## Every resource ceiling and the gas-analysis policy bind the cache key, not just its backend/source.

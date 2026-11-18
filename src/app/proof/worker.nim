@@ -12,6 +12,7 @@ import ./ticket_verification
 import ./ticket_production
 import ./work_submission
 from ../../pvm/step import NativeRuntime
+from ../../state/accumulation/residency import ServiceExecutionContext
 import ./assurance_storage
 import ./assurance_acquisition
 import ./assurance_signing
@@ -70,6 +71,7 @@ type
     productionJob: TicketProductionJob
     workJob: WorkSubmissionJob
     workRuntime: NativeRuntime # Slot-owned anchor. All ARC access is exclusive through collection.
+    workResidency: nil ptr ServiceExecutionContext # Stable Services borrow through exact collection or join.
     assuranceSigningJob: AssuranceSigningJob
     assuranceSigningOutcome: AssuranceSigningResult[SignedAssurance]
     acquisitionJob: AssuranceAcquisitionJob
@@ -96,6 +98,7 @@ proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
   `=wasMoved`(worker.productionJob)
   `=wasMoved`(worker.workJob)
   `=wasMoved`(worker.workRuntime)
+  worker.workResidency = nil
   `=wasMoved`(worker.workOutcome)
   `=wasMoved`(worker.assuranceSigningJob)
   `=wasMoved`(worker.assuranceSigningOutcome)
@@ -242,7 +245,7 @@ proc execute(worker: ptr StateProofWorker) =
   of ProofWorkerOperation.WorkSubmission:
     worker.workOutcome = executeWorkSubmission(worker.workJob,
       assuranceScanControl(stopAssuranceScan, cast[pointer](
-          worker)), worker.workRuntime) # Runtime and cancellation remain within the exclusive activation.
+          worker)), worker.workRuntime, worker.workResidency)
   of ProofWorkerOperation.TicketProduction:
     worker.ticketOutcome = executeTicketProduction(
         worker.productionJob) # Private signer/source aliases retire before Done.
@@ -544,9 +547,10 @@ proc submit*(worker: var StateProofWorker, request: var TicketProductionJob): Pr
       owner: worker.identity, generation: worker.next))
 
 proc submit*(worker: var StateProofWorker, request: var WorkSubmissionJob,
-    nativeRuntime: NativeRuntime = default(NativeRuntime)): ProofWorkerAdmission =
+    nativeRuntime: NativeRuntime = default(NativeRuntime),
+    residency: nil ptr ServiceExecutionContext = nil): ProofWorkerAdmission =
   ## Move the request into the bounded CPU slot. The caller grants exclusive ARC access to the
-  ## optional runtime until matching collection or joined close.
+  ## optional runtime and its corresponding idle residency until matching collection or joined close.
   if not worker.started: return ProofWorkerAdmission(status: ProofWorkerError.Closed)
   acquire(worker.lock)
   defer: release(worker.lock)
@@ -569,6 +573,7 @@ proc submit*(worker: var StateProofWorker, request: var WorkSubmissionJob,
   worker.workOutcome = default(WorkJobResult)
   worker.workJob = move(request)
   worker.workRuntime = nativeRuntime
+  worker.workResidency = residency
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
@@ -776,6 +781,7 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   worker.operation = ProofWorkerOperation.Query
   worker.query = default(ProofQuery)
   worker.workRuntime = default(NativeRuntime)
+  worker.workResidency = nil
   worker.phase = ProofWorkerPhase.Idle
 
 proc close*(worker: var StateProofWorker) =
@@ -807,6 +813,7 @@ proc close*(worker: var StateProofWorker) =
   worker.operation = ProofWorkerOperation.Query
   worker.query = default(ProofQuery)
   worker.workRuntime = default(NativeRuntime)
+  worker.workResidency = nil
   worker.phase = ProofWorkerPhase.Idle
   worker.started = false
   deinitCond(worker.changed)

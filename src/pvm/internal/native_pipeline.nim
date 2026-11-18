@@ -418,15 +418,26 @@ proc settleImageRetirementLocked(runtime: ptr NativeRuntimeStorage, key: JobKey,
     return RetirementPending
   if finishRetirement(runtime, key): Detached else: RetirementRefused
 
-when NativeReadCycleEnabled:
-  func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
-    ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
-    result = 0
-    for row in runtime.slots:
-      if row.state == Free and row.generation < high(uint64) and
-          row.location == CompletionLocation.Empty and
-              not row.completion.ownsNativeImage: inc result
+func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
+  ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
+  result = 0
+  for row in runtime.slots:
+    if row.state == Free and row.generation < high(uint64) and
+        row.location == CompletionLocation.Empty and
+            not row.completion.ownsNativeImage: inc result
 
+proc idleNativeImagePressure*(runtime: NativeRuntime, minimum: range[1..NativeSessionLimit]): bool =
+  ## An exclusive host turn may retire idle installed images when live capacity is below its target.
+  ## Reclaiming or release-pending rows remain unavailable. An absent or active runtime cannot yield.
+  let anchor {.cursor.} = runtime.data
+  if anchor == nil: return false
+  let storage = addr anchor.storage
+  acquire(storage.lock)
+  defer: release(storage.lock)
+  storage.started and not storage.stopping and storage.active == 0 and
+    freeNativeCredits(storage) < minimum
+
+when NativeReadCycleEnabled:
   proc retireMixedLoopLocked(runtime: ptr NativeRuntimeStorage) =
     ## Cancel a queued or running owner, or detach a completed image after its last borrow.
     let key = runtime.mixedKey
@@ -1801,6 +1812,35 @@ proc releaseNativeCredit(data: NativeSessionData): bool =
   data.retirementKey = JobKey(slot: -1)
   data.imageKey = default(NativeImageKey)
   true
+
+proc yieldIdleNativeImage*(session: NativeSession) =
+  ## Under exclusive host ownership, release an idle installed image through its exact retirement
+  ## key. Keep the checked stream and source proof. Next entry compares the new installed key
+  ## before any cached native jump, restores the checked handlers, and may queue a fresh ticket.
+  ## A pending compiler job is left alone. Capacity must be observed again after retirement.
+  let data {.cursor.} = session.data
+  if data == nil or data.invocation or data.state != NativeState.Ready or not data.image.ready:
+    return
+  when NativeCheckedReadEnabled:
+    let kind = data.imageKey.kind
+  data.allowed = false
+  if not releaseNativeCredit(data) or data.image.ownsNativeImage:
+    data.state = NativeState.Unavailable
+    return
+  data.state = NativeState.Deferred
+  when NativeCheckedReadEnabled:
+    # A read proof is revalidated against the restored stream by the next invocation.
+    data.readNominated = kind == NativeKind.CheckedReadBody
+    when NativeReadCycleEnabled:
+      if kind == NativeKind.ConnectedReadCycle: data.readNominated = true
+    data.readValidated = false
+    data.replacementArmed = false
+    data.laterRead = default(NativeReadCandidate)
+  when NativeReadCycleEnabled:
+    # The auxiliary owner belonged to the retired primary ticket.
+    data.mixedOffered = false
+    data.fusionOffered = false
+    data.fusionSampled = false
 
 when NativeCheckedReadEnabled:
   proc discardNativeReplacement*(session: NativeSession) =
