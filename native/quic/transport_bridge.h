@@ -15,6 +15,7 @@ extern "C" {
 typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
+/* The synchronous UDP callback returns zero for a complete send or a positive errno. */
 typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, const uint8_t *, uint16_t);
 /* Optional TLS/admission observations borrow address/DER only during the callback, before engine teardown ends. */
 enum { RQ_HANDSHAKE_SLOTS = 64, RQ_HANDSHAKE_STARTED = 0, RQ_HANDSHAKE_SUCCEEDED = 1,

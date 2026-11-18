@@ -9,6 +9,7 @@
 ## metrics and handshake observations over the C bridge.
 
 import std/assertions
+import std/posix/posix
 import ./io
 export io.newDispatcher, io.close
 
@@ -244,23 +245,25 @@ proc streamForward(user: pointer, stream: NativeStream, event: cint) {.cdecl, ra
 
 proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, address: ptr ConstByte,
     port: uint16): cint {.cdecl, raises: [].} =
-  ## Send C-owned bytes synchronously through nonblocking UDP; no borrowed packet memory escapes this callback.
+  ## Send C-owned bytes synchronously and preserve the OS error for QUICHE.
+  ## Only an unusable descriptor or a violated bridge contract retires the endpoint.
   let owner = cast[ptr Transport](user)
-  # Destruction callbacks cannot touch a retired endpoint or retain packet memory.
-  if owner.stopping or not owner.socket.isOpen: return 0
-  # Validate narrowing before passing the C-owned buffer to the synchronous OS adapter.
-  if address == nil or length > csize_t(owner.buffer.len): owner.failed = true; return 0
+  if owner.stopping or owner.failed: return ECANCELED # Teardown cannot use the retired socket.
+  if address == nil or bytes == nil or length > csize_t(owner.buffer.len):
+    owner.failed = true
+    return EINVAL # A broken callback contract is local to this transport owner.
   var copied = default(array[16, byte])
   let native = cast[ptr UncheckedArray[byte]](address)
   for index in 0..<16: copied[index] = native[index] # The bridge supplies one complete fixed address during this callback.
   let target = if owner.ipv6: ipv6Address(copied)
     else: ipv4Address([copied[12], copied[13], copied[14], copied[15]])
-  let sent = owner.socket.send(cast[pointer](bytes), int(length), networkEndpoint(target, port))
-  if sent == int(length):
+  let error = owner.socket.sendError(cast[pointer](bytes), int(length),
+      networkEndpoint(target, port))
+  if error == 0:
     owner.sentBytes = owner.sentBytes + min(uint64(length), high(uint64)-owner.sentBytes)
-    return 1 # Only complete datagrams contribute to diagnostic traffic.
-  if sent == -1: owner.failed = true # Would-block/interrupt remains retryable.
-  0
+  elif error in [EBADF, ENOTSOCK]:
+    owner.failed = true # The shared endpoint can no longer send any datagram.
+  error
 
 proc closeTransport*(owner: var Transport) =
   ## Retire selector/socket before native destruction; synchronous close callbacks still borrow the live peer/adapter.

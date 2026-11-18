@@ -357,11 +357,17 @@ class Writer final : public QuicPacketWriter {
         }
         uint8_t address[16];
         CopyIp(peer.host(), address);
-        if (!owner_->send(owner_->user, reinterpret_cast<const uint8_t *>(bytes), length, address,
-                          peer.port())) {
+        const int error = owner_->send(owner_->user, reinterpret_cast<const uint8_t *>(bytes),
+                                       length, address, peer.port());
+        if (error == EAGAIN || error == EWOULDBLOCK || error == EINTR) {
             blocked_ = true;
-            return WriteResult(WRITE_STATUS_BLOCKED, EAGAIN);
+            return WriteResult(WRITE_STATUS_BLOCKED, error);
         }
+        // A destination or path failure belongs to the connection attempting this write.
+        if (error == EMSGSIZE)
+            return WriteResult(WRITE_STATUS_MSG_TOO_BIG, error);
+        if (error != 0)
+            return WriteResult(WRITE_STATUS_ERROR, error);
         ++sent_;
         return WriteResult(WRITE_STATUS_OK, static_cast<int>(length));
     }
