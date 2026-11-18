@@ -16,7 +16,7 @@
 import std/[assertions, nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
-import ../lib/http_head
+import ../lib/[http_head, logging]
 import ./[wire, protocol, proof_requests]
 import ./light_source
 import ./wire_stream
@@ -45,6 +45,7 @@ type
     marker: uint8
   Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
     opened, proofs: bool
+    logger: LogWriter           # The application logger outlives listener and stream cleanup.
     proofCursor: int            # Fair bounded scan advances after each successfully claimed connection.
     lease: nil RpcChainLease
     fd: cint
@@ -109,6 +110,7 @@ proc requireChainReleased(server: Server) {.requires: server.lease == nil.} =
 proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
   ## Transfer cleanup authority without releasing native resources or moved managed fields.
   server.opened = false
+  server.logger = default(LogWriter)
   server.fd = -1
   `=wasMoved`(server.lease)
   `=wasMoved`(server.role)
@@ -184,6 +186,7 @@ proc close*(server: var Server) {.requires: server.lease == nil.} =
   if server.opened and server.fd >= 0:
     discard posix.close(server.fd)
   server.opened = false
+  server.logger = default(LogWriter)
   server.light = default(RpcLightHead)
   server.lightDisk = false
   server.proofs = false # A restarted listener requires an explicit canonical host binding again.
@@ -254,8 +257,8 @@ proc initializeContext(server: var Server, port: uint16, role: string,
 
 proc start*(server: var Server, port: uint16, role: string,
     parameters = unavailableParameters(), genesis = unavailableGenesis(),
-        uiPort: uint16 = 0, identity = default(ChainIdentity)): bool =
-  ## Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
+        uiPort: uint16 = 0, identity = default(ChainIdentity), logger = default(LogWriter)): bool =
+  ## Bind loopback only; port zero disables RPC. The logger must outlive the server.
   if server.opened or server.lease != nil:
     # A second or paused start cannot leak or replace a live listener.
     return false
@@ -265,19 +268,20 @@ proc start*(server: var Server, port: uint16, role: string,
   server.fd = listenLoopback(port, cint(MaxConnections))
   if server.fd < 0: return false # Failed setup closes its own descriptor.
   server.opened = true
+  server.logger = logger
   server.initializeContext(port, role, parameters, genesis, uiPort, identity)
   true
 
 # Queue only after a successful publication; overflow retires one consumer without rolling back the head.
 proc start*(server: var Server, port: uint16, role: string,
     parameters: ParameterResult, view: ChainView, uiPort: uint16 = 0,
-    identity = default(ChainIdentity)): bool =
+    identity = default(ChainIdentity), logger = default(LogWriter)): bool =
   ## Startup binds the whole restored local history/finality before any dispatcher can observe the listener.
   let head = view.bestBlock
   if head.error != GenesisError.None or not parameters.ok or
       parameters.value.encodeParameters != head.value.chainParameters.encodeParameters:
     return false # No live socket may be opened for a mismatched or absent restored view.
-  if not server.start(port, role, parameters, head, uiPort, identity): return false
+  if not server.start(port, role, parameters, head, uiPort, identity, logger): return false
   server.chain = view
   true
 
@@ -520,7 +524,7 @@ proc tick*(server: var Server, peers: uint32) =
         break
     if free < 0 or not nonblocking(accepted):
       discard posix.close(accepted)
-    elif server.connections[free].stream.start(accepted):
+    elif server.connections[free].stream.start(accepted, server.logger):
       server.connections[free].fd = -1
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
@@ -539,6 +543,7 @@ proc tick*(server: var Server, peers: uint32) =
     if (slot.fragmented and now >= slot.messageDeadline) or
         (now >= slot.deadline and (not slot.upgraded or slot.streamWriting or
           slot.closing or not slot.stream.hasBufferedInput)):
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "RPC connection deadline expired")
       slot.close()
       continue
     if slot.streamWriting:
@@ -556,8 +561,15 @@ proc tick*(server: var Server, peers: uint32) =
         var input = default(WireInput)
         if slot.stream.takeInput(input):
           case input.kind
-          of BadHead: slot.close() # An oversized upgrade cannot reach HTTP policy.
-          of UpgradeHead: slot.processHead(input.head, now, server.uiPort)
+          of BadHead:
+            log(server.logger, LogTarget.Rpc, LogLevel.Debug, "RPC upgrade head rejected")
+            slot.close() # An oversized upgrade cannot reach HTTP policy.
+          of UpgradeHead:
+            slot.processHead(input.head, now, server.uiPort)
+            if slot.upgraded:
+              log(server.logger, LogTarget.Rpc, LogLevel.Info, "RPC WebSocket upgrade accepted")
+            else:
+              log(server.logger, LogTarget.Rpc, LogLevel.Debug, "RPC upgrade policy rejected request")
           of ClientFrame: slot.processFrame(input.frame, info, now)
       else:
         when declared(rpcDirectTestSockets):
@@ -603,11 +615,11 @@ proc tick*(server: var Server, peers: uint32) =
 
 proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
     head: RpcLightHead, disk: bool, uiPort: uint16 = 0,
-    identity = default(ChainIdentity)): bool =
+    identity = default(ChainIdentity), logger = default(LogWriter)): bool =
   ## Bind the existing loopback transport to independent light metadata without retaining a complete ChainView.
   if not head.valid: return false # A default source never advertises a zero root.
   if not server.start(port, role, parameters, unavailableGenesis(), uiPort,
-      identity): return false # Existing descriptor/port/lease checks remain authoritative.
+      identity, logger): return false # Existing descriptor/port/lease checks remain authoritative.
   if port != 0:
     server.light = head # No dispatcher can observe the listener until this startup activation retires.
     server.lightDisk = disk
