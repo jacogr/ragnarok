@@ -27,6 +27,7 @@ cc_binary(
     deps = [
         ":balsa",
         ":quiche_core",
+        ":io_tool_support",
         ":ragnarok_cert_fields",
         "@boringssl//:crypto",
         "@boringssl//:ssl",

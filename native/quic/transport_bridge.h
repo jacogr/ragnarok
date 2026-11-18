@@ -16,7 +16,9 @@ typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
 /* The synchronous UDP callback returns zero for a complete send or a positive errno. */
-typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, const uint8_t *, uint16_t);
+/* A null local address leaves source selection to the bound socket and routing table. */
+typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, const uint8_t *local,
+                         const uint8_t *peer, uint16_t peer_port);
 /* Optional TLS/admission observations borrow address/DER only during the callback, before engine teardown ends. */
 enum { RQ_HANDSHAKE_SLOTS = 64, RQ_HANDSHAKE_STARTED = 0, RQ_HANDSHAKE_SUCCEEDED = 1,
        RQ_HANDSHAKE_FAILED = 2, RQ_HANDSHAKE_DROPPED = 3, RQ_ADMISSION_REFUSED = 4 };
@@ -70,6 +72,14 @@ int rq_server_alpns(rq_transport *, const uint8_t *, size_t);
 /* Full addresses use sixteen network-order bytes; IPv4 uses its mapped form. All borrows
  * are synchronous. Binding is startup-only; legacy port-only APIs remain loopback wrappers. */
 int rq_bind_address(rq_transport *, const uint8_t *address);
+/* Enable packet destination metadata on a borrowed wildcard datagram socket. */
+int rq_udp_enable_local_ip(int fd, int ipv6);
+/* Submit one datagram with a concrete source. Zero is success, otherwise return errno. */
+int rq_udp_send_from(int fd, const uint8_t *, size_t, int ipv6, const uint8_t *local,
+                     const uint8_t *peer, uint16_t peer_port);
+/* Process one addressed datagram. Positive counts useful bytes, zero discards,
+ * -2 is a retryable socket error, and -1 denotes a failed receive. */
+int rq_udp_receive(rq_transport *, int fd, uint8_t *, size_t);
 int rq_connect_address(rq_transport *, const uint8_t *address, uint16_t remote_port);
 int rq_packet_in_address(rq_transport *, const uint8_t *, size_t, const uint8_t *source, uint16_t remote_port);
 /* Initiate one loopback connection; server receives through packet_in instead. */
