@@ -110,9 +110,52 @@ proc retainedLifecycle() =
   assert preparedInfo(jitPolicy.value).value.backend == PvmBackend.Jit
   assert preparedInfo(jitPolicy.value).value.streamNodes == 0
 
+proc budgetLifecycle() =
+  ## Compete for one exact one-page idle charge through independent prepared owners.
+  ## A complete RW page counts twice, once for the baseline and once for private bytes.
+  let budget = newRetainedMemoryBudget(RetainedMemoryByteLimit(8192))
+  let original = initialized(newExecutionWorker(), [])
+  let source = programOf(original).value
+  let policy = defaultPreparedLimits(GasCycleLimit(1000))
+  let second = newPreparedProgramCache(memoryBudget = budget)
+  let other = cachedPreparedProgram(second, source, policy, PvmBackend.Interpreted)
+  assert other.error == PreparationError.None
+  block:
+    # One admitted owner fills the allowance. A distinct owner keeps ordinary execution.
+    let first = newPreparedProgramCache(memoryBudget = budget)
+    let kept = cachedPreparedProgram(first, source, policy, PvmBackend.Interpreted)
+    assert kept.error == PreparationError.None
+    let done = execute(original, ExecutionStepLimit(10), kept.value)
+    assert done.error == StepError.None and done.value.exit == StepExit.Host
+    assert retainedMemoryPayloadBytes(budget) == 8192
+    let refused = execute(original, ExecutionStepLimit(10), other.value)
+    assert refused.error == StepError.None and refused.value.exit == StepExit.Host
+    assert refused.value.machine.machineInfo.value == done.value.machine.machineInfo.value
+    assert refused.value.machine.memoryOf.value.pageImage(PageIndex(32)).value.bytes[0] == 91
+    assert preparedInfo(other.value).value.retainedMemoryPayloadBytes == 0
+    assert retainedMemoryPayloadBytes(budget) == 8192
+    # Reuse consumes and replaces the charge once. Other owners never observe a double debit.
+    let reused = execute(original, ExecutionStepLimit(10), kept.value)
+    assert reused.error == StepError.None and reused.value.exit == StepExit.Host
+    assert preparedInfo(kept.value).value.memoryReuses == 1
+    assert retainedMemoryPayloadBytes(budget) == 8192
+  assert retainedMemoryPayloadBytes(budget) == 0
+  let allowed = execute(original, ExecutionStepLimit(10), other.value)
+  assert allowed.error == StepError.None and allowed.value.exit == StepExit.Host
+  assert retainedMemoryPayloadBytes(budget) == 8192
+  # A cache replacement leaves bytes charged until the last independent prepared handle drops.
+  let replacement = cachedPreparedProgram(second, source, policy, PvmBackend.Jit)
+  assert replacement.error == PreparationError.None
+  assert preparedInfo(other.value).value.retainedMemoryPayloadBytes == 8192
+  assert retainedMemoryPayloadBytes(budget) == 8192
+
 retainedLifecycle()
+budgetLifecycle()
 let before = getOccupiedMem()
-for iteration in 0..<1000: retainedLifecycle()
+for iteration in 0..<1000:
+  # Both unbound and shared-budget ownership must return every allocation.
+  retainedLifecycle()
+  budgetLifecycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_worker_code", 1000, before, after)

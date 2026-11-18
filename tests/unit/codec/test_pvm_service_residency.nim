@@ -92,6 +92,8 @@ proc witness() =
     assert done.value.exit == StepExit.Panic
     assert uint64(done.value.machine.machineInfo.value.gas) == 77
     assert done.value.machine.memoryOf.value.pageImage(PageIndex(32)).value.bytes[0] == 91
+  # The application context accounts for one baseline and one private extent over both pages.
+  assert context.residentMemoryPayloadBytes == 16384
   block:
     # Failed initialization keeps this exact live worker/backend, including after a lease move.
     var lease = acquireServiceExecution(context, ServiceIndex(1), version(1),
@@ -127,6 +129,7 @@ proc witness() =
     let bad = initializeMachine(envelope(), [], CodeAddress(1), MachineGas(100), changed, lease)
     assert bad.error == InitializationError.InvalidProgram
   assert context.residentServices == 1 # Failed initialization leaves no negative entry.
+  assert context.residentMemoryPayloadBytes == 0 # Dropping that worker returns its idle charge.
   discard capture(context, 1, 44)
   discard capture(context, 3, 55)
   discard capture(context, 4, 66)
