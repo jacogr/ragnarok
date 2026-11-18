@@ -3,7 +3,7 @@
 
 ## Exercise the production RPC listener with independently encoded WebSocket clients.
 
-import std/[assertions, syncio, strutils, base64, ioring, monotimes]
+import std/[assertions, syncio, strutils, base64, ioring, monotimes, atomics]
 import std/socket as tcp
 import std/posix/posix as posix
 import ../../../src/lib/socket_io as native_io
@@ -271,16 +271,45 @@ proc halfClosedClient(owner: var Server, port: uint16) {.raises.} =
   for id in 1..16:
     assert ("\"id\":" & $id & ",") in response
 
+type RpcLogCapture = object
+  ## The sink parks outside the queue lock so the test's records can be admitted.
+  entered, releaseSink: bool
+  messages: string
+
 proc collectRpcLog(context: nil pointer, batch: string) {.raises: [].} =
-  ## The test reads captured text only after the logger joins its sink thread.
-  cast[ptr string](context)[].add(batch)
+  ## Capture text on the logger lane until the dispatcher releases and joins it.
+  let capture = cast[ptr RpcLogCapture](context)
+  atomicStore(capture.entered, true, moRelease)
+  while not atomicLoad(capture.releaseSink, moAcquire): discard pauseMicros(1000)
+  capture.messages.add(batch)
+
+proc startCapture(logger: var Logger, capture: var RpcLogCapture) =
+  ## Retry sentinel admission only. Once the sink enters, it cannot contend for the queue.
+  assert logger.start(initLogPolicy(LogLevel.Info), collectRpcLog, addr capture)
+  var primed = false
+  for attempt in 0..<1000:
+    if submitLog(logger.writer, LogTarget.Rpc, LogLevel.Info, "test sink barrier"):
+      primed = true
+      break
+    discard pauseMicros(1000)
+  assert primed, "RPC log fixture sentinel admitted"
+  for attempt in 0..<1000:
+    if atomicLoad(capture.entered, moAcquire): return
+    discard pauseMicros(1000)
+  assert false, "RPC log fixture sink entered"
+
+proc closeCapture(logger: var Logger, capture: var RpcLogCapture) =
+  ## Release the parked sink before the logger joins and drains accepted records.
+  atomicStore(capture.releaseSink, true, moRelease)
+  logger.close()
 
 proc disconnectedWriter() =
   ## A real send error survives the worker join and is visible at the Info filter.
   assert ignorePipeSignal()
-  var messages = ""
+  var capture = default(RpcLogCapture)
   var logger = default(Logger)
-  assert logger.start(initLogPolicy(LogLevel.Info), collectRpcLog, addr messages)
+  logger.startCapture(capture)
+  defer: logger.closeCapture(capture)
   var pair = default(array[2, cint])
   assert socketPair(cint(posix.AF_UNIX), cint(posix.SOCK_STREAM), 0, addr pair[0]) == 0
   assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
@@ -295,9 +324,10 @@ proc disconnectedWriter() =
     discard pauseMicros(1000)
   assert stream.finished
   stream = default(RpcWireStream)
-  logger.close()
-  assert "[warn][rpc] RPC stream write ended: IOError" in messages
-  assert "connection retired" notin messages and "private response bytes" notin messages
+  logger.closeCapture(capture)
+  assert "[warn][rpc] RPC stream write ended: IOError" in capture.messages
+  assert "connection retired" notin capture.messages and "private response bytes" notin
+      capture.messages
 
 proc main() {.raises.} =
   # Discover an available loopback port before exercising normal listener startup.
@@ -325,9 +355,10 @@ proc main() {.raises.} =
   assert initial.error == GenesisError.None
   let next = child(initial.value, parameters.value)
   assert next.error == GenesisError.None
-  var messages = ""
+  var capture = default(RpcLogCapture)
   var logger = default(Logger)
-  assert logger.start(initLogPolicy(LogLevel.Info), collectRpcLog, addr messages)
+  logger.startCapture(capture)
+  defer: logger.closeCapture(capture)
   var owner = default(Server)
   let prefix = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":1,\"result\":{\"header_hash\":\""
   assert owner.start(port, "stream", parameters, initial, logger = logger.writer)
@@ -375,8 +406,8 @@ proc main() {.raises.} =
   assert (getMonoTime().ticks - started) div 1_000_000 < 1000
   assert native_io.receive(client.fd, addr octet, 1, 0) == 0
   client.close()
-  logger.close()
-  assert "[info][rpc] RPC WebSocket upgrade accepted" in messages
+  logger.closeCapture(capture)
+  assert "[info][rpc] RPC WebSocket upgrade accepted" in capture.messages
   disconnectedWriter()
   ioring.shutdown()
 
