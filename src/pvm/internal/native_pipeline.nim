@@ -1346,9 +1346,9 @@ when NativeReadCycleEnabled:
       not data.replacementArmed
 
   func nativeFusionAvailable*(session: NativeSession): bool {.inline.} =
-    ## The ordinary path avoids the optional mailbox unless this owner trained or offered.
+    ## Enter the optional mailbox only for training or an offer still tied to this ticket.
     let data {.cursor.} = session.data
-    data != nil and (data.fusionOffered or nativeFusionTraining(session))
+    data != nil and ((data.fusionOffered and data.mixedOffered) or nativeFusionTraining(session))
 
   proc markNativeFusionSampled*(session: NativeSession) =
     ## Pay for at most one bounded observation window and graph construction per stream epoch.
@@ -1419,7 +1419,7 @@ when NativeReadCycleEnabled:
     ## Only the installed prefix's exact live epoch can use the optional image.
     result = default(NativeFusionBorrow)
     let data {.cursor.} = session.data
-    if data == nil or not data.fusionOffered or data.slot < 0 or
+    if data == nil or not data.fusionOffered or not data.mixedOffered or data.slot < 0 or
         not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return
     let anchor {.cursor.} = data.runtime
     if anchor == nil: return
