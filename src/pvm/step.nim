@@ -947,17 +947,21 @@ proc driveHostFrame[Context; Reason: enum; Fallible, ScalarCapable: static[bool]
   var remaining = uint64(steps)
   var available = uint64(calls)
   let nativeBaseline = nativeOperations(frame)
+  let trackNative = nativeInvocationActive(frame.nativeSession)
+  when NativeCheckedReadEnabled:
+    let observeRead = readProbeCallActive(frame)
   while true:
     # The engine counts attempted source instructions across every host continuation.
     let segmentBudget = remaining
     when NativeCheckedReadEnabled:
-      resumeReadProbeSegment(frame, segmentBudget)
+      if observeRead: resumeReadProbeSegment(frame, segmentBudget)
     runFlat(frame, segmentBudget)
     if frame.reason == StepError.BackendFailure:
       return executionResult[Reason](StepResult(status: StepError.BackendFailure))
     when NativeCheckedReadEnabled:
-      endReadProbeSegment(frame)
-    recordNativeWork(frame.nativeSession, settledNativeWork(frame, segmentBudget))
+      if observeRead: endReadProbeSegment(frame)
+    if trackNative:
+      recordNativeWork(frame.nativeSession, settledNativeWork(frame, segmentBudget))
     remaining = frame.remaining
     if frame.reason != StepError.None:
       return executionResult[Reason](StepResult(status: frame.reason))
