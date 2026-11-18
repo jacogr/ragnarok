@@ -3,7 +3,9 @@
 
 ## Real AF_UNIX exchanges exercise bounded ticks, fragmented frames and repeated isolated sessions.
 
-import std/syncio
+import std/[syncio, oserrors, monotimes]
+import std/ioring as reactor
+from ../../../src/lib/stop_signal import ignorePipeSignal
 import ../../support/fuzz_protocol_context
 import ../../../src/state/store
 include ../../../src/app/fuzz/socket
@@ -35,7 +37,8 @@ proc sendFrame(server: var FuzzSocket, peer: cint, message: FuzzMessage) =
   for octet in encoded:
     var one = octet
     assert sendBytes(peer, addr one, 1, 0) == 1
-    server.tick() # Tiny deterministic requests never depend on stream packet coalescing.
+    server.tick() # Offer each byte separately, including the length prefix.
+    discard pauseMicros(100)
 
 proc readFrame(server: var FuzzSocket, peer: cint): FuzzMessage =
   ## Bound real socket reads and decode the entire response through a fresh independent reader lifetime.
@@ -54,6 +57,62 @@ proc readFrame(server: var FuzzSocket, peer: cint): FuzzMessage =
       discard pauseMicros(100) # Retry only transient OS scheduling; EOF is a failure here.
   assert false, "bounded response wait expired"
   default(FuzzMessage)
+
+proc awaitRequest(server: var FuzzSocket): FuzzRequest =
+  ## Wait for the dispatcher to receive a complete frame from the worker.
+  for attempt in 0..<5000:
+    server.tick()
+    if server.hasRequest: return server.request
+    discard pauseMicros(100)
+  assert false, "bounded execution ticket wait expired"
+  default(FuzzRequest)
+
+proc awaitDisconnect(server: var FuzzSocket) =
+  ## Task retirement is asynchronous until the dispatcher sees completion.
+  for attempt in 0..<5000:
+    server.tick()
+    if not server.connected: return
+    discard pauseMicros(100)
+  assert false, "bounded session retirement wait expired"
+
+let SendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
+
+proc boundedStop() =
+  ## Stop while a real Writer holds output credit behind an unread Unix peer.
+  proc socketPair(domain, kind, protocol: cint, fds: ptr cint): cint {.
+      importc: "socketpair", header: "<sys/socket.h>".}
+  var pair = default(array[2, cint])
+  assert socketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0,
+      addr pair[0]) == 0
+  defer: discard posix.close(pair[1])
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var capacity = 4096.cint
+  assert setOption(pair[0], SocketLevel, SendBuffer, addr capacity, SockLen(sizeof(capacity))) == 0
+  var stream = default(FuzzStream)
+  var deadline = afterMs(30000)
+  assert stream.start(pair[0], deadline, 30000)
+  var octet = 42'u8
+  assert sendBytes(pair[1], addr octet, 1) == 1
+  var chunk = default(array[IoBytes, byte])
+  var buffered = false
+  var count = 0
+  for attempt in 0..<1000:
+    pollFuzzStreams()
+    count = stream.takeInput(chunk, buffered)
+    if count != 0: break
+    discard pauseMicros(1000)
+  assert count == 1 and chunk[0] == octet
+  var response = newSeq[byte](65536)
+  assert stream.send(response)
+  for attempt in 0..<1000:
+    pollFuzzStreams()
+    count = receive(pair[1], addr octet, 1, 0)
+    if count == 1: break # The kernel received only a prefix; leave the rest of the credit blocked.
+    discard pauseMicros(1000)
+  assert count == 1 and not stream.takeWritten(deadline)
+  let started = getMonoTime().ticks
+  stream = default(FuzzStream)
+  assert (getMonoTime().ticks - started) div 1000000 < 1000
 
 proc main() {.raises.} =
   ## Synthetic host replies test transport only; no test claims to have executed a JAM transition.
@@ -93,8 +152,7 @@ proc main() {.raises.} =
     server.sendFrame(peer, hello)
     assert server.readFrame(peer).fuzzPeer.value.name == "socket-test"
     server.sendFrame(peer, init)
-    assert server.hasRequest
-    let ticket = server.request
+    let ticket = server.awaitRequest()
     assert ticket.requestMessage.value.fuzzInfo.value.kind == FuzzKind.Initialize
     assert server.respond(ticket, root)
     assert server.readFrame(peer).copyFuzzMessage(limits.bytes).value == root.copyFuzzMessage(
@@ -102,46 +160,41 @@ proc main() {.raises.} =
     var importWire = newSeq[byte](305)
     importWire[0] = 3
     server.sendFrame(peer, decodeFuzzMessage(importWire, limits).value)
-    assert server.hasRequest
+    let importTicket = server.awaitRequest()
     var longText = newString(4096)
-    for index in 0..<longText.len: longText[index] = 'x' # Force output beyond the per-tick write budget.
+    for index in 0..<longText.len: longText[index] = 'x' # Force a reply to span multiple Writer chunks.
     let rejected = newFuzzError(longText, limits).value
-    assert server.respond(server.request, rejected)
-    server.tick()
-    assert server.output.len > 0 and server.offset <= IoBytes # Partial writes retain the remaining frame.
+    assert server.respond(importTicket, rejected)
     assert server.readFrame(peer).fuzzText.value == longText
     discard posix.close(peer)
-    server.tick()
-    assert not server.connected and not server.hasRequest
+    server.awaitDisconnect()
+    assert not server.hasRequest
     let next = client(path)
     server.tick()
     assert server.connected and server.generation == 2
     server.sendFrame(next, init)
-    assert not server.connected # Reconnection resets the handshake requirement.
+    server.awaitDisconnect() # Reconnection resets the handshake requirement.
     discard posix.close(next)
     let malformed = client(path)
     server.tick()
     var bad = [1'u8, 0, 0, 0, 6]
     assert sendBytes(malformed, addr bad[0], csize_t(bad.len), 0) == bad.len
-    server.tick()
-    assert not server.connected
+    server.awaitDisconnect()
     discard posix.close(malformed)
     let idle = client(path)
     server.tick()
-    server.deadline = 0
-    server.tick()
-    assert not server.connected # Same timeout branch retires an idle or partial request.
+    server.deadline = afterMs(0)
+    server.awaitDisconnect() # An expired dispatcher deadline retires a pending Reader.
     discard posix.close(idle)
     let broken = client(path)
     server.tick()
     server.sendFrame(broken, hello)
     discard server.readFrame(broken)
     server.sendFrame(broken, init)
-    let outstanding = server.request
+    let outstanding = server.awaitRequest()
     discard posix.close(broken)
     assert server.respond(outstanding, root)
-    server.tick()
-    assert not server.connected # A broken response pipe does not deliver SIGPIPE to the host.
+    server.awaitDisconnect() # A broken response pipe does not deliver SIGPIPE to the host.
     server.close()
     server.close()
     assert readStatus(path.toCString(), status) != 0
@@ -170,29 +223,36 @@ proc main() {.raises.} =
     assert readFile(path) == "replacement" # Cleanup cannot delete a replacement file at the same pathname.
   assert unlink(path.toCString()) == 0
   assert rmdir(directory.toCString()) == 0
+  boundedStop()
   echo "PASS JAM fuzzer socket: bounded IO, ticket handoff, reconnect and owned cleanup"
+assert ignorePipeSignal()
 try:
   main() # Filesystem/IO failures are failed native tests, never ignored protocol outcomes.
 except:
   quit(2)
 
-# Listener and accepted-connection cleanup move together, including source reuse and destruction.
-block moved_socket:
-  var destination = default(FuzzSocket)
-  block:
-    var source = default(FuzzSocket)
-    source.fd = posix.open("/dev/null", O_RDONLY)
-    source.connection = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0 and source.connection >= 0
-    source.opened = true
-    source.connected = true
-    destination = move(source)
-    assert not source.opened and not source.connected and not source.bound
-    source.close()
-    source.fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0
-    source.opened = true
-    source.close()
-  assert fcntl(destination.fd, F_GETFL) >= 0
-  assert fcntl(destination.connection, F_GETFL) >= 0
+# Move a genuine live Reader with the listener, then close the moved-from owner.
+block movedSocket:
+  var path = "/tmp/ragnarok-fuzz-move-" & $processId()
+  assert mkdir(path.toCString(), Mode(0o700)) == 0
+  var socketPath = path & "/target.sock"
+  let policy = FuzzSocketConfig(path: socketPath, timeoutMs: 30000,
+    peer: FuzzPeer(protocol: 1, jam: FuzzVersion(major: 0, minor: 8), name: "moved"),
+    limits: fuzzProtocolTestLimits())
+  var source = default(FuzzSocket)
+  assert source.start(policy)
+  let peer = client(socketPath)
+  source.tick()
+  assert source.connected
+  var destination = move(source)
+  source.close()
+  assert destination.connected and fcntl(destination.fd, F_GETFL) >= 0
+  let started = getMonoTime().ticks
   destination.close()
+  assert (getMonoTime().ticks - started) div 1000000 < 1000
+  var octet = 0'u8
+  assert receive(peer, addr octet, 1, 0) == 0
+  discard posix.close(peer)
+  assert rmdir(path.toCString()) == 0
+
+reactor.shutdown()
