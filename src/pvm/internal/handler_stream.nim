@@ -47,6 +47,7 @@ import std/[assertions, bitops]
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
+import ./retained_memory_budget
 
 import ./register_ops
 import ./metadata_store
@@ -226,9 +227,10 @@ type
     stack: seq[byte]
     extra: seq[FlatRegion]
     dirty: seq[uint32]
-    dirtyPages: seq[uint64] # Bitmap through the highest mapped page, at most 128 KiB.
-    payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
-    rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
+    dirtyPages: seq[uint64]      # Bitmap through the highest mapped page, at most 128 KiB.
+    payloadBytes: uint64         # Logical baseline and private payload charged to the idle retention limit.
+    rwStorage: RWStorage         # Cold exclusive backing follows its view through active and idle leases.
+    charge: RetainedMemoryCharge # The idle owner settles its ledger when consumed or dropped.
   FlatMemoryScratch* = ref FlatMemoryScratchData
   FlatDynamicOffsets = ref object ## Invocation-owned positive ordinal tags and stable offsets.
     slots: DynamicJumpTags
@@ -382,6 +384,7 @@ proc `=wasMoved`*(scratch: var FlatMemoryScratchData) {.nodestroy, inline.} =
   `=wasMoved`(scratch.dirty)
   `=wasMoved`(scratch.dirtyPages)
   `=wasMoved`(scratch.rwStorage)
+  `=wasMoved`(scratch.charge)
   scratch.rw = default(RWView)
   scratch.payloadBytes = 0
 
@@ -5616,8 +5619,11 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   held = nil
   prepareFlatMemoryFrame(plan, memory, info)
 
-proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMemoryScratch =
-  ## Retain only bounded private payload plus one immutable baseline; zero disables retention.
+proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64,
+    budget: RetainedMemoryBudget = default(RetainedMemoryBudget)): nil FlatMemoryScratch =
+  ## Bound private payload and its immutable baseline by both the owner and shared idle ceilings.
+  ## The optional charge must succeed before moving any frame storage. Refusal leaves ordinary
+  ## frame destruction in charge of the bytes and preserves the completed invocation.
   if payloadLimit == 0: return nil
   var bytes = uint64(f.ro.len)+uint64(f.rw.len)+uint64(f.stack.len)
   for region in f.extra:
@@ -5626,8 +5632,11 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil
+  var charge = default(RetainedMemoryCharge)
+  if not tryCharge(budget, total, charge): return nil
   let scratch: nil FlatMemoryScratch = FlatMemoryScratch()
   if scratch == nil: return nil # Optional retention leaves the frame in charge of cleanup.
+  scratch.charge = move(charge)
   scratch.baseline = f.sourceMemory
   scratch.pages = move(f.sourcePages)
   scratch.roBase = f.roBase

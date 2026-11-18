@@ -59,6 +59,9 @@ external entries. A compact side exit returns before entering another receipt mo
 
 The [Services owner](../../src/app/services.nim) inventories production runtime consumers and
 the ownership, aggregate retention and competition contract required before wider integration.
+The [accumulation context](../../src/state/accumulation/residency.nim) bounds optional idle
+scratch across its resident workers. [Scratch accounting](../../src/pvm/internal/retained_memory_budget.nim)
+tracks charges on the idle owner through consumption and retirement.
 The [scheduler](../../src/pvm/internal/native_pipeline.nim) documents current image capacity
 and selection limits. The [migration record](../../spec/pvm-async-migration.md#selection-and-resource-work)
 tracks the remaining integration boundary.

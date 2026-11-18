@@ -32,9 +32,11 @@ export backend
 when defined(polkavmRuntime):
   import std/algorithm
   import ./internal/polkavm
-import ./internal/[handler_stream, execution_types, native_pipeline]
+import ./internal/[handler_stream, execution_types, native_pipeline, retained_memory_budget]
 export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo, NativeCompilerFailure
 export start, close, runtimeInfo
+export RetainedMemoryBudget, RetainedMemoryByteLimit, newRetainedMemoryBudget, isBound,
+  retainedMemoryPayloadBytes
 when defined(pvmSharedAsyncDiagnostic):
   import std/syncio
 
@@ -354,7 +356,6 @@ type
   ExecutionFactLimit* = FlatFactLimit ## Maximum decoded instruction facts retained by one prepared owner.
   ExecutionNodeLimit* = FlatNodeLimit ## Maximum emitted stream nodes; stable offsets are never evicted mid-call.
   ExecutionPreparationLimit* = FlatPreparationLimit ## Cumulative source spans admitted for emission and whole-block pricing.
-  RetainedMemoryByteLimit* = distinct uint64 ## Local idle baseline/private-payload ceiling; zero disables memory reuse.
   PreparedLimits* = object ## Immutable source/policy admission; callers select finite deployment resources explicitly.
     resources*: ExecutionLimits
     cycles*: GasCycleLimit
@@ -373,6 +374,7 @@ type
     plan: nil FlatPlan
     stream: FlatStream
     memoryScratch: nil FlatMemoryScratch
+    memoryBudget: RetainedMemoryBudget # Optional aggregate idle ceiling belongs to this owner's cache.
     memoryReuses: uint64 # Diagnostic only; restored memory never relies on a hit count.
     limits: PreparedLimits
     busy: bool
@@ -390,8 +392,9 @@ type
     data: nil PreparedData
   PreparedCacheData = ref object ## One explicitly owned worker slot retains at most one successful prepared identity.
     owner: PreparedProgram
-    nativeRuntime: NativeRuntime # Closed lifetime anchor, never a raw runtime registration.
-    preparations, hits: uint64   # Copied cumulative worker diagnostics never affect guest admission or results.
+    nativeRuntime: NativeRuntime       # Closed lifetime anchor, never a raw runtime registration.
+    memoryBudget: RetainedMemoryBudget # All prepared identities retain the same budget handle.
+    preparations, hits: uint64 # Copied cumulative worker diagnostics never affect guest admission or results.
   PreparedProgramCache* = object ## Reference identity permits synchronous worker sharing; concurrent use remains forbidden.
     data: nil PreparedCacheData
   PreparedCacheInfo* = object ## Bounded occupancy plus actual cache activity, distinct from timing or allocator counts.
@@ -679,7 +682,8 @@ proc runAdmittedFrame(frame: var FlatFrame, data: PreparedData, source: Machine,
     retireFailedNativeInvocation(data.native)
     data.stream = discardedFlatStream(frame)
     return StepResult(status: StepError.BackendFailure)
-  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes),
+    data.memoryBudget)
   answer
 
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
@@ -1144,7 +1148,8 @@ proc runPreparedHost[Context; Reason: enum; Fallible, ScalarCapable: static[bool
     retireFailedNativeInvocation(data.native)
     data.stream = discardedFlatStream(frame)
     return executionResult[Reason](StepResult(status: StepError.BackendFailure))
-  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes),
+    data.memoryBudget)
   answer
 
 proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; Callbacks](source: Machine,
@@ -1440,10 +1445,12 @@ when defined(pvmSharedAsyncWitness):
       if refused.error != StepError.InvalidHostResponse: return false
     true
 
-proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(
-    NativeRuntime)): PreparedProgramCache =
-  ## Create one empty slot; no source, native mapping or invocation state is allocated until successful admission.
-  PreparedProgramCache(data: PreparedCacheData(nativeRuntime: nativeRuntime))
+proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(NativeRuntime),
+    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): PreparedProgramCache =
+  ## Create one empty slot. The optional budget governs idle scratch across this and other slots.
+  ## Callers sharing a budget must serialize execution, inspection and owner retirement.
+  PreparedProgramCache(data: PreparedCacheData(nativeRuntime: nativeRuntime,
+      memoryBudget: memoryBudget))
 
 proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedCacheInfo] =
   ## Copy bounded occupancy/activity without exposing a cached handle or fabricating zero work from a busy owner.
@@ -1485,6 +1492,9 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
   inc slot.preparations
   let admitted = newPreparedProgram(source, limits, selected, slot.nativeRuntime)
   if admitted.error == PreparationError.None:
+    let data {.cursor.} = admitted.value.data
+    if data != nil:
+      data.memoryBudget = slot.memoryBudget
     slot.owner = admitted.value # Retire the prior code/idle-byte owner; independently retained machine snapshots stay valid.
   admitted
 

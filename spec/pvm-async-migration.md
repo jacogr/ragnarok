@@ -86,9 +86,9 @@ environment contract before extending it. Accumulation residency and managed pac
 share its runtime. Authorization, inner modules, and the JAMNP-S audit/work-sharing adapters have
 runtime-less execution routes. Four installed accumulation images can deny a package compilation
 credit even with no active invocation. Checked fallback is expected at that bound; fairness is
-not implied. Per-owner idle memory ceilings do not establish an aggregate prepared-storage bound.
-Future wiring requires explicit ownership/shutdown, aggregate retention budgets and a competition
-policy across the existing consumers before increasing availability or image capacity.
+not implied. The accumulation context enforces a shared idle scratch budget and the package worker
+has a separate per-owner allowance. Future wiring requires explicit ownership/shutdown, aggregate
+source and prepared-fact budgets, and a competition policy before increasing native availability.
 
 ## Bounded mixed store loops
 

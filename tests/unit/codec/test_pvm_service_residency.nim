@@ -92,6 +92,8 @@ proc witness() =
     assert done.value.exit == StepExit.Panic
     assert uint64(done.value.machine.machineInfo.value.gas) == 77
     assert done.value.machine.memoryOf.value.pageImage(PageIndex(32)).value.bytes[0] == 91
+  # The application context accounts for one baseline and one private extent over both pages.
+  assert context.residentMemoryPayloadBytes == 16384
   block:
     # Failed initialization keeps this exact live worker/backend, including after a lease move.
     var lease = acquireServiceExecution(context, ServiceIndex(1), version(1),
@@ -127,6 +129,7 @@ proc witness() =
     let bad = initializeMachine(envelope(), [], CodeAddress(1), MachineGas(100), changed, lease)
     assert bad.error == InitializationError.InvalidProgram
   assert context.residentServices == 1 # Failed initialization leaves no negative entry.
+  assert context.residentMemoryPayloadBytes == 0 # Dropping that worker returns its idle charge.
   discard capture(context, 1, 44)
   discard capture(context, 3, 55)
   discard capture(context, 4, 66)
@@ -143,8 +146,27 @@ proc witness() =
   assert a.memoryOf.value.pageImage(PageIndex(0xfeff0000'u32 div 4096)).value.bytes[0] == 11
   assert b.memoryOf.value.pageImage(PageIndex(0xfeff0000'u32 div 4096)).value.bytes[0] == 22
   assert context.residentServices == 4
+  block:
+    # Move a context with a real retained charge, rather than only initialized code.
+    let lease = acquireServiceExecution(context, ServiceIndex(1), version(1), PvmBackend.Jit)
+    var host = Probe(owner: addr context, calls: 0)
+    let done = executeWithHost(replaced, host, respond, ExecutionStepLimit(10), HostCallLimit(1),
+      GasCycleLimit(1000), PvmBackend.Jit, lease)
+    assert done.error == HostExecutionError.None and host.calls == 1
+  assert context.residentMemoryPayloadBytes == 16384
   let moved = move(context)
   assert moved.residentServices == 4 and context.residentServices == 0
+  assert moved.residentMemoryPayloadBytes == 16384 and context.residentMemoryPayloadBytes == 0
+  let fresh = capture(context, 88, 55)
+  block:
+    # The emptied context starts a new independent ledger on its next admission.
+    let lease = acquireServiceExecution(context, ServiceIndex(88), version(88),
+        PvmBackend.Interpreted)
+    var host = Probe(owner: addr context, calls: 0)
+    let done = executeWithHost(fresh, host, respond, ExecutionStepLimit(10), HostCallLimit(1),
+      GasCycleLimit(1000), PvmBackend.Interpreted, lease)
+    assert done.error == HostExecutionError.None and host.calls == 1
+  assert context.residentMemoryPayloadBytes == 16384 and moved.residentMemoryPayloadBytes == 16384
 
 witness()
 let before = getOccupiedMem()

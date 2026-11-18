@@ -7,8 +7,8 @@
 ## Construction binds an optional compiler runtime to this one prepared cache. The default
 ## selects checked execution even for requested Jit. Native image credits do not account for
 ## retained decoded facts or memory: convenience execution uses defaultPreparedLimits with
-## a 64 MiB idle baseline/private-payload ceiling per prepared owner. A collection of workers
-## needs its own aggregate retention policy; this wrapper has no environment-wide budget.
+## a 64 MiB idle baseline/private-payload ceiling per prepared owner. The embedding may supply
+## a narrower shared idle budget across workers within its exclusive scheduling turn.
 
 import ./[program, machine, initialize, step]
 import ./gas/gas
@@ -20,9 +20,11 @@ type
   ExecutionWorker* = object ## Copyable identity for one exclusive synchronous worker; never share it across threads.
     data: nil WorkerData
 
-proc newExecutionWorker*(nativeRuntime: NativeRuntime = default(NativeRuntime)): ExecutionWorker =
-  ## Allocate one empty bounded worker slot; retiring its last handle releases code and executable cache storage.
-  ExecutionWorker(data: WorkerData(prepared: newPreparedProgramCache(nativeRuntime)))
+proc newExecutionWorker*(nativeRuntime: NativeRuntime = default(NativeRuntime),
+    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): ExecutionWorker =
+  ## Allocate one empty bounded worker slot, optionally sharing its idle allowance with other slots.
+  ## Retiring the last owner releases code, executable storage and its idle charge.
+  ExecutionWorker(data: WorkerData(prepared: newPreparedProgramCache(nativeRuntime, memoryBudget)))
 
 func initialized*(worker: ExecutionWorker): bool =
   ## A default worker selects ordinary one-shot behavior; explicit creation enables retained code lifetimes.

@@ -35,22 +35,20 @@
 ## The runtime's four image credits cover both bound consumers. Four installed accumulation
 ## images can leave a package worker without a credit even with zero active invocations.
 ## This is permitted checked fallback; the credit count grants no consumer a fair share.
-## Each prepared owner separately permits up to 64 MiB of idle baseline/private payload.
-## Four resident accumulation owners and a package worker therefore have up to 320 MiB of
-## such logical allowance, before prepared facts, source storage and live invocation memory.
-## This is a policy sum, not an RSS bound or a promise that all slots become populated.
+## The accumulation context shares 64 MiB of idle baseline/private payload across all four
+## residents. The short-lived package worker keeps its separate 64 MiB per-owner cap.
+## The combined idle payload allowance for these workers is 128 MiB. Prepared facts, source
+## storage, active or nested frames and allocator overhead have separate lifetimes.
 ##
 ## Extending runtime availability requires a reviewed environment contract first. One
 ## stable owner must close the compiler only after all admitted consumers join. Separate
 ## leases must cover outer and nested prepared owners while an outer callback is suspended.
-## The environment must assign aggregate prepared/source/scratch limits and an explicit
+## The environment must assign aggregate prepared/source limits and an explicit
 ## competition policy across accumulation and package owners. Optional retention or native
 ## admission refusal must preserve checked results, gas, attempts and host-call order.
-## Reserve each retained owner's share before cache admission and return it after storage
+## Reserve each additional prepared owner's share before cache admission and return it after
 ## retirement. An exhausted optional share can select one-shot preparation under the same
-## mandatory resource limits or disable idle scratch retention. Nested owners need their
-## own share while the outer prepared lease remains active. The current API has no such
-## environment reservation or aggregate accounting; these are requirements for future wiring.
+## mandatory resource limits. Nested owners need their own share while the outer lease is active.
 ## Increasing image credits alone supplies neither aggregate byte accounting nor fairness.
 
 import ../state/accumulation/residency
