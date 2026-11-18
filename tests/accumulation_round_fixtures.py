@@ -14,6 +14,8 @@ from accumulation_operand_fixtures import grouped
 from accumulation_input_fixtures import invocation
 from state_workqueues_oracle import blob
 from report_oracle import encode
+from preview_vectors import ACCUMULATION_GAS_CASES, blob as preview_blob, pins as preview_pins
+from test_codec import reference_encode as natural
 
 
 # Enumerate every prefix independently of the native incremental subtraction algorithm.
@@ -24,6 +26,59 @@ def initial(costs, cores, report_gas, block_gas, allowances):
         return None  # GP gas cannot represent this initial context.
     prefix = max(i for i in range(len(costs)+1) if sum(costs[:i])+free <= budget)
     return budget, free, prefix, sum(costs[:prefix]), bool(prefix or allowances)
+
+
+def context(path, cores, case):
+    """Project complete reports and queue chapters without reading service execution state."""
+    state = case['pre_state']
+    ready = [[(report(x['report']), {bytes.fromhex(d[2:]) for d in x['dependencies']})
+              for x in bucket] for bucket in state['ready_queue']]
+    available = [report(x) for x in case['input']['reports']]
+    history = [{bytes.fromhex(x[2:]) for x in bucket} for bucket in state['accumulated']]
+    return path, cores, available, ready, history, case['input']['slot']
+
+
+def result_row(fields, selected, gas, allowances, expected):
+    """Attach the independent gas verdict and exact C.2 inputs for the selected prefix."""
+    allowance_text = ','.join(f'{s}:{g}' for s, g in sorted(allowances.items())) or '-'
+    if expected is None:
+        # An unrepresentable gas budget carries no prepared groups.
+        result = 'overflow -'
+    else:
+        budget, free, prefix, reserved, dispatch = expected
+        groups = invocation(dict(grouped(selected, prefix)), [], allowances)
+        result = ','.join(map(str, (budget, free, prefix, reserved, int(dispatch))))+' '
+        result += ';'.join(f'{s}:{gas}:'+(','.join(x.hex() for x in items) or '-')
+                           for s, gas, _, items in groups) or '-'
+    return ' '.join([*fields, *map(str, gas), allowance_text, result])
+
+
+def preview_rows():
+    """Replay each Full gas case at the initial-round boundary with its original report bytes."""
+    rows, sources = [], []
+    for name in ACCUMULATION_GAS_CASES:
+        path = f'stf/accumulate/full/{name}'
+        raw = preview_blob(path+'.json')
+        binary = preview_blob(path+'.bin')
+        case = json.loads(raw)
+        _, cores, available, ready, history, slot = context(path, 341, case)
+        prefix = slot.to_bytes(4, 'little') + natural(len(available))
+        prefix += b''.join(item['wire'] for item in available)
+        assert binary.startswith(prefix), path
+        assert not case['pre_state']['privileges']['always_acc'], path
+        selected, _, _ = priority(available, ready, history, slot)
+        costs = [sum(d[3] for d in item['layout']['digests']) for item in selected]
+        gas = (47_000_000, 16_450_000_000)
+        expected = initial(costs, cores, *gas, {})
+        # These cases reserve exactly the Full block budget first and consume the second report later.
+        assert expected == (gas[1], 0, 1, gas[1], True) and len(selected) == 2, path
+        post = {bytes.fromhex(x[2:]) for bucket in case['post_state']['accumulated'] for x in bucket}
+        assert post-set().union(*history) == {item['key'] for item in selected}, path
+        fields = row('preview:'+path, cores, available, ready, history, slot).split()[:7]
+        rows.append(result_row(fields, selected, gas, {}, expected))
+        sources.append(dict(path=path, json_sha256=hashlib.sha256(raw).hexdigest(),
+                            binary_sha256=hashlib.sha256(binary).hexdigest()))
+    return rows, sources
 
 
 # Keep original reports and queue chapters unchanged; only the explicit planning policy is authored.
@@ -38,16 +93,12 @@ def prepare(folder):
                      'enqueue_and_unlock_chain_wraps-1'):
             path = f'stf/accumulate/{chain}/{name}.json'
             case = blob(path)
-            state = case['pre_state']
-            ready = [[(report(x['report']), {bytes.fromhex(d[2:]) for d in x['dependencies']})
-                      for x in bucket] for bucket in state['ready_queue']]
-            available = [report(x) for x in case['input']['reports']]
-            history = [{bytes.fromhex(x[2:]) for x in bucket} for bucket in state['accumulated']]
-            contexts.append((path, cores, available, ready, history, case['input']['slot']))
+            ctx = context(path, cores, case)
+            contexts.append(ctx)
             sources.append(path)
             if template is None:
                 # Capture one original payload layout only for the explicitly authored cases below.
-                template = next(r['layout'] for bucket in ready for r, _ in bucket)
+                template = next(r['layout'] for bucket in ctx[3] for r, _ in bucket)
     rng = random.Random(0x524F554E44)
     # Authored reports cover all work results, zero costs and sums larger than the gas domain.
     for case in range(128):
@@ -82,24 +133,17 @@ def prepare(folder):
                          min(max(0, sum(costs)-1), 2**64-1), 0)[variant]
             expected = initial(costs, cores, report_gas, block_gas, allowances)
             fields = row(name, cores, available, ready, history, slot).split()[:7]
-            allowance_text = ','.join(f'{s}:{g}' for s, g in sorted(allowances.items())) or '-'
             if expected is None:
                 # No success metadata or partial groups accompany an unrepresentable budget.
-                result = 'overflow -'
                 refused += 1
-            else:
-                # Complete successful expectations include exact service inputs, not just a gas count.
-                budget, free, prefix, reserved, dispatch = expected
-                operands = dict(grouped(selected, prefix))
-                groups = invocation(operands, [], allowances)
-                result = ','.join(map(str, (budget, free, prefix, reserved, int(dispatch))))+' '
-                result += ';'.join(f'{s}:{gas}:'+(','.join(x.hex() for x in items) or '-')
-                                   for s, gas, _, items in groups) or '-'
-            lines.append(' '.join([*fields, str(report_gas), str(block_gas), allowance_text, result]))
+            lines.append(result_row(fields, selected, (report_gas, block_gas), allowances, expected))
+    preview, preview_sources = preview_rows()
+    lines.extend(preview)
     folder.mkdir(parents=True, exist_ok=True)
     path = folder/'accumulation-round.txt'
     path.write_text('\n'.join(lines)+'\n')
     evidence = dict(sources=sources, published_contexts=30, authored_contexts=640, overflow=refused,
+                    preview_commit=preview_pins()['commit'], preview_sources=preview_sources,
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/'accumulation-round.json').write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence
