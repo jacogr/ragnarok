@@ -375,12 +375,14 @@ type
     stream: FlatStream
     memoryScratch: nil FlatMemoryScratch
     memoryBudget: RetainedMemoryBudget # Optional aggregate idle ceiling belongs to this owner's cache.
-    memoryReuses: uint64 # Diagnostic only; restored memory never relies on a hit count.
+    codeBudget: RetainedMemoryBudget # Cold and warm payload share the same caller-owned ceiling.
+    planCharge, streamCharge: RetainedMemoryCharge
+    memoryReuses: uint64             # Diagnostic only; restored memory never relies on a hit count.
     limits: PreparedLimits
     busy: bool
     selected: PvmBackend
-    native: NativeSession # Shared asynchronous pipeline; no active graph is borrowed by its compiler.
-    prices: GasMemo      # Source-bound lazy prices share the same exclusive invocation lease.
+    native: NativeSession            # Shared asynchronous pipeline; no active graph is borrowed by its compiler.
+    prices: GasMemo                  # Source-bound lazy prices share the same exclusive invocation lease.
     when NativeReadCycleEnabled and defined(pvmPaidMixedLoopWitness):
       mixedPairMode: FlatMixedPairMode
     when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
@@ -394,6 +396,7 @@ type
     owner: PreparedProgram
     nativeRuntime: NativeRuntime       # Closed lifetime anchor, never a raw runtime registration.
     memoryBudget: RetainedMemoryBudget # All prepared identities retain the same budget handle.
+    codeBudget: RetainedMemoryBudget
     preparations, hits: uint64 # Copied cumulative worker diagnostics never affect guest admission or results.
   PreparedProgramCache* = object ## Reference identity permits synchronous worker sharing; concurrent use remains forbidden.
     data: nil PreparedCacheData
@@ -412,6 +415,10 @@ type
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
     memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
+    retainedCodePayloadBytes*: uint64       ## Source, admission and idle stream payload on this edge.
+
+const DefaultRetainedCodeBytes* = RetainedMemoryByteLimit(64'u64*1024*1024)
+  ## Default aggregate prepared-code ceiling for a production retention context.
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
@@ -500,7 +507,9 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
         jitBuilt: built, jitPlatformSupported: supported,
         checkedFallbackEnabled: data.selected == PvmBackend.Jit,
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
-        data.memoryScratch)))
+        data.memoryScratch),
+    retainedCodePayloadBytes: programEncodingLength(data.source)+planPayloadBytes(plan) +
+      streamPayloadBytes(data.stream)))
 
 when NativeReadCycleEnabled and defined(pvmMixedLoopWitness):
   proc setPreparedMixedDirtyPages*(prepared: PreparedProgram, addresses: openArray[uint64]) =
@@ -722,6 +731,20 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   if reusedMemory: inc data.memoryReuses
   runAdmittedFrame(borrowFrame(created), data, source, owner, cpu.pc, limit, plan, memo, single)
 
+proc retainPreparedStream(data: PreparedData, completed: bool): bool =
+  ## Settle the stream after checked handback, before native finish can submit a new image.
+  ## Return false when the checked stream had to be discarded and its epoch must retire.
+  if not isBound(data.codeBudget): return true
+  let bytes = streamPayloadBytes(data.stream)
+  result = true
+  if bytes != chargedPayloadBytes(data.streamCharge):
+    data.streamCharge = default(RetainedMemoryCharge)
+    if bytes != 0 and not tryCharge(data.codeBudget, bytes, data.streamCharge):
+      data.stream = default(FlatStream)
+      result = false
+  when NativeReadCycleEnabled:
+    settleFlatAuxiliary(data.stream, data.native, completed and result)
+
 proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram,
     plan: GasPlan = default(GasPlan), memo: GasMemo = default(GasMemo),
         single: bool = false): StepResult =
@@ -737,8 +760,11 @@ proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: Prepa
     data.busy = false
     return StepResult(status: StepError.BackendFailure)
   let answer = runPreparedFrame(source, prepared, limit, plan, memo, single)
-  let finished = finishNativeInvocation(data.native, (if answer.error == StepError.None:
+  let retained = retainPreparedStream(data, answer.error == StepError.None)
+  let finished = finishNativeInvocation(data.native, (if retained and answer.error ==
+      StepError.None:
     observedNativeWork(data.native) else: 0'u64))
+  if not retained: invalidateNativeStream(data.native)
   data.busy = false
   if not finished: return StepResult(status: StepError.BackendFailure)
   answer
@@ -1175,8 +1201,11 @@ proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; 
     return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   let answer = runPreparedHost[Context, Reason, Fallible, ScalarCapable, Callbacks](source,
       prepared, context, callbacks, steps, calls, plan, memo)
-  let finished = finishNativeInvocation(data.native, (if answer.error == HostExecutionError.None:
+  let retained = retainPreparedStream(data, answer.error == HostExecutionError.None)
+  let finished = finishNativeInvocation(data.native, (if retained and answer.error ==
+      HostExecutionError.None:
     observedNativeWork(data.native) else: 0'u64))
+  if not retained: invalidateNativeStream(data.native)
   data.busy = false
   if not finished: return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   answer
@@ -1450,11 +1479,12 @@ when defined(pvmSharedAsyncWitness):
     true
 
 proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(NativeRuntime),
-    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): PreparedProgramCache =
-  ## Create one empty slot. The optional budget governs idle scratch across this and other slots.
+    memoryBudget: RetainedMemoryBudget = default(RetainedMemoryBudget),
+    codeBudget: RetainedMemoryBudget = default(RetainedMemoryBudget)): PreparedProgramCache =
+  ## Create one slot with independently optional scratch and code retention budgets.
   ## Callers sharing a budget must serialize execution, inspection and owner retirement.
   PreparedProgramCache(data: PreparedCacheData(nativeRuntime: nativeRuntime,
-      memoryBudget: memoryBudget))
+      memoryBudget: memoryBudget, codeBudget: codeBudget))
 
 proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedCacheInfo] =
   ## Copy bounded occupancy/activity without exposing a cached handle or fabricating zero work from a busy owner.
@@ -1489,7 +1519,8 @@ func samePreparedLimits(a, b: PreparedLimits): bool =
 
 proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits: PreparedLimits,
     selected: PvmBackend): PreparationResult[PreparedProgram] =
-  ## Reuse exact source/policy; replace one idle successful owner atomically, leaving failed admissions retryable.
+  ## Reuse exact source/policy and replace only after admission. A full code budget supplies
+  ## a call-scoped prepared owner without replacing the previous cache or submitting native work.
   let slot = cache.data
   if slot == nil: return newPreparedProgram(source, limits, selected)
   block:
@@ -1503,20 +1534,31 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
         return PreparationResult[PreparedProgram](status: PreparationError.None,
             completed: slot.owner)
   inc slot.preparations
-  let admitted = newPreparedProgram(source, limits, selected, slot.nativeRuntime)
+  let bounded = isBound(slot.codeBudget)
+  let admitted = newPreparedProgram(source, limits, selected,
+    if bounded: default(NativeRuntime) else: slot.nativeRuntime)
   if admitted.error == PreparationError.None:
     let data {.cursor.} = admitted.value.data
-    if data != nil:
-      data.memoryBudget = slot.memoryBudget
+    if data == nil: return admitted
+    if bounded:
+      # Foreign engines have private storage outside this checked-plan budget.
+      if selected notin {PvmBackend.Interpreted, PvmBackend.Jit}: return admitted
+      let plan {.cursor.} = data.plan
+      if plan == nil or not tryCharge(slot.codeBudget,
+          programEncodingLength(source)+planPayloadBytes(plan), data.planCharge):
+        return admitted
+      data.codeBudget = slot.codeBudget
+      if selected == PvmBackend.Jit:
+        data.native = newNativeSession(slot.nativeRuntime, deferAuxiliaryOffers = true)
+    data.memoryBudget = slot.memoryBudget
     slot.owner = admitted.value # Retire the prior code/idle-byte owner; independently retained machine snapshots stay valid.
   admitted
 
-proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
-    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
-        raises: [].},
+proc hostCached[Context; Reason: enum; ScalarCapable: static[bool]; Callbacks](
+    source: Machine, context: var Context, callbacks: Callbacks,
     steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
     selected: PvmBackend, cache: PreparedProgramCache): HostExecutionResult[Reason] =
-  ## An explicit worker slot owns preparation only; the existing leased engine owns every callback and invocation effect.
+  ## Preserve cache exclusion during callbacks even when this turn uses one-shot preparation.
   let code = programOf(source)
   if code.error != MachineError.None: return executionResult[Reason](StepResult(
       status: StepError.InvalidMachine))
@@ -1525,7 +1567,27 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
   if prepared.error != PreparationError.None:
     return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
-  executeWithHost(source, context, handler, steps, calls, prepared.value)
+  let slot {.cursor.} = cache.data
+  let temporary = slot != nil and slot.owner.data != prepared.value.data
+  var incumbent = default(PreparedProgram)
+  if slot != nil and temporary:
+    # Keep the charged incumbent alive and let the ordinary busy-owner guard see the active turn.
+    incumbent = move(slot.owner)
+    slot.owner = prepared.value
+  defer:
+    if slot != nil and temporary:
+      slot.owner = move(incumbent)
+  hostSelected[Context, Reason, true, ScalarCapable, Callbacks](source, prepared.value,
+    context, callbacks, steps, calls)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend, cache: PreparedProgramCache): HostExecutionResult[Reason] =
+  ## An explicit worker slot owns preparation only; the leased engine owns invocation effects.
+  hostCached[Context, Reason, false, HostCallbacks[Context, Reason]](source, context,
+    HostCallbacks[Context, Reason](fallible: handler), steps, calls, cycles, selected, cache)
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason]
@@ -1536,16 +1598,9 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
     read32: HostRead32[Context, Reason] = default(HostRead32[Context,
         Reason])): HostExecutionResult[Reason] =
   ## Explicit capabilities follow the same full cache key and exclusive prepared-owner admission.
-  let code = programOf(source)
-  if code.error != MachineError.None:
-    return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
-  let prepared = cachedPreparedProgram(cache, code.value, defaultPreparedLimits(cycles), selected)
-  if prepared.error == PreparationError.Busy:
-    return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
-  if prepared.error != PreparationError.None:
-    return executionResult[Reason](StepResult(status: preparationFailure(prepared.error)))
-  executeWithHost(source, context, handler, steps, calls, prepared.value,
-    scalarCalls, scalarHandler, read32)
+  hostCached[Context, Reason, true, ScalarHostCallbacks[Context, Reason]](source, context,
+    ScalarHostCallbacks[Context, Reason](fallible: handler, scalarCalls: scalarCalls,
+      scalarFallible: scalarHandler, read32: read32), steps, calls, cycles, selected, cache)
 
 proc backendAvailability*(selected: PvmBackend): StepError =
   ## Refuse unavailable explicit optional policies before any application resource, host or guest effect opens.
