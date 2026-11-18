@@ -66,6 +66,8 @@ using namespace quic;
 namespace {
 constexpr unsigned TurnBudget = 64;
 constexpr size_t DatagramCapacity = 2048;
+// RFC 9000 section 14. IPv6 minimum link MTU less the IPv6 and UDP headers.
+constexpr QuicByteCount Ipv6InitialPacketCapacity = 1280 - 40 - 8;
 constexpr size_t WriteChunk = 4096;
 constexpr unsigned MinWindow = 16384;
 constexpr unsigned MaxWindow = 16777216;
@@ -1164,11 +1166,16 @@ int rq_connect_address(rq_transport *owner, const uint8_t *address, uint16_t por
     owner->status = 0;
     uint8_t id[8];
     QuicRandom::GetInstance()->RandBytes(id, sizeof(id));
+    const auto remote = SocketAddress(address, port, owner->options.ipv6 != 0);
     auto connection = std::make_unique<QuicConnection>(
         QuicConnectionId(reinterpret_cast<const char *>(id), sizeof(id)), owner->local,
-        SocketAddress(address, port, owner->options.ipv6 != 0), owner->client_helper.get(),
-        owner->alarms, owner->writer, false, Perspective::IS_CLIENT,
-        ParsedQuicVersionVector{ParsedQuicVersion::RFCv1()}, owner->cid_generator);
+        remote, owner->client_helper.get(), owner->alarms, owner->writer, false,
+        Perspective::IS_CLIENT, ParsedQuicVersionVector{ParsedQuicVersion::RFCv1()},
+        owner->cid_generator);
+    // Start IPv6 on the minimum path size. QUICHE sizes the server flight from
+    // the received Initial, and the writer still allows larger PMTU probes.
+    if (remote.host().Normalized().IsIPv6())
+        connection->SetMaxPacketLength(Ipv6InitialPacketCapacity);
     owner->client = std::make_unique<Session>(owner, connection.get(), nullptr, nullptr);
     connection.release();
     owner->client->peer_slot = 0;
