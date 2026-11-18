@@ -62,7 +62,7 @@ proc fixture(base: OwnedReport, incoming = false, disputed = false, ticket = fal
 
 proc opened(owner: var Server, context: RpcFixture) =
   ## Own an actual ephemeral loopback listener without a fixed test port; never forge descriptor ownership.
-  assert owner.start(fixturePort(), "accumulation", settings(), context.parent)
+  owner.fixtureListen("accumulation", settings(), context.parent)
   owner.chain = owner.chain.finalizeView(context.parent.value.blockHash).value
 
 proc info(owner: var Server): ClientInfo =

@@ -12,7 +12,7 @@ proc main() =
   ## Live streams carry proof requests and completion notifications through the dispatcher.
   var owner = default(Server)
   assert not owner.enableStateProofs()
-  assert owner.start(fixturePort(), "proof routing")
+  owner.fixtureListen("proof routing")
   assert owner.enableStateProofs()
   let firstPeer = owner.fixtureConnect(0)
   let secondPeer = owner.fixtureConnect(1)

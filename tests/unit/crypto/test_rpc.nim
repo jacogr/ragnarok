@@ -1941,7 +1941,7 @@ proc publicationLifecycle() =
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   assert owner.start(0, "test", genesisParameters, capturedGenesis)
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
-  assert owner.start(fixturePort(), "test")
+  owner.fixtureListen("test")
   owner.upgradeReceiveBounds()
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   owner.chain = historySeed
@@ -2322,7 +2322,7 @@ proc movedOwner() =
   let ping = masked("moved", 9)
   block:
     var source = default(Server)
-    assert source.start(fixturePort(), "move")
+    source.fixtureListen("move")
     peer = source.fixtureConnect(0)
     fixture_socket.sendText(peer, ping.substr(0, 1), false)
     source.fixtureBuffered(0)
@@ -2330,7 +2330,7 @@ proc movedOwner() =
     assert not source.opened and not source.connections[0].opened and
       not source.connections[0].stream.active
     source.close()
-    assert source.start(fixturePort(), "reused")
+    source.fixtureListen("reused")
     source.close()
   assert destination.connections[0].stream.hasBufferedInput
   fixture_socket.sendText(peer, ping.substr(2), false)

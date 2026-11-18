@@ -7,7 +7,7 @@
 import std/[nativesocket, oserrors, strutils]
 import ./rpc_socket as fixture_socket
 from ../../src/lib/stop_signal import ignorePipeSignal
-from std/ioring import shutdown
+from std/ioring import boundPort, shutdown
 
 assert ignorePipeSignal() # Match the executable’s stream signal policy.
 
@@ -21,11 +21,16 @@ proc fixturePair(domain, kind, protocol: cint, pair: pointer): cint {.
 proc fixturePause(micros: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Let passive stream tasks schedule between foreground polling turns.
 
-proc fixturePort(): uint16 =
-  ## Reserve a kernel-selected loopback port for immediate listener start.
-  let probe = fixture_socket.reservation()
-  assert posix.close(probe.fd) == 0
-  probe.port
+proc fixtureListen(owner: var Server, role: string, parameters = unavailableParameters(),
+    genesis = unavailableGenesis()) =
+  ## Adopt an already bound ephemeral listener. Public start uses port zero to disable RPC.
+  assert owner.availableForStart
+  owner.fd = listenLoopback(0, cint(MaxConnections))
+  assert owner.fd >= 0
+  owner.opened = true
+  let port = boundPort(owner.fd)
+  assert port > 0
+  owner.initializeContext(port, role, parameters, genesis, 0, default(ChainIdentity))
 
 proc fixtureAttach(owner: var Server, index: int, sendBuffer = 0): cint =
   ## The worker takes the server endpoint. The caller closes the returned client endpoint.
