@@ -18,6 +18,59 @@ proc run(map: InnerMachines, memory = invokeMemory(), args = invokeArgs(), credi
 proc price(map: InnerMachines): uint64 =
   ## Block pricing is independently verified by its own suite; host fee/refund/frame expectations remain literal.
   uint64(blockGas(map.innerMachine(InnerMachineId(0)).value.program, CodeAddress(0), GasCycleLimit(1000)).value)
+
+proc mappedModule(scope: InnerMachines, blob: openArray[byte], memory: Memory): InnerMachines =
+  ## Each call really compiles and instantiates one module, then maps an independent writable page.
+  let created = preparedInnerMachine(scope, MachineGas(10000),
+    innerRegisters(uint64(blob.len)), memory)
+  assert created.error == InnerMachineError.None
+  let mapped = innerPagesResponse(created.value.machines, MachineGas(10000), pageRegisters(),
+    memory)
+  assert mapped.error == InnerMachineError.None and uint64(mapped.value.response.registers[7]) == 0
+  mapped.value.machines
+
+proc sharedRetention() =
+  ## Launch independent immutable map branches over one invocation's ledger. A real retained
+  ## prepared owner, including one reachable only through an old map, keeps its charge until drop.
+  let blob = innerBlob()
+  let memory = invokeMemory(blob)
+  let control = mappedModule(captureInnerMachines(innerLimits()), blob, memory)
+  let expected = run(control, memory)
+  assert expected.error == InnerMachineError.None
+  let payload = innerRetentionPayload(control)
+  assert payload.code > uint64(blob.len) and payload.scratch == 8192
+  for codeLimited in [true, false]:
+    # Force code and scratch refusal independently, using only a measured complete owner as the cap.
+    let scope = captureInnerMachines(innerLimits(),
+      codeRetention = (if codeLimited: RetainedMemoryByteLimit(payload.code)
+      else: DefaultRetainedCodeBytes),
+      scratchRetention = RetainedMemoryByteLimit(payload.scratch))
+    let second = mappedModule(scope, blob, memory)
+    block:
+      let first = mappedModule(scope, blob, memory)
+      assert run(first, memory).error == InnerMachineError.None
+      assert innerRetentionPayload(scope) == payload
+      for attempt in 0..<2:
+        # Pressure cannot change the child exit, reservation/refund or published frame.
+        let done = run(second, memory)
+        assert done.error == InnerMachineError.None
+        assert done.value.response.action == expected.value.response.action
+        assert done.value.response.gas == expected.value.response.gas
+        assert done.value.response.registers == expected.value.response.registers
+        assert invokeFrame(done.value.response.memory) == invokeFrame(
+            expected.value.response.memory)
+        let observed = innerRetentionPayload(scope)
+        assert observed.code == (if codeLimited: payload.code else: 2*payload.code)
+        assert observed.scratch == payload.scratch
+      assert innerPreparationCount(second, InnerMachineId(0)).value ==
+        (if codeLimited: 2'u64 else: 1'u64)
+    # The first branch is gone. The still-live second module can now fill both budgets.
+    assert innerRetentionPayload(scope).scratch == 0
+    assert innerRetentionPayload(scope).code == (if codeLimited: 0'u64 else: payload.code)
+    assert run(second, memory).error == InnerMachineError.None
+    assert innerRetentionPayload(scope) == payload
+
+sharedRetention()
 # The original map and every successor share code work, while all visible machine state stays immutable.
 let cold = invokeMachines()
 assert cold.innerPreparationCount(InnerMachineId(0)).value == 0
@@ -117,6 +170,22 @@ assert hostSource.innerPreparationCount(InnerMachineId(0)).value == 1
 assert uint64(resumed.response.registers[7]) == 0
 assert uint64(resumed.response.gas) == 9032 # Resume retains the charged flag; the block is not priced twice.
 assert invokeFrame(resumed.response.memory)[0] == invokeFrame(hosted.response.memory)[0]
+block:
+  # An optional cold refusal still reconstructs the paid host continuation on its second segment.
+  let noRoom = RetainedMemoryByteLimit(0)
+  let scope = captureInnerMachines(innerLimits(), noRoom, noRoom)
+  let outer = invokeMemory(hostBlob)
+  let child = mappedModule(scope, hostBlob, outer)
+  let stopped = run(child, outer)
+  assert stopped.error == InnerMachineError.None
+  assert uint64(stopped.value.response.registers[7]) == 3
+  let done = run(stopped.value.machines, stopped.value.response.memory)
+  assert done.error == InnerMachineError.None
+  assert done.value.response.gas == resumed.response.gas
+  assert done.value.response.registers == resumed.response.registers
+  assert invokeFrame(done.value.response.memory) == invokeFrame(resumed.response.memory)
+  assert innerPreparationCount(child, InnerMachineId(0)).value == 2
+  assert innerRetentionPayload(scope) == (0'u64, 0'u64)
 # Fault recovery preserves registers/PC/paid gas; the caller repairs RAM using the real pages host before retry.
 let loadBlob = invokeBlob([@[52'u8, 7, 0, 0, 1], @[50'u8, 0]])
 let loadSource = invokeMachines(loadBlob)

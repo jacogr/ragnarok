@@ -1446,9 +1446,45 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
         assert runtimeInfo(runtime).failure == NativeCompilerFailure.None
         assert close(runtime)
 
+  proc checkMixedRetentionDecision() =
+    ## A ready Read owner may stage its two complete proofs but cannot spend a credit before handback.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "mixed retention worker failed to start"
+    let renderer = newNativeSession(runtime, deferAuxiliaryOffers = true)
+    readyMixedLoopTestRenderer(runtime, renderer)
+    let requested = mixedLoopTestPair(mixedLoopTestProof(nativeEpoch(renderer)))
+    let before = runtimeInfo(runtime)
+    for accepted in [false, true]:
+      # Pressure discards the first offer. A second exact attempt may still be accepted.
+      assert beginNativeInvocation(renderer, NativeInvocationFloor)
+      assert not offerNativeMixedLoops(renderer, requested) and stagedMixedOffer(renderer)
+      assert runtimeInfo(runtime).submitted == before.submitted
+      let chosen = settleNativeAuxiliary(renderer, accepted)
+      assert not stagedMixedOffer(renderer)
+      if accepted:
+        assert chosen.count == requested.count
+        for index in 0..<int(chosen.count):
+          assert chosen.tokens[index] == requested.proofs[index].header+1
+        assert runtimeInfo(runtime).submitted == before.submitted+1
+      else:
+        assert chosen.count == 0 and runtimeInfo(runtime).registered == before.registered
+      assert finishNativeInvocation(renderer, NativeInvocationFloor)
+    waitNativeCompiler(runtime)
+    assert beginNativeInvocation(renderer, NativeInvocationFloor)
+    let borrowed = borrowNativeMixedLoops(renderer, requested)
+    assert borrowed.image != nil and borrowed.mask != 0
+    assert returnNativeMixedLoop(renderer) and finishNativeInvocation(renderer, NativeInvocationFloor)
+    invalidateNativeStream(renderer)
+    assert runtimeInfo(runtime).registered == 0 and close(runtime)
+
   proc runMixedLoopMailbox*() =
+    ## Exercise both immediate and retention-gated handoff on a real compiler runtime.
     runMixedLoopMailboxCase[false]()
     runMixedLoopMailboxCase[true]()
+    checkMixedRetentionDecision()
 
   proc runMixedArenaPublishRefusal*() =
     ## A real partial arena publication failure must never become a callable worker completion.

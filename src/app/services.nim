@@ -42,12 +42,15 @@
 ## residents. The short-lived package worker keeps its separate 64 MiB per-owner cap.
 ## The combined idle payload allowance for these workers is 128 MiB. Prepared facts, source
 ## storage, active or nested frames and allocator overhead have separate lifetimes.
+## Accumulation's four workers share a separate 64 MiB allowance for encoded source and checked
+## preparation payload. A multi-item package worker uses its own code allowance. Pressure can leave an
+## invocation's decoded source or prepared code uncached without refusing the invocation.
 ##
 ## Extending runtime availability requires a reviewed environment contract first. One
 ## stable owner must close the compiler only after all admitted consumers join. Separate
 ## leases must cover outer and nested prepared owners while an outer callback is suspended.
-## The environment must assign aggregate prepared/source limits and an explicit
-## competition policy across accumulation and package owners. Optional retention or native
+## Any additional route needs an assigned share for prepared/source retention and an explicit
+## competition policy with accumulation and package owners. Optional retention or native
 ## admission refusal must preserve checked results, gas, attempts and host-call order.
 ## Reserve each additional prepared owner's share before cache admission and return it after
 ## retirement. An exhausted optional share can select one-shot preparation under the same

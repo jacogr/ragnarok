@@ -87,9 +87,11 @@ share its runtime. Authorization, inner modules, and the JAMNP-S audit/work-shar
 runtime-less execution routes. An exclusive multi-item JIT package turn can reclaim installed
 accumulation capacity for its primary and auxiliary image plus the scheduler's spare primary
 credit. Physical release and active leases
-still govern availability. The accumulation context enforces a shared idle scratch budget and the package worker
-has a separate per-owner allowance. Future wiring requires explicit ownership/shutdown, aggregate
-source and prepared-fact budgets, and a competition policy before increasing native availability.
+still govern availability. The accumulation context enforces separate shared budgets for idle
+scratch and retained code, and the package worker has independent allowances. Inner modules
+share an invocation-local code and idle-scratch allowance, including older map versions. They
+can reuse preparation without sharing the outer native runtime. Wider native wiring needs
+explicit runtime ownership/shutdown and a competition policy for the additional consumers.
 
 ## Bounded mixed store loops
 
