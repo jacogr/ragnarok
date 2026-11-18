@@ -21,8 +21,9 @@ from ../../../src/codec/state/service_values as state_service_values import serv
     servicePreimageKey, ServiceValueError, error, value
 from ../../../src/codec/header import OwnedHeader, HeaderError, encodeOwnedHeader, error
 
-const rpcDirectTestSockets = true # Socketpair fixtures drive dispatcher turns synchronously.
+from ../../../src/lib/http_head import maxHeadBytes
 include ../../../src/rpc/server
+include ../../support/rpc_stream_fixture
 
 # Structured output preserves integer endpoints and distinguishes data strings from embedded JSON.
 assert $json(high(uint64)) == "18446744073709551615"
@@ -337,19 +338,6 @@ extracted[0] = 99
 assert readMetadata.value.bytes[0] == 0
 
 let upgradeHeader = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
-block reused_header_scanner:
-  # A retired client's long partial header must not move the next client's scan past its terminator.
-  var reused = Connection(input: repeat('x', 1000))
-  assert reused.headScanner.findHeadEnd(toOpenArray(reused.input, 0, reused.input.len - 1)) ==
-    HeadPending
-  reused.close()
-  let suffix = masked("probe", 9)
-  reused.input = upgradeHeader & suffix
-  reused.process(default(ClientInfo), 1)
-  assert reused.upgraded, "Reused RPC slot finds a shorter header on its first processing turn"
-  assert reused.input == suffix, "Buffered WebSocket bytes remain after the exact header boundary"
-  assert "101 Switching Protocols" in reused.output
-  reused.close()
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
 assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
 for version in ["HTTP/1.0", "HTTP/2"]:
@@ -405,20 +393,16 @@ for origin in ["http://localhost", "http://127.0.0.1"]:
 # Direct session processing exercises fragmentation and control interleaving without nondeterministic timing.
 var slot = default(Connection)
 slot.upgraded = true
-slot.input = masked(request[0..<20], 1, false)
-slot.process(info, 0)
+slot.processFrame(decodeFrame(masked(request[0..<20], 1, false)), info, 0)
 assert slot.fragmented and slot.output.len == 0
-slot.input = masked("hello", 9)
-slot.process(info, 1)
+slot.processFrame(decodeFrame(masked("hello", 9)), info, 1)
 assert slot.output == frame("hello", 10)
 slot.output = ""
-slot.input = masked(request[20..^1], 0)
-slot.process(info, 2)
+slot.processFrame(decodeFrame(masked(request[20..^1], 0)), info, 2)
 var framedSession = default(RpcSession)
 assert not slot.fragmented and slot.output == frame(respond(request, info, framedSession))
 slot.output = ""
-slot.input = masked("", 0)
-slot.process(info, 3)
+slot.processFrame(decodeFrame(masked("", 0)), info, 3)
 assert slot.closing and slot.output == frame("\x03\xea", 8)
 # Independently encoded chapter 13: two six-validator natural-counter arrays, four core tuples and one service.
 let activityHex = "06" & repeat("00", 36) & "06" & repeat("00", 36) & repeat("00", 32) &
@@ -630,7 +614,6 @@ proc retireBuffers() =
   var owner = default(Server)
   owner.role = repeat("r", 128)
   for slot in mitems(owner.connections): # No sockets are opened; only ARC storage needs retirement.
-    slot.input = repeat("i", 1024)
     slot.output = repeat("o", 1024)
     slot.message = repeat("m", 1024)
 retireBuffers() # Warm fixed allocator bookkeeping before measuring retained application bytes.
@@ -1905,42 +1888,6 @@ for iteration in 0..<20:
   retireSubscriptions() # Warmed ARC accounting catches notification ownership retained across disconnects.
 assert getOccupiedMem() <= subscriptionBaseline + 256
 
-## Native connected sockets exercise actual tick IO without reserving a fixed TCP port.
-proc rpcSocketPair(domain, kind, protocol: cint, pair: pointer): cint {.
-  importc: "socketpair", header: "<sys/socket.h>".}
-
-## Read one small expected frame suffix; all fixture sockets are nonblocking, so failures cannot hang.
-proc publicationReply(fd: cint): string =
-  result = ""
-  var bytes = default(array[4096, char])
-  let count = receive(fd, addr bytes[0], csize_t(bytes.len), 0)
-  assert count > 0, "expected bytes on the connected RPC socket"
-  for index in 0..<count:
-    result.add(bytes[index]) # Copy only the initialized native receive prefix.
-
-let SendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
-
-proc backpressureSubscriber(fd: cint) =
-  ## Fill only the synthetic slow peer's kernel buffer before publishing real subscription frames.
-  var capacity = 4096.cint
-  assert setOption(fd, SocketLevel, SendBuffer, addr capacity, SockLen(sizeof(capacity))) == 0
-  var padding = repeat('x', 4096)
-  for attempt in 0..<1024:
-    # The unread peer retains fixture padding; observing would-block proves actual backpressure.
-    let written = sendBytes(fd, padding.toCString(), csize_t(padding.len), 0)
-    if written < 0:
-      let reason = osLastError()
-      if reason == OSErrorCode(EAGAIN) or reason == OSErrorCode(EWOULDBLOCK):
-        if padding.len > 1:
-          # A large-send refusal can leave space for a small update; exhaust that remainder too.
-          padding = "x"
-          continue
-        return
-      assert reason == OSErrorCode(EINTR), "slow-peer fixture failed before backpressure"
-    else:
-      assert written > 0
-  assert false, "slow-peer fixture reaches kernel backpressure within its finite allowance"
-
 proc upgradeReceiveBounds(owner: var Server) =
   ## Exercise both sides of the HTTP boundary through actual dispatcher reads.
   let first = "X-Padding-A: " & repeat('a', 8100) & "\r\n"
@@ -1950,39 +1897,42 @@ proc upgradeReceiveBounds(owner: var Server) =
   let head = upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & padding)
   assert head.len == int(maxHeadBytes())
   for oversized in [true, false]:
-    # Drive one fresh client per case. The final write crosses the former combined receive cap.
-    var pair = default(array[2, cint])
-    assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
-      0, addr pair[0]) == 0
-    defer: discard posix.close(pair[1])
-    assert nonblocking(pair[0]) and nonblocking(pair[1])
-    owner.connections[0].opened = true
-    owner.connections[0].fd = pair[0]
-    owner.connections[0].deadline = getMonoTime().ticks div 1_000_000 + 5000
+    # Reuse the slot after refusing an incomplete head and verify the next scanner starts fresh.
+    let peer = owner.fixtureAttach(0)
+    defer: discard posix.close(peer)
     let prefix = head.substr(0, head.len - 5)
-    for turn in 0..<4:
-      # Feed one dispatcher read at a time so the socket's send buffer cannot truncate the fixture.
-      let start = turn * 4096
-      var chunk = prefix.substr(start, min(start + 4096, prefix.len) - 1)
-      assert sendBytes(pair[1], chunk.toCString(), csize_t(chunk.len), 0) == chunk.len
-      owner.tick(0)
-    assert owner.connections[0].input == prefix and not owner.connections[0].upgraded,
-      "incomplete head stays buffered: " & $owner.connections[0].input.len
+    for start in countup(0, prefix.len - 1, 2048):
+      fixture_socket.sendText(peer, prefix.substr(start, min(start + 2048, prefix.len) - 1), false)
+      for turn in 0..<10:
+        owner.tick(0)
+        discard fixturePause(1000)
+    owner.fixtureBuffered(0)
+    assert not owner.connections[0].upgraded
     let ping = repeat('p', 32)
-    var suffix = if oversized: repeat('x', 64) else: head.substr(head.len - 4) & masked(ping, 9)
-    assert sendBytes(pair[1], suffix.toCString(), csize_t(suffix.len), 0) == suffix.len, "send the final read"
-    owner.tick(0)
+    let suffix = if oversized: repeat('x', 64) else: head.substr(head.len - 4) & masked(ping, 9)
+    fixture_socket.sendText(peer, suffix, false)
     if oversized:
-      # HTTP refusal closes without sending a WebSocket close frame.
-      var octet = '\0'
-      assert receive(pair[1], addr octet, 1, 0) == 0, "oversized upgrade closes without a binary frame"
+      owner.fixtureEof(peer)
       assert not owner.connections[0].opened
     else:
-      # The complete head upgrades before consuming the buffered Ping.
-      assert publicationReply(pair[1]).startsWith("HTTP/1.1 101 "), "head at the stock limit upgrades"
-      owner.tick(0)
-      assert publicationReply(pair[1]) == frame(ping, 10), "buffered Ping survives the upgrade"
+      let expected = upgrade(head)
+      assert expected.startsWith("HTTP/1.1 101 ")
+      assert owner.fixtureBytes(peer, expected.len) == expected
+      assert owner.fixtureFrame(peer) == frame(ping, 10)
       owner.connections[0].close()
+  # Retire a client with a long partial head, then admit a shorter pipelined upgrade.
+  let abandoned = owner.fixtureAttach(0)
+  fixture_socket.sendText(abandoned, repeat('x', 1000), false)
+  owner.fixtureBuffered(0)
+  owner.connections[0].close()
+  discard posix.close(abandoned)
+  let replacement = owner.fixtureAttach(0)
+  defer: discard posix.close(replacement)
+  fixture_socket.sendText(replacement, upgradeHeader & masked("probe", 9), false)
+  let expected = upgrade(upgradeHeader)
+  assert owner.fixtureBytes(replacement, expected.len) == expected
+  assert owner.fixtureFrame(replacement) == frame("probe", 10)
+  owner.connections[0].close()
 
 ## Own an ephemeral listener and connected WS transport while publishing between dispatcher turns.
 ## Synthetic snapshots establish handoff behavior only, not execution/signature validity.
@@ -1991,49 +1941,28 @@ proc publicationLifecycle() =
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   assert owner.start(0, "test", genesisParameters, capturedGenesis)
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
-  owner.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
-  assert owner.fd >= 0
-  owner.opened = true # Transfer the real listener to the destructor before any subsequent assertion.
-  var address = default(Sockaddr_in)
-  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-  when defined(macosx):
-    address.sin_len = uint8(sizeof(address)) # Darwin requires the socket-address extent.
-  var loopback = "127.0.0.1"
-  assert parseAddress(cint(ord(nativesocket.AF_INET)), loopback.toCString(),
-    addr address.sin_addr) == 1
-  assert nonblocking(owner.fd)
-  assert bindSocket(owner.fd, addr address, SockLen(sizeof(address))) == 0
-  assert listenSocket(owner.fd, 1) == 0
+  assert owner.start(fixturePort(), "test")
   owner.upgradeReceiveBounds()
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Uninitialized
   owner.chain = historySeed
   owner.parameters = genesisParameters
-  var pair = default(array[2, cint])
-  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
-    0, addr pair[0]) == 0
-  owner.connections[0].fd = pair[0]
-  owner.connections[0].opened = true
-  defer: discard posix.close(pair[1])
-  assert nonblocking(pair[0]) and nonblocking(pair[1])
-  owner.connections[0].upgraded = true
-  owner.connections[0].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  let peer = owner.fixtureConnect(0, 4096)
+  defer: discard posix.close(peer)
   let previous = ClientInfo(chain: owner.chain)
   let queued = frame(respond(bestRequest, previous))
   owner.connections[0].output = queued
-  owner.connections[0].offset = 5 # Model a response whose prefix was already written before publication.
   let listener = owner.fd
   assert owner.publishBlock(historyChild) == ViewAdvanceError.None
-  assert owner.fd == listener and owner.connections[0].fd == pair[0]
-  assert owner.connections[0].output == queued and owner.connections[0].offset == 5
-  owner.tick(0)
-  assert publicationReply(pair[1]) == queued.substr(5)
+  assert owner.fd == listener and owner.connections[0].stream.active
+  assert owner.connections[0].output == queued
+  assert owner.fixtureFrame(peer) == queued
   assert owner.connections[0].output.len == 0
   assert respond(bestRequest, previous) == respond(bestRequest, withGenesis)
   var packet = masked("[" & bestRequest & "," & rootRequest & "]")
   let packetData = packet.toCString()
-  assert sendBytes(pair[1], packetData, csize_t(packet.len), 0) == packet.len
+  assert sendBytes(peer, packetData, csize_t(packet.len), 0) == packet.len
   owner.tick(0)
-  assert publicationReply(pair[1]) == frame(respond("[" & bestRequest & "," & rootRequest & "]",
+  assert owner.fixtureFrame(peer) == frame(respond("[" & bestRequest & "," & rootRequest & "]",
     historicalInfo)) # The same live connection sees the new head and retained genesis state.
   assert owner.publishBlock(historyChild) == ViewAdvanceError.Duplicate
   assert owner.publishBlock(invalidGenesis()) == ViewAdvanceError.InvalidSnapshot
@@ -2049,95 +1978,74 @@ proc publicationLifecycle() =
   let pending = masked(bestRequest)
   var prefix = pending.substr(0, 7)
   var suffix = pending.substr(8)
-  assert sendBytes(pair[1], prefix.toCString(), csize_t(prefix.len), 0) == prefix.len
-  owner.tick(0)
-  assert owner.connections[0].input.len == prefix.len
+  assert sendBytes(peer, prefix.toCString(), csize_t(prefix.len), 0) == prefix.len
+  owner.fixtureBuffered(0)
   assert owner.connections[0].output.len == 0
   let next = childSnapshot(historyChild.value, 10, genesisParameters.value)
   assert owner.publishBlock(next) == ViewAdvanceError.None
   assert owner.chain.bestBlock.value.slot == 10
-  assert sendBytes(pair[1], suffix.toCString(), csize_t(suffix.len), 0) == suffix.len
+  assert sendBytes(peer, suffix.toCString(), csize_t(suffix.len), 0) == suffix.len
   owner.tick(0)
   let current = ClientInfo(parameters: genesisParameters, chain: owner.chain)
-  assert publicationReply(pair[1]) == frame(respond(bestRequest,
+  assert owner.fixtureFrame(peer) == frame(respond(bestRequest,
       current)) # An incomplete input observes the view when processing completes.
   var subscribePacket = masked(SubscribeBest)
-  assert sendBytes(pair[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+  assert sendBytes(peer, subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
       subscribePacket.len
   owner.tick(0)
-  assert publicationReply(pair[1]) == frame(SubscribedBest) # The response precedes the initial notification.
+  assert owner.fixtureFrame(peer) == frame(SubscribedBest) # The response precedes the initial notification.
   owner.tick(0)
   let initial = initialBestUpdate.replace(genesisHash, base64.encode(array[32, byte](
       next.value.blockHash))).replace("\"slot\":7", "\"slot\":10")
-  assert publicationReply(pair[1]) == frame(initial)
+  assert owner.fixtureFrame(peer) == frame(initial)
   assert owner.publishBlock(next) == ViewAdvanceError.Duplicate
   assert owner.connections[0].session.nextUpdate() == "" # Rejected publication emits no event.
-  owner.connections[0].input = "\x81" # Retain a partial client frame while delivering an unrelated update.
-  let partialDeadline = getMonoTime().ticks div 1_000_000 + 2000
-  owner.connections[0].deadline = partialDeadline
+  # A retained partial frame cannot suppress an unrelated subscription update.
+  let splitPing = masked("partial", 9)
+  fixture_socket.sendText(peer, splitPing.substr(0, 1), false)
+  owner.fixtureBuffered(0)
   let published = childSnapshot(next.value, 11, genesisParameters.value)
   assert owner.publishBlock(published) == ViewAdvanceError.None
-  owner.tick(0)
-  assert publicationReply(pair[1]) == frame(initialBestUpdate.replace(genesisHash,
+  assert owner.fixtureFrame(peer) == frame(initialBestUpdate.replace(genesisHash,
     base64.encode(array[32, byte](published.value.blockHash))).replace("\"slot\":7", "\"slot\":11"))
-  assert owner.connections[0].deadline == partialDeadline # Event delivery cannot extend partial-input lifetime.
-  owner.connections[0].input = "" # Retire the synthetic partial-frame fixture before sending cancellation.
+  fixture_socket.sendText(peer, splitPing.substr(2), false)
+  assert owner.fixtureFrame(peer) == frame("partial", 10)
   var cancelPacket = masked(UnsubscribeBest)
-  assert sendBytes(pair[1], cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
+  assert sendBytes(peer, cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
       cancelPacket.len
   owner.tick(0)
-  assert publicationReply(pair[1]) == frame(UnsubscribedBest)
+  assert owner.fixtureFrame(peer) == frame(UnsubscribedBest)
   assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
     owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":2")
   for identity in 3..4:
     # Several selectors let the existing bounded publication run overflow a genuinely blocked writer.
     assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
       owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":" & $identity)
-  backpressureSubscriber(pair[0])
-  var survivor = default(array[2, cint])
-  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
-    0, addr survivor[0]) == 0
-  owner.connections[1].fd = survivor[0]
-  owner.connections[1].opened = true
-  defer: discard posix.close(survivor[1])
-  assert nonblocking(survivor[0]) and nonblocking(survivor[1])
-  owner.connections[1].upgraded = true
-  owner.connections[1].deadline = getMonoTime().ticks div 1_000_000 + 30000
-  var fast = default(array[2, cint])
-  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
-    0, addr fast[0]) == 0
-  owner.connections[2].fd = fast[0]
-  owner.connections[2].opened = true
-  defer: discard posix.close(fast[1])
-  assert nonblocking(fast[0]) and nonblocking(fast[1])
-  owner.connections[2].upgraded = true
-  owner.connections[2].deadline = getMonoTime().ticks div 1_000_000 + 30000
-  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
-      subscribePacket.len
-  owner.tick(0)
-  assert publicationReply(fast[1]) == frame(SubscribedBest)
-  assertUsage(owner.connections[2].session, current, 1, 1, 0, 1,
-    initialBestUpdate.replace(genesisHash, base64.encode(array[32, byte](
-        published.value.blockHash))).replace(
-      "\"slot\":7", "\"slot\":11").len)
-  assert sendBytes(fast[1], cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
-      cancelPacket.len
-  owner.tick(0)
-  assert publicationReply(fast[1]) == frame(UnsubscribedBest)
+  let survivor = owner.fixtureConnect(1)
+  let fast = owner.fixtureConnect(2)
+  defer:
+    discard posix.close(survivor)
+    discard posix.close(fast)
+  # Both calls share a dispatch turn, so cancellation removes the initial event before it can be sent.
+  fixture_socket.sendText(fast, "[" & SubscribeBest & "," & UnsubscribeBest & "]")
+  assert owner.fixtureFrame(fast) == frame("[" & SubscribedBest & "," & UnsubscribedBest & "]")
   assertUsage(owner.connections[2].session, current, 0, 0, 0, 0, 0)
   owner.tick(0)
   var silent = default(array[1, char])
-  assert receive(fast[1], addr silent[0], 1, 0) < 0
+  assert receive(fast, addr silent[0], 1, 0) < 0
   assert osLastError() in [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK)]
-  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+  assert sendBytes(fast, subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
       subscribePacket.len
   owner.tick(0)
-  assert publicationReply(fast[1]) == frame(SubscribedBest.replace("\"result\":1", "\"result\":2"))
+  assert owner.fixtureFrame(fast) == frame(SubscribedBest.replace("\"result\":1", "\"result\":2"))
   owner.tick(0)
   let fastInitial = initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
-  assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+  assert owner.fixtureFrame(fast) == frame(fastInitial.replace(genesisHash,
     base64.encode(array[32, byte](published.value.blockHash))).replace("\"slot\":7", "\"slot\":11"))
-  assert owner.connections[0].output.len > owner.connections[0].offset
+  # A full-sized reply exceeds the fixture's send buffer. Only the real Writer owns progress.
+  owner.connections[0].output = frame(repeat('p', 65535))
+  owner.tick(0)
+  assert owner.connections[0].streamWriting and owner.connections[0].stream.writing
   var overflowed = false
   for atSlot in 12'u32..27'u32:
     let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
@@ -2146,18 +2054,18 @@ proc publicationLifecycle() =
     if wasOpen and not owner.connections[0].opened:
       overflowed = true # Publication itself must retire the full queue; a tick timeout cannot substitute.
     owner.tick(0)
-    assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+    assert owner.fixtureFrame(fast) == frame(fastInitial.replace(genesisHash,
       base64.encode(array[32, byte](child.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot))
     assert owner.connections[2].opened # Every publication reaches the active reader across slow-peer overflow.
   assert owner.opened and owner.chain.bestBlock.value.slot == 27
   assert overflowed and not owner.connections[0].opened # Undelivered updates exceed the bounded FIFO.
   assert owner.connections[0].session.nextUpdate() == ""
   var survivorRequest = masked(bestRequest)
-  assert sendBytes(survivor[1], survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
+  assert sendBytes(survivor, survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
       survivorRequest.len
   owner.tick(0)
   let survivingInfo = ClientInfo(chain: owner.chain, parameters: genesisParameters)
-  assert publicationReply(survivor[1]) == frame(respond(bestRequest, survivingInfo))
+  assert owner.fixtureFrame(survivor) == frame(respond(bestRequest, survivingInfo))
   assert owner.connections[1].opened # The overflowing subscriber cannot disconnect another client.
   owner.connections[2].close() # Retire the independent subscription before the remaining family fixtures.
   let rawActivity = base64.decode(activityBlob[1..^2])
@@ -2168,12 +2076,12 @@ proc publicationLifecycle() =
       activity = activityBytes)
   assert owner.publishBlock(statsHead) == ViewAdvanceError.None
   var statsPacket = masked(SubscribeStats)
-  assert sendBytes(survivor[1], statsPacket.toCString(), csize_t(statsPacket.len), 0) ==
+  assert sendBytes(survivor, statsPacket.toCString(), csize_t(statsPacket.len), 0) ==
       statsPacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest)
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest)
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(initialStatsUpdate.replace(genesisHash,
+  assert owner.fixtureFrame(survivor) == frame(initialStatsUpdate.replace(genesisHash,
     base64.encode(array[32, byte](statsHead.value.blockHash))).replace("\"slot\":7", "\"slot\":28"))
   activityBytes[1] = 1 # Change an ordinary current-validator counter without changing the roster shape.
   let changedStatsHead = childSnapshot(statsHead.value, 29, genesisParameters.value,
@@ -2181,22 +2089,22 @@ proc publicationLifecycle() =
   assert owner.publishBlock(changedStatsHead) == ViewAdvanceError.None
   owner.tick(0)
   let changedBlob = quote(base64.encode(activityBytes))
-  assert publicationReply(survivor[1]) == frame(initialStatsUpdate.replace(genesisHash,
+  assert owner.fixtureFrame(survivor) == frame(initialStatsUpdate.replace(genesisHash,
     base64.encode(array[32, byte](changedStatsHead.value.blockHash))).replace("\"slot\":7",
         "\"slot\":29").replace(activityBlob, changedBlob))
   let missingStatsHead = childSnapshot(changedStatsHead.value, 30, genesisParameters.value)
   assert owner.publishBlock(missingStatsHead) == ViewAdvanceError.None
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(statsFailure)
+  assert owner.fixtureFrame(survivor) == frame(statsFailure)
   assert owner.connections[1].opened # Invalid statistics terminate only their subscription, not the connection.
   var accountPacket = masked(SubscribeAccount)
-  assert sendBytes(survivor[1], accountPacket.toCString(), csize_t(accountPacket.len), 0) ==
+  assert sendBytes(survivor, accountPacket.toCString(), csize_t(accountPacket.len), 0) ==
       accountPacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest.replace("\"result\":1",
       "\"result\":2"))
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(absentAccountUpdate.replace("\"subscription\":1",
+  assert owner.fixtureFrame(survivor) == frame(absentAccountUpdate.replace("\"subscription\":1",
       "\"subscription\":2").replace(genesisHash,
     base64.encode(array[32, byte](missingStatsHead.value.blockHash))).replace("\"slot\":7",
         "\"slot\":30"))
@@ -2216,7 +2124,7 @@ proc publicationLifecycle() =
     assert owner.publishBlock(accountHead) == ViewAdvanceError.None
     owner.tick(0)
     if atSlot == 34:
-      assert publicationReply(survivor[1]) == frame(accountFailure.replace("\"subscription\":1",
+      assert owner.fixtureFrame(survivor) == frame(accountFailure.replace("\"subscription\":1",
           "\"subscription\":2")) # Only this account subscription terminates.
     else:
       let value = if atSlot == 33: "null" else: quote(base64.encode(
@@ -2225,7 +2133,7 @@ proc publicationLifecycle() =
           "\"subscription\":2").replace(genesisHash,
         base64.encode(array[32, byte](accountHead.value.blockHash))).replace("\"slot\":7",
             "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
-      assert publicationReply(survivor[1]) == frame(expected)
+      assert owner.fixtureFrame(survivor) == frame(expected)
   assert owner.connections[1].opened
   let storageKey = serviceStorageKey(ServiceIndex(42), @[byte('k'), byte('e'), byte('y')],
       ByteLimit(3))
@@ -2236,13 +2144,13 @@ proc publicationLifecycle() =
       accounts = @[accountEntry])
   assert owner.publishBlock(emptyStorageHead) == ViewAdvanceError.None
   var valuePacket = masked(SubscribeValue)
-  assert sendBytes(survivor[1], valuePacket.toCString(), csize_t(valuePacket.len), 0) ==
+  assert sendBytes(survivor, valuePacket.toCString(), csize_t(valuePacket.len), 0) ==
       valuePacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest.replace("\"result\":1",
       "\"result\":3"))
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(absentValueUpdate.replace("\"subscription\":1",
+  assert owner.fixtureFrame(survivor) == frame(absentValueUpdate.replace("\"subscription\":1",
       "\"subscription\":3").replace(genesisHash,
     base64.encode(array[32, byte](emptyStorageHead.value.blockHash))).replace("\"slot\":7",
         "\"slot\":35"))
@@ -2266,13 +2174,13 @@ proc publicationLifecycle() =
     assert owner.publishBlock(storageHead) == ViewAdvanceError.None
     owner.tick(0)
     if atSlot == 40:
-      assert publicationReply(survivor[1]) == frame(valueFailure.replace("\"subscription\":1",
+      assert owner.fixtureFrame(survivor) == frame(valueFailure.replace("\"subscription\":1",
           "\"subscription\":3")) # Only the oversized-value subscription is retired.
     else:
       let expected = absentValueUpdate.replace("\"subscription\":1", "\"subscription\":3").replace(genesisHash,
         base64.encode(array[32, byte](storageHead.value.blockHash))).replace("\"slot\":7",
             "\"slot\":" & $atSlot).replace("\"value\":null", "\"value\":" & value)
-      assert publicationReply(survivor[1]) == frame(expected)
+      assert owner.fixtureFrame(survivor) == frame(expected)
   assert owner.connections[1].opened
   var preimageIdentity = default(array[32, byte])
   let decodedPreimageHash = base64.decode(PreimageHashText)
@@ -2282,13 +2190,13 @@ proc publicationLifecycle() =
       ByteLimit(32))
   assert preimageKey.error == ServiceValueError.None
   var preimagePacket = masked(subscribePreimage)
-  assert sendBytes(survivor[1], preimagePacket.toCString(), csize_t(preimagePacket.len), 0) ==
+  assert sendBytes(survivor, preimagePacket.toCString(), csize_t(preimagePacket.len), 0) ==
       preimagePacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest.replace("\"result\":1",
       "\"result\":4"))
   owner.tick(0)
-  discard publicationReply(survivor[1]) # The current account has no preimage; subsequent heads check exact envelopes.
+  discard owner.fixtureFrame(survivor) # The current account has no preimage; subsequent heads check exact envelopes.
   for atSlot in 41'u32..43'u32:
     var entries = @[accountEntry]
     var value = "null"
@@ -2304,27 +2212,27 @@ proc publicationLifecycle() =
     assert owner.publishBlock(preimageHead) == ViewAdvanceError.None
     owner.tick(0)
     if atSlot == 43:
-      assert publicationReply(survivor[1]) == frame(preimageFailure.replace("\"subscription\":1",
+      assert owner.fixtureFrame(survivor) == frame(preimageFailure.replace("\"subscription\":1",
           "\"subscription\":4")) # Corruption is an error, never absence.
     else:
       let expected = absentPreimageUpdate.replace("\"subscription\":1",
           "\"subscription\":4").replace(genesisHash, base64.encode(array[32, byte](
           preimageHead.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot).replace(
           "\"value\":null", "\"value\":" & value)
-      assert publicationReply(survivor[1]) == frame(
+      assert owner.fixtureFrame(survivor) == frame(
           expected) # Valid addition and subsequent deletion both preserve the subscription.
   assert owner.connections[1].opened
   let requestKey = serviceRequestKey(ServiceIndex(42), default(ServicePreimageHash), RequestLength(
       0), ByteLimit(32))
   assert requestKey.error == RequestError.None
   var requestPacket = masked(subscribeRequest("0"))
-  assert sendBytes(survivor[1], requestPacket.toCString(), csize_t(requestPacket.len), 0) ==
+  assert sendBytes(survivor, requestPacket.toCString(), csize_t(requestPacket.len), 0) ==
       requestPacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest.replace("\"result\":1",
       "\"result\":5"))
   owner.tick(0)
-  discard publicationReply(survivor[1]) # Current head has no request entry.
+  discard owner.fixtureFrame(survivor) # Current head has no request entry.
   for atSlot in 44'u32..49'u32:
     var entries = @[accountEntry]
     var value = "null"
@@ -2343,14 +2251,14 @@ proc publicationLifecycle() =
     assert owner.publishBlock(requestHead) == ViewAdvanceError.None
     owner.tick(0)
     if atSlot == 49:
-      assert publicationReply(survivor[1]) == frame(requestFailure.replace("\"subscription\":1",
+      assert owner.fixtureFrame(survivor) == frame(requestFailure.replace("\"subscription\":1",
           "\"subscription\":5")) # Malformed is neither null nor an empty history.
     else:
       let expected = absentRequestUpdate.replace("\"subscription\":1",
           "\"subscription\":5").replace(genesisHash, base64.encode(array[32, byte](
           requestHead.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot).replace(
           "\"value\":null", "\"value\":" & value)
-      assert publicationReply(survivor[1]) == frame(expected) # Updates include a successful null on deletion.
+      assert owner.fixtureFrame(survivor) == frame(expected) # Updates include a successful null on deletion.
   assert owner.connections[1].opened
   let finalizedHead = owner.chain.bestBlock
   assert finalizedHead.error == GenesisError.None
@@ -2358,30 +2266,30 @@ proc publicationLifecycle() =
   assert owner.publishFinalized(finalizedHead.value.blockHash) == ViewFinalizeError.None
   assert owner.publishFinalized(finalizedHead.value.blockHash) == ViewFinalizeError.None
   var finalizedPacket = masked(finalizedRequest)
-  assert sendBytes(survivor[1], finalizedPacket.toCString(), csize_t(finalizedPacket.len), 0) ==
+  assert sendBytes(survivor, finalizedPacket.toCString(), csize_t(finalizedPacket.len), 0) ==
       finalizedPacket.len
   owner.tick(0)
   let finalizedAnswer = respond(bestRequest, withGenesis).replace(genesisHash, base64.encode(array[
       32, byte](finalizedHead.value.blockHash))).replace("\"slot\":7", "\"slot\":49")
-  assert publicationReply(survivor[1]) == frame(finalizedAnswer) # Dispatcher queries use the explicitly published finalized snapshot.
+  assert owner.fixtureFrame(survivor) == frame(finalizedAnswer) # Dispatcher queries use the explicitly published finalized snapshot.
   var subscribeFinalizedPacket = masked(subscribeFinalized)
-  assert sendBytes(survivor[1], subscribeFinalizedPacket.toCString(), csize_t(
+  assert sendBytes(survivor, subscribeFinalizedPacket.toCString(), csize_t(
       subscribeFinalizedPacket.len), 0) == subscribeFinalizedPacket.len
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(SubscribedBest.replace("\"result\":1",
+  assert owner.fixtureFrame(survivor) == frame(SubscribedBest.replace("\"result\":1",
       "\"result\":6"))
   owner.tick(0)
   let finalizedInitial = initialFinalizedUpdate.replace("\"subscription\":1",
       "\"subscription\":6").replace(genesisHash, base64.encode(array[32, byte](
       finalizedHead.value.blockHash))).replace("\"slot\":7", "\"slot\":49")
-  assert publicationReply(survivor[1]) == frame(finalizedInitial)
+  assert owner.fixtureFrame(survivor) == frame(finalizedInitial)
   let nextFinalized = childSnapshot(finalizedHead.value, 50, genesisParameters.value)
   assert owner.publishBlock(nextFinalized) == ViewAdvanceError.None
   assert owner.connections[1].session.nextUpdate() ==
       "" # Actual server best publication cannot queue a finalized event.
   assert owner.publishFinalized(nextFinalized.value.blockHash) == ViewFinalizeError.None
   owner.tick(0)
-  assert publicationReply(survivor[1]) == frame(finalizedInitial.replace(base64.encode(array[32,
+  assert owner.fixtureFrame(survivor) == frame(finalizedInitial.replace(base64.encode(array[32,
       byte](finalizedHead.value.blockHash)), base64.encode(array[32, byte](
       nextFinalized.value.blockHash))).replace("\"slot\":49", "\"slot\":50"))
   assert owner.publishFinalized(nextFinalized.value.blockHash) == ViewFinalizeError.None
@@ -2406,28 +2314,29 @@ publicationLifecycle()
 
 echo "rpc ok"
 
-# Moving the listener also transfers every accepted connection cleanup obligation.
-block moved_owner:
+# Moving a live listener also transfers its Reader/Writer task and partially received frame.
+proc movedOwner() =
   var destination = default(Server)
+  var peer = -1.cint
+  defer: discard posix.close(peer)
+  let ping = masked("moved", 9)
   block:
     var source = default(Server)
-    source.fd = posix.open("/dev/null", O_RDONLY)
-    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0 and source.connections[0].fd >= 0
-    source.opened = true
-    source.connections[0].opened = true
-    source.connections[0].input = "owned request bytes"
+    assert source.start(fixturePort(), "move")
+    peer = source.fixtureConnect(0)
+    fixture_socket.sendText(peer, ping.substr(0, 1), false)
+    source.fixtureBuffered(0)
     destination = move(source)
-    assert not source.opened and not source.connections[0].opened
+    assert not source.opened and not source.connections[0].opened and
+      not source.connections[0].stream.active
     source.close()
-    # Reusing the source must neither retire the destination nor inherit its request storage.
-    assert source.connections[0].input.len == 0
-    source.fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0
-    source.opened = true
+    assert source.start(fixturePort(), "reused")
     source.close()
-  # Source destruction has run; both transferred descriptor identities still belong to destination.
-  assert fcntl(destination.fd, F_GETFL) >= 0
-  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
-  assert destination.connections[0].input == "owned request bytes"
+  assert destination.connections[0].stream.hasBufferedInput
+  fixture_socket.sendText(peer, ping.substr(2), false)
+  assert destination.fixtureFrame(peer) == frame("moved", 10)
   destination.close()
+  destination.fixtureEof(peer)
+
+movedOwner()
+shutdown()

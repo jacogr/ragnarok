@@ -13,10 +13,9 @@
 ## the socket owner and per-connection state. The single-owner Reader/Writer task
 ## is the only live transport; canonical state stays on this dispatcher.
 
-import std/[assertions, nativesocket, oserrors, strutils, monotimes]
+import std/[strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
-import ../lib/http_head
 import ./[wire, protocol, proof_requests]
 import ./light_source
 import ./wire_stream
@@ -33,12 +32,9 @@ const MaxConnections* = 8
 type
   Connection = object
     opened, upgraded, closing, fragmented: bool
-    fd: cint
     stream: RpcWireStream
     streamWriting: bool
-    input, output, message: string
-    headScanner: Head   # Resumes the Balsa scan across partial reads.
-    offset: int
+    output, message: string
     session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
   RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
@@ -117,9 +113,8 @@ proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
-    # Every accepted descriptor belongs to the destination, including streaming files.
+    # Moved slots no longer own a stream or a session.
     slot.opened = false
-    slot.fd = -1
 
 proc `=destroy`*(server: Server) =
   ## ARC destruction closes descriptors only after every exclusive chain lease has ended.
@@ -129,9 +124,6 @@ proc `=destroy`*(server: Server) =
     discard posix.close(server.fd)
   for slot in server.connections: # Slots are owned solely by this server, without reference cycles.
     slot.stream.stop()
-    when declared(rpcDirectTestSockets):
-      if slot.opened and slot.fd >= 0:
-        discard posix.close(slot.fd)
 
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.connections)
@@ -164,15 +156,11 @@ proc close(slot: var Connection) =
   ## Retire one slot exactly once and release queued data; close is not retried after EINTR.
   slot.stream.stop() # Joining happens after completion, so one stalled writer cannot block a tick.
   slot.streamWriting = false
-  when declared(rpcDirectTestSockets):
-    if slot.opened and slot.fd >= 0:
-      discard posix.close(slot.fd)
   slot.opened = false
   slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
-  slot.input = ""; slot.output = ""; slot.message = ""
-  slot.headScanner = default(Head) # The next client starts scanning its own input at zero.
+  slot.output = ""; slot.message = ""
   slot.messageDeadline = 0
-  slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
+  slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
 proc close*(server: var Server) {.requires: server.lease == nil.} =
   ## Request retirement for every stream before joining any of them.
@@ -402,7 +390,6 @@ proc reject(slot: var Connection, code: int, now: int64) =
   ## Queue a bounded close frame, then allow only its partial writes until the absolute deadline.
   let payload = $char(code shr 8) & $char(code and 255)
   slot.output = frame(payload, 8)
-  slot.offset = 0
   slot.closing = true
   slot.deadline = now + 5000
 
@@ -471,32 +458,12 @@ proc processFrame(slot: var Connection, parsed: FrameResult, info: ClientInfo, n
     # Decoder already excludes reserved opcodes.
     slot.reject(1002, now)
     return
-  slot.offset = 0
   if slot.output.len > 0:
     # A slow consumer gets one absolute write budget.
     slot.deadline = now + 5000
-  elif slot.input.len == 0 and not slot.fragmented:
+  elif not slot.fragmented:
     # Idle keepalive window.
     slot.deadline = now + 30000
-
-when declared(rpcDirectTestSockets):
-  proc process(slot: var Connection, info: ClientInfo, now: int64,
-      uiPort: uint16 = 0) =
-    ## Direct-descriptor fixtures use the same upgrade and frame policy synchronously.
-    if not slot.upgraded:
-      let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
-      if headBytes == HeadPending: return
-      if headBytes < 0:
-        slot.close()
-        return
-      let header = slot.input.substr(0, headBytes - 1)
-      slot.input = slot.input.substr(headBytes)
-      slot.processHead(header, now, uiPort)
-    else:
-      let parsed = decodeFrame(slot.input)
-      if parsed.status == incomplete: return
-      if parsed.status == complete: slot.input = slot.input[parsed.consumed..^1]
-      slot.processFrame(parsed, info, now)
 
 proc tick*(server: var Server, peers: uint32) =
   ## One accept, one input handoff and one write handoff per slot per dispatcher turn.
@@ -521,7 +488,6 @@ proc tick*(server: var Server, peers: uint32) =
     if free < 0 or not nonblocking(accepted):
       discard posix.close(accepted)
     elif server.connections[free].stream.start(accepted):
-      server.connections[free].fd = -1
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
     else:
@@ -547,38 +513,21 @@ proc tick*(server: var Server, peers: uint32) =
       if slot.closing:
         slot.close()
         continue
-      if slot.input.len == 0 and not slot.fragmented:
+      if not slot.fragmented:
         slot.deadline = now + 30000
     # FIN is published only after the final framing result has been taken.
     let inputEnded = slot.stream.inputEnded
     if slot.output.len == 0 and not slot.closing:
-      if slot.stream.active:
-        var input = default(WireInput)
-        if slot.stream.takeInput(input):
-          case input.kind
-          of BadHead: slot.close() # An oversized upgrade cannot reach HTTP policy.
-          of UpgradeHead: slot.processHead(input.head, now, server.uiPort)
-          of ClientFrame: slot.processFrame(input.frame, info, now)
-      else:
-        when declared(rpcDirectTestSockets):
-          # Directly injected descriptors are used by the native dispatcher fixtures.
-          # The same bounded lookahead applies when the fixture owns raw reads.
-          if slot.input.len < max(int(maxHeadBytes()), MaxMessage + MaxClientFrameHeader):
-            var bytes = default(array[4096, char])
-            let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
-            if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
-              slot.close()
-              continue
-            if count > 0:
-              if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
-                slot.deadline = now + 5000
-              for i in 0..<count: slot.input.add(bytes[i])
-          slot.process(info, now, server.uiPort)
+      var input = default(WireInput)
+      if slot.stream.takeInput(input):
+        case input.kind
+        of BadHead: slot.close() # An oversized upgrade cannot reach HTTP policy.
+        of UpgradeHead: slot.processHead(input.head, now, server.uiPort)
+        of ClientFrame: slot.processFrame(input.frame, info, now)
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:
         slot.output = frame(update) # Request replies precede queued notifications on this connection.
-        slot.offset = 0
         slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
     if not slot.opened:
       continue
@@ -586,20 +535,7 @@ proc tick*(server: var Server, peers: uint32) =
       # Orderly input EOF leaves the writer alive until pending replies retire.
       if inputEnded: slot.close()
       continue
-    if slot.stream.active:
-      slot.streamWriting = slot.stream.send(slot.output)
-      continue
-    when declared(rpcDirectTestSockets):
-      let written = writePending(slot.fd, slot.output, slot.offset)
-      if written == WriteComplete: # All response bytes were handed to the kernel.
-        slot.output = ""; slot.offset = 0
-        if slot.closing:
-          slot.close()
-        elif slot.input.len == 0 and not slot.fragmented:
-          slot.deadline = now + 30000
-      elif written == WriteFailed:
-        # A zero-progress or permanently failed send cannot spin indefinitely.
-        slot.close()
+    slot.streamWriting = slot.stream.send(slot.output)
 
 proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
     head: RpcLightHead, disk: bool, uiPort: uint16 = 0,

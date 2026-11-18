@@ -17,8 +17,8 @@ import "../../../src/state/block/transition" as block_transition
 import "../../../src/state/block/admission" as block_admission
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
 
-const rpcDirectTestSockets = true # These fixtures inject and retire native descriptors.
 include ../../../src/rpc/server
+include ../../support/rpc_stream_fixture
 
 # Backend refusal begins only after genuine signed owners and native transport fixtures exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -26,9 +26,6 @@ proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
-
-proc rpcPair(domain, kind, protocol: cint, pair: pointer): cint {.importc: "socketpair",
-    header: "<sys/socket.h>".}
 
 const
   Best = """{"jsonrpc":"2.0","method":"bestBlock","id":1}"""
@@ -65,44 +62,12 @@ proc fixture(base: OwnedReport, incoming = false, disputed = false, ticket = fal
 
 proc opened(owner: var Server, context: RpcFixture) =
   ## Own an actual ephemeral loopback listener without a fixed test port; never forge descriptor ownership.
-  owner.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
-  assert owner.fd >= 0
-  owner.opened = true
-  var address = default(Sockaddr_in)
-  address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-  when defined(macosx):
-    address.sin_len = uint8(sizeof(address)) # BSD requires the native address extent.
-  var loopback = "127.0.0.1"
-  assert nonblocking(owner.fd)
-  assert parseAddress(cint(ord(nativesocket.AF_INET)), loopback.toCString(),
-      addr address.sin_addr) == 1
-  assert bindSocket(owner.fd, addr address, SockLen(sizeof(address))) == 0
-  assert listenSocket(owner.fd, 1) == 0
-  owner.parameters = settings()
-  owner.chain = genesisView(context.parent).finalizeView(context.parent.value.blockHash).value
-
-proc connected(owner: var Server, index: int): cint =
-  ## Transfer one real socket-pair endpoint into a server slot; the caller owns and closes the peer endpoint.
-  var pair = default(array[2, cint])
-  assert rpcPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0, addr pair[0]) == 0
-  owner.connections[index].fd = pair[0]
-  owner.connections[index].opened = true
-  owner.connections[index].upgraded = true
-  owner.connections[index].deadline = getMonoTime().ticks div 1_000_000 + 30000
-  assert nonblocking(pair[0]) and nonblocking(pair[1])
-  pair[1]
+  assert owner.start(fixturePort(), "accumulation", settings(), context.parent)
+  owner.chain = owner.chain.finalizeView(context.parent.value.blockHash).value
 
 proc info(owner: var Server): ClientInfo =
   ## Copy the same immutable view/parameters that tick places in one request context.
   ClientInfo(chain: owner.chain, parameters: owner.parameters)
-
-proc receiveFrame(peer: cint): string =
-  ## Read a required small frame from a nonblocking peer; absence fails immediately rather than hanging.
-  var buffer = default(array[8192, char])
-  let count = receive(peer, addr buffer[0], csize_t(buffer.len), 0)
-  assert count > 0
-  result = ""
-  for index in 0..<count: result.add(buffer[index]) # Copy only initialized native receive bytes.
 
 proc masked(payload: string): string =
   ## Construct an independently masked canonical client text frame for a bounded request.
@@ -128,9 +93,9 @@ proc witness(context: RpcFixture) =
   var state = forkStateStore(parent).value
   var owner = default(Server)
   opened(owner, context)
-  let peer = connected(owner, 0)
-  let finalPeer = connected(owner, 1)
-  let plainPeer = connected(owner, 2)
+  let peer = owner.fixtureConnect(0)
+  let finalPeer = owner.fixtureConnect(1)
+  let plainPeer = owner.fixtureConnect(2)
   defer:
     discard posix.close(peer)
     discard posix.close(finalPeer)
@@ -149,12 +114,11 @@ proc witness(context: RpcFixture) =
   let expected = applyAccumulationChain(oracleState, oracleView, context.source, policy).value
   let expectedHashes = hashCalls()
   let queued = frame(respond(Best, previous))
+  fixture_socket.sendText(peer, "\x81", false)
+  owner.fixtureBuffered(0)
   owner.connections[0].output = queued
-  owner.connections[0].offset = 5
-  owner.connections[0].input = "\x81"
   let deadline = owner.connections[0].deadline
   let listener = owner.fd
-  let endpoint = owner.connections[0].fd
   failHash(0)
   let published = owner.publishAccumulation(state, context.source, policy)
   assert published.error == RpcAccumulationError.None
@@ -163,9 +127,9 @@ proc witness(context: RpcFixture) =
   assert sameStateSnapshot(state.snapshot.value, child.stateSnapshot)
   assert sameStateSnapshot(owner.chain.bestBlock.value.stateSnapshot, child.stateSnapshot)
   assert array[32, byte](child.stateRoot) == array[32, byte](expected.stateRoot)
-  assert owner.fd == listener and owner.connections[0].fd == endpoint
-  assert owner.connections[0].output == queued and owner.connections[0].offset == 5
-  assert owner.connections[0].input == "\x81" and owner.connections[0].deadline == deadline
+  assert owner.fd == listener and owner.connections[0].stream.active
+  assert owner.connections[0].output == queued
+  assert owner.connections[0].stream.hasBufferedInput and owner.connections[0].deadline == deadline
   assert oracleSession.queueChainUpdates(owner.chain.bestBlock)
   let bestEvent = oracleSession.nextUpdate()
   let statsEvent = oracleSession.nextUpdate()
@@ -177,16 +141,16 @@ proc witness(context: RpcFixture) =
   assert sameStateSnapshot(owner.chain.finalizedBlock.value.stateSnapshot, parent)
   assert sameStateSnapshot(previous.chain.bestBlock.value.stateSnapshot, parent)
   owner.tick(0)
-  assert receiveFrame(peer) == queued.substr(5)
+  assert owner.fixtureFrame(peer) == queued
   owner.tick(0)
-  assert receiveFrame(peer) == frame(bestEvent)
+  assert owner.fixtureFrame(peer) == frame(bestEvent)
   owner.tick(0)
-  assert receiveFrame(peer) == frame(statsEvent)
-  assert owner.connections[0].input == "\x81" and owner.connections[0].deadline <= deadline
+  assert owner.fixtureFrame(peer) == frame(statsEvent)
+  assert owner.connections[0].stream.hasBufferedInput
   var packet = masked(Best)
   assert sendBytes(plainPeer, packet.toCString(), csize_t(packet.len), 0) == packet.len
   owner.tick(0)
-  let response = receiveFrame(plainPeer)
+  let response = owner.fixtureFrame(plainPeer)
   assert response == frame(respond(Best, owner.info))
   assert base64.encode(array[32, byte](child.blockHash)) in response
   let queueBefore = owner.connections[0].session
@@ -224,13 +188,12 @@ proc refusals(context: RpcFixture) =
   assert hashCalls() == 0 and sameStateSnapshot(state.snapshot.value, parent)
   failHash(0)
   opened(owner, context)
-  let peer = connected(owner, 0)
+  let peer = owner.fixtureConnect(0)
   defer: discard posix.close(peer)
   discard respond(Subscribe, owner.info, owner.connections[0].session)
   let pending = owner.connections[0].session
   let original = owner.chain
   owner.connections[0].output = "queued reply"
-  owner.connections[0].offset = 3
   let invalid = owner.publishAccumulation(state, default(PreparedFinalAccumulation), policy)
   assert invalid.chainFailure.error == AccumulationChainError.InvalidSource
   var short = policy
@@ -261,7 +224,7 @@ proc refusals(context: RpcFixture) =
   let missing = owner.publishAccumulation(state, context.source, policy)
   assert missing.chainFailure.error == AccumulationChainError.UninitializedView
   owner.chain = original
-  assert owner.connections[0].output == "queued reply" and owner.connections[0].offset == 3
+  assert owner.connections[0].output == "queued reply"
   assert sameStateSnapshot(owner.chain.bestBlock.value.stateSnapshot, parent)
   sameQueue(pending, owner.connections[0].session)
   let retry = owner.publishAccumulation(state, context.source, policy)
@@ -282,7 +245,7 @@ proc overflow(context: RpcFixture) =
   var owner = default(Server)
   opened(owner, context)
   var peers = default(array[5, cint])
-  for index in 0..<peers.len: peers[index] = connected(owner,
+  for index in 0..<peers.len: peers[index] = owner.fixtureConnect(
       index) # Every native endpoint has exactly one owner.
   defer:
     for peer in peers: discard posix.close(peer) # Retire client endpoints independently of server close paths.
@@ -315,7 +278,7 @@ proc cycle(context: RpcFixture) =
   let policy = completionLimits().composition
   var owner = default(Server)
   opened(owner, context)
-  let peer = connected(owner, 0)
+  let peer = owner.fixtureConnect(0)
   defer: discard posix.close(peer)
   discard respond(Subscribe, owner.info, owner.connections[0].session)
   var state = forkStateStore(context.source.finalAccumulationParent.value).value
@@ -349,6 +312,7 @@ proc main() {.raises.} =
   let after = getOccupiedMem()
   assertArcRelease(before, after, "RPC finalized accumulation publication")
   recordArcRelease("rpc_accumulation", 1000, before, after)
+  shutdown()
   echo "RPC finalized accumulation publication passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
 
