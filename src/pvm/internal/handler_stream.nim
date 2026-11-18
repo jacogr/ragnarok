@@ -5644,8 +5644,12 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
           not flatRestoreScratchPage(frame, page):
         break restore
       frame.dirtyPages[int(word)] = frame.dirtyPages[int(word)] and not mask
-    for index in 0..<frame.dirtyPages.len:
-      if frame.dirtyPages[index] != 0: break restore
+    # Every residual bit rejects this scratch. Reducing complete words leaves the
+    # successful full scan vectorizable while preserving the omitted-page check.
+    var remainingDirty = 0'u64
+    for word in frame.dirtyPages:
+      remainingDirty = remainingDirty or word
+    if remainingDirty != 0: break restore
     frame.dirtyIndices.setLen(0)
     reused = true
     return FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
