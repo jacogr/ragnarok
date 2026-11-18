@@ -67,3 +67,30 @@ all source/dependency pins are unchanged by this test repair.
 The repair qualifies both ISA performance and backend jobs on its published head,
 plus the affected native units and Python tooling. Exact run links and observed
 results belong to the repair PR.
+
+## Full gas vector preview
+
+The November 18 upgrade selects unreleased `gp-next` commit
+`e941b86247ec42faa206132ef895347e9fc70443`. The
+[complete comparison](https://github.com/jam-conformance/jam-test-vectors/compare/fdaa4c9482552e6554bd15a73d91b85917ff8446...e941b86247ec42faa206132ef895347e9fc70443)
+contains one commit, two documentation updates and 12 changed Full JSON/binary
+pairs. The historical vendor gitlink and Tiny case bytes remain pinned to their
+existing sources. The preview retains its supervisor-free schema.
+
+`make unit SUITE=report_policy` verifies the original signatures and replays
+all seven updated report cases against the Full preset. Three succeed,
+including the exact 47M accumulation, 235M authorization and 23.5B refinement
+limits. Four are refused for excessive accumulation gas, authorization gas,
+refinement load or bundle length. The read-only policy tests reuse the historical
+record for the same service after checking that every field common to both schemas
+matches. They compare the complete encoded input with the paired binary.
+
+`make unit SUITE=accumulation_round` checks queue ordering, the 16.45B initial
+budget and the exact C.2 service inputs on all five updated accumulation cases.
+In each case, the first report fills the budget and the second stays outside the
+initial prefix. The source's posterior history includes both packages. The input
+report bytes and slot agree with the paired binary. Full posterior replay would
+require supervisor identities for GP 0.8.1 ejection and recreation. These fixtures
+omit that state, so their service effects and changed gas-used statistics remain
+preview evidence. Current supervision is covered by the independent service
+ejection tests.

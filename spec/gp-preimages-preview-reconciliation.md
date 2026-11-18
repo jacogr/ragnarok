@@ -10,7 +10,7 @@ retains supervisor identity, creation slot and protected balance, and the
 [accumulation rules](https://github.com/gavofyork/graypaper/blob/44e0b1154ec1f556354b92b8ee58d097c2038167/text/accumulation.tex)
 retain optimistic junior execution, annulment and preserved provisions.
 
-The vector preview `fdaa4c9482552e6554bd15a73d91b85917ff8446` explicitly removes
+The original vector preview `fdaa4c9482552e6554bd15a73d91b85917ff8446` explicitly removes
 the supervisor feature from its changelog, account schema and selected fixtures.
 The removal commit says only “Removed 539 vectors”; the preview description says
 “NOT READY”. These establish a deliberate preview profile change, not a normative
@@ -21,8 +21,10 @@ The existing `vectors` source at `a49f241` remains an immutable supervisor-era
 evidence pin. A separate `vectors_preview` entry selects the exact new revision
 and hashes for preimages, assurances and codec evidence. Both histories are retained
 in the same vendor repository; setup fetches preview objects without replacing the
-historical checkout. Selected consumers name the preview explicitly. The account,
-reports and accumulation fixtures keep their previous source/schema contracts.
+historical checkout. Selected consumers name the preview explicitly. Historical
+account, report and accumulation fixtures keep their source and schema contracts.
+The [GP 0.8.1 gas qualification](graypaper-0.8.1.md#full-gas-vector-preview) records
+the additional read-only projections admitted by the later preview pin.
 There is no production old/new codec fallback or automatic supervisor defaulting.
 
 The full Git diff covers 605 paths (573 modified, 28 removed, four added), beyond
