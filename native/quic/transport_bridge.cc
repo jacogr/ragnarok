@@ -358,7 +358,7 @@ class Writer final : public QuicPacketWriter {
         }
         uint8_t address[16], source[16];
         CopyIp(peer.host(), address);
-        // Before the first inbound packet, a wildcard dialer leaves source selection to the OS.
+        // Some sends have no concrete local IP. Wildcard listeners use it when available.
         const bool have_source =
             self.IsInitialized() && self != QuicIpAddress::Any4() && self != QuicIpAddress::Any6();
         if (have_source)

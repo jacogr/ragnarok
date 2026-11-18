@@ -5,9 +5,9 @@
 ## deadlines. Native callbacks borrow this stack owner synchronously; no futures, callback
 ## closures are used; protocol policy remains in Nim and native inputs follow the recorded build pins.
 ##
-## A wildcard socket receives the local destination IP through QUICHE packet metadata.
-## The writer uses each connection's local IP for replies. Fixed binds and legacy loopback
-## sockets let the kernel select their already-bound source.
+## A wildcard listener receives the local destination IP through QUICHE packet metadata.
+## The writer uses each accepted connection's local IP for replies. Dialers leave source
+## selection to the route and the socket's bind address.
 ##
 ## Exposes certificate observations, transport/stream lifecycle operations, polling, peer
 ## metrics and handshake observations over the C bridge.
@@ -273,7 +273,7 @@ proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t,
     if owner.wildcard and local != nil:
       nativeSendFrom(owner.socket.descriptor, bytes, length, cint(owner.ipv6), local, address, port)
     else:
-      # A wildcard dialer has no concrete source before its first reply.
+      # Fixed binds and dialers leave source selection to the socket.
       var copied = default(array[16, byte])
       let native = cast[ptr UncheckedArray[byte]](address)
       for index in 0..<16: copied[index] = native[index]
@@ -335,7 +335,7 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   owner.peerCapacity = incomingPeers
   let family = if localAddress.valid: localAddress.ipv6 else: ipv6
   owner.ipv6 = family
-  owner.wildcard = localAddress.valid and localAddress.unspecified
+  owner.wildcard = server and localAddress.valid and localAddress.unspecified
   owner.user = user
   owner.verify = verify
   owner.stream = stream
