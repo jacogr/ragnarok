@@ -58,6 +58,7 @@
 #include "quiche/quic/core/quic_packet_writer.h"
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_stream.h"
+#include "quiche/quic/core/quic_udp_socket.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_version_manager.h"
 
@@ -346,7 +347,7 @@ class Verifier final : public ProofVerifier {
 class Writer final : public QuicPacketWriter {
   public:
     explicit Writer(rq_transport *owner) : owner_(owner) {}
-    WriteResult WritePacket(const char *bytes, size_t length, const QuicIpAddress &,
+    WriteResult WritePacket(const char *bytes, size_t length, const QuicIpAddress &self,
                             const QuicSocketAddress &peer, PerPacketOptions *,
                             const QuicPacketWriterParams &) override {
         if (length > DatagramCapacity)
@@ -355,11 +356,16 @@ class Writer final : public QuicPacketWriter {
             blocked_ = true;
             return WriteResult(WRITE_STATUS_BLOCKED, EAGAIN);
         }
-        uint8_t address[16];
+        uint8_t address[16], source[16];
         CopyIp(peer.host(), address);
+        // Before the first inbound packet, a wildcard dialer leaves source selection to the OS.
+        const bool have_source =
+            self.IsInitialized() && self != QuicIpAddress::Any4() && self != QuicIpAddress::Any6();
+        if (have_source)
+            CopyIp(self, source);
         ++attempts_; // Hard errors also consume bounded work on shared and time-wait writers.
         const int error = owner_->send(owner_->user, reinterpret_cast<const uint8_t *>(bytes),
-                                       length, address, peer.port());
+                                       length, have_source ? source : nullptr, address, peer.port());
         if (error == EAGAIN || error == EWOULDBLOCK || error == EINTR) {
             blocked_ = true;
             return WriteResult(WRITE_STATUS_BLOCKED, error);
@@ -1195,24 +1201,111 @@ int rq_connect(rq_transport *owner, uint16_t port) {
     }
     return rq_connect_address(owner, address, port);
 }
-// Borrow one bounded datagram for synchronous QUICHE packet processing.
+// Dispatch one borrowed datagram synchronously with the receiving endpoint's concrete IP.
+static void ProcessDatagram(rq_transport *owner, const uint8_t *bytes, size_t length,
+                            const QuicSocketAddress &local, const QuicSocketAddress &remote) {
+    owner->network_started = owner->packets_seen = true;
+    const QuicReceivedPacket packet(reinterpret_cast<const char *>(bytes), length,
+                                    owner->clock.Now(), false);
+    if (owner->dispatcher)
+        owner->dispatcher->ProcessPacket(local, remote, packet);
+    else if (owner->client && owner->client->connection()->connected())
+        owner->client->connection()->ProcessUdpPacket(local, remote, packet);
+}
+
+// Fixed bind addresses need no per-packet interface metadata.
 int rq_packet_in_address(rq_transport *owner, const uint8_t *bytes, size_t length,
                          const uint8_t *source, uint16_t port) try {
     if (!owner || !bytes || !source || !length || length > DatagramCapacity)
         return -1;
-    owner->network_started = owner->packets_seen = true;
-    const QuicReceivedPacket packet(reinterpret_cast<const char *>(bytes), length,
-                                    owner->clock.Now(), false);
     const auto remote = SocketAddress(source, port, owner->options.ipv6 != 0);
-    if (owner->dispatcher)
-        owner->dispatcher->ProcessPacket(owner->local, remote, packet);
-    else if (owner->client && owner->client->connection()->connected())
-        owner->client->connection()->ProcessUdpPacket(owner->local, remote, packet);
+    ProcessDatagram(owner, bytes, length, owner->local, remote);
     return 0;
 } catch (const std::exception &error) {
     ABSL_LOG(ERROR) << "rq_packet_in_address failed: " << error.what();
     return -1;
 }
+
+// Reuse the library's platform-specific packet-info options without resizing the UDP buffers.
+class PacketInfoSocket : public QuicUdpSocketApi {
+  public:
+    bool EnableLocalIp(int fd, bool ipv6) {
+        if (!ipv6)
+            return EnableReceiveSelfIpAddressForV4(fd);
+        if (!EnableReceiveSelfIpAddressForV6(fd))
+            return false;
+#if !defined(__APPLE__)
+        // As in QUICHE's SetupSocket, Linux also needs the IPv4 option for mapped packets.
+        return EnableReceiveSelfIpAddressForV4(fd);
+#else
+        return true;
+#endif
+    }
+};
+
+int rq_udp_enable_local_ip(int fd, int ipv6) {
+    return PacketInfoSocket().EnableLocalIp(fd, ipv6 != 0);
+}
+
+// QUICHE encodes the platform-specific ancillary data. The socket remains Nim-owned.
+int rq_udp_send_from(int fd, const uint8_t *bytes, size_t length, int ipv6,
+                     const uint8_t *local, const uint8_t *peer, uint16_t port) try {
+    if (!local || !peer || !bytes || length > DatagramCapacity)
+        return EINVAL;
+    QuicUdpPacketInfo info;
+    info.SetSelfIp(SocketAddress(local, 0, ipv6 != 0).host());
+    info.SetPeerAddress(SocketAddress(peer, port, ipv6 != 0));
+    const auto sent = QuicUdpSocketApi().WritePacket(fd, reinterpret_cast<const char *>(bytes),
+                                                     length, info);
+    if (sent.status == WRITE_STATUS_OK)
+        return sent.bytes_written == static_cast<int>(length) ? 0 : EIO;
+    return sent.error_code;
+} catch (const std::exception &error) {
+    ABSL_LOG(ERROR) << "rq_udp_send_from failed: " << error.what();
+    return EIO;
+}
+
+// A wildcard listener must retain the exact destination IP of every received datagram.
+int rq_udp_receive(rq_transport *owner, int fd, uint8_t *bytes, size_t capacity) try {
+    if (!owner || !bytes || !capacity || capacity > DatagramCapacity)
+        return -1;
+    alignas(max_align_t) char control[kDefaultUdpPacketControlBufferSize];
+    QuicUdpSocketApi::ReadPacketResult read;
+    read.packet_buffer = {reinterpret_cast<char *>(bytes), capacity};
+    read.control_buffer = {control, sizeof(control)};
+    const QuicUdpPacketInfoBitMask interested({QuicUdpPacketInfoBit::PEER_ADDRESS,
+        QuicUdpPacketInfoBit::V4_SELF_IP, QuicUdpPacketInfoBit::V6_SELF_IP});
+    errno = 0;
+    QuicUdpSocketApi().ReadPacket(fd, interested, &read);
+    const int error = errno;
+    if (!read.ok) {
+        if (error == EAGAIN || error == EWOULDBLOCK || error == EINTR)
+            return -2;
+        return error == 0 ? 0 : -1; // Truncated datagrams have no successful packet.
+    }
+    using Bit = QuicUdpPacketInfoBit;
+    const auto &info = read.packet_info;
+    const bool ipv6 = owner->options.ipv6 != 0;
+    if (read.packet_buffer.buffer_len == 0 || !info.HasValue(Bit::PEER_ADDRESS))
+        return 0;
+    const auto &peer = info.peer_address();
+    if (!peer.IsInitialized() || peer.host().IsIPv6() != ipv6)
+        return 0; // Keep the explicit socket family contract, including mapped IPv6.
+    QuicIpAddress local;
+    if (ipv6 && info.HasValue(Bit::V6_SELF_IP))
+        local = info.self_v6_ip();
+    else if (info.HasValue(Bit::V4_SELF_IP))
+        local = ipv6 ? info.self_v4_ip().DualStacked() : info.self_v4_ip();
+    else
+        return 0; // Missing ancillary data cannot fabricate a concrete path.
+    ProcessDatagram(owner, bytes, read.packet_buffer.buffer_len,
+                    QuicSocketAddress(local, owner->local.port()), peer);
+    return static_cast<int>(read.packet_buffer.buffer_len);
+} catch (const std::exception &error) {
+    ABSL_LOG(ERROR) << "rq_udp_receive failed: " << error.what();
+    return -1;
+}
+
 // Supply the profile loopback source for the legacy packet entry point.
 int rq_packet_in(rq_transport *owner, const uint8_t *bytes, size_t length, uint16_t port) {
     if (!owner)

@@ -234,7 +234,7 @@ proc faultStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, rais
   idleStream(addr fault.flow, handle, event)
 
 proc faultSend(user: pointer, bytes: ptr ConstByte, length: csize_t,
-    address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].} =
+    local: nil ptr ConstByte, address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].} =
   ## Backpressure once for the healthy peer; use a real forbidden UDP destination for the other.
   let owner = cast[ptr Transport](user)
   let fault = cast[ptr SendFault](owner.user)
@@ -244,10 +244,10 @@ proc faultSend(user: pointer, bytes: ptr ConstByte, length: csize_t,
   if port == fault.refusedPort:
     var broadcast = default(array[16, byte])
     for octet in 12..15: broadcast[octet] = 255 # The UDP endpoint never enables SO_BROADCAST.
-    let error = sendPacket(user, bytes, length, cast[ptr ConstByte](addr broadcast[0]), port)
+    let error = sendPacket(user, bytes, length, local, cast[ptr ConstByte](addr broadcast[0]), port)
     fault.refusal = error
     return error
-  sendPacket(user, bytes, length, address, port)
+  sendPacket(user, bytes, length, local, address, port)
 
 proc duplicateFd(fd: cint): cint {.importc: "dup", header: "<unistd.h>".}
   ## Retain the original test diagnostics descriptor while QUICHE emits a known error.
@@ -320,6 +320,44 @@ proc sendFailureIsolation(cert, key: string) =
     assert server.pollTransport(1) and healthy.pollTransport(1)
     assert not fault.flow.failed and not healthyFlow.failed
   assert fault.blocked and server.closedConnections == 1 and healthy.closedConnections == 0
+
+when defined(linux):
+  proc wildcardReplySource(cert, key: string) =
+    ## A single wildcard listener must reply from each dialed IPv4 loopback alias.
+    var server = default(Transport)
+    var clients = default(array[2, Transport])
+    var token = 0
+    defer:
+      server.closeTransport()
+      for client in mitems(clients): client.closeTransport()
+    const Alpn = "jamnp-s/1/00000000"
+    assert server.openTransport(true, false, 0, cert, key, Alpn, addr token,
+      acceptFixture, stream, multi = true, localAddress = ipv4Address([0'u8, 0, 0, 0]))
+    for index in 0..<clients.len:
+      let target = networkEndpoint(ipv4Address([127'u8, 0, 0, byte(index + 1)]), server.localPort)
+      var client = addr clients[index]
+      assert client[].openTransport(false, false, 0, cert, key, Alpn, addr token,
+        acceptFixture, stream, localAddress = loopbackAddress(false))
+      assert client[].connectTransport(target)
+      let deadline = getMonoTime() + initDuration(seconds = 3)
+      var packet = default(array[2048, byte])
+      var remote = default(NetworkEndpoint)
+      while true:
+        # Check the actual UDP source before the client QUIC engine can consume its first response.
+        assert getMonoTime() < deadline, "wildcard listener emitted a reply"
+        assert client[].processTimers() and server.pollTransport(1)
+        let received = client[].socket.receive(packet, remote)
+        if received == -2: continue
+        assert received > 0 and remote == target, "reply must use the dialed local IP and port"
+        var bytes = remote.address.bytes
+        assert nativePacketAddress(client[].engine, addr packet[0], csize_t(received),
+          addr bytes[0], remote.port) == 0
+        break
+      while client[].authenticatedConnections == 0 or server.authenticatedConnections <= uint64(index):
+        # The concrete path remains usable through both directions of mutual TLS.
+        assert getMonoTime() < deadline, "wildcard path completes TLS on each local IP"
+        assert client[].pollTransport(1) and server.pollTransport(1)
+    assert server.peerMetric(0) == 2, "both paths remain live on the same wildcard socket"
 
 proc idlePolicy(cert, key: string, ipv6: bool, serverIdle, clientIdle: range[1..600],
     serverKeepalive, clientKeepalive: bool) =
@@ -456,6 +494,7 @@ proc main() {.raises.} =
     outgoing.closeTransport()
   windowPolicy(args[0], args[1])
   sendFailureIsolation(args[0], args[1])
+  when defined(linux): wildcardReplySource(args[0], args[1])
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)

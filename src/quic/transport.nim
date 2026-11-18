@@ -5,6 +5,10 @@
 ## deadlines. Native callbacks borrow this stack owner synchronously; no futures, callback
 ## closures are used; protocol policy remains in Nim and native inputs follow the recorded build pins.
 ##
+## A wildcard socket receives the local destination IP through QUICHE packet metadata.
+## The writer uses each connection's local IP for replies. Fixed binds and legacy loopback
+## sockets let the kernel select their already-bound source.
+##
 ## Exposes certificate observations, transport/stream lifecycle operations, polling, peer
 ## metrics and handshake observations over the C bridge.
 
@@ -49,7 +53,7 @@ type
       length: csize_t) {.cdecl, raises: [].}
   # The UDP sender borrows a C packet until return. Zero means complete; failures return errno.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
-      address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].}
+      local: nil ptr ConstByte, address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].}
   # Synchronous authenticated policy: exactly1 admits; both byte spans are borrowed.
   AdmissionCallback* = proc(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
       protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].}
@@ -69,7 +73,7 @@ type
     engine: nil pointer
     socket: UdpEndpoint
     selector: nil Dispatcher
-    registered, selectorOwned, ipv6: bool
+    registered, selectorOwned, ipv6, wildcard: bool
     user: nil pointer
     verify: nil VerifyCallback
     stream: nil StreamCallback
@@ -92,7 +96,7 @@ proc `=wasMoved`*(owner: var Transport) {.nodestroy, inline, requires: owner.eng
   `=wasMoved`(owner.socket)
   `=wasMoved`(owner.selector)
   owner.engine = nil
-  owner.registered = false; owner.selectorOwned = false; owner.ipv6 = false
+  owner.registered = false; owner.selectorOwned = false; owner.ipv6 = false; owner.wildcard = false
   owner.user = nil; owner.verify = nil; owner.stream = nil; owner.handshake = nil; owner.peer = nil
   owner.admission = nil
   `=wasMoved`(owner.buffer)
@@ -146,6 +150,19 @@ header: BridgeHeader, cdecl, raises: [].}
 proc nativeBindAddress(engine: nil pointer, address: ptr byte): cint {.importc: "rq_bind_address",
     header: BridgeHeader, cdecl, raises: [].}
   ## Copy the actual local IP before any native network processing.
+
+proc nativeEnableLocalIp(fd, ipv6: cint): cint {.
+    importc: "rq_udp_enable_local_ip", header: BridgeHeader, cdecl, raises: [].}
+  ## Require per-datagram local IP metadata before publishing a wildcard endpoint.
+
+proc nativeReceiveUdp(engine: nil pointer, fd: cint, bytes: ptr byte, capacity: csize_t): cint {.
+    importc: "rq_udp_receive", header: BridgeHeader, cdecl, raises: [].}
+  ## Read and dispatch one wildcard datagram with its destination IP and peer tuple.
+
+proc nativeSendFrom(fd: cint, bytes: ptr ConstByte, length: csize_t, ipv6: cint,
+    local, peer: ptr ConstByte, port: uint16): cint {.
+    importc: "rq_udp_send_from", header: BridgeHeader, cdecl, raises: [].}
+  ## Send this borrowed datagram from the original receiving IP, returning the exact errno.
 
 proc nativeConnectAddress(engine: nil pointer, address: ptr byte,
     port: uint16): cint {.importc: "rq_connect_address", header: BridgeHeader, cdecl, raises: [].}
@@ -243,8 +260,8 @@ proc streamForward(user: pointer, stream: NativeStream, event: cint) {.cdecl, ra
   let peer = owner.user
   if callback != nil and peer != nil: callback(peer, stream, event) # Only initialized peer owners receive events.
 
-proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, address: ptr ConstByte,
-    port: uint16): cint {.cdecl, raises: [].} =
+proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t,
+    local: nil ptr ConstByte, address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].} =
   ## Send C-owned bytes synchronously and preserve the OS error for QUICHE.
   ## Only an unusable descriptor or a violated bridge contract retires the endpoint.
   let owner = cast[ptr Transport](user)
@@ -252,13 +269,17 @@ proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, address: p
   if address == nil or bytes == nil or length > csize_t(owner.buffer.len):
     owner.failed = true
     return EINVAL # A broken callback contract is local to this transport owner.
-  var copied = default(array[16, byte])
-  let native = cast[ptr UncheckedArray[byte]](address)
-  for index in 0..<16: copied[index] = native[index] # The bridge supplies one complete fixed address during this callback.
-  let target = if owner.ipv6: ipv6Address(copied)
-    else: ipv4Address([copied[12], copied[13], copied[14], copied[15]])
-  let error = owner.socket.sendError(cast[pointer](bytes), int(length),
-      networkEndpoint(target, port))
+  let error =
+    if owner.wildcard and local != nil:
+      nativeSendFrom(owner.socket.descriptor, bytes, length, cint(owner.ipv6), local, address, port)
+    else:
+      # A wildcard dialer has no concrete source before its first reply.
+      var copied = default(array[16, byte])
+      let native = cast[ptr UncheckedArray[byte]](address)
+      for index in 0..<16: copied[index] = native[index]
+      let target = if owner.ipv6: ipv6Address(copied)
+        else: ipv4Address([copied[12], copied[13], copied[14], copied[15]])
+      owner.socket.sendError(cast[pointer](bytes), int(length), networkEndpoint(target, port))
   if error == 0:
     owner.sentBytes = owner.sentBytes + min(uint64(length), high(uint64)-owner.sentBytes)
   elif error in [EBADF, ENOTSOCK]:
@@ -314,6 +335,7 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   owner.peerCapacity = incomingPeers
   let family = if localAddress.valid: localAddress.ipv6 else: ipv6
   owner.ipv6 = family
+  owner.wildcard = localAddress.valid and localAddress.unspecified
   owner.user = user
   owner.verify = verify
   owner.stream = stream
@@ -322,6 +344,9 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   let opened = if localAddress.valid: owner.socket.open(networkEndpoint(localAddress, localPort))
     else: owner.socket.open(family, localPort)
   if not opened: return false
+  if owner.wildcard and nativeEnableLocalIp(owner.socket.descriptor, cint(family)) != 1:
+    closeTransport(owner)
+    return false # A wildcard cannot safely report a path without receive metadata.
   owner.selectorOwned = dispatcher == nil
   owner.selector = if dispatcher == nil: newDispatcher() else: dispatcher
   let active = owner.selector
@@ -410,7 +435,12 @@ proc drain(owner: var Transport): bool =
   # Bounded synchronous reads reuse storage until each native packet call returns.
   for packet in 0..<64:
     var remote = default(NetworkEndpoint)
-    let received = owner.socket.receive(owner.buffer, remote)
+    let received =
+      if owner.wildcard:
+        int(nativeReceiveUdp(owner.engine, owner.socket.descriptor, addr owner.buffer[0],
+            csize_t(owner.buffer.len)))
+      else:
+        owner.socket.receive(owner.buffer, remote)
     # Retryable races yield to the next bounded dispatcher/timer iteration.
     if received == -2: break
     if received < 0:
@@ -420,9 +450,10 @@ proc drain(owner: var Transport): bool =
     if received > 0:
       owner.receivedBytes = owner.receivedBytes + min(uint64(received), high(
           uint64)-owner.receivedBytes)
-      var copied = remote.address.bytes
-      discard nativePacketAddress(owner.engine, addr owner.buffer[0], csize_t(received),
-          addr copied[0], remote.port)
+      if not owner.wildcard:
+        var copied = remote.address.bytes
+        discard nativePacketAddress(owner.engine, addr owner.buffer[0], csize_t(received),
+            addr copied[0], remote.port)
       process(owner.engine)
   not owner.failed
 
