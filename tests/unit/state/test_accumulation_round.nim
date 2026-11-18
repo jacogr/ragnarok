@@ -11,6 +11,7 @@ import ../../../src/state/accumulation/[round as accumulation_round, inputs as a
     operands as accumulation_operands, queue as accumulation_queue]
 import ../../../src/state/report/admission as report_admission
 import ../../../src/state/store
+import ../../../src/chain/[parameters, presets]
 import ../../../src/codec/[bounded, composite, header]
 import ../../../src/codec/work/digest as work_digest
 import ../../../src/codec/[report_owned, c2_records]
@@ -69,6 +70,9 @@ proc bytes(input: InvocationInput): seq[byte] =
 proc projections() {.raises.} =
   var total = 0
   var refused = 0
+  var previewTotal = 0
+  let full = presetParameters(ChainPreset.Full)
+  assert full.ok
   # Each record includes the original queue chapters, explicit gas policy and sorted allowance dictionary.
   for line in readFile(getEnv("RAGNAROK_ACCUMULATION_ROUND")).splitLines:
     if line.len == 0: continue # Only the final transport newline is ignored.
@@ -78,7 +82,8 @@ proc projections() {.raises.} =
       for raw in f[6].split(','):
         reports.add(decodeOwnedReport(unhex(raw), number(f[1])).value) # Keep the full exact report wire.
     let source = planAccumulationQueues(reports, unhex(f[4]), unhex(f[5]), HeaderSlot(number(f[3])),
-      queueConfig(number(f[1]), number(f[2]))).value
+      queueConfig(number(f[1]), number(f[2])))
+    assert source.error == AccumulationQueueError.None, f[0] & " " & $source.error
     var allowances: seq[AlwaysAccumulate] = @[]
     if f[9] != "-":
       for raw in f[9].split(','):
@@ -86,9 +91,16 @@ proc projections() {.raises.} =
         allowances.add(AlwaysAccumulate(service: ServiceIndex(uint32(number(pair[0]))),
           gas: PrivilegeGas(number(pair[1]))))
     var config = cfg(number(f[1]))
-    config.reportGas = Gas(number(f[7]))
-    config.blockGas = Gas(number(f[8]))
-    let outcome = planInitialAccumulation(source, privileges(allowances, number(f[1])), config)
+    if f[0].startsWith("preview:"):
+      # Current Full cases use the shipped preset. The expected prefix comes from the independent oracle.
+      inc previewTotal
+      assert number(f[1]) == full.value.get(coreCount) and number(f[2]) == full.value.get(epochPeriod)
+      config.reportGas = Gas(full.value.get(maxAccumulateGas))
+      config.blockGas = Gas(full.value.get(blockGasLimit))
+    else:
+      config.reportGas = Gas(number(f[7])) # Historical and authored policies are explicit.
+      config.blockGas = Gas(number(f[8]))
+    let outcome = planInitialAccumulation(source.value, privileges(allowances, number(f[1])), config)
     if f[10] == "overflow":
       assert outcome.error == AccumulationRoundError.GasOverflow, f[0] # No wrapped initial budget.
       inc refused
@@ -121,7 +133,7 @@ proc projections() {.raises.} =
               j)).value) ==
             unhex(items[j]), f[0]
     inc total
-  assert total == 670 and refused == 134
+  assert total == 675 and previewTotal == 5 and refused == 134
 
 ## Literal exact-fit and refusal tests isolate gas-domain arithmetic, prefix priority and each work ceiling.
 proc boundaries(base: OwnedReport): InitialAccumulationRound =
