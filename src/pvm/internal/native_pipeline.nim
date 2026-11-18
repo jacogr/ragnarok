@@ -2048,6 +2048,11 @@ proc recordNativeWork*(session: NativeSession, completed: uint64) =
       # Observation stops once the pending plus settled count reaches two.
       data.prefixSettledVisits += visits
 
+func nativeInvocationActive*(session: NativeSession): bool {.inline.} =
+  ## Host resumes may share this decision because the public lease spans every segment.
+  let data {.cursor.} = session.data
+  data != nil and data.invocation
+
 func observedNativeWork*(session: NativeSession): uint64 =
   ## Invalid/local/unsupported receipt paths never manufacture an admission credit.
   let data {.cursor.} = session.data
