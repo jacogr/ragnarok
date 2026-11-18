@@ -6,10 +6,10 @@
 ## Each module lazily retains one prepared owner shared by its instances and immutable
 ## snapshots. Backend selection propagates from the outer call; a compiler runtime does not.
 ## The 63-instance limit and 128-handle catalogue/live-instance union bound different owners.
-## Program-byte and per-machine page limits do not aggregate prepared facts or idle scratch.
-## Every admitted module currently uses the separate defaultPreparedLimits memory ceiling.
-## Broader runtime wiring must first bound that aggregate and preserve a distinct child
-## prepared lease while the outer prepared owner remains busy across the invocation host.
+## One invocation's map lineage shares optional prepared-code and idle-scratch allowances
+## independently of its mandatory source and per-machine page limits. A shared module charges
+## its prepared owner once. Raw execution leases that child independently while the outer
+## prepared owner is suspended. All access and destruction belong to the same synchronous turn.
 
 import ./[machine, program, step]
 import ./gas/gas
@@ -39,9 +39,11 @@ type
     executionComplete: bool
     backendValue: PvmBackend
   InnerCode = ref object ## One invocation-local module shares only exclusive prepared code across its instances and snapshots.
-    prepared: PreparationResult[PreparedProgram]
-    when defined(pvmInnerPreparedReceipt):
-      preparations: uint64 # CI-only positive proof that raw segments reuse the same lazy construction.
+    cache: PreparedProgramCache
+  InnerRetention = ref object
+    ## All immutable map versions share one anchor. Ledgers are lazy until a module actually runs.
+    codeLimit, scratchLimit: RetainedMemoryByteLimit
+    code, scratch: RetainedMemoryBudget
   ModuleData = object ## Immutable program capture retained by its published handle or live instances.
     handle: uint64
     code: InnerCode
@@ -57,6 +59,7 @@ type
     modules: seq[ModuleData]
     bytes: uint64
     limits: InnerMachineLimits
+    retention: nil InnerRetention
   InnerMachines* = object ## Default is invalid; explicit capture creates the valid empty map.
     data: nil MapData
   InnerMachineTransition* = object ## A charged host response and its exact immutable map successor travel together.
@@ -93,9 +96,27 @@ func executionError*[T](outcome: InnerMachineResult[T]): StepError
   ## Extract only a nested engine's exact local refusal, without fabricated frame or map progress.
   outcome.reason
 
-proc captureInnerMachines*(limits: InnerMachineLimits): InnerMachines =
-  ## Capture finite caller policies beside an explicitly empty map, with no guest slots implicitly present.
-  InnerMachines(data: MapData(slots: @[], modules: @[], bytes: 0, limits: limits))
+proc captureInnerMachines*(limits: InnerMachineLimits,
+    codeRetention: RetainedMemoryByteLimit = DefaultRetainedCodeBytes,
+    scratchRetention: RetainedMemoryByteLimit = defaultPreparedLimits().retainedMemoryBytes):
+    InnerMachines =
+  ## Capture the mandatory policies and optional aggregate retention limits beside an empty map.
+  ## Each zero or refused ledger allocation disables its class of optional retention.
+  let retention: nil InnerRetention = InnerRetention(codeLimit: codeRetention,
+    scratchLimit: scratchRetention)
+  InnerMachines(data: MapData(slots: @[], modules: @[], bytes: 0, limits: limits,
+    retention: retention))
+
+proc newInnerCache(retention: nil InnerRetention): PreparedProgramCache =
+  ## Bind a module's cache only on its first affordable invocation. The anchor cannot own
+  ## the caches it counts, so older snapshots can extend module lifetimes without a cycle.
+  if retention == nil:
+    let disabled = newRetainedMemoryBudget(RetainedMemoryByteLimit(0))
+    return newPreparedProgramCache(memoryBudget = disabled, codeBudget = disabled)
+  if not isBound(retention.code):
+    retention.code = newRetainedMemoryBudget(retention.codeLimit)
+    retention.scratch = newRetainedMemoryBudget(retention.scratchLimit)
+  newPreparedProgramCache(memoryBudget = retention.scratch, codeBudget = retention.code)
 
 proc innerMachineCount*(machines: InnerMachines): InnerMachineResult[uint32] =
   ## Copy the actual map cardinality; missing owners cannot masquerade as empty.
@@ -201,7 +222,7 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
   modules.add(ModuleData(handle: handle, code: InnerCode(), program: parsed.value,
       size: retainedSize))
   transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
-    bytes: data.bytes+retainedSize, limits: data.limits))
+    bytes: data.bytes+retainedSize, limits: data.limits, retention: data.retention))
   transition.response.registers[7] = RegisterValue(handle)
   done()
 
@@ -276,7 +297,7 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
     moduleHandle: InnerModuleHandle(handle)), code: code, size: size, id: uint64(at)))
   for index in at..<data.slots.len: slots.add(data.slots[index]) # Retain every independent existing instance.
   transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-    bytes: data.bytes, limits: data.limits))
+    bytes: data.bytes, limits: data.limits, retention: data.retention))
   transition.response.registers[7] = RegisterValue(uint64(at))
   done()
 
@@ -325,7 +346,8 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
       for slot in slots:
         if uint64(slot.info.moduleHandle) == handle: retained = true # Another instance still owns this module.
       transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-        bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits))
+        bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits,
+        retention: data.retention))
   elif mode == 1:
     var modules = newSeqOfCap[ModuleData](data.modules.len)
     for moduleIndex in 0..<data.modules.len:
@@ -341,7 +363,8 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
         let slot = data.slots[slotIndex]
         if uint64(slot.info.moduleHandle) == id: retained = true # A live owner keeps both bytes and handle occupied.
       transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
-        bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits))
+        bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits,
+        retention: data.retention))
       transition.response.registers[7] = RegisterValue(0)
   else:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)
@@ -427,7 +450,7 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
     else:
       slots.add(slot) # Other machines remain shared immutable owners.
   transition.machines = InnerMachines(data: MapData(slots: slots, modules: data.modules,
-      bytes: data.bytes, limits: data.limits))
+      bytes: data.bytes, limits: data.limits, retention: data.retention))
   transition.response.registers[7] = RegisterValue(0)
   done()
 
@@ -456,6 +479,7 @@ proc replaceInnerState(data: MapData, id: uint64, info: InnerMachineInfo): nil M
   updated.modules = move(modules)
   updated.bytes = data.bytes
   updated.limits = data.limits
+  updated.retention = data.retention
   updated
 
 proc transferInner(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
@@ -614,15 +638,16 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
       code = slot.code
       break # The earlier full-width lookup already proved one exact selected instance.
   if code == nil: fail(InnerMachineError.InvalidContext)
-  if code.prepared.error == PreparationError.Uninitialized:
+  if not initialized(code.cache):
     # Defer admission until the first affordable, valid invocation, preserving lifecycle-host refusal order.
     # This map supplies backend policy only; its module cache has no shared compiler runtime.
-    code.prepared = newPreparedProgram(source.program, defaultPreparedLimits(data.limits.cycles),
-        data.limits.backend)
-    when defined(pvmInnerPreparedReceipt): inc code.preparations
-  if code.prepared.error != PreparationError.None:
+    code.cache = newInnerCache(data.retention)
+  let prepared = cachedPreparedProgram(code.cache, source.program,
+    defaultPreparedLimits(data.limits.cycles), data.limits.backend)
+  if prepared.error != PreparationError.None:
     # Preserve the convenience execution API's exact optional-backend refusal mapping.
-    let reason = case code.prepared.error
+    let reason = case prepared.error
+      of PreparationError.Busy: StepError.PreparedProgramBusy
       of PreparationError.BackendNotBuilt: StepError.BackendNotBuilt
       of PreparationError.BackendUnavailable: StepError.BackendUnavailable
       of PreparationError.BackendProgramUnsupported: StepError.BackendProgramUnsupported
@@ -630,10 +655,10 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
       of PreparationError.BackendCapabilityUnsupported: StepError.BackendCapabilityUnsupported
       of PreparationError.BackendFailure: StepError.BackendFailure
       else: StepError.InvalidPreparedProgram
-    code.prepared = default(PreparationResult[PreparedProgram]) # A transient preparation refusal may be retried.
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
         reason: reason)
-  let evaluated = execute(initial.value, data.limits.steps, code.prepared.value)
+  # Raw execution owns this module's lease independently of the suspended outer prepared frame.
+  let evaluated = execute(initial.value, data.limits.steps, prepared.value)
   if evaluated.error != StepError.None:
     return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
       reason: evaluated.error) # No tentative frame, nested state or refund escapes a local engine refusal.
@@ -685,6 +710,14 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   done()
 
 when defined(pvmInnerPreparedReceipt):
+  func innerRetentionPayload*(machines: InnerMachines): tuple[code, scratch: uint64] =
+    ## Inspect this lineage's optional charges, including its independently held older owners.
+    let data {.cursor.} = machines.data
+    if data == nil: return (0'u64, 0'u64)
+    let retention {.cursor.} = data.retention
+    if retention == nil: return (0'u64, 0'u64)
+    (retainedMemoryPayloadBytes(retention.code), retainedMemoryPayloadBytes(retention.scratch))
+
   proc innerPreparationCount*(machines: InnerMachines, id: InnerMachineId): InnerMachineResult[uint64] =
     ## CI-only copied receipt; no prepared handle or mutable cache identity escapes the invocation-local map.
     let data = machines.data
@@ -694,5 +727,5 @@ when defined(pvmInnerPreparedReceipt):
         let slot = data.slots[slotIndex]
         if slot.id == uint64(id):
           return InnerMachineResult[uint64](status: InnerMachineError.None,
-              completed: slot.code.preparations)
+              completed: preparedCacheAttempts(slot.code.cache))
     InnerMachineResult[uint64](status: InnerMachineError.Missing)

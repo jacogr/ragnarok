@@ -64,6 +64,9 @@ retained code across its resident workers. [Payload accounting](../../src/pvm/in
 tracks charges on the actual owners through retirement. The [prepared owner](../../src/pvm/step.nim)
 charges source, ranks and jump targets on admission, and the emitted stream and lazy facts on
 handback. Cache pressure can discard these optional artifacts after a checked result.
+[Inner machines](../../src/pvm/inner_machines.nim) share code and scratch allowances across the
+invocation's immutable map versions. Module instances share one prepared identity and lease it
+separately while their outer frame is suspended.
 The [scheduler](../../src/pvm/internal/native_pipeline.nim) documents current image capacity
 and selection limits. The [migration record](../../spec/pvm-async-migration.md#selection-and-resource-work)
 tracks the remaining integration boundary.

@@ -88,9 +88,10 @@ runtime-less execution routes. An exclusive multi-item JIT package turn can recl
 accumulation capacity for its primary and auxiliary image plus the scheduler's spare primary
 credit. Physical release and active leases
 still govern availability. The accumulation context enforces separate shared budgets for idle
-scratch and retained code, and the package worker has independent allowances. Future wiring
-requires explicit ownership/shutdown, resource shares for additional owners (including nested
-modules), and a competition policy before increasing native availability.
+scratch and retained code, and the package worker has independent allowances. Inner modules
+share an invocation-local code and idle-scratch allowance, including older map versions. They
+can reuse preparation without sharing the outer native runtime. Wider native wiring needs
+explicit runtime ownership/shutdown and a competition policy for the additional consumers.
 
 ## Bounded mixed store loops
 
