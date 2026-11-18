@@ -222,6 +222,105 @@ proc idleStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raise
     wantWrite(handle, 0)
   else: discard # No other event changes the independently observed transcript.
 
+type SendFault = object ## A targeted UDP fault leaves every other destination on the real sender.
+  flow: IdleStream
+  blockedPort, refusedPort: uint16
+  blocked: bool
+  refusal: cint
+
+proc faultStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
+  ## Forward the healthy sibling's traffic to the existing one-byte transcript.
+  let fault = cast[ptr SendFault](user)
+  idleStream(addr fault.flow, handle, event)
+
+proc faultSend(user: pointer, bytes: ptr ConstByte, length: csize_t,
+    address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].} =
+  ## Backpressure once for the healthy peer; use a real forbidden UDP destination for the other.
+  let owner = cast[ptr Transport](user)
+  let fault = cast[ptr SendFault](owner.user)
+  if port == fault.blockedPort and not fault.blocked:
+    fault.blocked = true
+    return EAGAIN # QUICHE must retry this datagram without retiring the connection.
+  if port == fault.refusedPort:
+    var broadcast = default(array[16, byte])
+    for octet in 12..15: broadcast[octet] = 255 # The UDP endpoint never enables SO_BROADCAST.
+    let error = sendPacket(user, bytes, length, cast[ptr ConstByte](addr broadcast[0]), port)
+    fault.refusal = error
+    return error
+  sendPacket(user, bytes, length, address, port)
+
+proc duplicateFd(fd: cint): cint {.importc: "dup", header: "<unistd.h>".}
+  ## Retain the original test diagnostics descriptor while QUICHE emits a known error.
+
+proc driveSendRefusal(server, healthy, refused: var Transport): bool =
+  ## Ignore only the native logger's variable timestamp and peer port during the intentional failure.
+  let saved = duplicateFd(2)
+  assert saved >= 0
+  defer: discard posix.close(saved)
+  let sink = posix.open("/dev/null", O_WRONLY)
+  assert sink >= 0
+  defer: discard posix.close(sink)
+  assert posix.dup2(sink, 2) == 2
+  defer: assert posix.dup2(saved, 2) == 2
+  refused.openStream()
+  let deadline = getMonoTime() + initDuration(seconds = 3)
+  while server.closedConnections == 0 and getMonoTime() < deadline:
+    # The shared listener must never report failure while the refused stream retires.
+    if not (server.pollTransport(1) and healthy.pollTransport(1) and refused.pollTransport(1)):
+      return false
+  server.closedConnections == 1
+
+proc sendFailureIsolation(cert, key: string) =
+  ## Exercise the real bridge and UDP sender with two retained sessions on the same listener.
+  var fault = default(SendFault)
+  var healthyFlow, refusedFlow = default(IdleStream)
+  var server, healthy, refused = default(Transport)
+  defer:
+    healthy.closeTransport()
+    refused.closeTransport()
+    server.closeTransport()
+  # The native constructor's existing callback is the injection boundary; endpoints still use real UDP.
+  assert server.socket.open(false, 0)
+  let dispatcher = newDispatcher()
+  server.selector = dispatcher
+  server.selectorOwned = true
+  assert dispatcher.register(server.socket)
+  server.registered = true
+  server.user = addr fault
+  server.verify = acceptFixture
+  server.stream = faultStream
+  var certText = cert
+  var keyText = key
+  var alpn = "jamnp-s/1/00000000"
+  var options = NativeTransportOptions(profile: 2, server: 1, multi: 1)
+  server.engine = transportNew(addr options, server.localPort, certText.toCString(),
+    keyText.toCString(), alpn.toCString(), addr server, verifyForward, faultSend, streamForward)
+  assert server.engine != nil
+  assert healthy.openTransport(false, false, 0, cert, key, alpn, addr healthyFlow,
+    acceptFixture, idleStream)
+  assert refused.openTransport(false, false, 0, cert, key, alpn, addr refusedFlow,
+    acceptFixture, idleStream)
+  assert healthy.connectTransport(server.localPort) and refused.connectTransport(server.localPort)
+  let handshakeDeadline = getMonoTime() + initDuration(seconds = 3)
+  while server.authenticatedConnections < 2 or healthy.authenticatedConnections == 0 or
+      refused.authenticatedConnections == 0:
+    # Arm the targeted fault only after both TLS sessions are fully admitted.
+    assert getMonoTime() < handshakeDeadline
+    assert server.pollTransport(1) and healthy.pollTransport(1) and refused.pollTransport(1)
+  fault.refusedPort = refused.localPort
+  assert driveSendRefusal(server, healthy, refused), "UDP destination failure must leave the listener live"
+  assert fault.refusal in [EACCES, ENETUNREACH] and healthy.closedConnections == 0
+  fault.flow = default(IdleStream)
+  fault.blockedPort = healthy.localPort
+  healthy.openStream()
+  let exchangeDeadline = getMonoTime() + initDuration(seconds = 3)
+  while not (healthyFlow.sent and healthyFlow.got and fault.flow.sent and fault.flow.got):
+    # Drive one full exchange after sibling retirement and one transient send refusal.
+    assert getMonoTime() < exchangeDeadline
+    assert server.pollTransport(1) and healthy.pollTransport(1)
+    assert not fault.flow.failed and not healthyFlow.failed
+  assert fault.blocked and server.closedConnections == 1 and healthy.closedConnections == 0
+
 proc idlePolicy(cert, key: string, ipv6: bool, serverIdle, clientIdle: range[1..600],
     serverKeepalive, clientKeepalive: bool) =
   ## No application stream/traffic can mask idle expiry: only configured QUIC pings keep this pair alive.
@@ -356,6 +455,7 @@ proc main() {.raises.} =
     assert outgoing.pollTransport(0)
     outgoing.closeTransport()
   windowPolicy(args[0], args[1])
+  sendFailureIsolation(args[0], args[1])
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)
