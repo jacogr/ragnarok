@@ -4,8 +4,9 @@
 ## Four service/version/backend workers retain code only for one full-state Services lifetime.
 ## Acquire after authenticated code classification, before initialization; the opaque lease stays
 ## exclusive through callbacks and immutable publication. Workers may retain bounded baseline/scratch
-## memory within one shared 64 MiB idle allowance. Live CPU, gas, host callbacks, results and chain
-## state never belong to this context.
+## memory within one shared 64 MiB idle allowance, with another 64 MiB shared by encoded source,
+## admission and stream payload. Live CPU, gas, host callbacks, results and chain state never
+## belong to this context.
 
 import std/assertions
 import ../../codec/composite
@@ -26,6 +27,7 @@ type
     busy: bool
     nativeRuntime: NativeRuntime # Safe closed anchor; compiler never reads this context.
     memoryBudget: RetainedMemoryBudget # Ledger mutation stays within the same exclusive context turn.
+    codeBudget: RetainedMemoryBudget
   ServiceExecutionLease* = object ## Noncopyable scoped admission exposes operations, never a worker handle.
     owner: nil ptr ServiceExecutionContext
     index: int
@@ -42,6 +44,7 @@ proc `=wasMoved`*(context: var ServiceExecutionContext) {.nodestroy, inline,
   `=wasMoved`(context.slots)
   `=wasMoved`(context.nativeRuntime)
   `=wasMoved`(context.memoryBudget)
+  `=wasMoved`(context.codeBudget)
   for index in 0..<context.slots.len:
     # Child moves disarm owned refs without decrementing them; primitive state needs explicit reset.
     context.slots[index].service = default(ServiceIndex)
@@ -57,6 +60,7 @@ proc `=destroy`*(context: ServiceExecutionContext) =
   `=destroy`(context.slots)
   `=destroy`(context.nativeRuntime)
   `=destroy`(context.memoryBudget)
+  `=destroy`(context.codeBudget)
 
 proc `=copy`*(destination: var ServiceExecutionLease, source: ServiceExecutionLease) {.error.}
   ## Exactly one scope releases an admitted invocation.
@@ -94,6 +98,11 @@ proc residentMemoryPayloadBytes*(context: ServiceExecutionContext): uint64 {.req
     not context.busy.} =
   ## Read charged idle baseline and private payload across the bounded resident workers.
   retainedMemoryPayloadBytes(context.memoryBudget)
+
+func residentCodePayloadBytes*(context: ServiceExecutionContext): uint64 {.requires:
+    not context.busy.} =
+  ## Observe encoded sources, admission metadata and retained streams across the idle context.
+  retainedMemoryPayloadBytes(context.codeBudget)
 
 proc residentServiceInfo*(context: ServiceExecutionContext, service: ServiceIndex,
     version: CodeHash, backend: PvmBackend): PreparationResult[PreparedCacheInfo]
@@ -151,8 +160,11 @@ proc acquireServiceExecution*(context: var ServiceExecutionContext, service: Ser
     if not isBound(context.memoryBudget):
       # Preserve room for one full-size idle owner across all slots. Each worker still has its own limit.
       context.memoryBudget = newRetainedMemoryBudget(defaultPreparedLimits().retainedMemoryBytes)
+    if not isBound(context.codeBudget):
+      # Code growth competes across the same four resident slots independently of scratch.
+      context.codeBudget = newRetainedMemoryBudget(DefaultRetainedCodeBytes)
     context.slots[selected] = ResidentSlot(service: service, version: version, backend: backend,
-      worker: newExecutionWorker(context.nativeRuntime, context.memoryBudget))
+      worker: newExecutionWorker(context.nativeRuntime, context.memoryBudget, context.codeBudget))
     context.next = if selected == context.slots.high: 0 else: selected + 1
   ServiceExecutionLease(owner: addr context, index: selected)
 
