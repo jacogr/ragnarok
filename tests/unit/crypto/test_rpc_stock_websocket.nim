@@ -329,7 +329,7 @@ proc disconnectedWriter() =
   assert "connection retired" notin capture.messages and "private response bytes" notin
       capture.messages
 
-proc refuseAtCapacity(owner: var Server, port: uint16) {.raises.} =
+proc refuseAtCapacity(owner: var Server, client: var tcp.Socket, port: uint16) {.raises.} =
   ## An existing upgraded client occupies one slot. Fill the others and observe the new peer close.
   var peers = default(array[MaxConnections - 1, tcp.Socket])
   for peer in mitems(peers):
@@ -343,7 +343,10 @@ proc refuseAtCapacity(owner: var Server, port: uint16) {.raises.} =
   var octet = '\0'
   for attempt in 0..<1000:
     # Read independently of the RPC stream to distinguish a real refusal from silence.
-    if native_io.receive(excess.fd, addr octet, 1, 0) == 0: return
+    if native_io.receive(excess.fd, addr octet, 1, 0) == 0:
+      client.sendRequest("at capacity", 9)
+      assert owner.awaitWire(client, "at capacity") == "\x8a\x0bat capacity"
+      return # The fill clients still hold their slots while the established client gets Pong.
     discard pauseMicros(1000)
   assert false, "RPC listener closes an over-capacity peer"
 
@@ -415,9 +418,7 @@ proc main() {.raises.} =
   replyAfterEof()
   preambleLimits()
   blockedWriter(owner, client)
-  owner.refuseAtCapacity(port)
-  client.sendRequest("at capacity", 9)
-  assert owner.awaitWire(client, "at capacity") == "\x8a\x0bat capacity"
+  owner.refuseAtCapacity(client, port)
   # Give the dispatcher time to arm readiness before testing joined idle shutdown.
   for attempt in 0..<30:
     owner.tick(0)

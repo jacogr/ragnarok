@@ -505,7 +505,8 @@ proc tick*(server: var Server, peers: uint32) =
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "RPC stream could not start")
   else:
     let error = osLastError()
-    if not retryableSocketError(error):
+    # A client can disconnect while still in the kernel's pending queue.
+    if error != OSErrorCode(ECONNABORTED) and not retryableSocketError(error):
       log(server.logger, LogTarget.Rpc, LogLevel.Warn, "RPC accept failed: " & $int32(error))
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
       port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
