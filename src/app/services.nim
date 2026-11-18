@@ -1239,7 +1239,8 @@ proc setupRpc(rpc: var Server, options: Options, role: string, text: string,
   if options.mcpPort != 0:
     mcpInfo = ClientInfo(role: role, parameters: parameters, chain: genesisView(genesis),
       identity: chainIdentity(genesis)) # No canonical worker exists in this legacy listener-only path.
-  rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort(), chainIdentity(genesis))
+  rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort(), chainIdentity(genesis),
+    options.logWriter)
 
 proc logCertificateIdentity(writer: LogWriter, certificate: string) =
   ## Read only bounded public certificate bytes; unavailable diagnostics never affect transport acceptance.
@@ -1510,7 +1511,7 @@ proc startServices(services: var Services, options: Options, role: string,
     if options.mcpPort != 0:
       services.mcpInfo = ClientInfo(role: role, parameters: parameters, identity: identity)
     rpcReady = services.rpc.start(options.rpcPort(), role, parameters, services.canonical.chainView,
-        options.uiPort(), identity)
+        options.uiPort(), identity, options.logWriter)
   else:
     rpcReady = services.rpc.setupRpc(options, role,
         services.chainText, services.mcpInfo, services.networkBase) # Preserve legacy optional/unavailable genesis behavior.
@@ -1610,7 +1611,7 @@ proc startLightServices(services: var Services, options: Options, role: string):
   let path = if options.diskStorage: options.stateDatabase else: ""
   if not services.light.start(services.rpc, role, options.rpcPort, options.uiPort,
       options.diskStorage, path, startup.trust, startup.policy, startup.parameters,
-      startup.identity): return false
+      startup.identity, options.logWriter): return false
   if options.mcpPort != 0:
     services.mcpInfo = ClientInfo(role: role, parameters: startup.parameters,
       identity: startup.identity,

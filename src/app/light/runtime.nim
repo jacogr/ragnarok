@@ -20,6 +20,7 @@ import ../../state/proof/view as proof_view
 import ../../state/trie_proof
 import ../../state/proof/service as proof_service
 import ../../codec/bounded
+import ../../lib/logging
 import ../../codec/state/trie as state_trie
 import ../../chain/[genesis, parameters]
 import ../../storage/paged/store as paged_store
@@ -260,7 +261,7 @@ proc close*(runtime: var LightRuntime) =
 proc start*(runtime: var LightRuntime, rpc: var Server, role: string,
     port, uiPort: uint16, disk: bool, path: string, trust: TrustedApplicationCheckpoint,
     policy: LightRuntimePolicy, parameters: ParameterResult,
-        identity: ChainIdentity): bool {.raises.} =
+        identity: ChainIdentity, logger = default(LogWriter)): bool {.raises.} =
   ## Startup owns all native work before callbacks become observable; independent current trust and explicit backend policy never come from disk.
   if runtime.started or not rpc.availableForStart or (disk and path.len == 0) or (not disk and
       path.len > 0): return false # Repeated/default physical activation cannot replace a live owner.
@@ -295,7 +296,7 @@ proc start*(runtime: var LightRuntime, rpc: var Server, role: string,
   if transport.error != RpcLightSourceError.None: return false # Complete detached metadata capture precedes listener visibility.
   runtime.rpcSource = transport.value
   if not rpc.startLight(port, role, parameters, transport.value, disk, uiPort,
-      identity): return false
+      identity, logger): return false
   if port != 0: discard rpc.enableStateProofs() # The light actor itself owns bounded query/import dispatch and all canonical exclusion.
   if not runtime.cpu.start(): return false # One reusable existing CPU worker; full-state preparation stays unstarted.
   if disk and not runtime.io.start(): return false # At most one existing disk worker belongs to this selected backend.
