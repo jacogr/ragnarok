@@ -47,7 +47,7 @@ type
   # Admitted-peer events borrow DER only on admission; closure names the same fixed slot.
   PeerCallback* = proc(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
       length: csize_t) {.cdecl, raises: [].}
-  # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
+  # The UDP sender borrows a C packet until return. Zero means complete; failures return errno.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
       address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].}
   # Synchronous authenticated policy: exactly1 admits; both byte spans are borrowed.

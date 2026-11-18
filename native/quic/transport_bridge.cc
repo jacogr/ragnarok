@@ -351,12 +351,13 @@ class Writer final : public QuicPacketWriter {
                             const QuicPacketWriterParams &) override {
         if (length > DatagramCapacity)
             return WriteResult(WRITE_STATUS_MSG_TOO_BIG, EMSGSIZE);
-        if (blocked_ || sent_ >= TurnBudget) {
+        if (blocked_ || attempts_ >= TurnBudget) {
             blocked_ = true;
             return WriteResult(WRITE_STATUS_BLOCKED, EAGAIN);
         }
         uint8_t address[16];
         CopyIp(peer.host(), address);
+        ++attempts_; // Hard errors also consume bounded work on shared and time-wait writers.
         const int error = owner_->send(owner_->user, reinterpret_cast<const uint8_t *>(bytes),
                                        length, address, peer.port());
         if (error == EAGAIN || error == EWOULDBLOCK || error == EINTR) {
@@ -368,13 +369,12 @@ class Writer final : public QuicPacketWriter {
             return WriteResult(WRITE_STATUS_MSG_TOO_BIG, error);
         if (error != 0)
             return WriteResult(WRITE_STATUS_ERROR, error);
-        ++sent_;
         return WriteResult(WRITE_STATUS_OK, static_cast<int>(length));
     }
     bool IsWriteBlocked() const override { return blocked_; }
     void SetWritable() override {
         blocked_ = false;
-        sent_ = 0;
+        attempts_ = 0;
     }
     std::optional<int> MessageTooBigErrorCode() const override { return EMSGSIZE; }
     QuicByteCount GetMaxPacketSize(const QuicSocketAddress &) const override { return 1472; }
@@ -390,7 +390,7 @@ class Writer final : public QuicPacketWriter {
   private:
     rq_transport *owner_;
     bool blocked_ = false;
-    unsigned sent_ = 0;
+    unsigned attempts_ = 0;
 };
 
 // No legacy proof or application state is used by this TLS-only client.
