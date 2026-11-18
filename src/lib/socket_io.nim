@@ -8,10 +8,6 @@
 import std/[nativesocket, oserrors]
 import std/posix/posix
 
-type WriteStatus* = enum
-  ## One bounded send either drains, advances, defers or fails the caller's pending bytes.
-  WritePending, WriteProgress, WriteComplete, WriteFailed
-
 proc socket*(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Create a descriptor; the caller owns configuration and cleanup, including setup failure.
 
@@ -25,10 +21,6 @@ proc listenSocket*(fd, backlog: cint): cint {.importc: "listen", header: "<sys/s
 proc acceptSocket*(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
   ## Accept once without peer metadata; the caller must configure or close the new descriptor.
-
-proc connectSocket*(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
-    header: "<sys/socket.h>".}
-  ## Start one connection attempt; callers retain EINPROGRESS and completion handling.
 
 proc receive*(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
@@ -108,28 +100,3 @@ proc sendBytes*(fd: cint, data: pointer, size: csize_t, flags = 0.cint): int =
   else:
     # Per-send suppression also covers Unix domain streams on Linux.
     nativeSend(fd, data, size, flags or NoSignal)
-
-proc writePending*(fd: cint, data: pointer, length: int, offset: var int): WriteStatus {.
-    requires: length >= 0 and offset >= 0 and offset <= length.} =
-  ## Send at most once from the borrowed initialized extent, advancing only on actual progress.
-  ## The caller must keep the same bytes until drained; deadlines and queue reset remain its policy.
-  if offset == length: return WriteComplete # No syscall or pointer arithmetic for an empty suffix.
-  let sent = sendBytes(fd, cast[pointer](cast[uint](data) + uint(offset)),
-    csize_t(length - offset))
-  if sent > 0:
-    # The kernel accepted a prefix of precisely the remaining extent.
-    offset += sent
-    if offset == length: WriteComplete
-    else: WriteProgress
-  elif sent < 0 and retryableSocketError(osLastError()):
-    # Capture errno before returning; transient failure preserves the exact suffix.
-    WritePending
-  else:
-    # Zero progress or a permanent error lets the service retire only its own connection.
-    WriteFailed
-
-proc writePending*(fd: cint, data: string, offset: var int): WriteStatus {.
-    requires: offset >= 0 and offset <= data.len.} =
-  ## Borrow short or heap string storage only during this send; no NUL terminator is needed.
-  let bytes = data.readRawData()
-  writePending(fd, bytes, data.len, offset)

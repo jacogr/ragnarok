@@ -17,7 +17,6 @@ from std/http/httpparse import ParseIncomplete
 export utf8
 
 const MaxMessage* = 16384
-const MaxClientFrameHeader* = 8 # Two base bytes, two length bytes and four mask bytes.
 
 proc frame*(payload: string, opcode = 1): string =
   ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
