@@ -13,7 +13,7 @@
 ## the socket owner and per-connection state. The single-owner Reader/Writer task
 ## is the only live transport; canonical state stays on this dispatcher.
 
-import std/[strutils, monotimes]
+import std/[strutils, monotimes, oserrors]
 import std/posix/posix
 import ../lib/socket_io
 import ../lib/logging
@@ -490,13 +490,24 @@ proc tick*(server: var Server, peers: uint32) =
         # At most one admission per dispatcher turn.
         free = i
         break
-    if free < 0 or not nonblocking(accepted):
+    if free < 0:
       discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "RPC connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "RPC connection setup failed: " & $int32(error))
     elif server.connections[free].stream.start(accepted, server.logger):
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
     else:
       discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "RPC stream could not start")
+  else:
+    let error = osLastError()
+    # A client can disconnect while still in the kernel's pending queue.
+    if error != OSErrorCode(ECONNABORTED) and not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "RPC accept failed: " & $int32(error))
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
       port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
       light: server.light, lightDisk: server.lightDisk,
