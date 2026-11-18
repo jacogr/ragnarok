@@ -213,7 +213,9 @@ when OffloadEnabled:
         scratch.invalid = invalid
         slot[] = Slot(job: scratch, id: JobId(pool.next), phase: Queued)
         scratch = ProofJob() # Reuse caller storage after the owned snapshot has been copied.
-        signal(pool.changed)
+        # A worker held by the test gate also waits on changed. Wake both fixed workers
+        # so an idle worker can claim the queued job even when the held worker wakes first.
+        broadcast(pool.changed)
         return slot.id
     JobId(0) # Queued, running and uncollected completions all count toward the four-slot cap.
 
