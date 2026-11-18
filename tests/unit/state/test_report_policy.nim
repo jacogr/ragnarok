@@ -20,6 +20,7 @@ import ../../../src/codec/[composite, header]
 import ../../../src/codec/state/[accounts as state_accounts, authorization as state_authorization,
     layout as state_layout, trie as state_trie]
 import ../../../src/crypto/[primitives, guarantee]
+import ../../../src/chain/[parameters, presets]
 import ../../support/[arc_evidence, report_context]
 
 ## Refuse hashing after input preparation to prove policy has no crypto/state-write side effects.
@@ -34,16 +35,22 @@ proc expected(text: string): ReportPolicyError =
   of "bad_code_hash": ReportPolicyError.WrongCodeHash # Service-specific code commitment.
   of "service_item_gas_too_low": ReportPolicyError.InsufficientGas # Per-digest minimum.
   of "work_report_gas_too_high": ReportPolicyError.ReportGasExceeded # Per-report aggregate ceiling.
+  of "auth_gas_too_high", "bundle_too_big", "refine_load_too_high":
+    ReportPolicyError.RefinementLoadExceeded # This stage uses one code for the three fixed-load errors.
   else:
     assert false, text # No unreviewed scenario can silently enter this fixture family.
     ReportPolicyError.Uninitialized
 
-## Verify unchanged signed tiny/full projections against their source policy verdicts.
+## Verify signed historical and current Full projections against their source policy verdicts.
 proc official(): OwnedReport {.raises.} =
   result = default(OwnedReport)
   var pools: seq[seq[byte]] = @[]
   var total = 0
   var accepted = 0
+  var previewTotal = 0
+  var previewAccepted = 0
+  let full = presetParameters(ChainPreset.Full)
+  assert full.ok
   # Visit every source case; none may be skipped after an earlier success.
   for row in readFile(getEnv("RAGNAROK_REPORT_POLICY")).splitLines:
     if row.len == 0: continue # Only the transport's final empty line is ignored.
@@ -51,7 +58,12 @@ proc official(): OwnedReport {.raises.} =
     if f[0] == "pool":
       pools.add(unhex(f[1])) # Repeated rosters share immutable transport bytes.
       continue
-    inc total
+    let preview = f[0] == "preview"
+    if preview:
+      inc previewTotal # Keep acceptance coverage independent of the historical cohort.
+    else:
+      assert f[0] == "case"
+      inc total
     let cores = uint64(parseInt(f[2]))
     let config = credentialConfig(cores)
     let active = decodeStateValidators(pools[parseInt(f[5])], config.assignments.roster).value.value
@@ -82,15 +94,25 @@ proc official(): OwnedReport {.raises.} =
           value: unhex(parts[1]))) # Exact service IDs and original fixed metadata.
     let state = newStateStore(entries, limits()).value
     let parent = state.snapshot.value
-    let outcome = checkReportPolicy(credentials.value, parent, policy(cores))
+    var rules = policy(cores)
+    if preview:
+      # Use the currently shipped Full gas parameters while retaining historical controls.
+      assert cores == full.value.get(coreCount)
+      rules.reportGas = ReportGasLimit(full.value.get(maxAccumulateGas))
+      rules.refinementGas = RefinementGasLimit(full.value.get(maxRefineGas))
+    let outcome = checkReportPolicy(credentials.value, parent, rules)
     assert outcome.error == expected(f[3]), f[1] & " " & $outcome.error
     if outcome.error == ReportPolicyError.None:
-      inc accepted
-      result = outcome.value.policyCredentials.value.verifiedGuaranteeAt(
-          0).value.report # Retained after fixture scope.
+      if preview:
+        inc previewAccepted
+      else:
+        inc accepted
+        result = outcome.value.policyCredentials.value.verifiedGuaranteeAt(
+            0).value.report # Retain the historical base for separately authored boundaries.
     assert array[32, byte](parent.commitment.root) == array[32, byte](
         state.snapshot.value.commitment.root)
   assert total == 20 and accepted == 8
+  assert previewTotal == 7 and previewAccepted == 3
 
 ## A scoped success or later-digest refusal must release every certificate and snapshot handle.
 proc releaseCycle(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
@@ -286,7 +308,7 @@ proc main() {.raises.} =
   let base = official()
   boundaries(base)
   loadBoundaries(base)
-  echo "PASS report policy: twenty published projections, gas boundaries and retained parent state"
+  echo "PASS report policy: historical and Full preview projections, gas boundaries and retained parent state"
 try:
   main() # Native assertions own every application verdict.
 except:

@@ -226,7 +226,7 @@ def unit_guarantee_credentials_fixture(folder):
 def unit_report_policy_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from report_policy_fixtures import prepare
-    path, evidence = prepare(folder)
+    path, evidence = prepare(folder, include_preview=True)
     fixture = ('RAGNAROK_REPORT_POLICY', path, ((path, evidence['fixture_sha256']),))
     return {'default': fixture}, evidence
 
