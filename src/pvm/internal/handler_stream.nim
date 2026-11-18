@@ -3999,10 +3999,16 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
 template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[bool],
     SampleFusion: static[bool] = false, fusionProbe: untyped = nil) =
   ## The checked loop is shared by the ordinary and observed segments. Only the latter can discover.
+  ## Dispatch can append to the exclusive stream. A cached common prefix stays valid until handback.
   var node = entry
+  var admitted = 0'u64
+  template inDispatchPrefix(index: uint32): bool =
+    ## Check all three lengths on first use and whenever lazy emission reaches beyond the prefix.
+    if uint64(index) >= admitted:
+      admitted = uint64(min(f.handlers.len, min(f.arguments.len, f.sites.len)))
+    uint64(index) < admitted
   while node != flatStop:
-    if uint64(node) >= uint64(f.handlers.len) or uint64(node) >= uint64(f.arguments.len) or
-        uint64(node) >= uint64(f.sites.len):
+    if not inDispatchPrefix(node):
       discard flatBackendFailure(f, node)
       break
     let selected = f.handlers[int(node)]
@@ -4020,8 +4026,7 @@ template flatDispatchLoop(f: var FlatFrame, entry: uint32, ObserveLater: static[
       else:
         node = flatReserveHeader[false](f, node)
       if node != flatStop:
-        if uint64(node) >= uint64(f.handlers.len) or uint64(node) >= uint64(f.arguments.len) or
-            uint64(node) >= uint64(f.sites.len):
+        if not inDispatchPrefix(node):
           node = flatBackendFailure(f, node)
         else:
           let body = f.handlers[int(node)]
