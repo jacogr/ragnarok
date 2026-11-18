@@ -7,7 +7,8 @@ import std/[assertions, syncio, strutils, base64, ioring, monotimes]
 import std/socket as tcp
 import std/posix/posix as posix
 import ../../../src/lib/socket_io as native_io
-import ../../../src/lib/[http_head, http_stream]
+import ../../../src/lib/[http_head, http_stream, logging]
+from ../../../src/lib/stop_signal import ignorePipeSignal
 import ../../../src/rpc/[server, protocol, wire, wire_stream]
 import ../../../src/chain/[genesis, parameters, provider]
 from ../../../src/codec/state/layout import chapterKey, StateChapter
@@ -270,6 +271,34 @@ proc halfClosedClient(owner: var Server, port: uint16) {.raises.} =
   for id in 1..16:
     assert ("\"id\":" & $id & ",") in response
 
+proc collectRpcLog(context: nil pointer, batch: string) {.raises: [].} =
+  ## The test reads captured text only after the logger joins its sink thread.
+  cast[ptr string](context)[].add(batch)
+
+proc disconnectedWriter() =
+  ## A real send error survives the worker join and is visible at the Info filter.
+  assert ignorePipeSignal()
+  var messages = ""
+  var logger = default(Logger)
+  assert logger.start(initLogPolicy(LogLevel.Info), collectRpcLog, addr messages)
+  var pair = default(array[2, cint])
+  assert socketPair(cint(posix.AF_UNIX), cint(posix.SOCK_STREAM), 0, addr pair[0]) == 0
+  assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
+  var stream = default(RpcWireStream)
+  assert stream.start(pair[0], logger.writer)
+  assert posix.close(pair[1]) == 0
+  var reply = "private response bytes"
+  assert stream.send(reply)
+  for attempt in 0..<1000:
+    pollRpcStreams()
+    if stream.finished: break
+    discard pauseMicros(1000)
+  assert stream.finished
+  stream = default(RpcWireStream)
+  logger.close()
+  assert "[warn][rpc] RPC stream write ended: IOError" in messages
+  assert "connection retired" notin messages and "private response bytes" notin messages
+
 proc main() {.raises.} =
   # Discover an available loopback port before exercising normal listener startup.
   let probe = native_io.listenLoopback(0, 1)
@@ -296,9 +325,12 @@ proc main() {.raises.} =
   assert initial.error == GenesisError.None
   let next = child(initial.value, parameters.value)
   assert next.error == GenesisError.None
+  var messages = ""
+  var logger = default(Logger)
+  assert logger.start(initLogPolicy(LogLevel.Info), collectRpcLog, addr messages)
   var owner = default(Server)
   let prefix = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":1,\"result\":{\"header_hash\":\""
-  assert owner.start(port, "stream", parameters, initial)
+  assert owner.start(port, "stream", parameters, initial, logger = logger.writer)
   var duplicate = default(Server)
   assert not duplicate.start(port, "duplicate", parameters, initial)
   var client = tcp.connect("127.0.0.1", port, afterMs(5000))
@@ -343,6 +375,9 @@ proc main() {.raises.} =
   assert (getMonoTime().ticks - started) div 1_000_000 < 1000
   assert native_io.receive(client.fd, addr octet, 1, 0) == 0
   client.close()
+  logger.close()
+  assert "[info][rpc] RPC WebSocket upgrade accepted" in messages
+  disconnectedWriter()
   ioring.shutdown()
 
 try:

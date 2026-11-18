@@ -7,10 +7,11 @@
 ## Only a complete upgrade head, a decoded frame or a framing error crosses
 ## the input mailbox. The reader fills only while the current head or frame
 ## is incomplete. The dispatcher owns upgrade policy, message assembly,
-## request execution and subscription state.
+## request execution and subscription state. The task publishes terminal I/O
+## errors with completion. The dispatcher reports them after joining.
 
 import std/[atomics, ioring, locks, streamio, threadpool]
-import ../lib/http_head
+import ../lib/[http_head, logging]
 import ./wire
 
 const PendingReadiness = low(int)
@@ -36,8 +37,10 @@ type
     watching: bool
     readiness: int
     outputDeadline: Deadline
+    readFailure, writeFailure, cleanupFailure: ErrorCode
   RpcWireStream* = object
     exchange: nil ptr StreamExchange
+    logger: LogWriter # Borrowed by the dispatcher until it joins this stream.
 
 proc pause(us: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Let worker lanes finish without holding the dispatcher I/O lane.
@@ -123,7 +126,9 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
       elif atomicLoad(s.inputReady, moAcquire):
         s.waitForDispatch(InboxTaken)
       else:
-        if expired(frameDeadline): break
+        if expired(frameDeadline):
+          s.readFailure = TimeoutError
+          break
         if reader.buffered > 0:
           if readingHead:
             let extent = scanner.findHeadEnd(reader.peek)
@@ -170,6 +175,7 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
         except ErrorCode as error:
           # Timeout leaves the unread prefix intact for the next readiness event.
           if error == TimeoutError: continue
+          s.readFailure = error
           break
         if count == 0:
           # FIN follows the last inbox transfer and must leave the writer available.
@@ -178,13 +184,13 @@ proc run(fd: cint, s: ptr StreamExchange) {.passive.} =
           atomicStore(s.bufferedInput, false, moRelease)
         else:
           atomicStore(s.bufferedInput, true, moRelease)
-  except ErrorCode:
-    discard # Writer failure retires the connection and its outstanding credit.
+  except ErrorCode as error:
+    s.writeFailure = error # A failed write retires its outstanding output credit.
   writer.abort()
   try:
     reader.close()
-  except ErrorCode:
-    discard
+  except ErrorCode as error:
+    s.cleanupFailure = error
   atomicStore(s.done, true, moRelease)
 
 proc active*(stream: RpcWireStream): bool =
@@ -209,6 +215,12 @@ proc `=copy`*(dest: var RpcWireStream, source: RpcWireStream) {.error.}
 
 proc `=dup`*(source: RpcWireStream): RpcWireStream {.error.}
 
+proc logFailure(logger: LogWriter, operation: string, error: ErrorCode) =
+  ## Keep routine timeout/EOF diagnostics quiet and warn about unexpected I/O errors.
+  if error == default(ErrorCode): return
+  let level = if error in {TimeoutError, EndOfStreamError}: LogLevel.Debug else: LogLevel.Warn
+  log(logger, LogTarget.Rpc, level, "RPC stream " & operation & " ended: " & $error)
+
 proc `=destroy`*(stream: RpcWireStream) =
   ## Shutdown waits only for the bounded operation already owned by the worker.
   let s = stream.exchange
@@ -218,6 +230,16 @@ proc `=destroy`*(stream: RpcWireStream) =
         (s.watching and s.readiness == PendingReadiness):
       pollRpcStreams()
       discard pause(1000)
+    # Completion grants access to scalar results, including on listener shutdown.
+    if s.readFailure == default(ErrorCode) and atomicLoad(s.inputEof, moAcquire):
+      stream.logger.logFailure("read", EndOfStreamError)
+    else:
+      stream.logger.logFailure("read", s.readFailure)
+    stream.logger.logFailure("write", s.writeFailure)
+    if s.cleanupFailure != default(ErrorCode):
+      log(stream.logger, LogTarget.Rpc, LogLevel.Warn,
+        "RPC stream reader close failed: " & $s.cleanupFailure)
+    log(stream.logger, LogTarget.Rpc, LogLevel.Trace, "RPC connection retired")
     deinitLock(s.lock)
     `=destroy`(s[])
     dealloc(s)
@@ -225,14 +247,17 @@ proc `=destroy`*(stream: RpcWireStream) =
 proc `=wasMoved`*(stream: var RpcWireStream) {.nodestroy.} =
   ## Move cleanup authority while the task retains the same address.
   stream.exchange = nil
+  stream.logger = default(LogWriter)
 
-proc start*(stream: var RpcWireStream, fd: cint): bool =
+proc start*(stream: var RpcWireStream, fd: cint, logger = default(LogWriter)): bool =
   ## Take the descriptor on success. The caller retains it on refusal.
+  ## The dispatcher borrows the logger until it joins the stream.
   if stream.active or fd < 0: return false
   let s = cast[ptr StreamExchange](alloc0(sizeof(StreamExchange)))
   s[] = StreamExchange(fd: fd)
   initLock(s.lock)
   stream.exchange = s
+  stream.logger = logger
   submit(delay(run(fd, s)), -1)
   true
 
