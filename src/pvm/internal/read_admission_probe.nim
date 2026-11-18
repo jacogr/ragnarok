@@ -305,6 +305,11 @@ when declared(FlatFrame):
         f.readProbe.protectedActive = true
         f.handlers[int(header)] = protectedReadProbeCharge
 
+  func readProbeCallActive*(f: FlatFrame): bool {.inline.} =
+    ## Only beginReadProbe starts a call's observation. A host transition may
+    ## replace memory, carrying the active observer and its exact source layout.
+    f.readProbe.callActive
+
   proc endReadProbeSegment*(f: var FlatFrame) =
     ## Restore each original terminal before callbacks, replacement, exit or stream retention.
     if not f.readProbe.observing: return
