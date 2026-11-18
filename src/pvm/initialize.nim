@@ -6,6 +6,7 @@
 ## only during the call; successful machines own immutable acyclic copies. See spec/pvm-initialization.md.
 
 import ./[program, machine]
+import ./internal/retained_memory_budget
 import ../codec/bounded
 
 type
@@ -19,6 +20,8 @@ type
     source: Program
     bytes: ProgramByteLimit
     jumps: JumpCountLimit
+    budget: RetainedMemoryBudget
+    charge: RetainedMemoryCharge
   InitializationError* {.pure.} = enum ## No failed/default result contains a machine, memory or partially decoded input.
     Uninitialized, None, InvalidEnvelope, ArgumentsTooLarge, LimitExceeded, InvalidProgram
   InitializationHeap* = object ## Half-open heap page interval, reserving the stack in major zones.
@@ -47,6 +50,10 @@ func heapBounds*(r: InitializationResult): InitializationHeap {.inline,
   ## The exact decoded layout is available only after successful standard initialization.
   r.heap
 
+func newInitializationCode*(budget: RetainedMemoryBudget): InitializationCode =
+  ## Bind an empty source cache to its lifetime budget. The cache never owns live machine state.
+  InitializationCode(budget: budget)
+
 func fixed(input: openArray[byte], start, width: int): uint64 =
   ## Decode a fixed little-endian field after its caller establishes the complete header extent.
   result = 0
@@ -67,11 +74,12 @@ func region(start, size: uint64, access: PageAccess, source: InitializationSourc
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits,
-        retained: var InitializationCode): InitializationResult =
+    retained: var InitializationCode): InitializationResult =
   ## Initialize the fixed program image after its metadata prefix has been decoded.
   ## Gas is caller supplied and initially uncharged. All size/policy checks precede page allocation.
   ## Resource refusals from program decoding, page capture or CPU snapshot allocation
   ## return `InitializationError.LimitExceeded`.
+  ## The optional budget covers the cache's source edge. A full cache still admits this call.
   # Argument admissibility is a protocol bound, separate from caller allocation policy.
   if uint64(arguments.len) > 0x1000000'u64:
     return InitializationResult(status: InitializationError.ArgumentsTooLarge)
@@ -108,21 +116,29 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   # Check the complete allocation, including zero pages, before program admission.
   if pageCount > uint64(uint32(limits.pages)):
     return InitializationResult(status: InitializationError.LimitExceeded)
-  if uint64(retained.bytes) == uint64(limits.program) and
-      uint64(retained.jumps) == uint64(limits.jumps) and isJamProgram(retained.source) and
-      matchesProgramEncoding(retained.source, input.toOpenArray(codeOffset, input.len - 1)):
-    # Prior admission proves the exact encoding under identical parse limits; entry remains invocation-specific.
-    if instructionOpcode(retained.source, entry).error != ProgramError.None:
-      return InitializationResult(status: InitializationError.InvalidProgram)
-  else:
-    let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
-        limits.program, limits.jumps)
-    if decoded.error in {ProgramError.LimitExceeded, ProgramError.AllocationRefused}:
-      return InitializationResult(status: InitializationError.LimitExceeded)
-    if decoded.error != ProgramError.None:
-      return InitializationResult(status: InitializationError.InvalidProgram)
-    # Replace the one retained source only after complete successful program admission.
-    retained = InitializationCode(source: decoded.value, bytes: limits.program, jumps: limits.jumps)
+  let source =
+    if uint64(retained.bytes) == uint64(limits.program) and
+        uint64(retained.jumps) == uint64(limits.jumps) and isJamProgram(retained.source) and
+        matchesProgramEncoding(retained.source, input.toOpenArray(codeOffset, input.len - 1)):
+      # Exact prior admission shares the source, while entry remains invocation-specific.
+      if instructionOpcode(retained.source, entry).error != ProgramError.None:
+        return InitializationResult(status: InitializationError.InvalidProgram)
+      retained.source
+    else:
+      let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
+          limits.program, limits.jumps)
+      if decoded.error in {ProgramError.LimitExceeded, ProgramError.AllocationRefused}:
+        return InitializationResult(status: InitializationError.LimitExceeded)
+      if decoded.error != ProgramError.None:
+        return InitializationResult(status: InitializationError.InvalidProgram)
+      # Keep the successfully parsed source for this call even if the optional edge has no room.
+      var charge = default(RetainedMemoryCharge)
+      if tryCharge(retained.budget, codeLength, charge):
+        retained.source = decoded.value
+        retained.bytes = limits.program
+        retained.jumps = limits.jumps
+        retained.charge = move(charge)
+      decoded.value
   # Capture each region directly, including read-only tails and the untouched stack and heap.
   let rwStart = 131072 + roZone
   let regions = [
@@ -144,7 +160,7 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   registers[1] = RegisterValue(0xfefe0000'u64)
   registers[7] = RegisterValue(0xfeff0000'u64)
   registers[8] = RegisterValue(uint64(arguments.len))
-  let captured = captureMachine(retained.source, memory.value, MachineInfo(pc: entry, gas: gas,
+  let captured = captureMachine(source, memory.value, MachineInfo(pc: entry, gas: gas,
     blockCharged: false, registers: registers))
   if captured.error == MachineError.LimitExceeded:
     return InitializationResult(status: InitializationError.LimitExceeded)

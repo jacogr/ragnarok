@@ -149,13 +149,87 @@ proc budgetLifecycle() =
   assert preparedInfo(other.value).value.retainedMemoryPayloadBytes == 8192
   assert retainedMemoryPayloadBytes(budget) == 8192
 
+proc codeBudgetLifecycle() =
+  ## Test source-only admission, warm stream refusal and shared release with real invocations.
+  let sourceBudget = newRetainedMemoryBudget(RetainedMemoryByteLimit(8))
+  let original = block:
+    let first = newExecutionWorker(codeBudget = sourceBudget)
+    let second = newExecutionWorker(codeBudget = sourceBudget)
+    let retained = initialized(first, [])
+    assert programOf(initialized(first, [])).value == programOf(retained).value
+    let refused = initialized(second, [])
+    assert programOf(refused).value != programOf(initialized(second, [])).value
+    assert programOf(refused).value.programEncodingLength == 8
+    assert retainedMemoryPayloadBytes(sourceBudget) == 8
+    retained
+  # An invocation snapshot can outlive the optional source cache and its charge.
+  assert retainedMemoryPayloadBytes(sourceBudget) == 0
+  let source = programOf(original).value
+  let policy = defaultPreparedLimits(GasCycleLimit(1000))
+  let reference = newPreparedProgram(source, policy)
+  assert reference.error == PreparationError.None
+  let cold = preparedInfo(reference.value).value.retainedCodePayloadBytes
+  let expected = execute(original, ExecutionStepLimit(10), reference.value)
+  assert expected.error == StepError.None and expected.value.exit == StepExit.Host
+  let warm = preparedInfo(reference.value).value.retainedCodePayloadBytes
+  assert cold > 8 and warm > cold
+  block:
+    # One cold owner fits, but its warm stream must be discarded after a valid return.
+    let budget = newRetainedMemoryBudget(RetainedMemoryByteLimit(cold))
+    let cache = newPreparedProgramCache(codeBudget = budget)
+    let admitted = cachedPreparedProgram(cache, source, policy, PvmBackend.Jit)
+    assert admitted.error == PreparationError.None
+    for attempt in 0..<2:
+      # Dropping the optional stream preserves host ID, registers, gas and memory.
+      let completed = execute(original, ExecutionStepLimit(10), admitted.value)
+      assert completed.error == StepError.None and completed.value.exit == expected.value.exit
+      assert completed.value.hostCall == expected.value.hostCall
+      assert completed.value.machine.machineInfo.value == expected.value.machine.machineInfo.value
+      assert completed.value.machine.memoryOf.value.pageImage(PageIndex(32)).value.bytes[0] == 91
+      assert preparedInfo(admitted.value).value.streamNodes == 0
+      assert retainedMemoryPayloadBytes(budget) == cold
+  let budget = newRetainedMemoryBudget(RetainedMemoryByteLimit(warm))
+  var held = default(PreparedProgram)
+  block:
+    # A prepared alias outlives the cache and keeps the actual source/stream charge.
+    let cache = newPreparedProgramCache(codeBudget = budget)
+    let admitted = cachedPreparedProgram(cache, source, policy, PvmBackend.Interpreted)
+    assert admitted.error == PreparationError.None
+    held = admitted.value
+    assert execute(original, ExecutionStepLimit(10), held).error == StepError.None
+    assert retainedMemoryPayloadBytes(budget) == warm
+  assert preparedInfo(held).value.retainedCodePayloadBytes == warm
+  let retry = newPreparedProgramCache(codeBudget = budget)
+  block:
+    # Admission pressure still produces a usable one-shot owner and no cache replacement.
+    let refused = cachedPreparedProgram(retry, source, policy, PvmBackend.Interpreted)
+    assert refused.error == PreparationError.None
+    assert execute(original, ExecutionStepLimit(10), refused.value).error == StepError.None
+    assert preparedCacheInfo(retry).error == PreparationError.InvalidProgram
+    assert retainedMemoryPayloadBytes(budget) == warm
+    # The hosted one-shot path excludes callback reentry without retaining the temporary owner.
+    var probe = HostProbe(cache: retry, other: source, calls: 0)
+    let hosted = executeWithHost(original, probe, probeHost, ExecutionStepLimit(10), HostCallLimit(1),
+      GasCycleLimit(1000), PvmBackend.Interpreted, retry)
+    assert hosted.error == HostExecutionError.None and probe.calls == 1
+    assert hosted.value.exit == StepExit.Panic and preparedCacheInfo(retry).error ==
+      PreparationError.InvalidProgram
+  held = default(PreparedProgram)
+  assert retainedMemoryPayloadBytes(budget) == 0
+  let admitted = cachedPreparedProgram(retry, source, policy, PvmBackend.Interpreted)
+  assert admitted.error == PreparationError.None
+  assert execute(original, ExecutionStepLimit(10), admitted.value).error == StepError.None
+  assert preparedCacheInfo(retry).value.prepared.retainedCodePayloadBytes == warm
+
 retainedLifecycle()
 budgetLifecycle()
+codeBudgetLifecycle()
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   # Both unbound and shared-budget ownership must return every allocation.
   retainedLifecycle()
   budgetLifecycle()
+  codeBudgetLifecycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_worker_code", 1000, before, after)

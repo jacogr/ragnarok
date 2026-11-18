@@ -1080,6 +1080,40 @@ when defined(pvmSharedAsyncWitness):
     assert runtime.runtimeInfo.registered == 0 and runtime.close(),
       "deferred credit: exact final image retirement releases capacity"
 
+  proc refuseUnretainedNativeStream() =
+    ## A qualifying loop may keep its result when the optional stream cannot fund retention.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime)
+    block:
+      # Cold metadata fits exactly. The same 6,144 settled facts ordinarily submit one job.
+      let source = input(loopOwner(), 2048)
+      let program = source.programOf.value
+      let limits = defaultPreparedLimits()
+      let cold = newPreparedProgram(program, limits)
+      assert cold.error == PreparationError.None
+      let bytes = preparedInfo(cold.value).value.retainedCodePayloadBytes
+      let budget = newRetainedMemoryBudget(RetainedMemoryByteLimit(bytes))
+      let cache = newPreparedProgramCache(runtime, codeBudget = budget)
+      let admitted = cachedPreparedProgram(cache, program, limits, PvmBackend.Jit)
+      assert admitted.error == PreparationError.None
+      for repetition in 0..<2:
+        # Complete literal CPU and memory checks while refusing every useless compilation.
+        let done = execute(source, ExecutionStepLimit(6145), admitted.value)
+        verify(done, source, 2048)
+        assert done.value.backend == PvmBackend.Interpreted
+        assert preparedInfo(admitted.value).value.streamNodes == 0
+        assert runtime.runtimeInfo.submitted == 0 and runtime.runtimeInfo.active == 0
+      let control = prepared(program, runtime)
+      let checked = execute(source, ExecutionStepLimit(6145), control)
+      verify(checked, source, 2048)
+      assert runtime.runtimeInfo.submitted == 1
+      waitNativeCompiler(runtime)
+      let ready = execute(source, ExecutionStepLimit(6145), control)
+      verify(ready, source, 2048)
+      assert ready.value.backend == PvmBackend.Jit
+    assert runtime.runtimeInfo.registered == 0 and runtime.close()
+
   proc yieldInstalledCapacity() =
     ## Four live images fill the shared pool. Yielded owners may reuse their checked streams later.
     if not nativePlatformSupported(): return
@@ -2772,6 +2806,7 @@ proc runSharedAsync*() =
     diagnosticPhase("abandonedNativeOwners")
     abandonedNativeOwners()
     deferredCreditProgress()
+    refuseUnretainedNativeStream()
     yieldInstalledCapacity()
     exhaustedCreditNamespace()
     asyncLifecycle()
