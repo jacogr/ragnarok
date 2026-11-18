@@ -21,6 +21,7 @@
 ## Full-state Jit startup owns one shared compiler runtime. The accumulation residency
 ## context retains four service/version/backend workers. Managed work completion passes
 ## the runtime through StateProofWorker and runInputRefinement to refinePackage.
+## Its proof turn also borrows the idle accumulation residency through collect or join.
 ## The package worker leaves the runtime unbound for one-item packages. It retains
 ## one source/policy cache across sequential items and retires before Done.
 ## Proof and preparation turns exclude each other through collection or join,
@@ -32,9 +33,11 @@
 ## a runtime. The JAMNP-S audit and work-sharing refinement adapters also use the default
 ## runtime argument. Those routes can request Jit and complete through checked execution.
 ##
-## The runtime's four image credits cover both bound consumers. Four installed accumulation
-## images can leave a package worker without a credit even with zero active invocations.
-## This is permitted checked fallback; the credit count grants no consumer a fair share.
+## The runtime's four image credits cover both bound consumers. A verified multi-item JIT package
+## can request enough idle accumulation capacity for its primary and auxiliary image with
+## the scheduler's spare primary credit still available.
+## Pending compiler work and release-pending mappings retain their credit. If installed owners
+## cannot provide enough capacity, package execution can still complete through checked handlers.
 ## The accumulation context shares 64 MiB of idle baseline/private payload across all four
 ## residents. The short-lived package worker keeps its separate 64 MiB per-owner cap.
 ## The combined idle payload allowance for these workers is 128 MiB. Prepared facts, source
@@ -3444,7 +3447,8 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
     return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
   let admitted = if phase == WorkSessionPhase.Completing:
     # The proof lease excludes preparation until collection or join, so package refinement can use its compiler.
-    services.proofWorker.submit(services.workInput, services.nativeRuntime)
+    services.proofWorker.submit(services.workInput, services.nativeRuntime,
+      addr services.executionContext)
   else:
     services.proofWorker.submit(services.workInput)
   if admitted.error == ProofWorkerError.None:

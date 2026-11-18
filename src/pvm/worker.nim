@@ -36,6 +36,11 @@ proc workerInfo*(worker: ExecutionWorker): PreparationResult[PreparedCacheInfo] 
   if data == nil: return preparedCacheInfo(default(PreparedProgramCache))
   preparedCacheInfo(data.prepared)
 
+proc yieldIdleNativeImage*(worker: ExecutionWorker) =
+  ## Cooperate with another consumer's exclusive compiler turn while retaining this worker's cache.
+  let data {.cursor.} = worker.data
+  if data != nil: yieldIdleNativeImage(data.prepared)
+
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits, worker: ExecutionWorker): InitializationResult =
   ## Recheck all envelope, allocation and entry rules while sharing only exact JAM code and identical parse policies.

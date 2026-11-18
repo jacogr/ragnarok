@@ -56,6 +56,11 @@
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
 import ./[native_ir, native_platform, native_read_body, native_register_ring]
+
+const
+  NativeAuxiliaryOfferCredits = 2 ## One auxiliary allocation plus one spare for primary admission.
+  NativePackageImageCredits* = when NativeReadCycleEnabled: 1+NativeAuxiliaryOfferCredits else: 1
+    ## A package starts before its primary has claimed a credit.
 export native_ir, native_read_body, native_register_ring
 
 when NativeReadCycleEnabled:
@@ -418,15 +423,26 @@ proc settleImageRetirementLocked(runtime: ptr NativeRuntimeStorage, key: JobKey,
     return RetirementPending
   if finishRetirement(runtime, key): Detached else: RetirementRefused
 
-when NativeReadCycleEnabled:
-  func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
-    ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
-    result = 0
-    for row in runtime.slots:
-      if row.state == Free and row.generation < high(uint64) and
-          row.location == CompletionLocation.Empty and
-              not row.completion.ownsNativeImage: inc result
+func freeNativeCredits(runtime: ptr NativeRuntimeStorage): int =
+  ## This predicate is read under the runtime lock. Exhausted rows cannot be reused.
+  result = 0
+  for row in runtime.slots:
+    if row.state == Free and row.generation < high(uint64) and
+        row.location == CompletionLocation.Empty and
+            not row.completion.ownsNativeImage: inc result
 
+proc idleNativeImagePressure*(runtime: NativeRuntime, minimum: range[1..NativeSessionLimit]): bool =
+  ## An exclusive host turn may retire idle installed images when live capacity is below its target.
+  ## Reclaiming or release-pending rows remain unavailable. An absent or active runtime cannot yield.
+  let anchor {.cursor.} = runtime.data
+  if anchor == nil: return false
+  let storage = addr anchor.storage
+  acquire(storage.lock)
+  defer: release(storage.lock)
+  storage.started and not storage.stopping and storage.active == 0 and
+    freeNativeCredits(storage) < minimum
+
+when NativeReadCycleEnabled:
   proc retireMixedLoopLocked(runtime: ptr NativeRuntimeStorage) =
     ## Cancel a queued or running owner, or detach a completed image after its last borrow.
     let key = runtime.mixedKey
@@ -1276,7 +1292,7 @@ when NativeReadCycleEnabled:
     acquire(runtime.lock)
     if not installedPrimaryRow(runtime, data) or runtime.stopping or
         runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2:
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
       release(runtime.lock)
       return false
     for index in 0..<int(requested.count):
@@ -1330,9 +1346,9 @@ when NativeReadCycleEnabled:
       not data.replacementArmed
 
   func nativeFusionAvailable*(session: NativeSession): bool {.inline.} =
-    ## The ordinary path avoids the optional mailbox unless this owner trained or offered.
+    ## Enter the optional mailbox only for training or an offer still tied to this ticket.
     let data {.cursor.} = session.data
-    data != nil and (data.fusionOffered or nativeFusionTraining(session))
+    data != nil and ((data.fusionOffered and data.mixedOffered) or nativeFusionTraining(session))
 
   proc markNativeFusionSampled*(session: NativeSession) =
     ## Pay for at most one bounded observation window and graph construction per stream epoch.
@@ -1362,7 +1378,8 @@ when NativeReadCycleEnabled:
     defer: release(runtime.lock)
     if not installedPrimaryRow(runtime, data) or runtime.stopping or
         runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2: return false
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) <
+            NativeAuxiliaryOfferCredits: return false
     var slot = -1
     for index in 0..<runtime.slots.len:
       if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64) and
@@ -1402,7 +1419,7 @@ when NativeReadCycleEnabled:
     ## Only the installed prefix's exact live epoch can use the optional image.
     result = default(NativeFusionBorrow)
     let data {.cursor.} = session.data
-    if data == nil or not data.fusionOffered or data.slot < 0 or
+    if data == nil or not data.fusionOffered or not data.mixedOffered or data.slot < 0 or
         not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return
     let anchor {.cursor.} = data.runtime
     if anchor == nil: return
@@ -1802,6 +1819,34 @@ proc releaseNativeCredit(data: NativeSessionData): bool =
   data.imageKey = default(NativeImageKey)
   true
 
+proc yieldIdleNativeImage*(session: NativeSession) =
+  ## Under exclusive host ownership, release an idle installed image through its exact retirement
+  ## key. Keep the checked stream and source proof. Next entry compares the new installed key
+  ## before any cached native jump, restores the checked handlers, and may queue a fresh ticket.
+  ## A pending compiler job is left alone. Capacity must be observed again after retirement.
+  let data {.cursor.} = session.data
+  if data == nil or data.invocation or data.state != NativeState.Ready or not data.image.ready:
+    return
+  when NativeCheckedReadEnabled:
+    let kind = data.imageKey.kind
+  data.allowed = false
+  if not releaseNativeCredit(data) or data.image.ownsNativeImage:
+    data.state = NativeState.Unavailable
+    return
+  data.state = NativeState.Deferred
+  when NativeCheckedReadEnabled:
+    # A read proof is revalidated against the restored stream by the next invocation.
+    data.readNominated = kind == NativeKind.CheckedReadBody
+    when NativeReadCycleEnabled:
+      if kind == NativeKind.ConnectedReadCycle: data.readNominated = true
+    data.readValidated = false
+    data.replacementArmed = false
+    data.laterRead = default(NativeReadCandidate)
+  when NativeReadCycleEnabled:
+    # The auxiliary image belonged to the retired ticket. The same source epoch
+    # still owns its once-only fusion window and offer history.
+    data.mixedOffered = false
+
 when NativeCheckedReadEnabled:
   proc discardNativeReplacement*(session: NativeSession) =
     ## A refused candidate loses only its observation streak, never the installed image's authority.
@@ -2116,7 +2161,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64): boo
       completedWork > 0 and data.provenWork >= NativeInvocationFloor and
       runtime.nextTicket < high(uint64)
   when NativeReadCycleEnabled:
-    if primaryCanQueue() and runtime.mixedKey.generation != 0 and freeNativeCredits(runtime) <= 1:
+    if primaryCanQueue() and runtime.mixedKey.generation != 0 and
+        freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
       retireMixedLoopLocked(runtime)
   # A physical optional release drops and reacquires the lock. Recheck the full predicate.
   if primaryCanQueue():

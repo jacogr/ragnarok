@@ -719,16 +719,13 @@ when NativeReadCycleEnabled:
         result[index].branch = NativeOperation(opcode: 81, immediate: 3)
     markNativeFusionCycles(result)
 
-  proc checkPublicScalarFusion() =
+  proc checkPublicScalarFusion*(runtime: NativeRuntime, yieldAfter = false) =
     ## Ordinary prepared execution must discover the source cycle, publish it asynchronously and
     ## actually amortize native entries while matching all interpreter state and budget exits.
+    ## The caller owns a started runtime with enough capacity for the primary and auxiliary.
     let program = fusionGuest(scalarOnly = true)
-    let runtime = newNativeRuntime()
-    try:
-      assert start(runtime)
-    except:
-      assert false, "scalar fusion runtime failed to start"
-    let jit = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Jit, runtime)
+    let cache = newPreparedProgramCache(runtime)
+    let jit = cachedPreparedProgram(cache, program, defaultPreparedLimits(), PvmBackend.Jit)
     let checked = newPreparedProgram(program, defaultPreparedLimits(), PvmBackend.Interpreted)
     assert jit.error == PreparationError.None and checked.error == PreparationError.None
     let page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
@@ -759,7 +756,17 @@ when NativeReadCycleEnabled:
     info.gas = MachineGas(1000)
     let short = captureMachine(program, memory, info).value
     assertSameFusionResult(execute(short, limit, jit.value), execute(short, limit, checked.value))
-    assert close(runtime)
+    if yieldAfter:
+      # Reinstalling a primary in the same source epoch must not start a second fusion window.
+      let before = runtime.runtimeInfo.submitted
+      yieldIdleNativeImage(cache)
+      assert preparedInfo(jit.value).value.nativeCodeBytes == 0
+      for sample in 0..2:
+        # The shared pool has room for a second offer, so a reset epoch flag would enqueue one.
+        assertSameFusionResult(execute(source, limit, jit.value), expected)
+        waitNativeCompiler(runtime)
+      assert preparedNativeState(jit.value).value == NativeState.Ready
+      assert runtime.runtimeInfo.submitted == before+1
 
   proc checkScalarFusionCycles() =
     ## Compare both native lowerers against independent visit/debit equations, including rotation,
@@ -1067,7 +1074,15 @@ proc runStaticFusion*() =
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
     checkScalarFusionCycles()
-    checkPublicScalarFusion()
+    block:
+      # Qualify ordinary scalar fusion on a fresh runtime with no competing resident owners.
+      let runtime = newNativeRuntime()
+      try:
+        assert start(runtime)
+      except:
+        assert false, "scalar fusion runtime failed to start"
+      checkPublicScalarFusion(runtime)
+      assert close(runtime)
     when defined(pvmSharedAsyncWitness): runFusionComposition()
     checkFusionConditionalMoves()
     checkFusionGraphTokens()
