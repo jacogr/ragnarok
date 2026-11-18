@@ -5,7 +5,9 @@
 ## crosses to the dispatcher, which holds framing, session and execution state.
 ## No read is in flight while the host owns a request or a reply is flushing.
 ## The exchange deadline renews only after a complete flush. Shutdown wakes
-## pending I/O and joins the task before freeing the mailbox.
+## pending I/O and joins the task before freeing the mailbox. Linux uses
+## bounded write-readiness waits because the pinned epoll backend dispatches
+## writable events without treating hangup alone as writable.
 
 import std/[atomics, ioring, locks, streamio, threadpool]
 
@@ -67,6 +69,22 @@ proc waitForWork(s: ptr Exchange) {.passive.} =
   release(s.lock)
   suspend()
 
+when defined(linux):
+  const WriteWaitMs = 250
+
+  proc waitWritable(s: ptr Exchange): bool {.passive.} =
+    ## Wait to write without lending bytes to a reactor operation. Slice the wait
+    ## so stop can retire it even when shutdown reports hangup without EPOLLOUT.
+    while not atomicLoad(s.stopping, moAcquire) and not expired(s.deadline):
+      var ready = 0
+      let next = delay()
+      discard submitPollAdd(s.fd, earlier(s.deadline, afterMs(WriteWaitMs)), {evWrite},
+          next, addr ready)
+      suspend()
+      if ready >= 0: return evWrite in toIoEvents(ready)
+      if ready != IoTimedOut: return false
+    false
+
 proc run(s: ptr Exchange) {.passive.} =
   ## The worker adopts this descriptor, makes all Reader and Writer calls, and closes it once.
   var (reader, writer) = openStreams(s.fd, s.deadline)
@@ -91,12 +109,18 @@ proc run(s: ptr Exchange) {.passive.} =
         while offset < output.len:
           # Writer retains partial progress within a chunk even when the socket would block.
           if atomicLoad(s.stopping, moAcquire) or expired(s.deadline): break
+          when defined(linux):
+            if not s.waitWritable() or atomicLoad(s.stopping, moAcquire): break
+            # The only writer takes one bounded chunk after readiness. Bound the
+            # attempt itself in case readiness changes or the kernel makes partial progress.
+            writer.renew(earlier(s.deadline, afterMs(WriteWaitMs)))
           let count = min(IoBytes, output.len - offset)
           for index in 0..<count: scratch[index] = char(output[offset + index])
           writer.write(scratch.toOpenArray(0, count - 1))
+          when defined(linux): writer.flush()
           offset += count
-        if atomicLoad(s.stopping, moAcquire) or expired(s.deadline): break
-        writer.flush()
+        if offset != output.len or atomicLoad(s.stopping, moAcquire) or expired(s.deadline): break
+        when not defined(linux): writer.flush()
         s.deadline = afterMs(s.timeoutMs)
         s.publish(Written)
       of InputReady, Parked, Written:

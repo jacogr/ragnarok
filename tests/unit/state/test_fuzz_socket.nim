@@ -86,8 +86,8 @@ proc awaitDisconnect(server: var FuzzSocket) =
 
 let SendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
 
-proc boundedStop() =
-  ## Stop while a real Writer holds output credit behind an unread Unix peer.
+proc blockedWriter(stopEarly: bool) =
+  ## Either drain or stop while a real Writer holds output credit behind an unread Unix peer.
   proc socketPair(domain, kind, protocol: cint, fds: ptr cint): cint {.
       importc: "socketpair", header: "<sys/socket.h>".}
   var pair = default(array[2, cint])
@@ -111,17 +111,44 @@ proc boundedStop() =
     if count != 0: break
     discard pauseMicros(1000)
   assert count == 1 and chunk[0] == octet, "worker reads the socket pair witness byte"
-  var response = newSeq[byte](65536)
+  const ResponseBytes = 65536
+  var response = newSeq[byte](ResponseBytes)
+  for index in 0..<ResponseBytes: response[index] = byte(index mod 251)
   assert stream.send(response), "submit the large response to the Writer"
   for attempt in 0..<1000:
     pollFuzzStreams()
     count = receive(pair[1], addr octet, 1, 0)
     if count == 1: break # The kernel received only a prefix; leave the rest of the credit blocked.
     discard pauseMicros(1000)
-  assert count == 1 and not stream.takeWritten(deadline), "Writer makes partial progress and remains blocked"
-  let started = getMonoTime().ticks
-  stream = default(FuzzStream)
-  assert (getMonoTime().ticks - started) div 1000000 < 1000, "close joins without waiting for the configured deadline"
+  assert count == 1 and octet == 0 and not stream.takeWritten(deadline),
+      "Writer makes partial progress and remains blocked"
+  if stopEarly:
+    let started = getMonoTime().ticks
+    stream = default(FuzzStream)
+    assert (getMonoTime().ticks - started) div 1000000 < 1000,
+        "blocked Writer joins without waiting for the configured deadline"
+    return
+  discard pauseMicros(500000) # More than one Linux readiness wait; no reply has timed out.
+  assert not stream.finished and not stream.takeWritten(deadline),
+      "a blocked reply retains credit through a readiness timeout"
+  var consumed = 1 # The first byte was checked before deliberately blocking the Writer.
+  let receiveDeadline = afterMs(3000)
+  while consumed < ResponseBytes:
+    assert not expired(receiveDeadline), "blocked Writer resumes within the exchange budget"
+    pollFuzzStreams()
+    count = receive(pair[1], addr chunk[0], csize_t(chunk.len), 0)
+    if count > 0:
+      assert count <= ResponseBytes - consumed, "Writer does not repeat a partial write"
+      for index in 0..<count:
+        assert chunk[index] == byte((consumed + index) mod 251), "resumed Writer keeps byte order"
+      consumed += count
+    else:
+      assert count < 0 and retryableSocketError(osLastError()), "drain the resumed Writer"
+      discard pauseMicros(100)
+  while not stream.takeWritten(deadline):
+    assert not expired(receiveDeadline), "complete flush releases the Writer's credit"
+    pollFuzzStreams()
+    discard pauseMicros(100)
 
 proc main() {.raises.} =
   ## Synthetic host replies test transport only; no test claims to have executed a JAM transition.
@@ -232,7 +259,8 @@ proc main() {.raises.} =
     assert readFile(path) == "replacement" # Cleanup cannot delete a replacement file at the same pathname.
   assert unlink(path.toCString()) == 0
   assert rmdir(directory.toCString()) == 0
-  boundedStop()
+  blockedWriter(false)
+  blockedWriter(true)
   echo "PASS JAM fuzzer socket: bounded IO, ticket handoff, reconnect and owned cleanup"
 assert ignorePipeSignal(), "configure SIGPIPE handling before the Writer runs"
 try:
