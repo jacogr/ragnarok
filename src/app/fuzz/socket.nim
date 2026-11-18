@@ -122,6 +122,8 @@ func negotiatedFeatures*(server: FuzzSocket): uint32 =
 
 proc start*(server: var FuzzSocket, config: FuzzSocketConfig): bool =
   ## Reject bad policy and existing paths before opening a bounded private listener.
+  ## On Linux, the process must ignore SIGPIPE before accepting clients. The
+  ## Writer uses the reactor's write operation, which can signal on peer close.
   if server.opened or server.bound or config.timeoutMs <= 0 or config.timeoutMs > 3600000:
     return false
   if initFuzzSession(config.peer, config.limits).error != FuzzSessionError.None or

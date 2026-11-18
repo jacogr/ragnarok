@@ -247,6 +247,8 @@ block movedSocket:
   var destination = move(source)
   source.close()
   assert destination.connected and fcntl(destination.fd, F_GETFL) >= 0
+  destination.sendFrame(peer, newFuzzPeer(policy.peer, policy.limits).value)
+  assert destination.readFrame(peer).fuzzPeer.value.name == "moved"
   let started = getMonoTime().ticks
   destination.close()
   assert (getMonoTime().ticks - started) div 1000000 < 1000
