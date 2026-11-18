@@ -27,7 +27,7 @@ class PreviewVectors(unittest.TestCase):
                 _, evidence = prepare(Path(folder))
                 self.assertEqual(evidence['cases'], expected)
                 self.assertEqual(evidence['vector_commit'],
-                                 'fdaa4c9482552e6554bd15a73d91b85917ff8446')
+                                 'e941b86247ec42faa206132ef895347e9fc70443')
 
     def test_boundary_service_statistics(self):
         """The published maximum count retains two distinct per-service contributions."""
