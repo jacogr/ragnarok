@@ -2808,6 +2808,8 @@ proc runSharedAsync*() =
     deferredCreditProgress()
     refuseUnretainedNativeStream()
     yieldInstalledCapacity()
+    when NativeReadCycleEnabled:
+      checkFusionRetentionPressure()
     exhaustedCreditNamespace()
     asyncLifecycle()
     invalidQueuedRequest()

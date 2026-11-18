@@ -731,16 +731,19 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   if reusedMemory: inc data.memoryReuses
   runAdmittedFrame(borrowFrame(created), data, source, owner, cpu.pc, limit, plan, memo, single)
 
-proc retainPreparedStream(data: PreparedData): bool =
+proc retainPreparedStream(data: PreparedData, completed: bool): bool =
   ## Settle the stream after checked handback, before native finish can submit a new image.
   ## Return false when the checked stream had to be discarded and its epoch must retire.
   if not isBound(data.codeBudget): return true
   let bytes = streamPayloadBytes(data.stream)
-  if bytes == chargedPayloadBytes(data.streamCharge): return true
-  data.streamCharge = default(RetainedMemoryCharge)
-  if bytes == 0 or tryCharge(data.codeBudget, bytes, data.streamCharge): return true
-  data.stream = default(FlatStream)
-  false
+  result = true
+  if bytes != chargedPayloadBytes(data.streamCharge):
+    data.streamCharge = default(RetainedMemoryCharge)
+    if bytes != 0 and not tryCharge(data.codeBudget, bytes, data.streamCharge):
+      data.stream = default(FlatStream)
+      result = false
+  when NativeReadCycleEnabled:
+    settleFlatAuxiliary(data.stream, data.native, completed and result)
 
 proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram,
     plan: GasPlan = default(GasPlan), memo: GasMemo = default(GasMemo),
@@ -757,7 +760,7 @@ proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: Prepa
     data.busy = false
     return StepResult(status: StepError.BackendFailure)
   let answer = runPreparedFrame(source, prepared, limit, plan, memo, single)
-  let retained = retainPreparedStream(data)
+  let retained = retainPreparedStream(data, answer.error == StepError.None)
   let finished = finishNativeInvocation(data.native, (if retained and answer.error ==
       StepError.None:
     observedNativeWork(data.native) else: 0'u64))
@@ -1198,7 +1201,7 @@ proc hostSelected[Context; Reason: enum; Fallible, ScalarCapable: static[bool]; 
     return executionResult[Reason](StepResult(status: StepError.BackendFailure))
   let answer = runPreparedHost[Context, Reason, Fallible, ScalarCapable, Callbacks](source,
       prepared, context, callbacks, steps, calls, plan, memo)
-  let retained = retainPreparedStream(data)
+  let retained = retainPreparedStream(data, answer.error == HostExecutionError.None)
   let finished = finishNativeInvocation(data.native, (if retained and answer.error ==
       HostExecutionError.None:
     observedNativeWork(data.native) else: 0'u64))
@@ -1546,7 +1549,7 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
         return admitted
       data.codeBudget = slot.codeBudget
       if selected == PvmBackend.Jit:
-        data.native = newNativeSession(slot.nativeRuntime)
+        data.native = newNativeSession(slot.nativeRuntime, deferAuxiliaryOffers = true)
     data.memoryBudget = slot.memoryBudget
     slot.owner = admitted.value # Retire the prior code/idle-byte owner; independently retained machine snapshots stay valid.
   admitted

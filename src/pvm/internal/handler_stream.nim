@@ -4191,6 +4191,10 @@ when NativeReadCycleEnabled:
 
   proc runFlatMixedProbeSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Rank actual complete checked work across this callback-free segment, bounded by its public quota.
+    if stagedMixedOffer(f.nativeSession):
+      # Already sampled in this invocation. Keep running checked until its handback decision.
+      flatDispatchSegment(f, entry)
+      return
     var probe = default(FlatMixedLoopProbe)
     let source = f.mixedSource
     if int(source.count) > source.candidates.len:
@@ -5478,6 +5482,14 @@ when defined(pvmArmMacroReceipt):
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.
   uint64(stream.handlers.len)
+
+when NativeReadCycleEnabled:
+  proc settleFlatAuxiliary*(stream: var FlatStream, session: NativeSession, accepted: bool) =
+    ## Only a retained stream can acquire the selected mixed tokens after actual enqueue.
+    let choice = settleNativeAuxiliary(session, accepted and stream.handlers.len != 0)
+    if choice.count != 0:
+      stream.mixedSource.chosen = choice.tokens
+      stream.mixedSource.chosenCount = choice.count
 
 func streamPreparation*(stream: FlatStream): uint64 =
   ## The bounded preparation allowance survives every lease, including local refusal.
