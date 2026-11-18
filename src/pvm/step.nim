@@ -34,7 +34,7 @@ when defined(polkavmRuntime):
   import ./internal/polkavm
 import ./internal/[handler_stream, execution_types, native_pipeline, retained_memory_budget]
 export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo, NativeCompilerFailure
-export start, close, runtimeInfo, idleNativeImagePressure
+export start, close, runtimeInfo, idleNativeImagePressure, NativePackageImageCredits
 export RetainedMemoryBudget, RetainedMemoryByteLimit, newRetainedMemoryBudget, isBound,
   retainedMemoryPayloadBytes
 when defined(pvmSharedAsyncDiagnostic):

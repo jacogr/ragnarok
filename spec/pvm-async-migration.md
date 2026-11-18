@@ -85,7 +85,8 @@ The [Services owner](../src/app/services.nim) records production runtime wiring 
 environment contract before extending it. Accumulation residency and managed package completion
 share its runtime. Authorization, inner modules, and the JAMNP-S audit/work-sharing adapters have
 runtime-less execution routes. An exclusive multi-item JIT package turn can reclaim installed
-accumulation capacity for a primary and auxiliary image. Physical release and active leases
+accumulation capacity for its primary and auxiliary image plus the scheduler's spare primary
+credit. Physical release and active leases
 still govern availability. The accumulation context enforces a shared idle scratch budget and the package worker
 has a separate per-owner allowance. Future wiring requires explicit ownership/shutdown, aggregate
 source and prepared-fact budgets, and a competition policy before increasing native availability.

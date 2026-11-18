@@ -113,12 +113,13 @@ proc bindNativeRuntime*(context: var ServiceExecutionContext, runtime: NativeRun
   context.nativeRuntime = runtime
 
 proc yieldPackageNativeCapacity*(context: var ServiceExecutionContext) =
-  ## During an exclusive managed package turn, make room for both a primary and an auxiliary image.
+  ## During an exclusive managed package turn, make room for its primary and the configured
+  ## auxiliary path. Auxiliary admission also keeps one spare primary credit.
   ## Try the replacement cursor first. No operation waits for a compiler job or assumes physical
   ## retirement succeeded. A shortfall leaves ordinary checked execution available.
   if context.busy: return
   for offset in 0..<context.slots.len:
-    if not idleNativeImagePressure(context.nativeRuntime, 2): return
+    if not idleNativeImagePressure(context.nativeRuntime, NativePackageImageCredits): return
     let index = (context.next+offset) mod context.slots.len
     if context.slots[index].ready:
       yieldIdleNativeImage(context.slots[index].worker)

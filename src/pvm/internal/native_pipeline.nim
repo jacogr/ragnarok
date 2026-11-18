@@ -56,6 +56,11 @@
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
 import ./[native_ir, native_platform, native_read_body, native_register_ring]
+
+const
+  NativeAuxiliaryOfferCredits = 2 ## One auxiliary allocation plus one spare for primary admission.
+  NativePackageImageCredits* = when NativeReadCycleEnabled: 1+NativeAuxiliaryOfferCredits else: 1
+    ## A package starts before its primary has claimed a credit.
 export native_ir, native_read_body, native_register_ring
 
 when NativeReadCycleEnabled:
@@ -1287,7 +1292,7 @@ when NativeReadCycleEnabled:
     acquire(runtime.lock)
     if not installedPrimaryRow(runtime, data) or runtime.stopping or
         runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2:
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
       release(runtime.lock)
       return false
     for index in 0..<int(requested.count):
@@ -1373,7 +1378,8 @@ when NativeReadCycleEnabled:
     defer: release(runtime.lock)
     if not installedPrimaryRow(runtime, data) or runtime.stopping or
         runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) < 2: return false
+        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) <
+            NativeAuxiliaryOfferCredits: return false
     var slot = -1
     for index in 0..<runtime.slots.len:
       if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64) and
@@ -2156,7 +2162,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64): boo
       completedWork > 0 and data.provenWork >= NativeInvocationFloor and
       runtime.nextTicket < high(uint64)
   when NativeReadCycleEnabled:
-    if primaryCanQueue() and runtime.mixedKey.generation != 0 and freeNativeCredits(runtime) <= 1:
+    if primaryCanQueue() and runtime.mixedKey.generation != 0 and
+        freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
       retireMixedLoopLocked(runtime)
   # A physical optional release drops and reacquires the lock. Recheck the full predicate.
   if primaryCanQueue():

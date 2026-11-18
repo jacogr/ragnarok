@@ -34,7 +34,8 @@
 ## runtime argument. Those routes can request Jit and complete through checked execution.
 ##
 ## The runtime's four image credits cover both bound consumers. A verified multi-item JIT package
-## can request enough idle accumulation capacity for one primary and one auxiliary image.
+## can request enough idle accumulation capacity for its primary and auxiliary image with
+## the scheduler's spare primary credit still available.
 ## Pending compiler work and release-pending mappings retain their credit. If installed owners
 ## cannot provide enough capacity, package execution can still complete through checked handlers.
 ## The accumulation context shares 64 MiB of idle baseline/private payload across all four

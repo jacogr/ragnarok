@@ -1081,7 +1081,7 @@ when defined(pvmSharedAsyncWitness):
       "deferred credit: exact final image retirement releases capacity"
 
   proc yieldInstalledCapacity() =
-    ## Four live images fill the shared pool. Yielding two may reuse their checked streams later.
+    ## Four live images fill the shared pool. Yielded owners may reuse their checked streams later.
     if not nativePlatformSupported(): return
     let runtime = newNativeRuntime()
     assert launch(runtime)
@@ -1109,34 +1109,45 @@ when defined(pvmSharedAsyncWitness):
         verify(compiled, sources[index], 2048)
         assert compiled.value.backend == PvmBackend.Jit
       assert runtime.runtimeInfo.registered == 4
-      assert idleNativeImagePressure(runtime, 2)
+      assert idleNativeImagePressure(runtime, NativePackageImageCredits)
       let active = newNativeSession(runtime)
       assert beginNativeInvocation(active, 1)
-      assert not idleNativeImagePressure(runtime, 2)
+      assert not idleNativeImagePressure(runtime, NativePackageImageCredits)
       assert finishNativeInvocation(active, 0)
       let retained = preparedInfo(codes[0]).value
-      yieldIdleNativeImage(caches[0])
-      assert runtime.runtimeInfo.registered == 3 and idleNativeImagePressure(runtime, 2)
-      yieldIdleNativeImage(caches[1])
-      assert runtime.runtimeInfo.registered == 2 and not idleNativeImagePressure(runtime, 2)
+      for index in 0..<NativePackageImageCredits:
+        # Recheck real free rows as the production residency context does.
+        assert idleNativeImagePressure(runtime, NativePackageImageCredits)
+        yieldIdleNativeImage(caches[index])
+        assert runtime.runtimeInfo.registered == 3-index
+      assert not idleNativeImagePressure(runtime, NativePackageImageCredits)
       let yielded = preparedInfo(codes[0]).value
       assert yielded.nativeCodeBytes == 0 and yielded.streamNodes == retained.streamNodes
       assert yielded.retainedMemoryPayloadBytes == retained.retainedMemoryPayloadBytes
       assert yielded.nativeOperations == retained.nativeOperations
-      let first = execute(sources[4], ExecutionStepLimit(6145), codes[4])
-      verify(first, sources[4], 2048)
-      assert first.value.backend == PvmBackend.Interpreted
-      assert runtime.runtimeInfo.registered == 3
-      waitNativeCompiler(runtime)
-      let ready = execute(sources[4], ExecutionStepLimit(6145), codes[4])
-      verify(ready, sources[4], 2048)
-      assert ready.value.backend == PvmBackend.Jit
+      when NativeReadCycleEnabled:
+        # Prove the real auxiliary admission can install and execute with one other resident.
+        assert runtime.runtimeInfo.registered == 1
+        checkPublicScalarFusion(runtime)
+      else:
+        # Primary-only builds reclaim exactly one credit for a fifth source.
+        let first = execute(sources[4], ExecutionStepLimit(6145), codes[4])
+        verify(first, sources[4], 2048)
+        assert first.value.backend == PvmBackend.Interpreted
+        assert runtime.runtimeInfo.registered == 4
+        waitNativeCompiler(runtime)
+        let ready = execute(sources[4], ExecutionStepLimit(6145), codes[4])
+        verify(ready, sources[4], 2048)
+        assert ready.value.backend == PvmBackend.Jit
+        codes[4] = default(PreparedProgram)
+        caches[4] = default(PreparedProgramCache)
+      assert runtime.runtimeInfo.registered == 4-NativePackageImageCredits
       # An old retained overlay must restore its checked predecessors, then accept a fresh ticket.
       let restored = execute(sources[0], ExecutionStepLimit(6145), codes[0])
       verify(restored, sources[0], 2048)
       assert restored.value.backend == PvmBackend.Interpreted
       assert preparedInfo(codes[0]).value.nativeOperations == retained.nativeOperations
-      assert runtime.runtimeInfo.registered == 4
+      assert runtime.runtimeInfo.registered == 5-NativePackageImageCredits
       waitNativeCompiler(runtime)
       let reinstalled = execute(sources[0], ExecutionStepLimit(6145), codes[0])
       verify(reinstalled, sources[0], 2048)
