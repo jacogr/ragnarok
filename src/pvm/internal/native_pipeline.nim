@@ -69,6 +69,10 @@ when NativeReadCycleEnabled:
   import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
   export native_bitmap_loop
 
+  type NativeStagedMixed = ref object
+    ## One source-only candidate, owned by an active host turn before mailbox admission.
+    requested: NativeMixedLoopSet
+
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
     type NativeReadStorage = NativeReadCycle ## One embedded body for either checked read ABI.
@@ -227,6 +231,10 @@ type
     when NativeReadCycleEnabled:
       mixedOffered: bool
       fusionOffered, fusionSampled: bool
+      deferAuxiliaryOffers: bool
+      stagedAuxiliaryKey: NativeImageKey
+      stagedMixed: nil NativeStagedMixed
+      stagedFusion: seq[NativeFusionBlock]
       invocationNativeStart, lastNativeWork, lastSettledWork: uint64
       mixedObserved: JobKey
       mixedPublications, mixedCalls, mixedOperations, mixedHeaderCalls: uint64
@@ -585,6 +593,10 @@ proc `=wasMoved`(session: var NativeSessionStorage) {.nodestroy, inline,
   ## Transfer children without decrementing them; the source can no longer retire a registration.
   `=wasMoved`(session.runtime)
   `=wasMoved`(session.image)
+  when NativeReadCycleEnabled:
+    `=wasMoved`(session.stagedMixed)
+    `=wasMoved`(session.stagedFusion)
+    session.stagedAuxiliaryKey = default(NativeImageKey)
   session.invocation = false
   session.allowed = false
 
@@ -641,6 +653,9 @@ proc `=destroy`(session: var NativeSessionStorage) =
         release(runtime.lock)
   `=destroy`(session.image)
   `=destroy`(session.runtime)
+  when NativeReadCycleEnabled:
+    `=destroy`(session.stagedMixed)
+    `=destroy`(session.stagedFusion)
 
 proc newNativeRuntime*(): NativeRuntime =
   ## Allocate code-independent synchronization only; explicit start is separately visible lifecycle work.
@@ -1080,12 +1095,16 @@ proc registerSession(runtime: ptr NativeRuntimeStorage, data: NativeSessionData)
       return true
   false
 
-proc newNativeSession*(runtime: NativeRuntime): NativeSession =
+proc newNativeSession*(runtime: NativeRuntime, deferAuxiliaryOffers = false): NativeSession =
   ## Retain source identity and a safe anchor; proof and nomination do not consume image capacity.
+  ## A budgeted checked stream transfers auxiliary offers only after its handback is accepted.
   let anchor {.cursor.} = runtime.data
   if anchor == nil: return default(NativeSession)
-  NativeSession(data: NativeSessionData(runtime: anchor, slot: -1, epoch: 1,
-    retirementKey: JobKey(slot: -1), state: NativeState.Deferred, image: default(NativeImage)))
+  let data: nil NativeSessionData = NativeSessionData(runtime: anchor, slot: -1, epoch: 1,
+    retirementKey: JobKey(slot: -1), state: NativeState.Deferred, image: default(NativeImage))
+  when NativeReadCycleEnabled:
+    if data != nil: data.deferAuxiliaryOffers = deferAuxiliaryOffers
+  NativeSession(data: data)
 
 proc collectNative(session: NativeSession)
   ## Exact nonblocking collection is legal only at an exclusive invocation boundary.
@@ -1275,7 +1294,7 @@ when NativeReadCycleEnabled:
       data.imageKey == NativeImageKey(slot: key.slot, generation: key.generation,
         ticket: key.ticket, epoch: key.epoch, kind: key.kind)
 
-  proc offerNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet): bool =
+  proc queueNativeMixedLoops(session: NativeSession, requested: NativeMixedLoopSet): bool =
     ## Queue under the exact installed Read ticket and stream epoch. Require an idle primary
     ## mailbox and leave one usable primary credit. The proof copies source facts only.
     ## Source admission preserves rank slots, while the target publisher chooses the
@@ -1327,6 +1346,25 @@ when NativeReadCycleEnabled:
     release(runtime.lock)
     true
 
+  proc offerNativeMixedLoops*(session: NativeSession, requested: NativeMixedLoopSet): bool =
+    ## Immediate owners may submit now. A budgeted owner stages one exact source-only offer.
+    ## Only actual mailbox submission returns true and authorizes the stream's chosen tokens.
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    if not data.deferAuxiliaryOffers: return queueNativeMixedLoops(session, requested)
+    if data.stagedAuxiliaryKey.ticket != 0 or not mixedLoopPrimaryReady(session) or
+        not requested.complete: return false
+    let staged: nil NativeStagedMixed = NativeStagedMixed(requested: requested)
+    if staged == nil: return false
+    data.stagedMixed = staged
+    data.stagedAuxiliaryKey = data.imageKey
+    false
+
+  func stagedMixedOffer*(session: NativeSession): bool =
+    ## One deferred offer owns the current observation; later segments may continue checked.
+    let data {.cursor.} = session.data
+    data != nil and data.stagedMixed != nil
+
   proc offerNativeMixedLoop*(session: NativeSession, proof: NativeMixedLoop): bool =
     ## Existing single-entry clients share the same arena and scheduling contract.
     offerNativeMixedLoops(session, singleNativeMixedLoop(proof))
@@ -1356,7 +1394,7 @@ when NativeReadCycleEnabled:
     let data {.cursor.} = session.data
     if data != nil: data.fusionSampled = true
 
-  proc offerNativeFusion*(session: NativeSession, requested: var seq[NativeFusionBlock]): bool =
+  proc queueNativeFusion(session: NativeSession, requested: var seq[NativeFusionBlock]): bool =
     ## Transfer one bounded graph to the existing optional arena. Queue refusal
     ## keeps the primary and checked stream usable. A submitted graph is tried once per epoch.
     if requested.len < 2 or requested.len > NativeFusionBlockLimit: return false
@@ -1403,6 +1441,39 @@ when NativeReadCycleEnabled:
     data.mixedOffered = true
     signal(runtime.changed)
     true
+
+  proc offerNativeFusion*(session: NativeSession, requested: var seq[NativeFusionBlock]): bool =
+    ## A budgeted stream keeps its single copied graph on the host until checked handback.
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    if not data.deferAuxiliaryOffers: return queueNativeFusion(session, requested)
+    if data.stagedAuxiliaryKey.ticket != 0 or requested.len < 2 or
+        requested.len > NativeFusionBlockLimit or not data.fusionSampled or data.fusionOffered or
+        not matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix): return false
+    data.stagedFusion = move(requested)
+    data.stagedAuxiliaryKey = data.imageKey
+    false
+
+  proc settleNativeAuxiliary*(session: NativeSession, accepted: bool):
+      tuple[tokens: array[NativeMixedLoopEntryLimit, uint32], count: uint8] =
+    ## Drain the invocation-local candidate before releasing the active primary lease.
+    ## A successful enqueue alone returns the mixed header tokens used by the checked owner.
+    result = (tokens: default(array[NativeMixedLoopEntryLimit, uint32]), count: 0'u8)
+    let data {.cursor.} = session.data
+    if data == nil or data.stagedAuxiliaryKey.ticket == 0: return
+    let key = data.stagedAuxiliaryKey
+    data.stagedAuxiliaryKey = default(NativeImageKey)
+    let mixed = move(data.stagedMixed)
+    var fusion = move(data.stagedFusion)
+    if not accepted or key != data.imageKey: return
+    if mixed != nil:
+      if queueNativeMixedLoops(session, mixed.requested):
+        result.count = mixed.requested.count
+        for index in 0..<int(result.count):
+          # Complete proofs bound the header below NativeEntryLimit.
+          result.tokens[index] = mixed.requested.proofs[index].header+1
+    elif fusion.len != 0:
+      discard queueNativeFusion(session, fusion)
 
   type NativeFusionBorrow* = object
     ## Both views require the segment to retain its session until use ends and the credit returns.
@@ -1917,6 +1988,9 @@ proc invalidateNativeStream*(session: NativeSession) =
   ## Destructive same-plan repricing/rebuild invalidates a pending image without waiting for its worker.
   let data {.cursor.} = session.data
   if data == nil: return
+  when NativeReadCycleEnabled:
+    # A replaced stream cannot authorize a candidate copied during its invocation.
+    discard settleNativeAuxiliary(session, false)
   let anchor {.cursor.} = data.runtime
   if anchor == nil: return
   if not releaseNativeCredit(data):
@@ -2086,6 +2160,10 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64): boo
   ## False refuses a still-borrowed image or contradictory lease count; no credit is recycled.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return true
+  when NativeReadCycleEnabled:
+    if data.stagedAuxiliaryKey.ticket != 0:
+      # Only explicit accepted handback may publish the candidate before this lease ends.
+      discard settleNativeAuxiliary(session, false)
   let anchor {.cursor.} = data.runtime
   if anchor == nil: return false
   let runtime = addr anchor.storage

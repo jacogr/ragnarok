@@ -374,6 +374,11 @@ proc programBytes*(program: Program): ProgramResult[seq[byte]] =
   copyMem(addr bytes[0], unsafeAddr data.bytes[0], length)
   ProgramResult[seq[byte]](status: ProgramError.None, completed: move(bytes))
 
+func programEncodingLength*(program: Program): uint64 =
+  ## Count the retained encoding, including the bitmap and jump table, without copying it.
+  let data {.cursor.} = program.data
+  if data == nil: 0'u64 else: uint64(data.bytes.len)
+
 proc codeLength*(program: Program): ProgramResult[uint64] =
   ## Return logical code size without publishing backing storage; default handles are typed failures.
   # A default handle has no validated storage to inspect.

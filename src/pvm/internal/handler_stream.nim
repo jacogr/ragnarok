@@ -4191,6 +4191,10 @@ when NativeReadCycleEnabled:
 
   proc runFlatMixedProbeSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Rank actual complete checked work across this callback-free segment, bounded by its public quota.
+    if stagedMixedOffer(f.nativeSession):
+      # Already sampled in this invocation. Keep running checked until its handback decision.
+      flatDispatchSegment(f, entry)
+      return
     var probe = default(FlatMixedLoopProbe)
     let source = f.mixedSource
     if int(source.count) > source.candidates.len:
@@ -5479,6 +5483,14 @@ func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.
   uint64(stream.handlers.len)
 
+when NativeReadCycleEnabled:
+  proc settleFlatAuxiliary*(stream: var FlatStream, session: NativeSession, accepted: bool) =
+    ## Only a retained stream can acquire the selected mixed tokens after actual enqueue.
+    let choice = settleNativeAuxiliary(session, accepted and stream.handlers.len != 0)
+    if choice.count != 0:
+      stream.mixedSource.chosen = choice.tokens
+      stream.mixedSource.chosenCount = choice.count
+
 func streamPreparation*(stream: FlatStream): uint64 =
   ## The bounded preparation allowance survives every lease, including local refusal.
   stream.preparation
@@ -5487,6 +5499,28 @@ func planFacts*(plan: FlatPlan): uint64 =
   ## Report the full admitted source count; lazy materialization never changes its resource obligation.
   if not plan.singleStep: return uint64(plan.admittedFacts)
   uint64(plan.facts.len)
+
+func planPayloadBytes*(plan: FlatPlan): uint64 =
+  ## The immutable admission owns ranks and eagerly validated jump targets.
+  ## Each length is bounded by the plan's admitted code and jump extents.
+  let ranks {.cursor.} = plan.ranks
+  result = uint64(plan.jumps.len)*uint64(sizeof(FlatTarget))
+  if ranks != nil:
+    result += uint64(ranks.words.len)*8+uint64(ranks.prefixes.len)*4
+
+func streamPayloadBytes*(stream: FlatStream): uint64 =
+  ## Count retained node columns and allocated catalogue/map cells. Sequence spare capacity
+  ## and directory overhead are outside the logical payload budget.
+  result = uint64(stream.handlers.len)*uint64(sizeof(FlatHandler)) +
+    uint64(stream.arguments.len)*uint64(sizeof(FlatArgs)) + uint64(stream.sites.len)*4 +
+    uint64(allocatedElements(stream.compiledForPc))*4
+  let catalogue {.cursor.} = stream.catalogue
+  if catalogue != nil:
+    result += uint64(allocatedElements(catalogue.facts))*uint64(sizeof(FlatFact)) +
+      uint64(allocatedElements(catalogue.factAt))*4 +
+      uint64(catalogue.pricePcs.len)*uint64(sizeof(CodeAddress))
+  when NativeReadCycleEnabled:
+    result += uint64(stream.fusionTraining.len)*uint64(sizeof(FlatFusionTraining))
 
 func metadataPayloadBytes*(frame: FlatFrame): uint64 =
   ## Copied allocated fact/map payload excludes directory and executable-handler storage.

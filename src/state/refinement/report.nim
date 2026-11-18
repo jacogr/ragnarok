@@ -5,7 +5,7 @@
 ## Immutable results retain provenance; authorization, availability and state publication are separate.
 
 import ../../pvm/worker
-from ../../pvm/step import NativeRuntime
+from ../../pvm/step import NativeRuntime, DefaultRetainedCodeBytes, newRetainedMemoryBudget
 
 import ../../codec/[bounded, composite]
 import ../../codec/work/[package as work_package, digest as work_digest, report as work_report]
@@ -199,7 +199,10 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
   var savedTrace = newSeq[byte](trace.len)
   for index in 0..<trace.len: savedTrace[index] = trace[
       index] # Isolate future extraction from borrowed caller storage.
-  let worker = newExecutionWorker(if count == 1: default(NativeRuntime) else: nativeRuntime)
+  let worker = if count <= 1:
+    newExecutionWorker() # A one-shot package retires before any later item can reuse it.
+  else:
+    newExecutionWorker(nativeRuntime, codeBudget = newRetainedMemoryBudget(DefaultRetainedCodeBytes))
   var items = newSeqOfCap[RefinedWorkItem](count)
   var offset = 0'u64
   var blobs = uint64(trace.len)
