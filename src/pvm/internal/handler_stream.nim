@@ -2556,9 +2556,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   var index = start
   var first = true
   # A fixed original node ends every short continuation chain, including unoptimized builds.
-  var chainLimit = 4
-  when defined(pvmX86Jit):
-    if f.plan.allowNative: chainLimit = 2 # Keep the unmeasured x86 native fallback layout.
+  const chainLimit = 4
   var continuations = 0
   var ending = false
   var finalOpcode = 0'u8
