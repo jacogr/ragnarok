@@ -20,6 +20,11 @@ type
     ledger: nil RetainedMemoryLedger
     bytes: uint64
 
+proc `=wasMoved`*(budget: var RetainedMemoryBudget) {.nodestroy, inline.} =
+  ## A moved handle becomes unbound rather than an explicitly empty budget.
+  `=wasMoved`(budget.ledger)
+  budget.bound = false
+
 proc `=destroy`*(charge: RetainedMemoryCharge) =
   ## Refund only this owner's charge. An unbound or moved-from charge has no ledger.
   let ledger {.cursor.} = charge.ledger
