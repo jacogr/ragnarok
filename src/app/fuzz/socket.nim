@@ -1,16 +1,19 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Move-only local fuzzer listener bounds each tick and hands execution tickets to the host outside IO.
+## The fuzzer listener owns one live session and hands execution tickets to the
+## host outside I/O. A Reader/Writer task owns the accepted connection; only
+## framing and validated session state are kept in the dispatcher.
+## Path ownership and permissions are tied to the exact bound Unix socket.
 
-import std/[nativesocket, oserrors, strutils, monotimes, assertions]
+import std/[nativesocket, strutils, assertions]
+from std/ioring import Deadline, afterMs, expired
 import std/posix/posix
 import ../../state/fuzz/[protocol as fuzz_protocol, session as fuzz_session]
 import ../../codec/bounded
 import ../../management/file_status
-import ../../lib/utf8
-
-const IoBytes = 4096 ## Each dispatcher turn performs at most one read and one write of this extent.
+import ../../lib/[socket_io, utf8]
+import ./stream
 
 type
   LocalAddress = object
@@ -28,53 +31,18 @@ type
     limits*: FuzzLimits
   FuzzSocket* = object ## One listener and one connection own all descriptors, frames and pending request identity.
     opened, bound, connected, waiting: bool
-    fd, connection: cint
+    fd: cint
+    stream: FuzzStream
     identity: FileStatus
     config: FuzzSocketConfig
     generation: uint64
-    deadline: int64
+    deadline: Deadline
     reader: FuzzFrameReader
     session: FuzzSession
     ticket: FuzzRequest
-    output: seq[byte]
-    offset: int
-
-proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-  ## Acquire a local stream descriptor without granting ownership on failure.
-
-proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
-    header: "<sys/socket.h>".}
-  ## Borrow one fully initialized native pathname during bind.
-
-proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
-  ## A single pending connection bounds the listener queue request.
-
-proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
-    header: "<sys/socket.h>".}
-  ## Admit a new connection only when the previous session has retired.
-
-proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
-    header: "<sys/socket.h>".}
-  ## Read only into an initialized bounded stack buffer.
-
-proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
-    header: "<sys/socket.h>".}
-  ## Preserve partial write offsets in the owned output frame.
 
 proc effectiveUid(): uint32 {.importc: "geteuid", header: "<unistd.h>".}
   ## Socket parent ownership is checked against the actual effective user.
-let
-  GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
-  SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
-  CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
-when defined(macosx):
-  proc setOption(fd, level, option: cint, value: pointer,
-      size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-    ## Darwin suppresses SIGPIPE on each admitted descriptor.
-  let SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
-  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint
-else:
-  let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint
 
 proc removeSocket(server: FuzzSocket) =
   ## Replacement paths and files never inherit cleanup authority from this lifetime.
@@ -98,34 +66,30 @@ proc `=wasMoved`*(server: var FuzzSocket) {.nodestroy, inline.} =
   server.connected = false
   server.waiting = false
   server.fd = -1
-  server.connection = -1
+  `=wasMoved`(server.stream)
   `=wasMoved`(server.config)
   `=wasMoved`(server.reader)
   `=wasMoved`(server.session)
   `=wasMoved`(server.ticket)
-  `=wasMoved`(server.output)
 
 proc `=destroy`*(server: FuzzSocket) =
   ## Default/moved owners never close descriptor zero; partial startup releases every acquired resource.
-  if server.connected: discard posix.close(server.connection)
+  `=destroy`(server.stream)
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
   `=destroy`(server.config)
   `=destroy`(server.reader)
   `=destroy`(server.session)
   `=destroy`(server.ticket)
-  `=destroy`(server.output)
 
 proc disconnect*(server: var FuzzSocket) =
   ## Retire a connection and all its tickets while leaving the listener ready for a new session.
-  if server.connected: discard posix.close(server.connection)
+  server.stream = default(FuzzStream)
   server.connected = false
   server.waiting = false
   server.session.close()
   server.reader = default(FuzzFrameReader)
   server.ticket = default(FuzzRequest)
-  server.output = @[]
-  server.offset = 0
 
 proc close*(server: var FuzzSocket) =
   ## Explicit shutdown is idempotent and uses the same inode-limited cleanup as ARC retirement.
@@ -156,20 +120,10 @@ func negotiatedFeatures*(server: FuzzSocket): uint32 =
   ## The host activates optional backend behavior only after the actual handshake intersection.
   if server.connected: server.session.negotiatedFeatures else: 0'u32
 
-proc nonblocking(fd: cint): bool =
-  ## Install nonblocking IO, close-on-exec and signal safety before exposing a descriptor.
-  let flags = fcntl(fd, F_GETFL, 0)
-  let descriptorFlags = fcntl(fd, GetFd, 0)
-  if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
-      fcntl(fd, SetFd, descriptorFlags or CloseExec) < 0: return false
-  when defined(macosx):
-    var enabled = 1.cint
-    if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
-      return false # No socket can become usable without SIGPIPE suppression.
-  true
-
 proc start*(server: var FuzzSocket, config: FuzzSocketConfig): bool =
   ## Reject bad policy and existing paths before opening a bounded private listener.
+  ## On Linux, the process must ignore SIGPIPE before accepting clients. The
+  ## Writer uses the reactor's write operation, which can signal on peer close.
   if server.opened or server.bound or config.timeoutMs <= 0 or config.timeoutMs > 3600000:
     return false
   if initFuzzSession(config.peer, config.limits).error != FuzzSessionError.None or
@@ -208,13 +162,11 @@ proc start*(server: var FuzzSocket, config: FuzzSocketConfig): bool =
   true
 
 proc queue(server: var FuzzSocket, message: FuzzMessage): bool =
-  ## A complete output frame is retained until every byte drains; no second reply can overwrite it.
-  if server.output.len != 0: return false
+  ## A complete output frame takes the one available Writer credit.
   let encoded = message.encodeFuzzFrame(ByteLimit(uint64(server.config.limits.bytes)+4))
   if encoded.error != FuzzError.None: return false
-  server.output = encoded.value
-  server.offset = 0
-  true
+  var output = encoded.value
+  server.stream.send(output)
 
 proc respond*(server: var FuzzSocket, ticket: FuzzRequest, message: FuzzMessage): bool =
   ## Submit only a genuine host outcome matching the still-live ticket; internal failure uses disconnect instead.
@@ -228,63 +180,46 @@ proc respond*(server: var FuzzSocket, ticket: FuzzRequest, message: FuzzMessage)
   true
 
 proc tick*(server: var FuzzSocket) =
-  ## One bounded read/write per turn; neither partial input nor output can extend the absolute deadline.
+  ## Admit one connection and handle at most one bounded input chunk per turn.
   if not server.opened: return
-  let now = getMonoTime().ticks div 1000000
+  pollFuzzStreams()
   if not server.connected:
-    if server.generation == high(uint64): return # Retiring the process is required before identity can wrap.
+    if server.generation == high(uint64): return # A reused process must never wrap a session identity.
     let fd = acceptSocket(server.fd, nil, nil)
-    if fd >= 0:
-      if not nonblocking(fd): discard posix.close(fd) # Failed setup never becomes an active connection.
-      else:
-        server.connection = fd
-        server.connected = true
-        inc server.generation
-        server.deadline = now+int64(server.config.timeoutMs)
-        server.reader = initFuzzFrameReader(server.config.limits)
-        server.session = initFuzzSession(server.config.peer, server.config.limits).value
-  if not server.connected: return
-  if now >= server.deadline:
+    if fd < 0: return
+    let deadline = afterMs(server.config.timeoutMs)
+    if not nonblocking(fd) or not server.stream.start(fd, deadline, server.config.timeoutMs):
+      discard posix.close(fd) # Ownership stays here when stream setup fails.
+      return
+    server.connected = true
+    inc server.generation
+    server.deadline = deadline
+    server.reader = initFuzzFrameReader(server.config.limits)
+    server.session = initFuzzSession(server.config.peer, server.config.limits).value
+  if server.stream.takeWritten(server.deadline):
+    server.stream.receiveNext() # A complete flush is the only event that renews the deadline.
+  if server.stream.finished or expired(server.deadline):
     server.disconnect()
-    return # Timeout retires partial input, output and pending execution authority together.
-  if not server.waiting and server.output.len == 0:
-    var bytes = default(array[IoBytes, byte])
-    let count = receive(server.connection, addr bytes[0], csize_t(IoBytes), 0)
-    if count > 0:
-      let decoded = server.reader.feed(bytes.toOpenArray(0, count-1))
-      if decoded.error != FuzzSessionError.None or decoded.value.consumed != count:
-        server.disconnect()
-        return # Pipelining violates sequential request/response and never creates hidden queued work.
-      if decoded.value.complete:
-        let dispatch = server.session.receive(decoded.value.message)
-        if dispatch.error != FuzzSessionError.None:
-          server.disconnect()
-          return # Malformed ordering/profile failures close without an Error reply.
-        case dispatch.value.kind
-        of FuzzDispatchKind.Reply:
-          if not server.queue(dispatch.value.reply):
-            server.disconnect()
-            return # Output resource failure is an internal fault, not consensus import rejection.
-        of FuzzDispatchKind.Execute:
-          server.ticket = dispatch.value.request
-          server.waiting = true # Host execution is intentionally outside this bounded IO callback.
-    elif count == 0:
-      server.disconnect()
-      return # EOF leaves the listener alive for a fresh session.
-    elif osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(EINTR)]:
-      server.disconnect()
-      return # Retryable OS conditions retain exactly the current assembly.
-  if server.output.len != 0:
-    var flags = 0.cint
-    when not defined(macosx): flags = NoSignal # Linux suppresses SIGPIPE per send.
-    let count = min(IoBytes, server.output.len-server.offset)
-    let sent = sendBytes(server.connection, addr server.output[server.offset], csize_t(count), flags)
-    if sent > 0:
-      server.offset += sent
-      if server.offset == server.output.len:
-        server.output = @[]
-        server.offset = 0
-        server.deadline = now+int64(server.config.timeoutMs) # Only a complete exchange starts a fresh deadline.
-    elif sent == 0 or osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK),
-        OSErrorCode(EINTR)]:
-      server.disconnect() # Broken pipes close locally without process-wide signals.
+    return # Retire partial input, output and execution authority together.
+  var bytes = default(array[IoBytes, byte])
+  var buffered = false
+  let count = server.stream.takeInput(bytes, buffered)
+  if count == 0: return
+  let decoded = server.reader.feed(bytes.toOpenArray(0, count - 1))
+  if decoded.error != FuzzSessionError.None or decoded.value.consumed != count or
+      (decoded.value.complete and buffered):
+    server.disconnect()
+    return # Coalesced pipelining cannot create hidden queued work.
+  if not decoded.value.complete:
+    server.stream.receiveNext()
+    return # Partial reads keep the original deadline.
+  let dispatched = server.session.receive(decoded.value.message)
+  if dispatched.error != FuzzSessionError.None:
+    server.disconnect()
+    return # Malformed ordering or profile failures close without a protocol Error reply.
+  case dispatched.value.kind
+  of FuzzDispatchKind.Reply:
+    if not server.queue(dispatched.value.reply): server.disconnect()
+  of FuzzDispatchKind.Execute:
+    server.ticket = dispatched.value.request
+    server.waiting = true # The task remains parked until the host submits a genuine response.
