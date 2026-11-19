@@ -7,6 +7,8 @@
 ## memory within one shared 64 MiB idle allowance, with another 64 MiB shared by encoded source,
 ## admission and stream payload. Live CPU, gas, host callbacks, results and chain state never
 ## belong to this context.
+## At capacity, recent single-use admissions absorb bursts without evicting regularly reused
+## workers. Eight idle service turns let a stale worker yield to a changed working set.
 
 import std/assertions
 import ../../codec/composite
@@ -142,8 +144,10 @@ proc yieldPackageNativeCapacity*(context: var ServiceExecutionContext) =
       yieldIdleNativeImage(context.slots[index].worker)
 
 func chooseIdleServiceVictim(context: ServiceExecutionContext): int =
-  ## Let a recent single-use admission absorb a burst while other workers establish reuse.
-  ## An expired worker takes precedence so a changed working set can reclaim every slot.
+  ## The caller has proved every slot is occupied. Prefer expired workers so a changed working
+  ## set can reclaim every slot. Otherwise prefer the newest admission with no exact reuse.
+  ## When every worker has reuse, take the longest-idle one. Start at the replacement cursor
+  ## to resolve ties deterministically, including among workers saturated at the expiry limit.
   result = context.next
   var probationary = -1
   for offset in 0..<context.slots.len:
