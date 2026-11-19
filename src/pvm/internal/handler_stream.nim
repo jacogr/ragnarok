@@ -4124,7 +4124,7 @@ when NativeReadCycleEnabled:
 
   proc runFlatFusionSegment(f: var FlatFrame, entry: uint32) {.noinline.} =
     ## Borrow the exact optional owner once per segment; unavailable images retain
-    ## ordinary execution and one bounded observation window per source epoch.
+    ## ordinary execution and a bounded observation window, with one pressure retry per source epoch.
     ## Host segments retain counters until Halt or a fixed window budget. The ranking minimum
     ## cannot end observation: later program phases may contain the hottest source regions.
     ## A clean Host at the budget boundary can publish the same source-only graph as Halt.

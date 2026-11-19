@@ -2810,6 +2810,8 @@ proc runSharedAsync*() =
     yieldInstalledCapacity()
     when NativeReadCycleEnabled:
       checkFusionRetentionPressure()
+      checkFusionCreditRecovery(false)
+      checkFusionCreditRecovery(true)
     exhaustedCreditNamespace()
     asyncLifecycle()
     invalidQueuedRequest()
