@@ -265,6 +265,7 @@ type
     hostSnapshot: Memory
     hostReady: bool
     hostSnapshotPc: CodeAddress
+    hostSourcePc: uint32 ## Sealed by the checked host exit, independent of owned observation attempts.
     fastResumes, fallbackResumes, hostCopiedPages: uint64
     dirtyPages: seq[uint64]                   # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
@@ -628,7 +629,7 @@ proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
       f.reason = oracle.StepError.InvalidHostSuspension
       return flatStop
     # The exclusive frame carries this sealed source PC to its copied-CPU observation.
-    f.hostSnapshotPc = f.info.pc
+    f.hostSourcePc = fact.pc
   flatStop
 
 proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
@@ -3100,7 +3101,8 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
   result = FlatFrame(plan: plan,
       preparationFailure: FlatError.None, preparationUsed: 0, hostSnapshot: default(Memory),
           hostReady: false,
-    hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
+    hostSnapshotPc: CodeAddress(0), hostSourcePc: 0, fastResumes: 0, fallbackResumes: 0,
+        hostCopiedPages: 0,
     # The admitted map bounds this bitmap; a later host remap rebuilds both capabilities together.
     dirtyPages: (when reuseDirtyMetadata: default(seq[uint64])
       else: (if dirtyWordCount == 0: @[] else: newSeq[uint64](dirtyWordCount))),
@@ -5022,10 +5024,11 @@ proc tryObserveFlatHostScalars*(f: var FlatFrame, info: var MachineInfo): oracle
   ## Refusal preserves both output and the stopped observation. The reply separately checks metadata.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host:
     return oracle.StepError.InvalidHostSuspension
-  if f.info.pc != f.hostSnapshotPc: return oracle.StepError.InvalidHostSuspension
-  # flatStopExit has already proved this exact scalar stop. Reply still checks sealed metadata.
+  if uint64(f.info.pc) != uint64(f.hostSourcePc): return oracle.StepError.InvalidHostSuspension
+  # The checked source PC survives owned observation attempts at a different PC.
   info = f.info
   f.hostSnapshot = default(Memory)
+  f.hostSnapshotPc = f.info.pc
   f.hostReady = true
   oracle.StepError.None
 
