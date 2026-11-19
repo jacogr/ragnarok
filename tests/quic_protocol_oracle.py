@@ -115,5 +115,18 @@ def requests(folder):
             add('certificates','D',[b'',der[:n]],'0')
         add('certificates','D',[b'',der+b'\0'],'0')
         add('certificates','D',[b'',der+der],'0')
+    # Jam Forge uses the standard alphabet and an e prefix for the same Ed25519 key.
+    # Sign anew so a rejection isolates the identity rule, including with the correct key pin.
+    public = (folder / 'a.pub').read_bytes()
+    value = int.from_bytes(public, 'little')
+    alphabet = 'abcdefghijklmnopqrstuvwxyz234567'
+    san = 'e' + ''.join(alphabet[(value >> offset) & 31] for offset in range(0, 260, 5))
+    external = subprocess.check_output([
+        'openssl', 'req', '-new', '-x509', '-key', str(folder / 'a.key.pem'),
+        '-outform', 'DER', '-days', '2', '-subj', '/CN=jamnp-interop',
+        '-addext', 'subjectAltName=DNS:' + san,
+    ])
+    for pin in (b'', public):
+        add('certificates', 'D', [pin, external], '0')
     add('certificates','D',[b'',bytes(8193)],'0')
     return lines, expected, groups

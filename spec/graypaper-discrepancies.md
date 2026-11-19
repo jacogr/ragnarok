@@ -771,3 +771,25 @@ with the logging extension; this is a scoped extension, not a change to unknown
 calls or an assertion that enabling logging preserves gas relative to an unextended
 node. Both paths return WHAT. `pvm_host_log` and all three invocation dispatch
 suites witness the selected behavior; see the feature contract for scope and checks.
+
+## JAMNP-IDENTITY-001 — certificate alternative-name interoperability
+
+The pinned JAMNP-S revision
+[`aa0e2b8498c0b1bc1725af2903704d701c6577ab`](https://github.com/zdave-parity/jam-np/blob/aa0e2b8498c0b1bc1725af2903704d701c6577ab/simple.md#alternative-name)
+spells the prefix as `\$e` and the indexed alphabet as `\$abcdefghijklmnopqrstuvwxyz234567`.
+As literal bytes, the alphabet has 33 entries, and `n mod 32` never selects the last entry.
+The same equations appear at Jam Forge's cited revision `56ce86c4` and at upstream
+[`0657635d`](https://github.com/zdave-parity/jam-np/blob/0657635db72a8260f3e429fdd87a83ca9461cfe3/simple.md#alternative-name).
+
+Ragnarök uses the literal 54-byte form. Jam Forge uses a 53-byte name with an `e` prefix
+and the standard 32-character alphabet, with the same least-significant-first digit order.
+For a naming-only witness, a zero 32-byte input yields `$e` and 52 dollar bytes in
+Ragnarök and `e` and 52 `a` bytes in Jam Forge.
+[Jam Forge identity at `990b1a81`](https://github.com/philoniare/jam-forge/blob/990b1a812419552b8d132d5c3e9491ec27060a39/modules/network/src/main/scala/io/forge/jam/network/NodeIdentity.scala)
+
+On 2026-11-18, a local CE128 probe offered the same version-1 ALPN on both sides and
+failed to complete mutual TLS. Both stock verifiers accepted their own valid Ed25519
+certificate and rejected the other's alternative name. The
+[SAN corpus](../tests/quic_protocol_oracle.py) signs the same Ed25519 key in the
+independent peer's name form and checks rejection with and without an expected key pin.
+CE128 exchange remains pending until the two implementations agree on the name bytes.
