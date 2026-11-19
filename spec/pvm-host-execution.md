@@ -93,6 +93,8 @@ Prepared/worker/service-lease adapters preserve exclusive admission and full cac
 Optional PolkaVM policies explicitly use the supplied owned fallback; the independent
 interpreted/JIT policies use the scalar selection. This does not change engine identity.
 
+The [checked host exit](../src/pvm/internal/handler_stream.nim) seals the causing PC for the
+copied CPU observation. Continuing replies independently validate their stopped source fact.
 A scalar Continue preserves all guest dirty-page membership against the original immutable
 baseline. It does not publish or clear those bytes. Before any later owned callback, the
 existing complete immutable publication includes every accumulated guest write. Accepted

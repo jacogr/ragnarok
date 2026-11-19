@@ -22,7 +22,9 @@
 ##
 ## Snapshot publication returns a local refusal if dirty coordinates, page staging
 ## or replacement directory assembly fail. Host readiness is set only on success.
-## Host suspension publishes an immutable observation. Resident deltas can resume
+## The checked host exit seals the causing PC before copying CPU values for a scalar callback.
+## The reply revalidates the stopped source fact before committing the continuation.
+## Owned host suspension publishes an immutable observation. Resident deltas can resume
 ## the existing frame. Mapping or permission changes build a complete private
 ## replacement before swapping ownership, so refusal preserves the stopped frame.
 ## Input reset preflights the complete immutable source and every private destination before copying.
@@ -621,6 +623,12 @@ proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
   f.attemptedExit = attempted
   f.info.pc = if kind in [oracle.StepExit.Halt, oracle.StepExit.Panic]: CodeAddress(
       0) else: CodeAddress(fact.pc)
+  if kind == oracle.StepExit.Host:
+    if fact.opcode != 10:
+      f.reason = oracle.StepError.InvalidHostSuspension
+      return flatStop
+    # The exclusive frame carries this sealed source PC to its copied-CPU observation.
+    f.hostSnapshotPc = f.info.pc
   flatStop
 
 proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
@@ -5010,16 +5018,14 @@ proc readFlatHost32*(f: FlatFrame, address: MemoryAddress, limit: MemoryByteLimi
   MachineError.None
 
 proc tryObserveFlatHostScalars*(f: var FlatFrame, info: var MachineInfo): oracle.StepError =
-  ## Bind only a genuine source-matched host stop; refusal preserves both output and stopped observation.
+  ## Reuse the checked dispatch stop's exact PC through the exclusive frame.
+  ## Refusal preserves both output and the stopped observation. The reply separately checks metadata.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host:
     return oracle.StepError.InvalidHostSuspension
-  var fact = default(FlatFact)
-  if not tryReadFlatSite(f, f.stoppedAt, fact): return oracle.StepError.BackendFailure
-  if f.info.pc != CodeAddress(uint64(fact.pc)) or fact.opcode != 10:
-    return oracle.StepError.InvalidHostSuspension
+  if f.info.pc != f.hostSnapshotPc: return oracle.StepError.InvalidHostSuspension
+  # flatStopExit has already proved this exact scalar stop. Reply still checks sealed metadata.
   info = f.info
   f.hostSnapshot = default(Memory)
-  f.hostSnapshotPc = f.info.pc
   f.hostReady = true
   oracle.StepError.None
 
@@ -6183,8 +6189,13 @@ when NativeCheckedReadEnabled and defined(pvmSharedAsyncWitness):
     var cpu = initial
     if tryObserveFlatHostScalars(frame, cpu) != oracle.StepError.None or cpu != stopped or
         not frame.hostReady: return false
-    frame.exit = oracle.StepExit.Continued
+    # The sealed stop does not authorize a different copied PC or an unstopped frame.
+    frame.info.pc = CodeAddress(uint64(stopped.pc) xor 1'u64)
     cpu = initial
+    if tryObserveFlatHostScalars(frame, cpu) != oracle.StepError.InvalidHostSuspension or
+        cpu != initial or not frame.hostReady: return false
+    frame.info = stopped
+    frame.exit = oracle.StepExit.Continued
     if tryObserveFlatHostScalars(frame, cpu) != oracle.StepError.InvalidHostSuspension or
         cpu != initial: return false
     frame.readProbe.observing = true
