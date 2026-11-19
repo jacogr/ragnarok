@@ -1152,32 +1152,59 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     readyMixedLoopTestRenderer(runtime, other)
     let original = mixedLoopTestProof(nativeEpoch(renderer))
 
-    # The optional job owns its image at the publication gate. A primary must still queue.
+    # Fill the spare credit with a primary before the optional job reaches publication.
+    pauseNativeCompiler(runtime, true)
     beginNativeInvocation(renderer, NativeInvocationFloor)
-    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
     assert offer(renderer, original)
     finishNativeInvocation(renderer, NativeInvocationFloor)
-    let optional = waitNativeCompilerGate(runtime)
-    assert optional.kind == NativeKind.MixedSelfLoop and optional.hasImage
-    assert runtimeInfo(runtime).phase == NativePhase.Running
+    let priorityProof = cycleFixture()
     beginNativeInvocation(priority, NativeInvocationFloor)
-    nominateNativeReadCycle(priority, cycleFixture())
+    nominateNativeReadCycle(priority, priorityProof)
     finishNativeInvocation(priority, NativeInvocationFloor)
-    assert nativeState(priority) == NativeState.Pending
-    assert runtimeInfo(runtime).registered == 4 and runtimeInfo(runtime).phase == NativePhase.Queued
+    assert nativeState(priority) == NativeState.Pending and runtimeInfo(runtime).registered == 4, "the priority primary uses the spare"
+    armNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    pauseNativeCompiler(runtime, false)
+    let primary = waitNativeCompilerGate(runtime)
+    assert primary.kind == NativeKind.ConnectedReadCycle and primary.hasImage,
+      "the primary builds its image before the auxiliary claims"
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.AfterClaim)
+    let optionalClaim = waitNativeCompilerGate(runtime)
+    assert optionalClaim.kind == NativeKind.MixedSelfLoop, "the auxiliary claims after primary publication"
+    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
+    let optional = waitNativeCompilerGate(runtime)
+    assert optional.ticket == optionalClaim.ticket and optional.hasImage, "the auxiliary owns an image before pressure"
+    beginNativeInvocation(priority, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(priority), "the priority primary installs"
+    finishNativeInvocation(priority, NativeInvocationFloor)
+
+    # A full table cancels the worker's auxiliary, but the arriving primary must wait for unmap.
+    let pressure = newNativeSession(runtime)
+    let beforePressure = runtimeInfo(runtime)
+    beginNativeInvocation(pressure, NativeInvocationFloor)
+    nominateNativeReadCycle(pressure, priorityProof)
+    finishNativeInvocation(pressure, NativeInvocationFloor)
+    assert nativeState(pressure) == NativeState.Deferred, "the arrival defers while the worker retains its credit"
+    assert runtimeInfo(runtime).registered == 4 and runtimeInfo(runtime).phase ==
+        NativePhase.Running, "the worker still holds the fourth row"
+    assert runtimeInfo(runtime).submitted == beforePressure.submitted, "deferred admission submits no work"
     releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforeRetire)
     let retiring = waitNativeCompilerGate(runtime)
     assert retiring.ticket == optional.ticket and retiring.hasImage and
-      runtimeInfo(runtime).registered == 4
-    releaseNativeCompilerGate(runtime, NativeCompilerPoint.BeforePublish)
-    let primary = waitNativeCompilerGate(runtime)
-    assert primary.kind == NativeKind.ConnectedReadCycle and primary.hasImage and
-      primary.ticket > optional.ticket and runtimeInfo(runtime).registered == 3
+      runtimeInfo(runtime).registered == 4, "retirement observes the exact charged auxiliary"
     releaseNativeCompilerGate(runtime)
     waitNativeCompiler(runtime)
-    beginNativeInvocation(priority, NativeInvocationFloor)
-    assert mixedLoopPrimaryReady(priority)
-    finishNativeInvocation(priority, NativeInvocationFloor)
+    assert runtimeInfo(runtime).registered == 3, "worker disposal returns only the auxiliary credit"
+    beginNativeInvocation(pressure, NativeInvocationFloor)
+    assert nativeCycleNominated(pressure) and validateNativeRead(pressure, priorityProof.read)
+    validateNativeCycleNomination(pressure, priorityProof)
+    finishNativeInvocation(pressure, NativeInvocationFloor)
+    assert nativeState(pressure) == NativeState.Pending and runtimeInfo(runtime).registered == 4, "the arrival queues after disposal"
+    waitNativeCompiler(runtime)
+    beginNativeInvocation(pressure, NativeInvocationFloor)
+    assert mixedLoopPrimaryReady(pressure), "the new primary installs"
+    assert nativeInstalledKey(priority).ticket == primary.ticket, "the previous primary stays installed"
+    finishNativeInvocation(pressure, NativeInvocationFloor)
+    invalidateNativeStream(pressure)
     beginNativeInvocation(renderer, NativeInvocationFloor)
     assert mixedLoopPrimaryReady(renderer) and not offer(renderer, original)
     finishNativeInvocation(renderer, NativeInvocationFloor)
@@ -1209,8 +1236,7 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert borrow(other, next).image == nil
     finishNativeInvocation(other, NativeInvocationFloor)
 
-    # A borrowed runtime-owned mapping stays charged during pressure. Its next owner
-    # boundary releases it while the already queued primary retains its own credit.
+    # Admit the first primary into the spare credit while the auxiliary is borrowed.
     beginNativeInvocation(renderer, NativeInvocationFloor)
     assert borrow(renderer, original).image == nil
     let image = borrow(renderer, next).image
@@ -1220,13 +1246,13 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     beginNativeInvocation(entrant, NativeInvocationFloor)
     nominateNativeReadCycle(entrant, cycleFixture())
     finishNativeInvocation(entrant, NativeInvocationFloor)
-    assert runtimeInfo(runtime).registered == 4 and nativeState(entrant) == NativeState.Pending
+    assert runtimeInfo(runtime).registered == 4 and nativeState(entrant) == NativeState.Pending, "the entrant uses the still-free last credit"
     waitNativeCompiler(runtime)
     beginNativeInvocation(entrant, NativeInvocationFloor)
     assert mixedLoopPrimaryReady(entrant)
     finishNativeInvocation(entrant, NativeInvocationFloor)
 
-    # Let the first primary finish while the revoked borrowed image still holds the fourth credit.
+    # A further primary revokes the auxiliary, whose live borrow still holds the fourth credit.
     let delayed = newNativeSession(runtime)
     let delayedProof = cycleFixture()
     let beforeDelay = runtimeInfo(runtime)
@@ -1271,16 +1297,20 @@ when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
     assert offer(renderer, next)
     finishNativeInvocation(renderer, NativeInvocationFloor)
     waitNativeCompiler(runtime)
+    readyMixedLoopTestRenderer(runtime, entrant)
+    assert runtimeInfo(runtime).registered == 4
     let idlePressure = newNativeSession(runtime)
     beginNativeInvocation(idlePressure, NativeInvocationFloor)
     nominateNativeReadCycle(idlePressure, cycleFixture())
     finishNativeInvocation(idlePressure, NativeInvocationFloor)
-    assert runtimeInfo(runtime).registered == 3 and nativeState(idlePressure) == NativeState.Pending
+    assert runtimeInfo(runtime).registered == 4 and nativeState(idlePressure) ==
+        NativeState.Pending, "the idle auxiliary can retire immediately for the new primary"
     waitNativeCompiler(runtime)
     beginNativeInvocation(idlePressure, NativeInvocationFloor)
     assert mixedLoopPrimaryReady(idlePressure)
     finishNativeInvocation(idlePressure, NativeInvocationFloor)
     invalidateNativeStream(idlePressure)
+    invalidateNativeStream(entrant)
 
     # An unrelated primary with a spare credit left over need not revoke a parked optional image.
     invalidateNativeStream(other)
