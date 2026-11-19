@@ -50,6 +50,7 @@
 #include "quiche/quic/core/crypto/quic_crypto_server_config.h"
 #include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/deterministic_connection_id_generator.h"
+#include "quiche/quic/core/frames/quic_crypto_frame.h"
 #include "quiche/quic/core/quic_alarm_factory.h"
 #include "quiche/quic/core/quic_clock.h"
 #include "quiche/quic/core/quic_crypto_client_stream.h"
@@ -436,6 +437,17 @@ class Session final : public QuicSession {
         result.signing_algorithm_prefs =
             QuicSignatureAlgorithmVector{SSL_SIGN_ED25519, SSL_SIGN_ECDSA_SECP256R1_SHA256};
         return result;
+    }
+    void OnCryptoFrame(const QuicCryptoFrame &frame) override {
+        // QUICHE raises the server's Initial packet length to match ingress.
+        // Bound the TLS flight before it sends on an unmeasured IPv6 return
+        // path. The packet writer can still carry larger QUICHE path probes.
+        if (owner->options.server && frame.level == ENCRYPTION_INITIAL &&
+            connection()->max_packet_length() > Ipv6InitialPacketCapacity &&
+            connection()->peer_address().host().Normalized().IsIPv6()) {
+            connection()->SetMaxPacketLength(Ipv6InitialPacketCapacity);
+        }
+        QuicSession::OnCryptoFrame(frame);
     }
     bool ShouldKeepConnectionAlive() const override { return keepalive; }
     void OnTlsHandshakeComplete() override;
@@ -1178,8 +1190,8 @@ int rq_connect_address(rq_transport *owner, const uint8_t *address, uint16_t por
         remote, owner->client_helper.get(), owner->alarms, owner->writer, false,
         Perspective::IS_CLIENT, ParsedQuicVersionVector{ParsedQuicVersion::RFCv1()},
         owner->cid_generator);
-    // Start IPv6 on the minimum path size. QUICHE sizes the server flight from
-    // the received Initial, and the writer still allows larger PMTU probes.
+    // Start IPv6 on the minimum path size. QUICHE can probe for larger
+    // packets once the path supports them.
     if (remote.host().Normalized().IsIPv6())
         connection->SetMaxPacketLength(Ipv6InitialPacketCapacity);
     owner->client = std::make_unique<Session>(owner, connection.get(), nullptr, nullptr);

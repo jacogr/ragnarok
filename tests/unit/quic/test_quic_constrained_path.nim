@@ -3,6 +3,7 @@
 
 ## Complete mutual TLS and a multi-packet request/reply through the real QUIC
 ## transport. Linux applies the minimum IPv6 MTU without changing host routes.
+## A wider ingress also carries an unchanged larger Initial to the IPv6 server.
 ## A single dropped packet and one reversed pair exercise QUIC recovery on the
 ## same path, with exact application bytes and FIN as the success criterion.
 
@@ -25,6 +26,8 @@ type
     held: array[2048, byte]
   Relay = object ## Each endpoint sees a stable source port on real IPv6 loopback.
     front, back: UdpEndpoint
+    clientIpv6: bool
+    ingressMaximum: int
     loss: Loss
 
 func replyByte(offset: int): byte =
@@ -81,14 +84,16 @@ proc exchangeStream(user: pointer, handle: NativeStream, event: cint) {.cdecl.} 
     discard # No other native event supplies application bytes.
 
 proc forward(input, output: UdpEndpoint, source, target: NetworkEndpoint,
-    loss: nil ptr Loss) =
+    loss: nil ptr Loss): int =
   ## Forward complete real UDP datagrams. Drop and delay only large response datagrams.
   var packet = default(array[2048, byte])
+  result = 0
   for turn in 0..<MaxReadyBatch:
     var origin = default(NetworkEndpoint)
     let count = input.receive(packet, origin)
     if count == -2: break # Each empty queue yields to the other direction and the protocol timers.
     assert count > 0 and origin == source, "unexpected datagram in the private relay"
+    result = max(result, count)
     if loss == nil or loss.reordered or count < 1000:
       assert output.sendError(addr packet[0], count, target) == 0
     elif not loss.dropped:
@@ -104,11 +109,12 @@ proc forward(input, output: UdpEndpoint, source, target: NetworkEndpoint,
 proc pollPath(client, server: var Transport, relay: var Relay, disruptReply: bool) =
   ## Drive the ordinary client and listener, then deliver their datagrams in each direction.
   assert client.pollTransport(1) and server.pollTransport(1)
-  let clientAddress = networkEndpoint(loopbackAddress(true), client.localPort)
+  let clientAddress = networkEndpoint(loopbackAddress(relay.clientIpv6), client.localPort)
   let serverAddress = networkEndpoint(loopbackAddress(true), server.localPort)
-  relay.front.forward(relay.back, clientAddress, serverAddress, nil)
+  let ingress = relay.front.forward(relay.back, clientAddress, serverAddress, nil)
+  relay.ingressMaximum = max(relay.ingressMaximum, ingress)
   let loss = if disruptReply: addr relay.loss else: nil
-  relay.back.forward(relay.front, serverAddress, clientAddress, loss)
+  discard relay.back.forward(relay.front, serverAddress, clientAddress, loss)
 
 when defined(linux):
   let
@@ -139,40 +145,50 @@ when defined(linux):
     assert receiver.receive(observed, source) == MaxPayload and observed == probe
     assert source == networkEndpoint(loopbackAddress(true), sender.port)
 
-proc main() {.raises.} =
+proc exchange(cert, key: string, asymmetric: bool) =
   ## Drive the real selector and QUIC timers until both application halves finish.
-  let args = [getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")]
-  assert args[0].len > 0 and args[1].len > 0
   const Alpn = "jamnp-s/1/00000000"
   var incoming = Exchange(server: true)
   var outgoing = Exchange(request: [RequestByte])
   for index in 0..<incoming.reply.len: incoming.reply[index] = replyByte(index)
   var server, client = default(Transport)
-  var relay = default(Relay)
+  var relay = Relay(clientIpv6: not asymmetric)
   defer:
     client.closeTransport()
     server.closeTransport()
     relay.front.close()
     relay.back.close()
-  assert relay.front.open(true, 0) and relay.back.open(true, 0)
-  assert server.openTransport(true, false, 0, args[0], args[1], Alpn,
+  # IPv4 gives the stock dialer a larger Initial. The relay changes only the IP path,
+  # so the IPv6 server receives the original encrypted datagram unchanged.
+  assert relay.front.open(relay.clientIpv6, 0) and relay.back.open(true, 0)
+  assert server.openTransport(true, false, 0, cert, key, Alpn,
     addr incoming, acceptFixture, exchangeStream, ipv6 = true)
-  assert client.openTransport(false, false, 0, args[0], args[1], Alpn,
-    addr outgoing, acceptFixture, exchangeStream, ipv6 = true)
+  assert client.openTransport(false, false, 0, cert, key, Alpn,
+    addr outgoing, acceptFixture, exchangeStream, ipv6 = relay.clientIpv6)
   when defined(linux):
-    constrain(client.socket, relay.front)
+    if not asymmetric: constrain(client.socket, relay.front)
     constrain(server.socket, relay.back)
   assert client.connectTransport(relay.front.port)
   let deadline = getMonoTime() + initDuration(seconds = 5)
   while client.authenticatedConnections == 0 or server.authenticatedConnections == 0:
     assert getMonoTime() < deadline, "mutual TLS did not complete"
     client.pollPath(server, relay, incoming.readFin)
+    if asymmetric and relay.ingressMaximum > 0:
+      assert relay.ingressMaximum > 1232, "IPv6 server must receive a wider Initial"
   client.openStream()
   while not outgoing.readFin:
     assert getMonoTime() < deadline, "response did not recover from loss and reordering"
     client.pollPath(server, relay, incoming.readFin)
   assert incoming.readFin and incoming.writeFin and outgoing.writeFin
   assert relay.loss.dropped and relay.loss.reordered and outgoing.received == ReplySize
+
+proc main() {.raises.} =
+  ## Exercise both link arrangements with the same owned certificate fixtures.
+  let cert = getEnv("RAGNAROK_TEST_CERT")
+  let key = getEnv("RAGNAROK_TEST_KEY")
+  assert cert.len > 0 and key.len > 0
+  exchange(cert, key, false)
+  exchange(cert, key, true)
   echo "QUIC constrained path recovered the exact response and FIN"
 
 # Setup failures must exit before the harness can see a successful transcript.
