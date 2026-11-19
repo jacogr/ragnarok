@@ -264,8 +264,8 @@ type
     dynamicOffsets: nil FlatDynamicOffsets
     hostSnapshot: Memory
     hostReady: bool
-    hostSnapshotPc: CodeAddress
     hostSourcePc: uint32 ## Sealed by the checked host exit, independent of owned observation attempts.
+    hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
     dirtyPages: seq[uint64]                   # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
@@ -624,12 +624,6 @@ proc flatStopExit(f: var FlatFrame, off: uint32, kind: oracle.StepExit,
   f.attemptedExit = attempted
   f.info.pc = if kind in [oracle.StepExit.Halt, oracle.StepExit.Panic]: CodeAddress(
       0) else: CodeAddress(fact.pc)
-  if kind == oracle.StepExit.Host:
-    if fact.opcode != 10:
-      f.reason = oracle.StepError.InvalidHostSuspension
-      return flatStop
-    # The exclusive frame carries this sealed source PC to its copied-CPU observation.
-    f.hostSourcePc = fact.pc
   flatStop
 
 proc flatLocal(f: var FlatFrame, off: uint32, error: oracle.StepError): uint32 =
@@ -1737,9 +1731,18 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   resolved
 
 proc flatHost(f: var FlatFrame, off: uint32): uint32 =
-  ## A genuine host exit is source-bound and preserves the sign-extended immediate in its complete register-width domain.
+  ## Seal the causing source PC before exposing copied CPU or owned host state.
+  ## The sign-extended host immediate keeps its complete guest register-width domain.
+  var fact = default(FlatFact)
+  if not tryReadFlatSite(f, off, fact): return flatBackendFailure(f, off)
+  if fact.opcode != 10: return flatLocal(f, off, oracle.StepError.InvalidHostSuspension)
   f.hostCall = oracle.HostCallId(f.arguments[int(off)].x)
-  flatStopExit(f, off, oracle.StepExit.Host)
+  f.exit = oracle.StepExit.Host
+  f.stoppedAt = off
+  f.attemptedExit = true
+  f.info.pc = CodeAddress(fact.pc)
+  f.hostSourcePc = fact.pc
+  flatStop
 
 proc flatTrap(f: var FlatFrame, off: uint32): uint32 =
   ## Recursive terminal normalization stays on the rare exit path.
