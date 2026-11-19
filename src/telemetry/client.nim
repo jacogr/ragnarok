@@ -86,7 +86,7 @@ proc enabled*(client: Client): bool =
   ## Observation adapters query this owner, not process-global command-line configuration.
   client.enabled
 
-func collectorName(host: string): bool =
+func isCollectorName(host: string): bool =
   ## Accept ASCII DNS labels and an optional root dot. Malformed IPv4 remains invalid.
   if host.len == 0 or host.len > MaxCollectorName: return false
   var label = 0
@@ -138,8 +138,8 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   var address = default(Sockaddr_in)
   var address6 = default(Sockaddr_in6)
   var name = ""
-  let hostPointer = host.toCString()
   if ipv6:
+    let hostPointer = host.toCString()
     # Native parsing rejects malformed literals, zones and bracketed IPv4 without DNS.
     if host.len > 45 or '%' in host or parseAddress(cint(ord(nativesocket.AF_INET6)), hostPointer,
         addr address6.sin6_addr) != 1: return false
@@ -148,16 +148,9 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
     when defined(macosx):
       # BSD requires the native sockaddr byte extent as well as its family.
       address6.sin6_len = uint8(sizeof(Sockaddr_in6))
-  elif host.len <= 15 and parseAddress(cint(ord(nativesocket.AF_INET)), hostPointer,
-      addr address.sin_addr) == 1:
-    # Preserve the numeric IPv4 and localhost fast path.
-    address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-    address.sin_port = networkPort(uint16(port))
-    when defined(macosx):
-      # BSD requires the native sockaddr byte extent as well as its family.
-      address.sin_len = uint8(sizeof(Sockaddr_in))
-  else:
-    if not collectorName(host): return false
+  elif host.len > 15 or not collectorIpv4Address(host, uint16(port), address):
+    # Only a syntactically valid name may turn a literal parse failure into a lookup.
+    if not isCollectorName(host): return false
     name = move(host)
   client.address = address
   client.address6 = address6
