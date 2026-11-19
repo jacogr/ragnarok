@@ -53,12 +53,12 @@ import ./register_ops
 import ./metadata_store
 import ./dynamic_jump_cache
 import ./native_pipeline
+from ./jit_rules import supportedScalarOpcode
 import ./[resident_bytes, resident_capture]
 when NativeReadCycleEnabled:
   when defined(pvmMixedLoopWitness) or defined(pvmMixedLoopEntryWitness) or defined(pvmPaidMixedLoopWitness):
     import std/syncio
   import ./[native_mixed_loop, native_platform, native_fusion]
-  from ./jit_rules import supportedScalarOpcode
 
   const
     FlatFusionTrainingSegments = 4096'u32
@@ -2965,38 +2965,39 @@ proc restoreFlatPrefixProbe(f: var FlatFrame) =
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
   ## Shared structural classification precedes any native cache/byte allocation and all ISA decisions.
+  ## Reuse the header lookup's sealed first fact. Only a plausible scalar start needs span storage;
+  ## accepted operations still use the original checked decoder and exact continuation geometry.
   let epoch = nativeEpoch(f.nativeSession)
   if epoch == 0 or f.pricingKind != 0 or nativeSpanInfo(f.nativeSession).len != 0: return
+  let past = f.handlers.len
   var index = max(origin, nativeScanStart(f.nativeSession))
   var header = NativeEntryFailure
-  while int(index) < f.handlers.len and index < NativeEntryLimit:
-    # Each retained emission has its own header, even when another suffix shares source facts.
+  while int(index) < past and index < NativeEntryLimit:
+    # The outer header check already reads the first source fact at this site.
     if uint64(index) >= uint64(f.sites.len): return
     let site = f.sites[int(index)]
-    if uint64(site) >= uint64(f.plan.facts.len): return
-    var first = default(FlatFact)
-    if not tryReadFlatFact(f, int(site), first): return
-    let pc = first.pc
+    var fact = default(FlatFact)
+    if not tryReadFlatFact(f, int(site), fact): return
     var packed = 0'u32
-    if not tryReadMetadata(f.compiledForPc, int(pc), packed): return
-    if packed == (index or flatReservationHeaderFlag)+1:
-      header = index
-    # Synthetic charge headers duplicate the next source site and never belong to a pure body.
-    if int(index)+1 < f.sites.len and f.sites[int(index)] == f.sites[int(index)+1]:
+    if not tryReadMetadata(f.compiledForPc, int(fact.pc), packed): return
+    if packed == (index or flatReservationHeaderFlag)+1: header = index
+    # Neither a duplicate charge site nor an ineligible first opcode needs a fixed IR buffer.
+    if (int(index)+1 < f.sites.len and site == f.sites[int(index)+1]) or
+        fact.ending or not fact.fallthrough or not supportedScalarOpcode(fact.opcode):
       inc index
       continue
-    var span = initNativeSpan(index, f.sites[int(index)], epoch)
+    var span = initNativeSpan(index, site, epoch)
     var at = index
-    while int(at) < f.handlers.len and span.len < NativeSpanOperations:
-      if int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]: break
-      var fact = default(FlatFact)
-      if not tryReadFlatSite(f, at, fact): return
+    while true:
       if fact.ending or not fact.fallthrough: break
       var payload = default(FlatSourcePayload)
       if not tryFlatSourcePayload(f.plan, fact, payload): return
       if not span.add(fact.opcode, payload.args.slots, payload.args.x, f.sites[int(at)], at+1): break
       inc at
-    if span.len >= NativeMinimumOperations and int(span.past) < f.handlers.len:
+      if int(at) >= past or span.len == NativeSpanOperations or
+          (int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]): break
+      if not tryReadFlatSite(f, at, fact): return
+    if span.len >= NativeMinimumOperations and int(span.past) < past:
       considerNativeSpan(f.nativeSession, span, header)
       return
     index = if at > index: at else: index+1
