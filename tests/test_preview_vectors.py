@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Qualify source-bound preview inputs without conflating the supervisor-era schema."""
+"""Qualify source-bound preview inputs and the restored service metadata schema."""
 import json
 from pathlib import Path
 import tempfile
@@ -27,7 +27,7 @@ class PreviewVectors(unittest.TestCase):
                 _, evidence = prepare(Path(folder))
                 self.assertEqual(evidence['cases'], expected)
                 self.assertEqual(evidence['vector_commit'],
-                                 'e941b86247ec42faa206132ef895347e9fc70443')
+                                 '7175ee4d98ae2d3132e45101497a2691b24bb683')
 
     def test_boundary_service_statistics(self):
         """The published maximum count retains two distinct per-service contributions."""
@@ -44,11 +44,16 @@ class PreviewVectors(unittest.TestCase):
             self.assertEqual(len(expected), 2)
             self.assertEqual(actual, expected)
 
-    def test_explicit_schema_separation(self):
-        """A supervisor-free preview cannot silently replace the existing metadata authority."""
+    def test_restored_supervisor_fields(self):
+        """The published metadata schema restores the widths and order used by the state codec."""
         schema = blob('lib/jam-types.asn').decode()
         service = schema.split('ServiceInfo ::= SEQUENCE {', 1)[1].split('}', 1)[0]
-        self.assertNotIn('supervisor', service)
+        fields = [line.split()[:2] for line in service.splitlines()
+                  if line.strip() and not line.lstrip().startswith('--')]
+        self.assertEqual([(name, kind.rstrip(',')) for name, kind in fields[:6]],
+                         [('version', 'U8'), ('code-hash', 'OpaqueHash'),
+                          ('supervisor', 'U32'), ('supervisor-creation-slot', 'U32'),
+                          ('balance', 'U64'), ('supervisor-balance', 'U64')])
         current = (ROOT/'vendor/graypaper/text/accounts.tex').read_text()
         self.assertIn('sa¬supervisorcreated', current)
         self.assertIn('sa¬supervisorbalance', current)
