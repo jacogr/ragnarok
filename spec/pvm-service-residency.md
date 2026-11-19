@@ -26,16 +26,17 @@ same exclusive scope restores eligibility. Only lease destruction retires an
 unsuccessful entry, including adapter refusal before initialization. No failure
 history survives release.
 
-A miss prefers unused capacity, then evicts the fixed round-robin idle slot before
-constructing its replacement. No fifth worker stages a miss. Invalid misses can
-therefore evict useful resident code; subsequent protocol outcomes and retained
-immutable outputs must remain unchanged. Four workers multiply the existing finite
-per-worker code, fact, executable and memory limits. The optional default 64 MiB
-idle-memory allowance is only one component; this is not an RSS bound. Only this
-four-slot working set is resident. Evicted versions and replaced parse/
-execution policies may need preparation again; services are not promised one
-compilation forever. There is no negative cache, age history, new configuration
-policy, global cache or new thread.
+[The residency context](../src/state/accumulation/residency.nim) selects a vacant
+slot on a miss. At capacity it favors reusing a slot admitted once, so a burst
+of one-off keys can share an eviction slot while regularly reused workers keep
+their preparation. A worker idle for eight service turns takes precedence as a
+victim. With only reused workers, the longest-idle one yields. A deterministic
+cursor resolves ties. Every replacement retires the old worker before
+constructing its successor, within the same four-slot and payload budgets.
+Invalid misses can still evict valid idle code. Every later invocation retains
+the same protocol result and immutable publication contract. Only the existing
+four workers retain code. The idle-memory allowance accounts for that retained
+payload and private scratch without presenting an RSS bound.
 
 The actual current consumer carries the same context from `Services.beginPreparation`
 through `PreparationWorker`, both direct and ancestor-completed `CurrentBlockInput`
