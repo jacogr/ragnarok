@@ -6,7 +6,9 @@
 ## The source-header map has 512 slots so even the largest graph stays below half-full.
 ## The block cap bounds copied source IR independently of guest iteration counts. Original block
 ## prices and source attempts remain independent. Lowering can link only positive checked successors.
-## Each native entry commits a bounded number of original reservations and returns their order.
+## Each ordinary native entry commits up to 96 original reservations and returns their order.
+## A longer hot path amortizes checked entry and receipt validation. More log words increase
+## the private per-segment receipt cache and leave the native arena's code budget unchanged.
 ## Ordinary graphs append one byte per visit to fixed call-local word storage; the returned count
 ## bounds every read. Unwritten tail bytes need no clearing and never participate in a receipt key.
 ## The checked bridge verifies this receipt before exposing a successor or resuming a paid
@@ -27,7 +29,7 @@ const
   NativeFusionTrainingFloor* = 524288'u64                   ## Prior settled attempts before a sampling segment.
   NativeFusionBlockLimit* = 255 ## One ranked graph; one-based byte tokens exclude zero.
   NativeFusionSlotLimit* = 512 ## Keep the largest byte-token graph below half-full in the checked map.
-  NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
+  NativeFusionVisitLimit* = 96 ## Fixed entry horizon, independent of the graph's block cap.
   NativeFusionCycleLimit* = 8 ## Bound source-cycle analysis and compact receipt validation.
   NativeFusionCycleVisitLimit* = 4096 ## Bound scalar work per entry, including zero-priced cycles.
   NativeFusionReceiptBits = 11 ## Fixed one-probe cache geometry; a bucket never grants path authority.
@@ -48,8 +50,9 @@ when NativeFusionSlotLimit != 512 or NativeFusionBlockLimit*2 > NativeFusionSlot
 when NativeFusionBlockLimit < 1 or NativeFusionBlockLimit > 255:
   {.error: "native fusion graph tokens must fit a nonzero byte".}
 
-when NativeFusionVisitLimit < 1 or NativeFusionVisitLimit > 64:
-  {.error: "native fusion entry history must stay within its checked 1..64 visit bound".}
+# x86 compares the ordinary visit count against a sign-extended byte immediate.
+when NativeFusionVisitLimit < 1 or NativeFusionVisitLimit > 127:
+  {.error: "native fusion visit limit must fit a positive signed byte".}
 
 type
   NativeFusionPath* = array[NativeFusionPathWords, uint64]
@@ -89,7 +92,7 @@ type
     entry, next: uint32
     receipt: NativeFusionExit
   NativeFusionReceipts* = array[1 shl NativeFusionReceiptBits, NativeFusionReceipt]
-    ## One bounded 208 KiB call-local cache of successful proofs for exactly one borrowed graph.
+    ## One bounded 272 KiB call-local cache of successful proofs for exactly one borrowed graph.
     ## Its 2048 records reduce repeated source walks across diverse long paths while retaining one lookup.
     ## Only an active graph segment initializes this storage; no invocation borrow escapes it.
 

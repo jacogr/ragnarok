@@ -81,7 +81,7 @@ proc checkLongFusionReceipts() =
     NativeFusionBlock(header: 20, terminal: 23, span: 3, price: 7,
       targets: [10'u32, 10], guards: 1)]
   var memo = default(NativeFusionReceipts)
-  for count in [1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64]:
+  for count in [1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 95, 96]:
     # Only supported lengths are constructed; the same controls run for each trial horizon.
     if count > NativeFusionVisitLimit: continue
     let debit = uint64((count div 2)*10+(if (count and 1) != 0: 3 else: 0))
@@ -1022,10 +1022,13 @@ when NativeReadCycleEnabled:
     mixedContext.memory.read[0] = initNativeReadRegion(65536, bytes)
     let beforeGas = mixedContext.gas
     let beforeQuota = mixedContext.remaining
-    assert enterNativeFusion(mixedImage, 3, mixedRegisters, mixedContext) == 10
+    # The outside entry consumes one visit; the next three headers then repeat in order.
+    let expectedNext = mixed[(NativeFusionVisitLimit-1) mod 3].header
+    assert enterNativeFusion(mixedImage, 3, mixedRegisters, mixedContext) == expectedNext,
+      "ordinary linked path reaches the exact horizon successor"
     assert mixedContext.visits == uint64(NativeFusionVisitLimit) and (mixedContext.path[0] and
         255) == 4
-    assert nativeFusionExit(mixed, 900, 10, beforeGas, beforeQuota, mixedContext).valid
+    assert nativeFusionExit(mixed, 900, expectedNext, beforeGas, beforeQuota, mixedContext).valid
 
     # A live dynamic tag enters the ordinary logged continuation, preserving its original path coverage.
     mixed[0].indirectEntry = true
