@@ -69,9 +69,11 @@ when NativeReadCycleEnabled:
   import ./[native_mixed_loop, native_bitmap_loop, native_fusion]
   export native_bitmap_loop
 
-  type NativeStagedMixed = ref object
-    ## One source-only candidate, owned by an active host turn before mailbox admission.
-    requested: NativeMixedLoopSet
+  type
+    FusionRetry {.pure.} = enum Unused, Deferred, Consumed
+    NativeStagedMixed = ref object
+      ## One source-only candidate, owned by an active host turn before mailbox admission.
+      requested: NativeMixedLoopSet
 
 when NativeCheckedReadEnabled:
   when NativeReadCycleEnabled:
@@ -154,7 +156,7 @@ type
     kind: NativeKind
   Retirement = enum
     NoWork, RetirementPending, Detached, RetirementRefused
-  Registration = object ## Own one uncollected image; retain no registered prepared owner.
+  Registration = object            ## Own one uncollected image; retain no registered prepared owner.
     state: RegistrationState
     generation: uint64
     key: JobKey
@@ -163,7 +165,8 @@ type
     completion: NativeImage
     when NativeReadCycleEnabled:
       mixedRefusals: array[NativeMixedLoopCandidateLimit,
-          uint32]       ## Source header tokens for this primary job key.
+          uint32]                  ## Source header tokens for this primary job key.
+      fusionPressureTicket: uint64 ## The exact primary whose auxiliary was cancelled for a peer.
   NativeRuntimeStorage = object ## Stable heap allocation owns synchronization until the last anchor joins its worker.
     lock: Lock
     changed: Cond
@@ -231,6 +234,7 @@ type
     when NativeReadCycleEnabled:
       mixedOffered: bool
       fusionOffered, fusionSampled: bool
+      fusionRetry: FusionRetry
       deferAuxiliaryOffers: bool
       stagedAuxiliaryKey: NativeImageKey
       stagedMixed: nil NativeStagedMixed
@@ -372,6 +376,7 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   when NativeReadCycleEnabled:
     # Keep the row and its certificate intact if a native borrower still owns the image.
     if sameKey(runtime.mixedKey, key) and runtime.mixedBorrowed: return false
+    runtime.slots[index].fusionPressureTicket = 0
   runtime.slots[index].location = CompletionLocation.Empty
   runtime.slots[index].key = default(JobKey)
   runtime.slots[index].cancelled = false
@@ -1369,6 +1374,33 @@ when NativeReadCycleEnabled:
     ## Existing single-entry clients share the same arena and scheduling contract.
     offerNativeMixedLoops(session, singleNativeMixedLoop(proof))
 
+  func enoughFusionWork(data: NativeSessionData): bool =
+    data.lastSettledWork >= NativeFusionTrainingFloor and
+      data.lastNativeWork < data.lastSettledWork div 16 and not data.replacementArmed
+
+  func nativeFusionCapacity(runtime: ptr NativeRuntimeStorage): bool =
+    ## Both admission and retry observe only physical credits under the runtime mutex.
+    runtime.work == WorkPhase.Idle and runtime.mixedKey.generation == 0 and
+      freeNativeCredits(runtime) >= NativeAuxiliaryOfferCredits
+
+  proc rearmFusionAfterPressure(runtime: ptr NativeRuntimeStorage, data: NativeSessionData) =
+    ## The retained primary may train once more after contention. Pressure retirement names
+    ## that primary's exact ticket, independently of later queries or voluntary primary yield.
+    if data.fusionRetry == FusionRetry.Consumed: return
+    if data.fusionRetry == FusionRetry.Unused and not data.fusionOffered: return
+    if not data.allowed or data.invocationBudget < NativeFusionTrainingFloor: return
+    if not enoughFusionWork(data): return
+    if data.state != NativeState.Ready or data.imageKey.kind != NativeKind.PurePrefix or
+        runtime.nextTicket == high(uint64) or not installedPrimaryRow(runtime, data): return
+    if data.fusionRetry != FusionRetry.Deferred and
+        runtime.slots[data.slot].fusionPressureTicket != data.retirementKey.ticket: return
+    if not nativeFusionCapacity(runtime): return
+    runtime.slots[data.slot].fusionPressureTicket = 0
+    data.fusionRetry = FusionRetry.Consumed
+    data.fusionOffered = false
+    data.fusionSampled = false
+    data.mixedOffered = false
+
   func nativeFusionTraining*(session: NativeSession): bool =
     ## One previous long settled call is required, with little work done by a ready prefix.
     ## Existing checked read, ring and connected mixed ownership takes precedence.
@@ -1377,11 +1409,9 @@ when NativeReadCycleEnabled:
     ## remaining optimizable source; a useful specialization can therefore suppress graph training.
     let data {.cursor.} = session.data
     if data == nil or data.fusionOffered or data.fusionSampled or
-        data.lastSettledWork < NativeFusionTrainingFloor or
-        data.lastNativeWork >= data.lastSettledWork div 16:
+        not enoughFusionWork(data):
       return false
-    matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix) and
-      not data.replacementArmed
+    matchesNativeImage(session, data.imageKey, NativeKind.PurePrefix)
 
   func nativeFusionAvailable*(session: NativeSession): bool {.inline.} =
     ## Enter the optional mailbox only for training or an offer still tied to this ticket.
@@ -1389,14 +1419,14 @@ when NativeReadCycleEnabled:
     data != nil and ((data.fusionOffered and data.mixedOffered) or nativeFusionTraining(session))
 
   proc markNativeFusionSampled*(session: NativeSession) =
-    ## Pay for at most one bounded observation window and graph construction per stream epoch.
+    ## Close this bounded observation window before entering the checked dispatcher.
     ## The exclusive checked stream can retain source counters across short host segments.
     let data {.cursor.} = session.data
     if data != nil: data.fusionSampled = true
 
   proc queueNativeFusion(session: NativeSession, requested: var seq[NativeFusionBlock]): bool =
     ## Transfer one bounded graph to the existing optional arena. Queue refusal
-    ## keeps the primary and checked stream usable. A submitted graph is tried once per epoch.
+    ## keeps the primary and checked stream usable. Only contention earns a retry.
     if requested.len < 2 or requested.len > NativeFusionBlockLimit: return false
     let data {.cursor.} = session.data
     if data == nil or data.fusionOffered or not data.fusionSampled or data.slot < 0 or
@@ -1412,12 +1442,15 @@ when NativeReadCycleEnabled:
     let anchor {.cursor.} = data.runtime
     if anchor == nil: return false
     let runtime = addr anchor.storage
-    if not tryAcquire(runtime.lock): return false
+    if not tryAcquire(runtime.lock):
+      if data.fusionRetry == FusionRetry.Unused: data.fusionRetry = FusionRetry.Deferred
+      return false
     defer: release(runtime.lock)
     if not installedPrimaryRow(runtime, data) or runtime.stopping or
-        runtime.work != WorkPhase.Idle or runtime.mixedKey.generation != 0 or
-        runtime.nextTicket == high(uint64) or freeNativeCredits(runtime) <
-            NativeAuxiliaryOfferCredits: return false
+        runtime.nextTicket == high(uint64): return false
+    if not nativeFusionCapacity(runtime):
+      if data.fusionRetry == FusionRetry.Unused: data.fusionRetry = FusionRetry.Deferred
+      return false
     var slot = -1
     for index in 0..<runtime.slots.len:
       if runtime.slots[index].state == Free and runtime.slots[index].generation < high(uint64) and
@@ -1633,6 +1666,8 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64): bool {.disc
       data.laterRead.validated = false
     # Coarse shared horizon is necessary, not a claim of candidate-specific measured profitability.
     data.allowed = budget >= NativeInvocationFloor and data.provenWork >= NativeInvocationFloor
+    when NativeReadCycleEnabled:
+      rearmFusionAfterPressure(runtime, data)
   # Closed observation must not erase terminal Unavailable state or implicitly retry failed lowering
   # when an explicitly restarted empty runtime later accepts this still-unregistered source.
   release(runtime.lock)
@@ -1914,8 +1949,8 @@ proc yieldIdleNativeImage*(session: NativeSession) =
     data.replacementArmed = false
     data.laterRead = default(NativeReadCandidate)
   when NativeReadCycleEnabled:
-    # The auxiliary image belonged to the retired ticket. The same source epoch
-    # still owns its once-only fusion window and offer history.
+    # The auxiliary image belonged to the retired ticket. Voluntary yield retains the
+    # source epoch's fusion observation and retry history.
     data.mixedOffered = false
 
 when NativeCheckedReadEnabled:
@@ -2019,6 +2054,7 @@ proc invalidateNativeStream*(session: NativeSession) =
   when NativeReadCycleEnabled:
     data.fusionOffered = false
     data.fusionSampled = false
+    data.fusionRetry = FusionRetry.Unused
     data.lastNativeWork = 0
     data.lastSettledWork = 0
   data.allowed = false
@@ -2246,6 +2282,16 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64): boo
   when NativeReadCycleEnabled:
     if primaryCanQueue() and runtime.mixedKey.generation != 0 and
         freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
+      let auxiliary = runtime.mixedKey
+      let owner = runtime.mixedOwner
+      if auxiliary.kind == NativeKind.StaticFusion and matchesRow(runtime, auxiliary) and
+          matchesRow(runtime, owner):
+        let row = addr runtime.slots[auxiliary.slot]
+        # Pending and successfully published graphs are eligible. A settled empty result
+        # is a lowering refusal and carries no pressure recovery authority.
+        if row[].location in {CompletionLocation.Queued, CompletionLocation.Running} or
+            row[].completion.ready:
+          runtime.slots[owner.slot].fusionPressureTicket = owner.ticket
       retireMixedLoopLocked(runtime)
   # A physical optional release drops and reacquires the lock. Recheck the full predicate.
   if primaryCanQueue():

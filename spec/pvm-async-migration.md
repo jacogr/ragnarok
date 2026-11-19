@@ -119,9 +119,17 @@ and a successful retry with the same certificate.
 The [stream bridge](../src/pvm/internal/handler_fusion.nim) binds original source and
 resumes the checked continuation, including the first refused paid memory operation.
 
+An auxiliary offer deferred by contention or cancelled to admit another primary
+can train once more in the same source epoch. The exact primary must still be installed,
+and the idle mailbox must have enough physically released credits for the graph and
+the spare primary slot. Retrying uses the ordinary source and publication checks. A
+second pressure event exhausts that epoch's retry. Voluntary primary yield keeps the
+existing once-only history.
+
 The [shared native witness](../tests/support/pvm_static_fusion.nim) exercises a live
 two-header graph, cold admission, source quota, out-of-gas ordering, a paid read fault after
-a store, and repair through the same prepared owner.
+a store, and repair through the same prepared owner. It also covers credit recovery and
+the retry bound for both mailbox refusal and retirement of an installed graph.
 
 ## Qualification and retirement
 

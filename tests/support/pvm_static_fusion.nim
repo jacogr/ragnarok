@@ -771,6 +771,70 @@ when NativeReadCycleEnabled:
       assert preparedNativeState(jit.value).value == NativeState.Ready
       assert runtime.runtimeInfo.submitted == before+1
 
+  proc checkFusionCreditRecovery*(published: bool) =
+    ## Transient denial and retirement of a borrowed graph both permit one retry when idle
+    ## competitors return their physical credits. Keep the exact source and original primary.
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime)
+    except:
+      assert false, "fusion credit recovery runtime failed to start"
+    block:
+      let program = fusionGuest(scalarOnly = true)
+      let policy = defaultPreparedLimits()
+      let cache = newPreparedProgramCache(runtime, codeBudget = newRetainedMemoryBudget(
+          DefaultRetainedCodeBytes))
+      let owner = cachedPreparedProgram(cache, program, policy, PvmBackend.Jit)
+      let checked = newPreparedProgram(program, policy, PvmBackend.Interpreted)
+      assert owner.error == PreparationError.None and checked.error == PreparationError.None
+      let memory = captureMemory([PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)],
+        PageLimit(2)).value
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000000))
+      info.registers[0] = RegisterValue(165)
+      info.registers[3] = RegisterValue(0xffff0000'u64)
+      info.registers[5] = RegisterValue(65536)
+      info.registers[12] = RegisterValue(200000)
+      let source = captureMachine(program, memory, info).value
+      let limit = ExecutionStepLimit(2000000)
+      let expected = execute(source, limit, checked.value)
+      assert expected.error == StepError.None and expected.value.exit == StepExit.Halt
+      let target = owner.value
+      for sample in 0..<(if published: 3 else: 1):
+        assertSameFusionResult(execute(source, limit, target), expected)
+        waitNativeCompiler(runtime)
+      let original = preparedInfo(target).value
+      assert original.nativeFragments == (if published: 2'u64 else: 0'u64)
+      for pressure in 0..1:
+        block:
+          let first = newPreparedProgram(program, policy, PvmBackend.Jit, runtime)
+          let second = newPreparedProgram(program, policy, PvmBackend.Jit, runtime)
+          assert first.error == PreparationError.None and second.error == PreparationError.None
+          assertSameFusionResult(execute(source, limit, first.value), expected)
+          waitNativeCompiler(runtime)
+          assertSameFusionResult(execute(source, limit, second.value), expected)
+          waitNativeCompiler(runtime)
+          assert runtimeInfo(runtime).registered == 3
+          let submitted = runtimeInfo(runtime).submitted
+          for sample in 0..1:
+            assertSameFusionResult(execute(source, limit, target), expected)
+            waitNativeCompiler(runtime)
+          assert runtimeInfo(runtime).submitted == submitted
+        assert runtimeInfo(runtime).registered == 1
+        let submitted = runtimeInfo(runtime).submitted
+        let before = preparedInfo(target).value
+        for sample in 0..2:
+          assertSameFusionResult(execute(source, limit, target), expected)
+          waitNativeCompiler(runtime)
+        let after = preparedInfo(target).value
+        if pressure == 0:
+          assert runtimeInfo(runtime).submitted == submitted+1, "fusion did not retry after credit release"
+          assert after.nativeFragments == before.nativeFragments+1 and
+            after.nativeOperations-before.nativeOperations >= 1000000
+        else:
+          assert runtimeInfo(runtime).submitted == submitted, "fusion retried twice in one source epoch"
+          assert runtimeInfo(runtime).registered == 1
+    assert close(runtime)
+
   proc checkFusionRetentionPressure*() =
     ## Grow a warm stream while its primary is ready and the exact hot source can offer fusion.
     let program = fusionGuest(scalarOnly = true, pressureEntry = true)
