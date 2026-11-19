@@ -1,0 +1,13 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": [
+    "quic"
+  ],
+  "libraries": [
+    "quic"
+  ],
+  "observers": [],
+  "prepared": true,
+  "provider": "transport"
+}
