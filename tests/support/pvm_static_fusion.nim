@@ -813,7 +813,22 @@ when NativeReadCycleEnabled:
           waitNativeCompiler(runtime)
           assertSameFusionResult(execute(source, limit, second.value), expected)
           waitNativeCompiler(runtime)
-          assert runtimeInfo(runtime).registered == 3
+          let hasGraph = published or pressure != 0
+          var third = default(PreparedProgram)
+          if hasGraph:
+            # The second competitor consumes the last free physical credit. It must
+            # leave the already useful graph executable before the full-pool admission.
+            assert runtimeInfo(runtime).registered == 4
+            let beforeSpare = preparedInfo(target).value
+            assertSameFusionResult(execute(source, limit, target), expected)
+            let afterSpare = preparedInfo(target).value
+            assert afterSpare.nativeOperations-beforeSpare.nativeOperations >= 1000000
+            let added = newPreparedProgram(program, policy, PvmBackend.Jit, runtime)
+            assert added.error == PreparationError.None
+            third = added.value
+            assertSameFusionResult(execute(source, limit, third), expected)
+            waitNativeCompiler(runtime)
+          assert runtimeInfo(runtime).registered == (if hasGraph: 4 else: 3)
           let submitted = runtimeInfo(runtime).submitted
           for sample in 0..1:
             assertSameFusionResult(execute(source, limit, target), expected)
