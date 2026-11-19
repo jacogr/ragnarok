@@ -172,6 +172,36 @@ proc witness() =
   assert context.residentMemoryPayloadBytes == 16384 and moved.residentMemoryPayloadBytes == 16384
   assert context.residentCodePayloadBytes > 8 and moved.residentCodePayloadBytes == codeBytes
 
+proc witnessChangingWorkingSet() =
+  ## Five cyclic services can keep useful preparation, and aged workers make room for a new set.
+  var context = default(ServiceExecutionContext)
+  let first = capture(context, 1, 11).programOf.value
+  let second = capture(context, 2, 12).programOf.value
+  let third = capture(context, 3, 13).programOf.value
+  let hot = [first, second, third]
+  discard capture(context, 4, 14)
+  for round in 0..<4:
+    # Rotate two competing misses through the fourth slot while the first three reuse their code.
+    discard capture(context, 5, 15)
+    for index in 0..<hot.len:
+      let repeated = capture(context, uint32(index+1), byte(round))
+      assert repeated.programOf.value == hot[index], "cyclic overflow preserves exact preparation"
+    discard capture(context, 4, 14)
+    assert context.residentServices == 4
+
+  # A disjoint working set can take over all four slots after the stale residents expire.
+  for round in 0..<3:
+    for service in 6'u32..9'u32:
+      discard capture(context, service, byte(round))
+  var next = default(array[4, Program])
+  for index in 0..<next.len:
+    next[index] = capture(context, uint32(index+6), 44).programOf.value
+  for index in 0..<next.len:
+    let repeated = capture(context, uint32(index+6), 55)
+    assert repeated.programOf.value == next[index], "new working set keeps every exact preparation"
+  assert context.residentServices == 4
+
+witnessChangingWorkingSet()
 witness()
 let before = getOccupiedMem()
 for iteration in 0..<1000: witness()

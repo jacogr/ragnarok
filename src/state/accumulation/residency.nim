@@ -7,12 +7,18 @@
 ## memory within one shared 64 MiB idle allowance, with another 64 MiB shared by encoded source,
 ## admission and stream payload. Live CPU, gas, host callbacks, results and chain state never
 ## belong to this context.
+## At capacity, recent single-use admissions absorb bursts without evicting regularly reused
+## workers. Eight idle service turns let a stale worker yield to a changed working set.
 
 import std/assertions
 import ../../codec/composite
 import ../../codec/work/digest
 import ../../pvm/[worker, initialize, machine, program, step]
 import ../../pvm/gas/gas
+
+const
+  ServiceWorkerSlots = 4 ## Retain the existing per-context limit.
+  ServiceIdleTurnLimit = uint8(2 * ServiceWorkerSlots) ## Let idle residents expire across workload changes.
 
 type
   ResidentSlot = object ## A complete authenticated version and actual backend select one bounded worker.
@@ -21,8 +27,10 @@ type
     backend: PvmBackend
     worker: ExecutionWorker
     ready: bool
+    reused: bool     ## A repeated exact admission distinguishes this worker from a one-off.
+    idleTurns: uint8 ## Bounded count of intervening service turns since the latest admission.
   ServiceExecutionContext* = object ## Stable exclusive owner; four workers, with no fifth miss-staging slot.
-    slots: array[4, ResidentSlot]
+    slots: array[ServiceWorkerSlots, ResidentSlot]
     next: int
     busy: bool
     nativeRuntime: NativeRuntime # Safe closed anchor; compiler never reads this context.
@@ -51,6 +59,8 @@ proc `=wasMoved`*(context: var ServiceExecutionContext) {.nodestroy, inline,
     context.slots[index].version = default(CodeHash)
     context.slots[index].backend = default(PvmBackend)
     context.slots[index].ready = false
+    context.slots[index].reused = false
+    context.slots[index].idleTurns = 0
   context.next = 0
   context.busy = false
 
@@ -133,6 +143,23 @@ proc yieldPackageNativeCapacity*(context: var ServiceExecutionContext) =
     if context.slots[index].ready:
       yieldIdleNativeImage(context.slots[index].worker)
 
+func chooseIdleServiceVictim(context: ServiceExecutionContext): int =
+  ## The caller has proved every slot is occupied. Prefer expired workers so a changed working
+  ## set can reclaim every slot. Otherwise prefer the newest admission with no exact reuse.
+  ## When every worker has reuse, take the longest-idle one. Start at the replacement cursor
+  ## to resolve ties deterministically, including among workers saturated at the expiry limit.
+  result = context.next
+  var probationary = -1
+  for offset in 0..<context.slots.len:
+    let index = (context.next+offset) mod context.slots.len
+    let idle = context.slots[index].idleTurns
+    if idle >= ServiceIdleTurnLimit: return index
+    if idle > context.slots[result].idleTurns: result = index
+    if not context.slots[index].reused and
+        (probationary < 0 or idle < context.slots[probationary].idleTurns):
+      probationary = index
+  if probationary >= 0: result = probationary
+
 proc acquireServiceExecution*(context: var ServiceExecutionContext, service: ServiceIndex,
     version: CodeHash, backend: PvmBackend): ServiceExecutionLease =
   ## Caller has already rechecked account/preimage/envelope/size classification on this invocation.
@@ -142,19 +169,24 @@ proc acquireServiceExecution*(context: var ServiceExecutionContext, service: Ser
   context.busy = true
   var selected = -1
   for index in 0..<context.slots.len:
-    if context.slots[index].ready and
-        uint32(context.slots[index].service) == uint32(service) and
+    if not context.slots[index].ready: continue
+    if selected < 0 and uint32(context.slots[index].service) == uint32(service) and
         array[32, byte](context.slots[index].version) == array[32, byte](version) and
         context.slots[index].backend == backend:
+      # Only exact identity refreshes this resident; its worker still validates input policies.
       selected = index
-      break # Exact authenticated key only; the worker still validates parse and execution policies.
+      context.slots[index].idleTurns = 0
+      context.slots[index].reused = true
+    elif context.slots[index].idleTurns < ServiceIdleTurnLimit:
+      # Saturation avoids relying on a wrapping global clock to recognize idle residents.
+      inc context.slots[index].idleTurns
   if selected < 0:
     for index in 0..<context.slots.len:
       if not context.slots[index].ready:
         selected = index
-        break # Prefer unused capacity before the fixed round-robin eviction position.
+        break # Use an empty slot before applying the idle replacement policy.
     if selected < 0:
-      selected = context.next
+      selected = chooseIdleServiceVictim(context)
     # Retire the old worker BEFORE allocating a miss; no temporary fifth worker is retained.
     context.slots[selected] = default(ResidentSlot)
     if not isBound(context.memoryBudget):
