@@ -38,6 +38,8 @@ type
     address: Sockaddr_in
     address6: Sockaddr_in6
     ipv6: bool
+    collectorName: string
+    collectorPort: uint16
     metadata: Metadata
     logWriter: LogWriter
     buffer: array[MaxPendingBytes, byte]
@@ -58,11 +60,13 @@ proc `=wasMoved`*(client: var Client) {.nodestroy, inline.} =
   client.opened = false
   client.connecting = false
   `=wasMoved`(client.stream)
+  `=wasMoved`(client.collectorName)
   `=wasMoved`(client.metadata)
 
 proc `=destroy`*(client: Client) =
   ## Join the stream before its stable mailbox and borrowed runtime can retire.
   `=destroy`(client.stream)
+  `=destroy`(client.collectorName)
   `=destroy`(client.metadata)
 
 proc disable(client: var Client) =
@@ -82,14 +86,33 @@ proc enabled*(client: Client): bool =
   ## Observation adapters query this owner, not process-global command-line configuration.
   client.enabled
 
+func isCollectorName(host: string): bool =
+  ## Accept ASCII DNS labels and an optional root dot. Malformed IPv4 remains invalid.
+  if host.len == 0 or host.len > MaxCollectorName: return false
+  var label = 0
+  var previous = '.'
+  var named = false
+  for character in host:
+    case character
+    of '.':
+      if label == 0 or previous == '-': return false
+      label = 0
+    of 'a'..'z', 'A'..'Z', '0'..'9', '-':
+      if label == 63 or (label == 0 and character == '-'): return false
+      inc label
+      if character in {'a'..'z', 'A'..'Z'}: named = true
+    else: return false # An endpoint is a host, never a URL, scope or percent escape.
+    previous = character
+  named and previous != '-' and (host.len < MaxCollectorName or previous == '.')
+
 proc configure*(client: var Client, endpoint: string, metadata: Metadata,
     writer: LogWriter = default(LogWriter)): bool =
   ## Configure once before ticking. Unsupported endpoints and metadata fail without opening any socket.
   ## An optional writer is borrowed; its logger must outlive this client.
   # Reconfiguration could replace native ownership or a partially sent frame.
   if client.enabled or client.stream.active or metadata.coreCount == 0: return false
-  # IPv6 mixed notation needs at most 45 host bytes, brackets, colon and five port digits.
-  if endpoint.len == 0 or endpoint.len > 53 or '\0' in endpoint: return false
+  # The longest DNS name may have a root dot, colon and five port digits.
+  if endpoint.len == 0 or endpoint.len > MaxCollectorName + 6 or '\0' in endpoint: return false
   let ipv6 = endpoint[0] == '['
   var host = ""
   var portText = ""
@@ -114,8 +137,9 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   if port < 1 or port > 65535: return false # Zero is not a remote collector endpoint.
   var address = default(Sockaddr_in)
   var address6 = default(Sockaddr_in6)
-  let hostPointer = host.toCString()
+  var name = ""
   if ipv6:
+    let hostPointer = host.toCString()
     # Native parsing rejects malformed literals, zones and bracketed IPv4 without DNS.
     if host.len > 45 or '%' in host or parseAddress(cint(ord(nativesocket.AF_INET6)), hostPointer,
         addr address6.sin6_addr) != 1: return false
@@ -124,18 +148,15 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
     when defined(macosx):
       # BSD requires the native sockaddr byte extent as well as its family.
       address6.sin6_len = uint8(sizeof(Sockaddr_in6))
-  else:
-    # Preserve numeric IPv4 validation and its smaller native address representation.
-    if host.len == 0 or host.len > 15 or parseAddress(cint(ord(nativesocket.AF_INET)),
-        hostPointer, addr address.sin_addr) != 1: return false
-    address.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-    address.sin_port = networkPort(uint16(port))
-    when defined(macosx):
-      # BSD requires the native sockaddr byte extent as well as its family.
-      address.sin_len = uint8(sizeof(Sockaddr_in))
+  elif host.len > 15 or not collectorIpv4Address(host, uint16(port), address):
+    # Only a syntactically valid name may turn a literal parse failure into a lookup.
+    if not isCollectorName(host): return false
+    name = move(host)
   client.address = address
   client.address6 = address6
   client.ipv6 = ipv6
+  client.collectorName = move(name)
+  client.collectorPort = uint16(port)
   client.metadata = metadata
   client.retryAt = 0
   client.statusAt = 0
@@ -220,19 +241,25 @@ proc peerDisconnected*(client: var Client, now: int64, timestamp: Timestamp,
   discard client.event(disconnected(timestamp, identity), now, timestamp)
 
 proc begin(client: var Client, now: int64, timestamp: Timestamp) =
-  ## Copy the validated numeric endpoint into the task and register before publishing event bytes.
+  ## Launch the admitted endpoint and queue registration before publishing events.
   log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connecting to telemetry collector")
-  var address = default(Sockaddr_storage)
-  let size = if client.ipv6: sizeof(Sockaddr_in6) else: sizeof(Sockaddr_in)
-  if size > sizeof(Sockaddr_storage):
-    client.failed(now, IOError) # Refuse an unsupported platform layout before copying native address bytes.
-    return
-  if client.ipv6:
-    copyMem(addr address, addr client.address6, size)
-  else:
-    copyMem(addr address, addr client.address, size)
-  let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
-  if not client.stream.start(address, SockLen(size), family):
+  let started =
+    if client.collectorName.len != 0:
+      # Each retry asks the resolver again instead of keeping the previous choice.
+      client.stream.start(client.collectorName, client.collectorPort)
+    else:
+      var address = default(Sockaddr_storage)
+      let size = if client.ipv6: sizeof(Sockaddr_in6) else: sizeof(Sockaddr_in)
+      if size > sizeof(Sockaddr_storage):
+        client.failed(now, IOError) # Refuse an unsupported platform layout before copying native address bytes.
+        return
+      if client.ipv6:
+        copyMem(addr address, addr client.address6, size)
+      else:
+        copyMem(addr address, addr client.address, size)
+      let family = if client.ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET
+      client.stream.start(address, SockLen(size), family)
+  if not started:
     client.failed(now)
     return
   client.opened = true
