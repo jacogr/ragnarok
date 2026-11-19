@@ -18,7 +18,9 @@
 ## the auxiliary while borrowed. The last return completes retirement after the frame restores
 ## its checked handler, and only physical unmapping releases the credit.
 ## That auxiliary row is global to the runtime and belongs to one exact primary ticket.
-## Another source can retain a ready primary while its auxiliary offer waits for retirement.
+## A refused fusion offer may train once more in its source epoch. A deferred offer keeps
+## its retry history across voluntary primary yield. Peer-pressure retirement names the exact
+## primary ticket, and that marker expires when its row is physically released.
 ## Deferred identities hold no credit; only eligible work that can queue claims one.
 ## Installed owners retain credits while idle, so a serialized second consumer can still
 ## exhaust the table. Consumer reservations, fairness and aggregate prepared-memory limits

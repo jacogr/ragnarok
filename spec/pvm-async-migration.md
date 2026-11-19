@@ -123,8 +123,9 @@ An auxiliary offer deferred by contention or cancelled to admit another primary
 can train once more in the same source epoch. The exact primary must still be installed,
 and the idle mailbox must have enough physically released credits for the graph and
 the spare primary slot. Retrying uses the ordinary source and publication checks. A
-second pressure event exhausts that epoch's retry. Voluntary primary yield keeps the
-existing once-only history.
+second pressure event exhausts that epoch's retry. A deferred offer carries its
+retry history through voluntary yield. A peer-pressure marker expires with its exact
+primary ticket.
 
 The [shared native witness](../tests/support/pvm_static_fusion.nim) exercises a live
 two-header graph, cold admission, source quota, out-of-gas ordering, a paid read fault after
