@@ -6,17 +6,22 @@
 ## so staging and in-flight bytes together stay within the exporter's fixed budget.
 ## A release/acquire phase transfers exclusive access to the batch and its deadline.
 ## A lock protects the parked continuation, including the publish-before-park race.
-## Stop wakes an idle task. Outstanding connect/write operations retain their original
+## A named collector is resolved by std/dns once per attempt using the connect deadline.
+## The process keeps one configured resolver with a reactor-owned receiver. An incomplete
+## cold lookup leaves no cached configuration, so the next attempt can read it again.
+## Stop wakes an idle task. Outstanding lookup/connect/write operations retain their original
 ## five-second deadline; close joins them before releasing mailbox storage and the reactor.
 ## Stop revokes new batches. An already admitted batch keeps its original write deadline;
 ## afterward Writer.abort retires the connection without an implicit final flush.
 
-import std/[atomics, ioring, locks, streamio, threadpool]
+import std/[atomics, dns, ioring, locks, streamio, threadpool]
 import std/nativesocket
+import std/posix/posix
 import std/socket as tcp
 import ../lib/socket_io as native_io
 
 const MaxPendingBytes* = 2048
+const MaxCollectorName* = 254 ## Textual DNS name length including an optional trailing dot.
 
 type
   Phase = enum Connecting, Ready, Writing, Done
@@ -32,6 +37,44 @@ type
   TelemetryStream* = object
     ## Exclusive mailbox owner; the task borrows its stable address only until Done.
     exchange: nil ptr Exchange
+
+var
+  collectorResolver: nil Resolver
+  resolverLock: Lock
+
+initLock(resolverLock)
+
+proc resolverForAttempt(deadline: Deadline): Resolver {.passive, raises.} =
+  ## Retain one configured resolver for the process reactor. Never hold the lock across I/O.
+  var installed: nil Resolver = nil
+  withLock(resolverLock):
+    {.cast(assumeSync).}:
+      installed = collectorResolver
+  if installed != nil: return installed
+  let candidate = dns.initResolver(deadline)
+  if monoNow() >= deadline: raise TimeoutError
+  # The hosts table and localhost still work without a nameserver. Retry reading
+  # the config on the next attempt because no DNS receiver was created here.
+  if candidate.servers.len == 0: return candidate
+  result = candidate
+  withLock(resolverLock):
+    {.cast(assumeSync).}:
+      let shared = collectorResolver
+      if shared == nil:
+        collectorResolver = candidate
+      else:
+        result = shared
+
+proc collectorIpv4Address*(host: string, port: uint16, address: var Sockaddr_in): bool =
+  ## Write an initialized native address for a literal or a validated A answer.
+  var literal = host
+  let family = cint(ord(nativesocket.AF_INET))
+  if native_io.parseAddress(family, literal.toCString(), addr address.sin_addr) != 1: return false
+  address.sin_family = TSa_Family(family)
+  address.sin_port = native_io.networkPort(port)
+  when defined(macosx):
+    address.sin_len = uint8(sizeof(Sockaddr_in)) # Darwin includes the sockaddr extent.
+  true
 
 proc pause(us: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Let reactor workers finish a bounded operation while the owner joins shutdown.
@@ -104,11 +147,32 @@ proc connect(address: Sockaddr_storage, size: SockLen, family: Domain,
   suspend()
   if resultCode != 0: raise tcp.toErr(resultCode)
 
-proc run(address: Sockaddr_storage, size: SockLen, family: Domain,
+proc connectResolved(literal: string, port: uint16, deadline: Deadline): tcp.Socket {.
+    passive, raises.} =
+  ## Convert the resolver answer once and enter the same checked native connect path.
+  var ipv4 = default(Sockaddr_in)
+  var address = default(Sockaddr_storage)
+  if sizeof(ipv4) > sizeof(address) or not collectorIpv4Address(literal, port, ipv4):
+    raise IOError
+  copyMem(addr address, addr ipv4, sizeof(ipv4))
+  connect(address, SockLen(sizeof(ipv4)), nativesocket.AF_INET, deadline)
+
+proc run(address: Sockaddr_storage, size: SockLen, family: Domain, name: string, port: uint16,
     deadline: Deadline, s: ptr Exchange) {.passive.} =
   ## Connection setup and stream ownership remain in the same task and share one bounded attempt.
   try:
-    var socket = connect(address, size, family, deadline)
+    var socket = tcp.initSocket(-1, deadline)
+    if name.len == 0:
+      # Numeric collectors retain the direct IPv4 or IPv6 connection path.
+      socket = connect(address, size, family, deadline)
+    else:
+      # Resolve on the same passive task and absolute deadline as the connect.
+      var resolver = resolverForAttempt(deadline)
+      let literal = dns.resolve(resolver, name, deadline)
+      if atomicLoad(s.stopping, moAcquire):
+        s.publish(Done)
+        return
+      socket = connectResolved(literal, port, deadline)
     let fd = socket.fd
     socket.fd = -1 # Ownership passes to openStreams, including its error and stop paths.
     runConnected(fd, s)
@@ -174,17 +238,28 @@ proc failure*(stream: TelemetryStream): ErrorCode =
   let s = stream.exchange
   if s != nil and s.observedPhase == Done: s.failure else: default(ErrorCode)
 
-proc start*(stream: var TelemetryStream, address: Sockaddr_storage, size: SockLen,
-    family: Domain): bool =
-  ## Start one connection attempt; admission never replaces a live or retiring task.
-  if stream.active or family notin {nativesocket.AF_INET, nativesocket.AF_INET6} or
-      size == SockLen(0) or int(size) > sizeof(Sockaddr_storage): return false
+proc startAttempt(stream: var TelemetryStream, address: Sockaddr_storage, size: SockLen,
+    family: Domain, name: string, port: uint16): bool =
+  ## Admit an owned continuation and transfer the endpoint and one deadline to it.
+  if stream.active: return false # Active and retiring owners keep their existing mailbox.
   let s = cast[ptr Exchange](alloc0(sizeof(Exchange)))
   s[] = Exchange(phase: ord(Connecting), deadline: afterMs(5000))
   initLock(s.lock)
   stream.exchange = s
-  submit(delay(run(address, size, family, s.deadline, s)), -1)
+  submit(delay(run(address, size, family, name, port, s.deadline, s)), -1)
   true
+
+proc start*(stream: var TelemetryStream, address: Sockaddr_storage, size: SockLen,
+    family: Domain): bool =
+  ## Start one direct connection attempt to an admitted numeric endpoint.
+  if family notin {nativesocket.AF_INET, nativesocket.AF_INET6} or
+      size == SockLen(0) or int(size) > sizeof(Sockaddr_storage): return false
+  stream.startAttempt(address, size, family, "", 0)
+
+proc start*(stream: var TelemetryStream, name: string, port: uint16): bool =
+  ## Resolve an admitted DNS name and dial it within one shared attempt deadline.
+  if name.len == 0 or name.len > MaxCollectorName or port == 0: return false
+  stream.startAttempt(default(Sockaddr_storage), SockLen(0), nativesocket.AF_INET, name, port)
 
 proc send*(stream: var TelemetryStream, bytes: openArray[byte], deadline: Deadline): bool =
   ## Copy one complete bounded batch only while the Writer has released its previous borrow.

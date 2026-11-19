@@ -16,10 +16,11 @@ peer observations.
 ## Run
 
 Append `--with-telemetry --telemetry-endpoint HOST:PORT` to a `server`, `client` or `mesh`
-invocation. Collector endpoints accept numeric IPv4, `localhost` (IPv4 loopback), and bracketed
-IPv6 literals such as
-`--telemetry-endpoint '[::1]:9000'`. Ports must be decimal 1–65535. DNS names, IPv6 scope IDs and
-unbracketed IPv6 endpoints remain unsupported. The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
+invocation. Collector endpoints accept DNS names, numeric IPv4, `localhost` (IPv4 loopback), and
+bracketed IPv6 literals such as `--telemetry-endpoint '[::1]:9000'`. Ports must be decimal
+1–65535. The pinned resolver looks up IPv4 addresses. Use a bracketed literal for an IPv6-only
+collector. Lookup and connect share a five-second budget, and retry resolves the hostname again.
+The advertised QUIC address can be IPv4-mapped IPv6 or IPv6 loopback,
 matching the existing peer mode and actual bound UDP port.
 
 Telemetry reads the JIP-4 JSON chain file from `--chain PATH` or defaults to `./chain.json`.

@@ -98,12 +98,14 @@ let failedIncoming = connectInFailed(Timestamp(33), EventId(9))
 assert failedIncoming.len == 22 and failedIncoming[12] == 22
 assert number(failedIncoming, 13, 8) == 9 and failedIncoming[21] == 0
 
-# Strict numeric endpoint parsing fails atomically and never creates descriptors.
+# Invalid endpoint syntax fails atomically and never creates descriptors.
 for endpoint in ["", "localhost", "localhost:0", "localhost:65536", "127.0.0.1:-1",
     "127.0.0.1: 1", "127.0.0.1:1:2", "::1:9000", "[::1]", "[::1]:", "[]:1", "[::1]x:1",
     "[::1]:0", "[::1]:65536", "[::1]:-1", "[::1]: 1", "[::1]:1:2",
     "[127.0.0.1]:1", "[localhost]:1", "[fe80::1%lo0]:1", "[:::1]:1",
-    "[::1]extra:1", "[::1\0x]:1", "[12345::1]:1", "127.0.0.999:9000", "127.0.0.1\0x:9000"]:
+    "[::1]extra:1", "[::1\0x]:1", "[12345::1]:1", "127.0.0.999:9000", "127.0.0.1\0x:9000",
+    "-collector.example:9000", "collector-.example:9000", "collector..example:9000",
+    "collector_name.example:9000", "collector@example.com:9000", repeat('x', 64) & ".example:9000"]:
   var invalid = default(Client)
   assert not invalid.configure(endpoint, parsed.value), endpoint
   assert not invalid.enabled and not invalid.opened
@@ -233,7 +235,7 @@ proc inspectBinding(fd: cint, address: pointer, size: ptr SockLen): cint {.
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Give passive I/O continuations a bounded turn while the test collector drains bytes.
 
-proc collectorDelivery(ipv6: bool, identity: array[32, byte]) =
+proc collectorDelivery(ipv6: bool, identity: array[32, byte], name = "") =
   ## Exercise the public task connect path and independently capture exact JIP-3 wire bytes.
   let host = if ipv6: "[::1]" else: "127.0.0.1"
   var binding = default(Client)
@@ -257,7 +259,8 @@ proc collectorDelivery(ipv6: bool, identity: array[32, byte]) =
     port = networkPort(binding.address.sin_port)
   assert port > 0 and listenSocket(listener, 1) == 0
   var client = default(Client)
-  assert client.configure(host & ":" & $port, parsed.value)
+  let dialName = if name.len > 0: name else: host
+  assert client.configure(dialName & ":" & $port, parsed.value)
   var collector = -1.cint
   defer:
     if collector >= 0: discard posix.close(collector)
@@ -275,7 +278,7 @@ proc collectorDelivery(ipv6: bool, identity: array[32, byte]) =
         for index in 0..<count: received.add(bytes[index])
     if received.len >= hello.len: break
     discard pauseMicros(1000)
-  assert received == hello, "numeric collector receives exact registration"
+  assert received == hello, "collector receives exact registration"
   assert client.nextEvent == 0 and not client.connecting
   client.peerDisconnected(1, Timestamp(23), identity)
   received = @[]
@@ -294,4 +297,5 @@ proc collectorDelivery(ipv6: bool, identity: array[32, byte]) =
 for ipv6 in [false, true]:
   # Both address families are required; missing IPv6 support is a failure, not a skip.
   collectorDelivery(ipv6, remoteIdentity)
+collectorDelivery(false, remoteIdentity, "collector.localhost.")
 ioring.shutdown()
