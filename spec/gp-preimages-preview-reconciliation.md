@@ -25,6 +25,9 @@ historical checkout. Selected consumers name the preview explicitly. Historical
 account, report and accumulation fixtures keep their source and schema contracts.
 The [GP 0.8.1 gas qualification](graypaper-0.8.1.md#full-gas-vector-preview) records
 the additional read-only projections admitted by the later preview pin.
+The [subsequent junior-service upgrade](vector-gp539-upgrade.md#restored-junior-services-in-the-november-19-preview)
+restores the three supervisor fields in the preview and verifies their bytes
+directly.
 There is no production old/new codec fallback or automatic supervisor defaulting.
 
 The full Git diff covers 605 paths (573 modified, 28 removed, four added), beyond
