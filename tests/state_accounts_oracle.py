@@ -107,6 +107,29 @@ def published_json():
             for phase in ('pre_state','post_state'):
                 for account in data[phase]['accounts']:
                     result.append((account['id'],published_source(account['data']['service'])))
+    result.extend(preview_metadata())
+    return result
+
+
+def preview_metadata():
+    """Bind the selected accumulation metadata in both phases to the paired binary tuples."""
+    from preview_vectors import accumulation_cases, blob as preview_blob
+    result = []
+    for profile in ('tiny', 'full'):
+        for path in accumulation_cases(profile):
+            case = json.loads(preview_blob(path+'.json'))
+            binary = preview_blob(path+'.bin')
+            cursor = 0
+            for phase in ('pre_state', 'post_state'):
+                # Match the E4 service ID and complete metadata in source order, including repeated records.
+                for account in case[phase]['accounts']:
+                    service = account['id']
+                    metadata = published_source(account['data']['service'])
+                    component = service.to_bytes(4, 'little') + wire(metadata)
+                    offset = binary.find(component, cursor)
+                    assert offset >= 0, (path, phase, service)
+                    cursor = offset + len(component)
+                    result.append((service, metadata))
     return result
 
 

@@ -41,7 +41,7 @@ proc expected(text: string): ReportPolicyError =
     assert false, text # No unreviewed scenario can silently enter this fixture family.
     ReportPolicyError.Uninitialized
 
-## Verify signed historical and current Full projections against their source policy verdicts.
+## Verify historical policy and apply the shipped presets to the signed preview inputs.
 proc official(): OwnedReport {.raises.} =
   result = default(OwnedReport)
   var pools: seq[seq[byte]] = @[]
@@ -49,8 +49,10 @@ proc official(): OwnedReport {.raises.} =
   var accepted = 0
   var previewTotal = 0
   var previewAccepted = 0
+  var tinyPolicyDifferences = 0
+  let tiny = presetParameters(ChainPreset.Tiny)
   let full = presetParameters(ChainPreset.Full)
-  assert full.ok
+  assert tiny.ok and full.ok
   # Visit every source case; none may be skipped after an earlier success.
   for row in readFile(getEnv("RAGNAROK_REPORT_POLICY")).splitLines:
     if row.len == 0: continue # Only the transport's final empty line is ignored.
@@ -95,13 +97,20 @@ proc official(): OwnedReport {.raises.} =
     let state = newStateStore(entries, limits()).value
     let parent = state.snapshot.value
     var rules = policy(cores)
+    var wanted = expected(f[3])
     if preview:
-      # Use the currently shipped Full gas parameters while retaining historical controls.
-      assert cores == full.value.get(coreCount)
-      rules.reportGas = ReportGasLimit(full.value.get(maxAccumulateGas))
-      rules.refinementGas = RefinementGasLimit(full.value.get(maxRefineGas))
+      # The Tiny vectors deliberately use the old report and authorization ceilings.
+      let parameters = if cores == tiny.value.get(coreCount): tiny.value else: full.value
+      assert cores == parameters.get(coreCount)
+      rules.reportGas = ReportGasLimit(parameters.get(maxAccumulateGas))
+      rules.refinementGas = RefinementGasLimit(parameters.get(maxRefineGas))
+      if cores == tiny.value.get(coreCount) and f[3] in ["auth_gas_too_high",
+          "work_report_gas_too_high"]:
+        # These original signed inputs pass GP 0.8.1 under the higher shared ceilings.
+        wanted = ReportPolicyError.None
+        inc tinyPolicyDifferences
     let outcome = checkReportPolicy(credentials.value, parent, rules)
-    assert outcome.error == expected(f[3]), f[1] & " " & $outcome.error
+    assert outcome.error == wanted, f[1] & " " & $outcome.error
     if outcome.error == ReportPolicyError.None:
       if preview:
         inc previewAccepted
@@ -112,7 +121,7 @@ proc official(): OwnedReport {.raises.} =
     assert array[32, byte](parent.commitment.root) == array[32, byte](
         state.snapshot.value.commitment.root)
   assert total == 20 and accepted == 8
-  assert previewTotal == 7 and previewAccepted == 3
+  assert previewTotal == 14 and previewAccepted == 8 and tinyPolicyDifferences == 2
 
 ## A scoped success or later-digest refusal must release every certificate and snapshot handle.
 proc releaseCycle(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
@@ -308,7 +317,7 @@ proc main() {.raises.} =
   let base = official()
   boundaries(base)
   loadBoundaries(base)
-  echo "PASS report policy: historical and Full preview projections, gas boundaries and retained parent state"
+  echo "PASS report policy: historical and Tiny/Full preview projections, gas boundaries and retained parent state"
 try:
   main() # Native assertions own every application verdict.
 except:

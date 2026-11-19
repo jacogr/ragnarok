@@ -36,3 +36,43 @@ the independent/native account metadata corpus, with literal field-offset checks
 nonzero supervisor identities (these cases retain zero creation slots and balances). This covers serialization, not full execution
 of those scenarios; existing independently authored current-STF supervision coverage
 is retained.
+
+## Restored junior services in the November 19 preview
+
+The separate unreleased `vectors_preview` advances from
+`e941b86247ec42faa206132ef895347e9fc70443` to
+`7175ee4d98ae2d3132e45101497a2691b24bb683`. The exact Git diff has 503
+modified paths and 28 additions, comprising 14 new Tiny/Full JSON and binary
+pairs and the regenerated report and accumulation cases. The historical vector
+gitlink at `a49f241a791f559d1502dc1b0b5328372995e375` remains the source for
+historical consumers. Released [GP 0.8.1](graypaper-0.8.1.md) governs the runtime.
+[Upstream comparison](https://github.com/jam-conformance/jam-test-vectors/compare/e941b86247ec42faa206132ef895347e9fc70443...7175ee4d98ae2d3132e45101497a2691b24bb683)
+
+The restored `ServiceInfo` schema carries the supervisor ID and creation slot
+after the code hash and the protected balance after the ordinary balance. It
+matches the current 105-byte metadata codec. The report policy suite uses the
+preview's actual metadata, rosters and credentials for seven cases per
+population. The independently encoded input and the parent metadata match the
+paired binary. Both populations use the shipped gas presets. The Tiny preview
+rejects `too_high_auth_gas-1` and `too_high_work_report_gas-1` at its old
+50M and 10M ceilings. The signed inputs pass the client's 235M and 47M shared
+ceilings. The Tiny refinement override and bundle limit still agree with the
+expected preview verdicts.
+
+The initial accumulation planner checks 13 cases per population, including the
+seven new junior-service and transfer scenarios, three recreation forms with
+later work or transfers, recreation within one invocation, and both ejector
+orders. It uses the paired input bytes, compares exact C.2 service inputs and
+checks the selected gas prefix. The Full 16.45B boundary cases defer the second
+report. In the corresponding Tiny cases the client's 94M budget floor admits
+both reports initially, while the published inputs use an upstream 20M block
+profile. The independent account corpus separately verifies 168 pre/post
+metadata records against the paired binaries and exercises the native codec.
+
+These fixture checks cover report policy, initial accumulation planning and
+account serialization. Independent native execution checks cover host call 29,
+ejection and reserved-ID recreation, deferred and annulled transfers, retained
+provisions, and rollback of junior creation and privilege effects. Complete
+posterior state and upstream guest gas totals remain outside the qualification.
+The preview upgrade leaves host pricing and the documented compatibility
+decisions in force.

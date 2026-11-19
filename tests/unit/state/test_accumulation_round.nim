@@ -71,8 +71,9 @@ proc projections() {.raises.} =
   var total = 0
   var refused = 0
   var previewTotal = 0
+  let tiny = presetParameters(ChainPreset.Tiny)
   let full = presetParameters(ChainPreset.Full)
-  assert full.ok
+  assert tiny.ok and full.ok
   # Each record includes the original queue chapters, explicit gas policy and sorted allowance dictionary.
   for line in readFile(getEnv("RAGNAROK_ACCUMULATION_ROUND")).splitLines:
     if line.len == 0: continue # Only the final transport newline is ignored.
@@ -92,11 +93,12 @@ proc projections() {.raises.} =
           gas: PrivilegeGas(number(pair[1]))))
     var config = cfg(number(f[1]))
     if f[0].startsWith("preview:"):
-      # Current Full cases use the shipped preset. The expected prefix comes from the independent oracle.
+      # Use the shipped preset. The expected prefix comes from the independent oracle.
       inc previewTotal
-      assert number(f[1]) == full.value.get(coreCount) and number(f[2]) == full.value.get(epochPeriod)
-      config.reportGas = Gas(full.value.get(maxAccumulateGas))
-      config.blockGas = Gas(full.value.get(blockGasLimit))
+      let parameters = if number(f[1]) == tiny.value.get(coreCount): tiny.value else: full.value
+      assert number(f[1]) == parameters.get(coreCount) and number(f[2]) == parameters.get(epochPeriod)
+      config.reportGas = Gas(parameters.get(maxAccumulateGas))
+      config.blockGas = Gas(parameters.get(blockGasLimit))
     else:
       config.reportGas = Gas(number(f[7])) # Historical and authored policies are explicit.
       config.blockGas = Gas(number(f[8]))
@@ -133,7 +135,7 @@ proc projections() {.raises.} =
               j)).value) ==
             unhex(items[j]), f[0]
     inc total
-  assert total == 675 and previewTotal == 5 and refused == 134
+  assert total == 696 and previewTotal == 26 and refused == 134
 
 ## Literal exact-fit and refusal tests isolate gas-domain arithmetic, prefix priority and each work ceiling.
 proc boundaries(base: OwnedReport): InitialAccumulationRound =

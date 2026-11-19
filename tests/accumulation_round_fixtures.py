@@ -14,7 +14,7 @@ from accumulation_operand_fixtures import grouped
 from accumulation_input_fixtures import invocation
 from state_workqueues_oracle import blob
 from report_oracle import encode
-from preview_vectors import ACCUMULATION_GAS_CASES, blob as preview_blob, pins as preview_pins
+from preview_vectors import ACCUMULATION_GAS_CASES, accumulation_cases, blob as preview_blob, pins as preview_pins
 from test_codec import reference_encode as natural
 
 
@@ -54,30 +54,33 @@ def result_row(fields, selected, gas, allowances, expected):
 
 
 def preview_rows():
-    """Replay each Full gas case at the initial-round boundary with its original report bytes."""
+    """Replay selected Tiny/Full initial rounds from the paired source reports."""
     rows, sources = [], []
-    for name in ACCUMULATION_GAS_CASES:
-        path = f'stf/accumulate/full/{name}'
-        raw = preview_blob(path+'.json')
-        binary = preview_blob(path+'.bin')
-        case = json.loads(raw)
-        _, cores, available, ready, history, slot = context(path, 341, case)
-        prefix = slot.to_bytes(4, 'little') + natural(len(available))
-        prefix += b''.join(item['wire'] for item in available)
-        assert binary.startswith(prefix), path
-        assert not case['pre_state']['privileges']['always_acc'], path
-        selected, _, _ = priority(available, ready, history, slot)
-        costs = [sum(d[3] for d in item['layout']['digests']) for item in selected]
-        gas = (47_000_000, 16_450_000_000)
-        expected = initial(costs, cores, *gas, {})
-        # These cases reserve exactly the Full block budget first and consume the second report later.
-        assert expected == (gas[1], 0, 1, gas[1], True) and len(selected) == 2, path
-        post = {bytes.fromhex(x[2:]) for bucket in case['post_state']['accumulated'] for x in bucket}
-        assert post-set().union(*history) == {item['key'] for item in selected}, path
-        fields = row('preview:'+path, cores, available, ready, history, slot).split()[:7]
-        rows.append(result_row(fields, selected, gas, {}, expected))
-        sources.append(dict(path=path, json_sha256=hashlib.sha256(raw).hexdigest(),
-                            binary_sha256=hashlib.sha256(binary).hexdigest()))
+    for profile, cores, block in (('tiny', 2, 20_000_000), ('full', 341, 16_450_000_000)):
+        for path in accumulation_cases(profile):
+            raw = preview_blob(path+'.json')
+            binary = preview_blob(path+'.bin')
+            case = json.loads(raw)
+            _, _, available, ready, history, slot = context(path, cores, case)
+            prefix = slot.to_bytes(4, 'little') + natural(len(available))
+            prefix += b''.join(item['wire'] for item in available)
+            assert binary.startswith(prefix), path
+            assert not case['pre_state']['privileges']['always_acc'], path
+            selected, _, _ = priority(available, ready, history, slot)
+            costs = [sum(d[3] for d in item['layout']['digests']) for item in selected]
+            gas = (47_000_000, block)
+            expected = initial(costs, cores, *gas, {})
+            assert expected is not None, path
+            if path.rsplit('/', 1)[1] in ACCUMULATION_GAS_CASES:
+                # Full defers the second report. The client's 94M Tiny floor admits both.
+                assert len(selected) == 2, path
+                assert expected[2] == (1 if profile == 'full' else 2), path
+            post = {bytes.fromhex(x[2:]) for bucket in case['post_state']['accumulated'] for x in bucket}
+            assert post-set().union(*history) == {item['key'] for item in selected}, path
+            fields = row('preview:'+path, cores, available, ready, history, slot).split()[:7]
+            rows.append(result_row(fields, selected, gas, {}, expected))
+            sources.append(dict(path=path, json_sha256=hashlib.sha256(raw).hexdigest(),
+                                binary_sha256=hashlib.sha256(binary).hexdigest()))
     return rows, sources
 
 

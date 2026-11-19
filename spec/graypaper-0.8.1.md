@@ -94,3 +94,7 @@ require supervisor identities for GP 0.8.1 ejection and recreation. These fixtur
 omit that state, so their service effects and changed gas-used statistics remain
 preview evidence. Current supervision is covered by the independent service
 ejection tests.
+
+The [November 19 preview](vector-gp539-upgrade.md#restored-junior-services-in-the-november-19-preview)
+supersedes this fixture revision. It restores supervisor metadata and adds
+paired Tiny and Full junior-service cases.
