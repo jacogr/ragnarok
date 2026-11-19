@@ -2282,8 +2282,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64): boo
       completedWork > 0 and data.provenWork >= NativeInvocationFloor and
       runtime.nextTicket < high(uint64)
   when NativeReadCycleEnabled:
-    if primaryCanQueue() and runtime.mixedKey.generation != 0 and
-        freeNativeCredits(runtime) < NativeAuxiliaryOfferCredits:
+    # Use the spare credit before cancelling useful native work for another primary.
+    if primaryCanQueue() and runtime.mixedKey.generation != 0 and freeNativeCredits(runtime) == 0:
       let auxiliary = runtime.mixedKey
       let owner = runtime.mixedOwner
       if auxiliary.kind == NativeKind.StaticFusion and matchesRow(runtime, auxiliary) and

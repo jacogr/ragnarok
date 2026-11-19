@@ -119,6 +119,9 @@ and a successful retry with the same certificate.
 The [stream bridge](../src/pvm/internal/handler_fusion.nim) binds original source and
 resumes the checked continuation, including the first refused paid memory operation.
 
+Auxiliary admission leaves a spare physical credit. A primary uses a free credit
+before cancelling an auxiliary to make room.
+
 An auxiliary offer deferred by contention or cancelled to admit another primary
 can train once more in the same source epoch. The exact primary must still be installed,
 and the idle mailbox must have enough physically released credits for the graph and
