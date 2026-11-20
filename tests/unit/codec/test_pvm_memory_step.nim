@@ -369,7 +369,7 @@ proc byteUpdate() =
   initial.registers[2] = RegisterValue(0xaabb)
   let source = captureMachine(program, memory, initial).value
   for limit in 1'u64..3'u64:
-    # At every partial cutoff the retained stream must restore the original worker before reuse.
+    # Partial reservations must remain scalar before the first complete execution.
     assert execute(source, ExecutionStepLimit(limit), prepared.value).error ==
         StepError.StepLimitExceeded
   let updated = execute(source, ExecutionStepLimit(4), prepared.value)
@@ -381,6 +381,10 @@ proc byteUpdate() =
   var expected = writable
   expected.bytes[4095] = 0xb6
   samePages(memoryOf(updated.value.machine).value, [expected])
+  for limit in 1'u64..3'u64:
+    # The learned worker must also take the original path at every partial cutoff on reuse.
+    assert execute(source, ExecutionStepLimit(limit), prepared.value).error ==
+        StepError.StepLimitExceeded
   # The same stream must execute the load and OR before reporting the original read-only store fault.
   let protected = captureMachine(program, readOnly, initial).value
   let faulted = execute(protected, ExecutionStepLimit(4), prepared.value)

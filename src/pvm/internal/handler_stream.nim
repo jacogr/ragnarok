@@ -1296,6 +1296,31 @@ func sameByteUpdate(load, mask, store: FlatArgs): bool =
   temp != load.slots.bIndex and mask.slots.aIndex == temp and mask.slots.bIndex == temp and
     store.slots.aIndex == temp and store.slots.bIndex == load.slots.bIndex and load.x == store.x
 
+proc flatOrByteProbe(f: var FlatFrame, off: uint32): uint32 =
+  ## Specialize a paired byte load only when its original stream site executes with a full reservation.
+  ## Keep ordinary resolution unchanged and leave a temporary budget or observer patch under its owner.
+  let original: FlatHandler = flatMemoryWorker[1, true, false, true, false, true, true]
+  let at = int(off)
+  if f.barrier == flatStop and uint64(off) < uint64(f.handlers.len) and
+      f.handlers[at] == flatOrByteProbe:
+    let third = uint64(off)+2
+    if third < uint64(f.arguments.len) and third < uint64(f.sites.len) and
+        third < uint64(f.handlers.len):
+      let mask = f.handlers[at+1]
+      let store = f.handlers[at+2]
+      # These continuation workers can differ only in whether the original next node is chained.
+      if (mask == flatRegister[134] or mask == flatRegisterPair[134]) and
+          (store == flatMemoryWorker[1, false, false, true, false, true, false] or
+          store == flatMemoryWorker[1, false, false, true, false, true, true]):
+        let ordinal = uint64(f.sites[at])
+        # Every emitted node owns its original source ordinal. Gaps can include charged folded noops.
+        if uint64(f.sites[at+1]) == ordinal+1 and uint64(f.sites[at+2]) == ordinal+2 and
+            sameByteUpdate(f.arguments[at], f.arguments[at+1], f.arguments[at+2]):
+          f.handlers[at] = flatOrByteUpdate
+          return flatOrByteUpdate(f, off)
+    f.handlers[at] = original
+  original(f, off)
+
 proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Self-patched static nodes retain scalar executable offsets; load-and-jump writes before every exit.
   let a = f.arguments[int(off)]
@@ -2032,7 +2057,7 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 121: flatMemoryWorker[2, false, false, true, false, true, true]
   of 122: flatMemoryWorker[4, false, false, true, false, true, true]
   of 123: flatMemoryWorker[8, false, false, true, false, true, true]
-  of 124: flatMemoryWorker[1, true, false, true, false, true, true]
+  of 124: flatOrByteProbe
   of 125: flatMemoryWorker[1, true, true, true, false, true, true]
   of 126: flatMemoryWorker[2, true, false, true, false, true, true]
   of 127: flatMemoryWorker[2, true, true, true, false, true, true]
@@ -2507,21 +2532,6 @@ proc flatAdmitBlock(f: var FlatFrame, pc: uint32): bool =
     return false
   true
 
-proc admitFlatOrByteUpdate(f: var FlatFrame, index: int, fact, next: FlatFact,
-    load: FlatArgs): bool {.noinline.} =
-  ## Prove consecutive original mask and store operands before selecting the combined worker.
-  ## Keep extra operand decoding out of the shared block resolver.
-  if not next.fallthrough or next.ending or index+2 >= f.plan.facts.len: return false
-  var last = default(FlatFact)
-  if not tryReadAdmissionFact(f, index+2, last): return false
-  if last.opcode != 120 or fact.next != next.pc or next.next != last.pc: return false
-  var mask = default(FlatSourcePayload)
-  var store = default(FlatSourcePayload)
-  if not tryFlatSourcePayload(f.plan, next, mask) or not tryFlatSourcePayload(f.plan, last, store):
-    f.preparationFailure = FlatError.InvalidProgram
-    return false
-  sameByteUpdate(load, mask.args, store.args)
-
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   ## Reuse admitted headers and keep offset links stable. For a new suffix, check
   ## the node ceiling and then the work ceiling before the first node or map write.
@@ -2698,10 +2708,6 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             var next = default(FlatFact)
             if not tryReadAdmissionFact(f, index+1, next): return flatStop
             let second = next.opcode
-            if fact.opcode == 124 and second == 134:
-              if admitFlatOrByteUpdate(f, index, fact, next,
-                  payload.args): selected = flatOrByteUpdate
-              elif f.preparationFailure != FlatError.None: return flatStop
             let fused = flatFusedRegisterHandler(fact.opcode, second)
             if fused != nil: selected = fused
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
