@@ -899,8 +899,8 @@ jobs:
           # Install before the canonical build/timing so profiling cannot change its system libraries.
           PVM_PROFILE_TOOLS: ${{ inputs.suite == 'bench-pvm' && inputs.pvm_guest_profile && matrix.family.group == 'x86_64' && '1' || '0' }}
         run: make host-tools PVM_ASSET_TOOLS=1
-      - name: Qualify and compare current PVM backends
-        run: make bench-pvm-performance
+      - name: Attribute Sieve execution phases on one runner
+        run: make pvm-sieve-phase-diagnostic
       - name: Attribute retained guest and synthetic public invocations
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' && inputs.pvm_guest_profile && matrix.family.group == 'x86_64' }}
         run: make profile-pvm-current-guest PVM_PROFILE_REVISION="$GITHUB_SHA"

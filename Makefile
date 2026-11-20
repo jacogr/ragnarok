@@ -749,3 +749,9 @@ export PVM_COLD_REBUILT_REPORT ?=
 .PHONY: profile-pvm-cold
 profile-pvm-cold:
 	$(PYTHON) tools/pvm_cold_profile.py
+
+# Scratch same-runner attribution for the two warm Sieve regressions.
+.PHONY: pvm-sieve-phase-diagnostic
+pvm-sieve-phase-diagnostic: toolchain sources rust-tools
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_sieve_phase_diagnostic.py
