@@ -1,12 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Included by the ARM64 emitter. Retain the complete guest bank and exact path
-## across source-checked edges. X23 bounds visits and X24 appends one token to call-local
-## history after a successful reservation. Certified scalar SCCs use a larger bounded counter
-## without touching the byte log; only their sole cyclic successor can link internally.
-## All exits set their original continuation and paid
-## marker before one block-local restoration tail. Sharing this tail keeps guard-heavy entries
+## Included by the ARM64 emitter. Retain the complete guest bank across source-checked edges.
+## X23 bounds visits. In ordinary entries X24 logs a token after each successful reservation.
+## Compact entries for certified scalar and guarded SCCs count up to 4096 reservations and link
+## only their sole cyclic successor. A guard refusal returns paid at the last reserved block's
+## certified memory instruction. All exits set their original continuation and paid marker
+## before one block-local restoration tail. Sharing this tail keeps guard-heavy entries
 ## within the existing 4 KiB code ceiling without changing their source or reservation limits.
 ## Optional bounded same-kind memory groups retain one proved true-view pointer in X17 across
 ## scalar work. A failed whole-window proof resumes paid at the first original memory operation.

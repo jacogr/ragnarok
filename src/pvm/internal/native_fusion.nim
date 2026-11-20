@@ -63,7 +63,9 @@ type
     branch*: NativeOperation
     operations*: array[int(NativeReadFactLimit)-1, NativeOperation]
     guards*: uint32 ## Only these body nodes can be returned as paid refusals.
-    cycleNext*, cycleSize*: uint8 ## Certified simple scalar SCC; zero retains ordered path receipts.
+    cycleNext*, cycleSize*: uint8
+      ## Certified simple SCC. Zero selects ordered path receipts. A compact paid return names
+      ## a certified guard in the last reserved block.
     indirectEntry*: bool ## Cold proof that this header belongs to the original admitted jump table.
   NativeFusionContext* = object
     ## Call-local descriptors and ledger precede a fixed byte log and its returned count.

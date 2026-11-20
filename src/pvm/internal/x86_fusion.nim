@@ -3,10 +3,11 @@
 
 ## Included by the x86 emitter beside the existing exact guarded memory operations.
 ## Every external entry loads the same graph-wide guest bank and exact budgets. Linked edges
-## preserve those registers, the context borrow and the XMM7 visit count. The log append follows
-## the horizon/gas/quota guards. Certified scalar SCCs count up to 4096 visits without logging;
-## side edges return immediately and cannot mix counted and logged continuations.
-## All paid/unpaid returns share one commit/restore epilogue.
+## preserve those registers, the context borrow and the XMM7 visit count. Ordinary entries append
+## a token after the horizon, gas and quota checks. Compact entries for certified scalar and
+## guarded SCCs count up to 4096 reservations. Side edges return before entering another receipt
+## mode. A guard refusal returns paid at the last reserved block's certified memory instruction.
+## Every return uses the shared commit and restore epilogue.
 ## Optional bounded same-kind memory groups share one true-view/dirty proof at their first source
 ## site. XMM9 retains the host pointer across scalar scratch use; it never survives a native call.
 
