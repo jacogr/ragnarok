@@ -53,7 +53,8 @@ when declared(FlatFrame):
         if worker != original.handler:
           let paired = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(fact.opcode)
             else: flatMemoryPairHandler(fact.opcode)
-          if paired == nil or worker != paired:
+          let masked = fact.opcode == 124 and worker == flatOrByteUpdate
+          if not masked and (paired == nil or worker != paired):
             # A fused pair must name both adjacent original scalar facts. The ordered source walk
             # and the next iteration independently bind the second site's worker and operands.
             if ordinal >= source.last or node+1 >= walk.terminal or
