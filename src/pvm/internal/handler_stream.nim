@@ -1270,6 +1270,57 @@ proc flatMemoryCold[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   ## One full checked implementation preserves successful fragmented loads and exact terminal state.
   flatMemoryWorker[Width, Loading, Signed, Indirect, ImmediateStore, false, Pair](f, off)
 
+proc flatOrByteUpdate(f: var FlatFrame, off: uint32): uint32 =
+  ## A sealed load, OR and store update one writable byte and its temporary register.
+  ## The original three nodes handle partial reservations, alternate permissions and faults.
+  if f.barrier == flatStop and int(off)+2 < f.arguments.len:
+    let load = f.arguments[int(off)]
+    let address = (uint64(f.info.registers[load.slots.bIndex])+load.x) and 0xffffffff'u64
+    if address >= 65536 and address < uint64(high(uint32)) and
+        address >= f.rwBase and address < f.stackBase:
+      # No allocation, control transfer or callback can replace this frame's RW borrow between operations.
+      var data: nil ptr byte = nil
+      if tryBorrowedData(f.rw, int(address-f.rwBase), 1, data) and data != nil and
+          flatStoreMetadataValid[1](f, address):
+        let mask = f.arguments[int(off)+1]
+        let value = uint64(data[]) or mask.x
+        data[] = byte(value and 255)
+        if not flatRememberStore[1](f, address): return flatBackendFailure(f, off+2)
+        f.info.registers[load.slots.aIndex] = RegisterValue(value)
+        return off+3
+  flatMemoryWorker[1, true, false, true, false, true, true](f, off)
+
+func sameByteUpdate(load, mask, store: FlatArgs): bool =
+  ## The in-place OR must preserve the original base and update exactly the byte it loaded.
+  let temp = load.slots.aIndex
+  temp != load.slots.bIndex and mask.slots.aIndex == temp and mask.slots.bIndex == temp and
+    store.slots.aIndex == temp and store.slots.bIndex == load.slots.bIndex and load.x == store.x
+
+proc flatOrByteProbe(f: var FlatFrame, off: uint32): uint32 =
+  ## Specialize a paired byte load only when its original stream site executes with a full reservation.
+  ## Keep ordinary resolution unchanged and leave a temporary budget or observer patch under its owner.
+  let original: FlatHandler = flatMemoryWorker[1, true, false, true, false, true, true]
+  let at = int(off)
+  if f.barrier == flatStop and uint64(off) < uint64(f.handlers.len) and
+      f.handlers[at] == flatOrByteProbe:
+    let third = uint64(off)+2
+    if third < uint64(f.arguments.len) and third < uint64(f.sites.len) and
+        third < uint64(f.handlers.len):
+      let mask = f.handlers[at+1]
+      let store = f.handlers[at+2]
+      # These continuation workers can differ only in whether the original next node is chained.
+      if (mask == flatRegister[134] or mask == flatRegisterPair[134]) and
+          (store == flatMemoryWorker[1, false, false, true, false, true, false] or
+          store == flatMemoryWorker[1, false, false, true, false, true, true]):
+        let ordinal = uint64(f.sites[at])
+        # Every emitted node owns its original source ordinal. Gaps can include charged folded noops.
+        if uint64(f.sites[at+1]) == ordinal+1 and uint64(f.sites[at+2]) == ordinal+2 and
+            sameByteUpdate(f.arguments[at], f.arguments[at+1], f.arguments[at+2]):
+          f.handlers[at] = flatOrByteUpdate
+          return flatOrByteUpdate(f, off)
+    f.handlers[at] = original
+  original(f, off)
+
 proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Self-patched static nodes retain scalar executable offsets; load-and-jump writes before every exit.
   let a = f.arguments[int(off)]
@@ -2006,7 +2057,7 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 121: flatMemoryWorker[2, false, false, true, false, true, true]
   of 122: flatMemoryWorker[4, false, false, true, false, true, true]
   of 123: flatMemoryWorker[8, false, false, true, false, true, true]
-  of 124: flatMemoryWorker[1, true, false, true, false, true, true]
+  of 124: flatOrByteProbe
   of 125: flatMemoryWorker[1, true, true, true, false, true, true]
   of 126: flatMemoryWorker[2, true, false, true, false, true, true]
   of 127: flatMemoryWorker[2, true, true, true, false, true, true]
@@ -2652,7 +2703,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             fact.opcode) else: flatMemoryPairHandler(fact.opcode)
         if first != nil:
           selected = first
-          # Only these trace-selected adjacent genuine register opcodes fuse; folded noops and other families retain existing dispatch.
+          # Fuse only recognized adjacent original instructions and keep each node addressable.
           if index+1 < f.plan.facts.len:
             var next = default(FlatFact)
             if not tryReadAdmissionFact(f, index+1, next): return flatStop

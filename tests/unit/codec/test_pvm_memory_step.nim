@@ -348,6 +348,65 @@ let host = captureMachine(hostProgram, initialMemory, MachineInfo(pc: CodeAddres
   blockCharged: false, registers: loadRegisters)).value
 assert stepMemory(host, GasCycleLimit(0)).error == StepError.UnsupportedInstruction
 
+proc byteUpdate() =
+  ## Exercise the same-address checked merge and the original paid fallback through a reused owner.
+  # LD_U8 R2,[R1]; OR_IMM R2,R2,-128; ST_U8 [R1],R2; TRAP.
+  let decoded = decodeJamProgram([0'u8, 0, 8, 124, 0x12, 134, 0x22, 0x80, 120, 0x12, 0, 0xa5],
+    CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0))
+  assert decoded.error == ProgramError.None
+  let program = decoded.value
+  let cycles = GasCycleLimit(1000)
+  let prepared = newPreparedProgram(program, defaultPreparedLimits(cycles), PvmBackend.Interpreted)
+  assert prepared.error == PreparationError.None
+  let charged = blockGas(program, CodeAddress(0), cycles)
+  assert charged.error == GasError.None and uint64(charged.value) > 0
+  let writable = page(16, PageAccess.ReadWrite, 0x36)
+  let readable = page(16, PageAccess.ReadOnly, 0x36)
+  let memory = captureMemory([writable], PageLimit(1)).value
+  let readOnly = captureMemory([readable], PageLimit(1)).value
+  var initial = MachineInfo(gas: MachineGas(uint64(charged.value)), registers: default(RegisterFile))
+  initial.registers[1] = RegisterValue(65536+4095)
+  initial.registers[2] = RegisterValue(0xaabb)
+  let source = captureMachine(program, memory, initial).value
+  for limit in 1'u64..3'u64:
+    # Partial reservations must remain scalar before the first complete execution.
+    assert execute(source, ExecutionStepLimit(limit), prepared.value).error ==
+        StepError.StepLimitExceeded
+  let updated = execute(source, ExecutionStepLimit(4), prepared.value)
+  assert updated.error == StepError.None and updated.value.exit == StepExit.Panic
+  var complete = initial
+  complete.gas = MachineGas(0)
+  complete.registers[2] = RegisterValue(0xffffffffffffffb6'u64)
+  same(machineInfo(updated.value.machine).value, complete)
+  var expected = writable
+  expected.bytes[4095] = 0xb6
+  samePages(memoryOf(updated.value.machine).value, [expected])
+  for limit in 1'u64..3'u64:
+    # The learned worker must also take the original path at every partial cutoff on reuse.
+    assert execute(source, ExecutionStepLimit(limit), prepared.value).error ==
+        StepError.StepLimitExceeded
+  # The same stream must execute the load and OR before reporting the original read-only store fault.
+  let protected = captureMachine(program, readOnly, initial).value
+  let faulted = execute(protected, ExecutionStepLimit(4), prepared.value)
+  assert faulted.error == StepError.None and faulted.value.exit == StepExit.Fault
+  assert uint64(faulted.value.faultPage) == 65536
+  complete.pc = CodeAddress(5)
+  complete.blockCharged = true
+  same(machineInfo(faulted.value.machine).value, complete)
+  samePages(memoryOf(faulted.value.machine).value, [readable])
+  # Underfunded execution must stop before the first memory effect.
+  var underfunded = initial
+  underfunded.gas = MachineGas(uint64(initial.gas)-1)
+  let refused = execute(captureMachine(program, memory, underfunded).value,
+    ExecutionStepLimit(4), prepared.value)
+  assert refused.error == StepError.None and refused.value.exit == StepExit.OutOfGas
+  same(machineInfo(refused.value.machine).value, underfunded)
+  samePages(memoryOf(refused.value.machine).value, [writable])
+  same(machineInfo(source).value, initial)
+  samePages(memoryOf(source).value, [writable])
+
+byteUpdate()
+
 retryCycle()
 overflowRetryCycle()
 let before = getOccupiedMem()

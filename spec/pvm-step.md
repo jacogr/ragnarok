@@ -179,6 +179,11 @@ value access on a local simulation-limit refusal. ARC release cycles include sou
 success graphs. Inputs are original native witnesses; no upstream implementation,
 licence or binary fixture is copied into the project.
 
+The prepared memory suite also checks the single-address load-byte, immediate OR
+and store-byte sequence. It compares the full-width register and truncated byte
+with exact gas, checks all partial attempt limits, and reuses the same owner to
+verify the original paid store fault on a read-only page.
+
 ## Remaining execution work
 
 Host suspension and bounded recursive `Psi` are implemented in the
