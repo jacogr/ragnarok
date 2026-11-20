@@ -82,17 +82,20 @@ def decode_pcs(file, result, text_ranges):
     if base is None or not executable_maps:
         raise RuntimeError(f'Missing mapped native image in {file.name}')
     starts = [entry[0] for entry in text_ranges]
-    clock_ids = set(clocks)
-    previous_end = -1
+    warm_samples = result['samples'][FIRST_WARM:]
+    bracket_count = 2 * len(warm_samples)
+    offsets = [
+        first for first in range(len(clocks)-bracket_count+1)
+        if all(clocks[first+2*i+1]-clocks[first+2*i] == row['cpu_ns']
+               for i, row in enumerate(warm_samples))
+    ]
+    if len(offsets) != 1:
+        raise RuntimeError(f'Cannot uniquely bind the warm CPU clock sequence in {file.name}')
+    first = offsets[0]
     total_cpu = 0
     counts = Counter()
-    for warm in result['samples'][FIRST_WARM:]:
-        duration = warm['cpu_ns']
-        options = {end for end in clocks if end-duration >= previous_end and end-duration in clock_ids}
-        if len(options) != 1:
-            raise RuntimeError(f'Ambiguous public CPU interval in {file.name}, sample {warm["sample"]}')
-        end = options.pop()
-        begin = end-duration
+    for i, warm in enumerate(warm_samples):
+        begin, end = clocks[first+2*i:first+2*i+2]
         for at, pc in pcs:
             if not begin <= at < end:
                 continue
@@ -104,8 +107,7 @@ def decode_pcs(file, result, text_ranges):
                 counts['native bitmap mapping'] += 1
             else:
                 counts['outside executable symbols'] += 1
-        previous_end = end
-        total_cpu += duration
+        total_cpu += warm['cpu_ns']
     total = sum(counts.values())
     if total < 100 or not counts['native bitmap mapping']:
         raise RuntimeError(f'Incomplete warm CPU samples in {file.name}')
@@ -135,7 +137,9 @@ def publish(raw, profiles, hashes):
     for name, _ in (combined['baseline']+combined['candidate']).most_common(20):
         rows.append(f'| {name} | {combined["baseline"][name]} | {combined["candidate"][name]} |')
     (BUILD/'summary.md').write_text('\n'.join(rows)+'\n')
-    data = dict(revisions=REVISIONS, binary_sha256=hashes, prior_binary_sha256=PRIOR,
+    cpu = Path('/proc/cpuinfo')
+    model = next((row for row in cpu.read_text().splitlines() if row.startswith('model name')), '')
+    data = dict(revisions=REVISIONS, binary_sha256=hashes, prior_binary_sha256=PRIOR, cpu_model=model,
         raw=[dict(size=k[0], pair=k[1], role=k[2], **v) for k,v in raw.items()],
         profiles=[dict(role=k[0], pair=k[1], **v) for k,v in profiles.items()])
     (BUILD/'sieve-canonical-samples.json').write_text(json.dumps(data, indent=2)+'\n')
@@ -161,6 +165,9 @@ def main():
             if raw[size, pair, 'baseline']['work'] != raw[size, pair, 'candidate']['work']:
                 raise RuntimeError(f'Unmatched native attempts at {size}, pair {pair}')
             print(f'Completed canonical {size} pair {pair+1}/{RAW_PAIRS}', flush=True)
+    complete_raw = [dict(size=k[0], pair=k[1], role=k[2], **v) for k,v in raw.items()]
+    (BUILD/'sieve-canonical-raw.json').write_text(json.dumps(
+        dict(revisions=REVISIONS, binary_sha256=hashes, raw=complete_raw), indent=2)+'\n')
     library = BUILD/'sieve-pc-sample.so'
     runner.command(['clang', '-O2', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
                     ROOT/'tools/pvm_sieve_pc_sample.c', '-o', library, '-ldl'], 'sampler-build')
