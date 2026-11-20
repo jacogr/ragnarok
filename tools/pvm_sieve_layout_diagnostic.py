@@ -120,7 +120,7 @@ def relink(runner, record, label, extra):
     out = BUILD/(label+'-guest')
     arguments[arguments.index('-o')+1] = str(out)
     runner.verify()
-    result = runner.checks.command(arguments+['-Wl,--emit-relocs', *extra], label+'-link',
+    result = runner.checks.command(arguments+extra, label+'-link',
                                    cwd=Path(record['directory']), timeout=180)
     if result['exit_code']:
         raise RuntimeError('Diagnostic relink failed: '+result['log'])
@@ -133,7 +133,7 @@ def verify_code(original, new, expected, relocations, shifted_relocations, label
     """Permit byte differences only in matching relocation operands from the original link."""
     address, code = original
     moved, revised = new
-    if moved-address != expected or len(code) != len(revised):
+    if len(code) != len(revised) or (expected is not None and moved-address != expected):
         raise RuntimeError(f'Unexpected text shift or size for {label}: {moved-address:+d}')
     if relocations != shifted_relocations:
         offset = min(key for key in relocations.keys() | shifted_relocations.keys()
@@ -168,21 +168,29 @@ def prepare_images(runner):
         if (Path(record['directory'])/linked).resolve() != image:
             raise RuntimeError('Canonical linked output does not match its receipt')
         original = text_section(runner, image, role)
-        zero_label = f'{role}-layout-zero'
-        zero = relink(runner, record, zero_label, [])
-        if original != text_section(runner, zero, zero_label):
-            raise RuntimeError('Relocation-retaining control changed canonical instructions: '+role)
-        relocations = text_operands(runner, zero, zero_label, original[0])
+        zero_label = f'{role}-layout-relocs-0'
+        emit = '-Wl,--emit-relocs'
+        # Relocation witnesses are untimed. Retaining relocations can move read-only data in LLD.
+        zero = relink(runner, record, zero_label, [emit])
+        zero_text = text_section(runner, zero, zero_label)
+        relocations = text_operands(runner, zero, zero_label, zero_text[0])
+        verify_code(original, zero_text, None, relocations, relocations, zero_label)
         for version, shift in PLACEMENTS:
             if version != role:
                 continue
             label = f'{role}-layout-{shift}'
             path, addr, changes = image, original[0], 0
             if shift:
-                path = relink(runner, record, label, [str(pads[shift]), '-Wl,-T,'+str(script)])
+                placement = [str(pads[shift]), '-Wl,-T,'+str(script)]
+                path = relink(runner, record, label, placement)
                 moved = text_section(runner, path, label)
                 addr = moved[0]
-                shifts = text_operands(runner, path, label, addr)
+                witness_label = f'{role}-layout-relocs-{shift}'
+                witness = relink(runner, record, witness_label, [emit, *placement])
+                witness_text = text_section(runner, witness, witness_label)
+                shifts = text_operands(runner, witness, witness_label, witness_text[0])
+                verify_code(zero_text, witness_text, None, relocations, shifts, witness_label)
+                verify_code(moved, witness_text, None, shifts, shifts, witness_label)
                 changes = verify_code(original, moved, shift, relocations, shifts, label)
             images[role, shift] = path
             receipts[role, shift] = dict(sha256=digest(path), text_address=addr, shift=shift,
