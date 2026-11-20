@@ -258,7 +258,7 @@ when declared(X86Block):
     if useIndirect: put(code, [0x66'u8, 0x45, 0x0f, 0xef, 0xc0]) # PXOR XMM8,XMM8 initializes private metadata.
     let inner = code.bytes.len
     if compact:
-      # Count-only receipts allow bounded repeated scalar work without widening the ordinary byte log.
+      # Count-only receipts allow bounded repeated work without widening the ordinary byte log.
       put(code, [0x66'u8, 0x0f, 0x7e, 0xfe, 0x81, 0xfe]) # MOVD ESI,XMM7; CMP ESI,imm32.
       cycleWord(code, uint32(NativeFusionCycleVisitLimit))
     else:

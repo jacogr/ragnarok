@@ -53,8 +53,9 @@ contains logical edges and copied operands; it needs no checked catalogue, worke
 The [overlay adapter](../../src/pvm/internal/handler_fusion.nim) independently proves the current
 layout, price, operands and worker ownership. A refused binding stays checked; asynchronous
 lowering receives only the complete copied, physically linked request. The
-[native graph contract](../../src/pvm/internal/native_fusion.nim) owns bounded scalar SCC eligibility
-and count receipts. Both lowerers preserve ordinary internal continuations and add bounded compact
+[native graph contract](../../src/pvm/internal/native_fusion.nim) owns bounded SCC eligibility
+and count receipts. Scalar components keep their selection and image budget priority. A guarded
+component can return at the final reserved block’s original memory instruction. Both lowerers preserve ordinary internal continuations and add bounded compact
 external entries. A compact side exit returns before entering another receipt mode.
 
 The [Services owner](../../src/app/services.nim) inventories production runtime consumers and

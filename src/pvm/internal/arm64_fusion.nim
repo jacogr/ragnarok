@@ -313,7 +313,7 @@ when declared(ArmBlock):
     cycleAddImmediate(words, 22, 22, item.span, true)
     cycleAddImmediate(words, 23, 23, 1, true)
     if not compact:
-      # A certified scalar cycle returns a count; every other graph retains its ordered byte log.
+      # A certified cycle returns a count; every other graph retains its ordered byte log.
       armCompactImmediate(words, 1, uint64(token))
       words.add(0x38001701'u32) # STRB W1,[X24],#1 follows the visit guard and debit.
     var window = default(NativeMemoryWindow)

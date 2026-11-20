@@ -676,19 +676,21 @@ when NativeReadCycleEnabled:
     ## allocation so external entries and linked continuations agree on every used guest lane.
     ## Short static graphs retain leaves for internal continuations without installing standalone
     ## checked-dispatch entries. Indirect graphs retain their existing entry admission policy.
-    ## Counted scalar cycles require an independently reproduced SCC certificate and complete staging.
+    ## Counted cycles require an independently reproduced SCC certificate and complete staging.
     ## Their optional external duplicates link only cyclic edges; ordinary internal entries retain
     ## logging, links and dynamic-table coverage. A refused duplicate leaves the ordinary image usable.
     result = default(NativeImage)
     if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
     var annotated = false
     for item in blocks: annotated = annotated or item.cycleNext != 0 or item.cycleSize != 0
+    var guardedComponents = default(array[NativeFusionBlockLimit, bool])
     if annotated:
       # Caller-supplied metadata cannot bypass the independent complete SCC/source proof.
       let cycles = nativeFusionCycles(blocks)
       for index in 0..<blocks.len:
         if blocks[index].cycleNext != cycles[index].next or
             blocks[index].cycleSize != cycles[index].size: return
+        guardedComponents[index] = cycles[index].guarded
     var hasIndirect = false
     var hasEntry = false
     for item in blocks:
@@ -759,32 +761,35 @@ when NativeReadCycleEnabled:
     # general-JIT DOOM tick slower. Only an outside native call may select the compact prologue.
     # Stage one whole component atomically within the remaining graph/image budget.
     var examined = default(array[NativeFusionBlockLimit, bool])
-    for first in 0..<blocks.len:
-      if examined[first] or blocks[first].cycleNext == 0: continue
-      var token = first
-      var complete = true
-      let start = used
-      for distance in 0..<int(blocks[first].cycleSize):
-        examined[token] = true
-        let item {.cursor.} = blocks[token]
-        when defined(pvmX86Jit): compactCode[token] = encodeX86Fusion(item, token+1, access, useIndirect)
-        else: compactCode[token] = encodeArmFusion(item, token+1, useIndirect)
-        let extent = compactData(token).len*unit
-        let offset = (used+alignment-1) and not (alignment-1)
-        if offsets[token] == 0 or extent == 0 or extent > NativeImageByteLimit or
-            offset > NativeFusionImageLimit-reserve-extent:
-          complete = false
-        elif complete:
-          compactOffsets[token] = uint32(offset+1)
-          used = offset+extent
-        token = int(item.cycleNext)-1
-      if not complete:
-        # A refused duplicate never removes ordinary native coverage or consumes arena space.
-        used = start
-        token = first
+    for guarded in [false, true]:
+      # Retain the original scalar allocation order before spending remaining bytes on guarded cycles.
+      for first in 0..<blocks.len:
+        if guardedComponents[first] != guarded or examined[first] or blocks[first].cycleNext == 0:
+          continue
+        var token = first
+        var complete = true
+        let start = used
         for distance in 0..<int(blocks[first].cycleSize):
-          compactOffsets[token] = 0
-          token = int(blocks[token].cycleNext)-1
+          examined[token] = true
+          let item {.cursor.} = blocks[token]
+          when defined(pvmX86Jit): compactCode[token] = encodeX86Fusion(item, token+1, access, useIndirect)
+          else: compactCode[token] = encodeArmFusion(item, token+1, useIndirect)
+          let extent = compactData(token).len*unit
+          let offset = (used+alignment-1) and not (alignment-1)
+          if offsets[token] == 0 or extent == 0 or extent > NativeImageByteLimit or
+              offset > NativeFusionImageLimit-reserve-extent:
+            complete = false
+          elif complete:
+            compactOffsets[token] = uint32(offset+1)
+            used = offset+extent
+          token = int(item.cycleNext)-1
+        if not complete:
+          # A refused duplicate never removes ordinary native coverage or consumes arena space.
+          used = start
+          token = first
+          for distance in 0..<int(blocks[first].cycleSize):
+            compactOffsets[token] = 0
+            token = int(blocks[token].cycleNext)-1
     for index in 0..<blocks.len:
       if compactOffsets[index] == 0: continue
       let target = int(blocks[index].cycleNext)-1

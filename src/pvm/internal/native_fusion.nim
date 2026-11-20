@@ -12,13 +12,12 @@
 ## The checked bridge verifies this receipt before exposing a successor or resuming a paid
 ## memory operation. A segment may reuse validation of the same immutable source path.
 ## Dynamic edges require the frame's checked original-table tag and an immutable per-image
-## target entry. Small deterministic scalar SCCs instead retain only their visit count, bounded
-## by 4096 reservations per entry. Every side edge leaves the cycle immediately. The copied source
-## order and count prove weighted debits without replaying thousands of identical token sequences.
-## Eight members bound cold eligibility and per-return proof work; larger/branching/memory SCCs keep
-## the ordinary path. This generalizes repeated scalar work without a workload-specific opcode shape.
-## No executable pointer escapes the arena. A missed guard leaves the original
-## terminal paid and untouched so the checked stream performs its write, panic or halt.
+## target entry. Small deterministic SCCs retain only a visit count, bounded by 4096
+## reservations per entry. The copied source order and count prove weighted debits.
+## Up to eight members can use a compact entry. Every side edge returns to checked dispatch.
+## The last reserved block may also return at one of its certified memory guards; the
+## checked stream owns the unattempted suffix and the original fault or continuation.
+## Scalar components keep first use of the compact-entry budget. No executable pointer escapes the arena.
 ## The target table counts toward the same image bound; cache storage remains frame-owned.
 
 import ./[dynamic_jump_cache, jit_rules, native_ir, native_mixed_loop, native_read_body]
@@ -29,7 +28,7 @@ const
   NativeFusionSlotLimit* = 512 ## Keep the largest byte-token graph below half-full in the checked map.
   NativeFusionVisitLimit* = 64 ## Fixed entry horizon, independent of the graph's block cap.
   NativeFusionCycleLimit* = 8 ## Bound source-cycle analysis and compact receipt validation.
-  NativeFusionCycleVisitLimit* = 4096 ## Bound scalar work per entry, including zero-priced cycles.
+  NativeFusionCycleVisitLimit* = 4096 ## Bound compact work per entry, including zero-priced cycles.
   NativeFusionReceiptBits = 11 ## Fixed one-probe cache geometry; a bucket never grants path authority.
   NativeFusionPathWords* = (NativeFusionVisitLimit+7) div 8 ## Fixed ordered byte-log storage.
   NativeFusionImageLimit* = 256*1024 ## Published graph bytes, including every entry and alignment padding.
@@ -147,25 +146,21 @@ type
   NativeFusionCycle* = object
     ## One-based next token and member count certify one deterministic cyclic source order.
     next*, size*: uint8
+    guarded*: bool ## Each member carries its component's memory-guard classification.
   NativeFusionCycles* = array[NativeFusionBlockLimit, NativeFusionCycle]
     ## Fixed cold analysis output; no program, frame, executable or invocation borrows.
 
-func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycles =
-  ## Find scalar strongly connected components, then keep only simple cycles of at most eight
-  ## members. Every member has exactly one distinct in-cycle successor. All other edges must
-  ## return to checked dispatch. This accepts source geometry, independent of opcode patterns.
+func collectFusionCycles(blocks: openArray[NativeFusionBlock],
+    complete: array[NativeFusionBlockLimit, bool], cycles: var NativeFusionCycles,
+    allowGuards: bool) =
+  ## Use at most eight members with exactly one distinct in-component successor per member.
   ## Fixed bit rows bound transitive closure to 255 squared times four word unions.
-  result = default(NativeFusionCycles)
-  if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
   var eligible = default(array[NativeFusionBlockLimit, bool])
   var reach = default(array[NativeFusionBlockLimit, array[4, uint64]])
   for index in 0..<blocks.len:
-    # A scalar cycle cannot refuse a body operation or complete an indirect edge.
-    let item {.cursor.} = blocks[index]
-    eligible[index] = item.complete and item.guards == 0 and not item.indirect and
-      item.targets[0] != NativeEntryFailure
-    for earlier in 0..<index:
-      if blocks[earlier].header == item.header: return default(NativeFusionCycles)
+    # Earlier scalar components remain independent even if a memory edge connects back to them.
+    eligible[index] = complete[index] and cycles[index].size == 0 and
+      (allowGuards or blocks[index].guards == 0)
   for index in 0..<blocks.len:
     if not eligible[index]: continue
     for target in blocks[index].targets:
@@ -182,6 +177,7 @@ func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycl
     if seen[first] or (reach[first][first div 64] and (1'u64 shl (first mod 64))) == 0: continue
     var members = default(array[NativeFusionBlockLimit, bool])
     var count = 0
+    var guarded = false
     for other in 0..<blocks.len:
       # Mutual reachability defines the entire SCC; a smaller cycle inside a branching SCC is refused.
       if (reach[first][other div 64] and (1'u64 shl (other mod 64))) != 0 and
@@ -189,7 +185,8 @@ func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycl
         members[other] = true
         seen[other] = true
         inc count
-    if count > NativeFusionCycleLimit: continue
+        guarded = guarded or blocks[other].guards != 0
+    if count > NativeFusionCycleLimit or (allowGuards and not guarded): continue
     var next = default(array[NativeFusionBlockLimit, uint8])
     var valid = true
     for index in 0..<blocks.len:
@@ -202,7 +199,24 @@ func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycl
       if next[index] == 0: valid = false
     if not valid: continue
     for index in 0..<blocks.len:
-      if members[index]: result[index] = NativeFusionCycle(next: next[index], size: uint8(count))
+      if members[index]:
+        cycles[index] = NativeFusionCycle(next: next[index], size: uint8(count), guarded: guarded)
+
+func nativeFusionCycles*(blocks: openArray[NativeFusionBlock]): NativeFusionCycles =
+  ## Certify the original scalar components first, then consider remaining guarded cycles.
+  ## Side edges leave compact execution, including any edge into another compact component.
+  result = default(NativeFusionCycles)
+  if blocks.len == 0 or blocks.len > NativeFusionBlockLimit: return
+  var complete = default(array[NativeFusionBlockLimit, bool])
+  var hasGuard = false
+  for index in 0..<blocks.len:
+    let item {.cursor.} = blocks[index]
+    complete[index] = item.complete and not item.indirect and item.targets[0] != NativeEntryFailure
+    hasGuard = hasGuard or (complete[index] and item.guards != 0)
+    for earlier in 0..<index:
+      if blocks[earlier].header == item.header: return
+  collectFusionCycles(blocks, complete, result, allowGuards = false)
+  if hasGuard: collectFusionCycles(blocks, complete, result, allowGuards = true)
 
 proc markNativeFusionCycles*(blocks: var seq[NativeFusionBlock]) =
   ## Replace candidate annotations from complete copied source geometry. Refused SCCs stay ordinary.
@@ -212,14 +226,21 @@ proc markNativeFusionCycles*(blocks: var seq[NativeFusionBlock]) =
     blocks[index].cycleNext = cycles[index].next
     blocks[index].cycleSize = cycles[index].size
 
+func validFusionPaidExit(item: NativeFusionBlock, next: uint32): bool {.inline.} =
+  ## A paid return names the original guard or an explicitly delegated terminal.
+  if next <= item.header or next > item.terminal: return false
+  if next == item.terminal: return item.targets[0] == NativeEntryFailure
+  let position = next-item.header-1
+  position < 32 and (item.guards and (1'u32 shl int(position))) != 0
+
 func nativeFusionCycleExit*(blocks: openArray[NativeFusionBlock], entryToken, next: uint32,
     gas, quota: uint64, state: NativeFusionContext): NativeFusionExit =
-  ## Validate compact counts for a previously certified immutable scalar cycle. Native side edges
-  ## return immediately, so every earlier visit follows the sole in-cycle successor. No path bytes
-  ## carry authority in this mode. The bridge still validates the final live predicate before commit.
-  ## Division before multiplication proves exact weighted gas/attempt debits even at uint64 limits.
+  ## Certify every reservation along the unique in-cycle order from the original entry.
+  ## A paid guard belongs to the last reserved block. Earlier visits completed their branches.
+  ## On an unpaid return the bridge still validates the final live predicate before commit.
+  ## Division before multiplication proves exact weighted gas and attempt debits.
   result = default(NativeFusionExit)
-  if entryToken == 0 or uint64(entryToken) > uint64(blocks.len) or state.paid != 0 or
+  if entryToken == 0 or uint64(entryToken) > uint64(blocks.len) or state.paid > 1 or
       state.visits > uint64(NativeFusionCycleVisitLimit) or state.gas > gas or state.remaining > quota:
     return
   let size = uint32(blocks[int(entryToken-1)].cycleSize)
@@ -237,7 +258,7 @@ func nativeFusionCycleExit*(blocks: openArray[NativeFusionBlock], entryToken, ne
     if token == 0 or uint64(token) > uint64(blocks.len) or (distance != 0 and token ==
         entryToken): return
     let item {.cursor.} = blocks[int(token-1)]
-    if uint32(item.cycleSize) != size or item.cycleNext == 0 or item.guards != 0 or item.indirect or
+    if uint32(item.cycleSize) != size or item.cycleNext == 0 or item.indirect or
         item.span == 0 or item.span > NativeReadFactLimit: return
     let following = uint32(item.cycleNext)
     if uint64(following) > uint64(blocks.len) or blocks[int(following-1)].header notin
@@ -253,10 +274,14 @@ func nativeFusionCycleExit*(blocks: openArray[NativeFusionBlock], entryToken, ne
   if token != entryToken or spent != 0 or attempts != 0: return
   let following {.cursor.} = blocks[int(nextToken-1)]
   if state.visits == 0:
-    result.valid = next == following.header and (state.gas < following.price or
+    result.valid = state.paid == 0 and next == following.header and (state.gas < following.price or
       state.remaining < uint64(following.span))
     return
   let last {.cursor.} = blocks[int(lastToken-1)]
+  if state.paid != 0:
+    if next == last.terminal or not validFusionPaidExit(last, next): return
+    return NativeFusionExit(valid: true, branches: state.visits > 1, lastToken: lastToken,
+      attempted: uint32(quota-state.remaining), paidHeader: last.header+1)
   if next notin last.targets: return
   if next == following.header and state.visits != uint64(NativeFusionCycleVisitLimit) and
       state.gas >= following.price and state.remaining >= uint64(following.span): return
@@ -309,15 +334,7 @@ func nativeFusionExit*(blocks: openArray[NativeFusionBlock], entry, next: uint32
     leftGas -= item.price
     leftQuota -= uint64(item.span)
     if last and state.paid != 0:
-      # An interior refusal names a certified memory guard. A paid terminal is
-      # legal only when native lowering deliberately left the terminal checked.
-      if next <= item.header or next > item.terminal: return
-      if next == item.terminal:
-        if item.targets[0] != NativeEntryFailure: return
-      else:
-        let position = next-item.header-1
-        if position >= 32 or (item.guards and (1'u32 shl int(position))) == 0:
-          return
+      if not validFusionPaidExit(item, next): return
       result.paidHeader = item.header+1
     else:
       if item.indirect:

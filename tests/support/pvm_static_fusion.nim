@@ -991,13 +991,11 @@ when NativeReadCycleEnabled:
     var wide = scalarFusionCycle(NativeFusionCycleLimit+1)
     for item in wide: assert item.cycleNext == 0 and item.cycleSize == 0
 
-    # A memory guard breaks scalar eligibility; false annotations cannot authorize a published image.
+    # An incorrect guard position cannot authorize compact or ordinary publication.
     var guarded = scalarFusionCycle(3)
     guarded[1].operations[0] = fusionLiteralOperation([128'u8, 0x10, 0])
-    guarded[1].guards = 1
+    guarded[1].guards = 2
     assert not lowerNativeFusion(guarded).ready
-    markNativeFusionCycles(guarded)
-    for item in guarded: assert item.cycleNext == 0
     var forged = scalarFusionCycle(3)
     forged[0].cycleNext = forged[0].cycleNext+1
     assert not lowerNativeFusion(forged).ready
@@ -1099,6 +1097,70 @@ when NativeReadCycleEnabled:
     assert nativeFusionCycleExit(expensive, 1, next, high(uint64), high(uint64), context).valid
     context.visits = uint64(NativeFusionCycleVisitLimit)+1
     assert not nativeFusionCycleExit(expensive, 1, next, high(uint64), high(uint64), context).valid
+
+  proc checkGuardedFusionCycles() =
+    ## Run both compact entry rotations and return paid from the real store guard.
+    var blocks = @[
+      NativeFusionBlock(header: 10, terminal: 14, span: 4, price: 5, guards: 2,
+        targets: [50'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40)),
+      NativeFusionBlock(header: 50, terminal: 52, first: 4, span: 2, price: 3,
+        targets: [10'u32, NativeEntryFailure], branch: NativeOperation(opcode: 40))]
+    blocks[0].operations[0] = fusionLiteralOperation([149'u8, 0x22, 1])
+    blocks[0].operations[1] = fusionLiteralOperation([120'u8, 0x41, 0])
+    blocks[0].operations[2] = fusionLiteralOperation([149'u8, 0x44, 1])
+    blocks[1].operations[0] = fusionLiteralOperation([149'u8, 0x11, 1])
+    markNativeFusionCycles(blocks)
+    assert blocks[0].cycleSize == 2 and blocks[1].cycleSize == 2, "guarded cycle geometry"
+    let image = lowerNativeFusion(blocks)
+    assert image.ready and nativeFusionCycleEntry(image, 0) and nativeFusionCycleEntry(image, 1),
+      "guarded compact publication"
+    for entry in 0..1:
+      for length in [0, 3]:
+        # An empty borrow refuses the very first store. Three bytes commit exactly three full rounds.
+        var bytes = [0x4d'u8, 0x4d, 0x4d, 0x4d, 0x4d]
+        # The checked owner grants write authority by marking the page before native entry.
+        let dirtyBefore = if length == 0: 0'u64 else: 1'u64 shl 16
+        var dirty = dirtyBefore
+        var initial = default(RegisterFile)
+        initial[1] = RegisterValue(0x7f)
+        initial[4] = RegisterValue(65536)
+        var registers = initial
+        var context = NativeFusionContext(gas: 100, remaining: 100)
+        for index in 0..<context.path.len: context.path[index] = high(uint64)
+        context.memory.dirty = addr dirty
+        context.memory.dirtyWords = 1
+        if length != 0:
+          context.memory.writable[0] = NativeCycleWritable(first: 65536, length: uint64(length),
+            data: addr bytes[0])
+        let next = enterNativeFusion(image, entry, registers, context)
+        let visits = uint64(2*length+entry+1)
+        let spent = uint64(8*length+3*entry+5)
+        let attempts = uint64(6*length+2*entry+4)
+        assert next == 12 and context.paid == 1 and context.visits == visits,
+          "guarded cycle cursor " & $next & " paid " & $context.paid & " visits " &
+              $context.visits &
+          " entry " & $entry & " writable bytes " & $length
+        assert context.gas == 100-spent and context.remaining == 100-attempts, "guarded cycle debit"
+        for word in context.path: assert word == high(uint64), "guarded cycle wrote a path token"
+        var expected = initial
+        expected[1] = RegisterValue(0x7f+length+entry)
+        expected[2] = RegisterValue(length+1) # The failed block's prefix still commits.
+        expected[4] = RegisterValue(65536+length)
+        assert registers == expected, "guarded cycle register prefix"
+        for index in 0..<bytes.len:
+          # The native store must stay inside the admitted extent and leave both canaries intact.
+          let value = if index < length: byte(0x7f+entry+index) else: 0x4d'u8
+          assert bytes[index] == value, "guarded cycle writable extent"
+        assert dirty == dirtyBefore, "guarded cycle changed dirty page authority"
+        let token = uint32(entry+1)
+        let receipt = nativeFusionCycleExit(blocks, token, next, 100, 100, context)
+        assert receipt.valid and receipt.lastToken == 1 and receipt.paidHeader == 11,
+          "guarded compact receipt"
+        assert uint64(receipt.attempted) == attempts and receipt.branches == (visits > 1)
+        # A peer's header, an unguarded prefix, or different accounting carries no paid continuation.
+        assert not nativeFusionCycleExit(blocks, token, 50, 100, 100, context).valid
+        assert not nativeFusionCycleExit(blocks, token, 11, 100, 100, context).valid
+        assert not nativeFusionCycleExit(blocks, token, next, 100, 101, context).valid
 
 proc checkWindowFusionFault()
   ## The grouped ordinary-call fault/repair witness is defined after the public fusion checks.
@@ -1215,6 +1277,7 @@ proc runStaticFusion*() =
   checkLongFusionReceipts()
   when NativeReadCycleEnabled:
     checkScalarFusionCycles()
+    checkGuardedFusionCycles()
     block:
       # Qualify ordinary scalar fusion on a fresh runtime with no competing resident owners.
       let runtime = newNativeRuntime()
