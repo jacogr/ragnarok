@@ -754,4 +754,4 @@ profile-pvm-cold:
 .PHONY: pvm-sieve-phase-diagnostic
 pvm-sieve-phase-diagnostic: toolchain sources rust-tools
 	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	$(PYTHON) tools/pvm_sieve_canonical_sampling.py
+	$(PYTHON) tools/pvm_sieve_layout_diagnostic.py
