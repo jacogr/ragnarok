@@ -2,10 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Explicit pinned-reference calibration stays outside the regular CI job graph.
-name: PolkaVM native and interpreted calibration
+name: Pinky native comparison and handoff profile
 
 "on":
   workflow_dispatch:
+    inputs:
+      architecture:
+        description: Linux runner architecture
+        type: choice
+        options: [x86_64, arm64]
+        default: x86_64
 
 permissions:
   contents: read
@@ -25,9 +31,9 @@ env:
 
 jobs:
   polkavm-ratios:
-    name: Perf / PolkaVM native and interpreted (Linux x86-64)
-    runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    name: Perf / Pinky (${{ inputs.architecture }})
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-26.04-arm' || 'ubuntu-26.04' }}
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -37,29 +43,31 @@ jobs:
         uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
-      - name: Install DOOM asset decompressor
-        run: make host-tools PVM_ASSET_TOOLS=1
+      - name: Install handoff profile tools
+        run: make host-tools PVM_PROFILE_TOOLS=1
       - name: Enable the pinned Linux compiler sandbox
+        if: inputs.architecture == 'x86_64'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo sysctl -w kernel.perf_event_paranoid=-1
           sudo sysctl -w vm.unprivileged_userfaultfd=1
-      - name: Compare pinned reference backends
-        run: make bench-pvm-polkavm
-      - name: Show complete calibration
+      - name: Compare checked Pinky and profile native handoffs
+        run: make bench-pvm-pinky-native-gap
+      - name: Show complete Pinky timings
         if: always()
         run: |
-          if test -f build/tests/pvm-polkavm-ratios/summary.md; then
-            cat build/tests/pvm-polkavm-ratios/summary.md >> "$GITHUB_STEP_SUMMARY"
+          if test -f build/tests/pvm-performance/summary.md; then
+            cat build/tests/pvm-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Retain source, worker-clock, complete-state and timing evidence
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: pvm-polkavm-ratios-x86-64
+          name: pinky-native-gap-${{ inputs.architecture }}
           path: |
-            build/tests/pvm-polkavm-ratios/*.json
-            build/tests/pvm-polkavm-ratios/*.log
-            build/tests/pvm-polkavm-ratios/*.md
-            build/tests/pvm-polkavm-ratios/*.csv
+            build/tests/pvm-performance/*.json
+            build/tests/pvm-performance/*.log
+            build/tests/pvm-performance/*.md
+            build/tests/pvm-performance/*.callgrind*
+            build/ci/*.log
           if-no-files-found: error

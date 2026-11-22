@@ -186,9 +186,12 @@ fn full_command(
     samples: usize,
 ) {
     let owner = crate::measurement::OwnerWindow::start();
+    let backend = crate::measurement::selected(BackendKind::Interpreter);
+    let compiled = backend == BackendKind::Compiler;
+    assert!(!compiled || guest == Guest::Pinky);
     {
-        let mut cold_cpu = Some(crate::measurement::CpuTimer::start_process());
-        let mut cold_wall = Some(Instant::now());
+        let mut cold_cpu = (!compiled).then(crate::measurement::CpuTimer::start_process);
+        let mut cold_wall = (!compiled).then(Instant::now);
         let source_bytes: ArcBytes = raw.into();
         let blob = ProgramBlob::parse(source_bytes.clone()).unwrap();
         let entry = blob
@@ -196,7 +199,15 @@ fn full_command(
             .find(|export| export == "run_checked")
             .unwrap()
             .program_counter();
+        let compile_cpu = compiled.then(crate::measurement::process_cpu);
         let module = module(blob);
+        if let Some(start) = compile_cpu {
+            let prepare = crate::measurement::process_cpu() - start;
+            let code_bytes = module.machine_code().unwrap().len();
+            assert!(prepare > 0 && code_bytes > 0);
+            // Worker CPU can be measured once the instance exists. This diagnostic compares warm calls.
+            println!("REFERENCE_MODULE,guest,compiler,compiler,{code_bytes},{prepare}");
+        }
         let mut oracle_pages = None;
         assert!(input.len() >= 136 && &input[..8] == b"PVMSIV01");
         let word = |at: usize, width: usize| -> u64 {
@@ -215,19 +226,23 @@ fn full_command(
         let registers: [u64; 13] = std::array::from_fn(|index| word(32 + index * 8, 8));
         let gas = i64::try_from(word(24, 8)).unwrap();
         let label = format!("{}-{limit}", guest.name());
-        let mut retained = crate::measurement::RetainedInterpreter::new(&module, &label, samples);
+        let mut retained = (!compiled)
+            .then(|| crate::measurement::RetainedInterpreter::new(&module, &label, samples));
+        let mut compiled_instance = compiled.then(|| module.instantiate().unwrap());
         for sample in 0..samples {
-            let cpu = if sample == 0 {
+            let cpu = if let Some(instance) = compiled_instance.as_ref() {
+                crate::measurement::CpuTimer::start(instance)
+            } else if sample == 0 {
                 cold_cpu.take().unwrap()
             } else {
                 crate::measurement::CpuTimer::start_process()
             };
-            let wall = if sample == 0 {
+            let wall = if sample == 0 && !compiled {
                 cold_wall.take().unwrap()
             } else {
                 Instant::now()
             };
-            let instance = retained.restore(sample, |instance| {
+            let restore = |instance: &mut RawInstance| {
                 for (index, value) in registers.iter().enumerate() {
                     instance.set_reg(Reg::from_raw(index as u32).unwrap(), *value);
                 }
@@ -247,7 +262,14 @@ fn full_command(
                         }
                     }
                 }
-            });
+            };
+            let instance = if let Some(instance) = compiled_instance.as_mut() {
+                instance.reset_memory().unwrap();
+                restore(instance);
+                instance
+            } else {
+                retained.as_mut().unwrap().restore(sample, restore)
+            };
             let result = instance.run().unwrap();
             // The public instance is the final memory view until its next reset; no artificial freeze.
             let output_gas = instance.gas();
@@ -285,14 +307,19 @@ fn full_command(
                 println!("GUEST,{}", guest.name());
             }
             cpu.report_full_timing_failure(&label, sample, elapsed);
-            retained.complete_sample(sample);
+            if let Some(retained) = retained.as_mut() {
+                retained.complete_sample(sample);
+            }
             cpu.receipt(&label, sample);
+            let backend_name = crate::measurement::name(backend);
             println!(
-                "SIEVE,polkavm_interpreter,{limit},{sample},{elapsed},{}",
+                "SIEVE,polkavm_{backend_name},{limit},{sample},{elapsed},{}",
                 cpu.total
             );
         }
-        retained.finish();
+        if let Some(retained) = retained {
+            retained.finish();
+        }
     }
     owner.finish("guest-process");
 }

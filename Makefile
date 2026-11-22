@@ -663,6 +663,12 @@ bench-pvm-polkavm: sources rust-tools
 	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_polkavm_compare.py
 
+# Diagnostic-only paired Pinky timing and handoff attribution.
+.PHONY: bench-pvm-pinky-native-gap
+bench-pvm-pinky-native-gap: toolchain sources rust-tools
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_pinky_native_gap.py
+
 # Explicit retained-frame ARM64 JIT trial; the public application cohort owns CI timing.
 .PHONY: bench-pvm-arm64-jit
 bench-pvm-arm64-jit: toolchain sources rust-tools
