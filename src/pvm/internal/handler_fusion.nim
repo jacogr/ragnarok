@@ -3,6 +3,7 @@
 
 ## Included by the exclusive handler stream. An observed header only ranks a candidate.
 ## The copied block must reproduce original operands, paid extent and positive static edges.
+## A full ranking reserves a bounded share of the graph for verified unconditional successors.
 ## Dynamic entry permission comes only from the admitted original jump table; live checked tags
 ## and immutable native entries must both agree before an indirect terminal can complete natively.
 ## The primary retains its handlers. Fusion patches only disjoint source-proven reservation
@@ -265,10 +266,43 @@ when declared(FlatFrame):
         at = (at+1) and (NativeFusionSlotLimit-1)
     true
 
-  proc offerFlatFusion(f: FlatFrame, probe: FlatFusionProbe) =
-    ## Rank at most the fixed sample table. Only candidates with real observed reuse
-    ## pay for source reconstruction. Do not allocate by source size.
-    if probe.taken < 4096 or f.preparationFailure != FlatError.None: return
+  proc reserveFlatFusionSuccessors(f: FlatFrame, blocks: var seq[NativeFusionBlock], cap: int,
+      hasIndirect: var bool) =
+    ## Try each pinned unconditional edge in rank order, then extend through admitted successors.
+    ## Reconstruct each reached header at most once here, even if several edges share the same
+    ## refused successor. Each anchor and walked edge uses at most one slot, so fewer than
+    ## twice the graph limit fit in the fixed map.
+    var seen = default(array[NativeFusionSlotLimit, uint32])
+    template slotFor(key: uint32): int =
+      ## Find the existing key or next empty bucket in the bounded cold walk.
+      block:
+        var slot = nativeFusionSlot(key)
+        while seen[slot] != 0 and seen[slot] != key:
+          slot = (slot+1) and (NativeFusionSlotLimit-1)
+        slot
+    for item in blocks:
+      let token = item.header+1
+      seen[slotFor(token)] = token
+    var index = 0
+    while index < blocks.len and blocks.len < cap:
+      let target = blocks[index].targets[0]
+      if target != NativeEntryFailure and blocks[index].targets[1] == NativeEntryFailure:
+        # Binding proved this is a resolved original single-target branch.
+        let token = target+1
+        let slot = slotFor(token)
+        if seen[slot] == 0:
+          seen[slot] = token
+          var successor = default(NativeFusionBlock)
+          if bindFlatFusion(f, target, successor):
+            hasIndirect = hasIndirect or successor.indirect
+            blocks.add(successor)
+      inc index
+
+  proc selectFlatFusion(f: FlatFrame, probe: FlatFusionProbe): seq[NativeFusionBlock] =
+    ## Reuse ranks anchor the graph. In a full ranking, reserve one eighth of its slots
+    ## to keep hot paths native through complete successors that sparse sampling can miss.
+    ## A refused successor leaves the slot available to the original rank order.
+    if probe.taken < 4096 or f.preparationFailure != FlatError.None: return @[]
     var rank = default(array[1024, uint16])
     var count = 0
     for slot in 0..<probe.samples.len:
@@ -280,23 +314,48 @@ when declared(FlatFrame):
         dec at
       rank[at] = uint16(slot)
       inc count
-    if count < 2: return
+    if count < 2: return @[]
     let cap = min(count, NativeFusionBlockLimit)
     var requested = newSeqOfCap[NativeFusionBlock](cap)
-    if requested.rawData == nil: return
+    if requested.rawData == nil: return @[]
+    let anchors = if cap == NativeFusionBlockLimit: cap-cap div 8 else: cap
     var hasIndirect = false
-    for index in 0..<count:
-      if requested.len == cap: break
+    template appendRanked(token: uint32) =
+      ## Bind the sampled header before granting it a graph slot.
+      if token != 0:
+        var item = default(NativeFusionBlock)
+        if bindFlatFusion(f, token-1, item):
+          hasIndirect = hasIndirect or item.indirect
+          requested.add(item)
+    var index = 0
+    while index < count and requested.len < anchors:
       let token = probe.samples[int(rank[index])].token
-      var item = default(NativeFusionBlock)
-      if bindFlatFusion(f, token-1, item):
-        hasIndirect = hasIndirect or item.indirect
-        requested.add(item)
-    if requested.len < 2: return
+      appendRanked(token)
+      inc index
+    if requested.len == anchors and anchors < cap:
+      reserveFlatFusionSuccessors(f, requested, cap, hasIndirect)
+      let reservedEnd = requested.len
+      while index < count and requested.len < cap:
+        # Only the reserved tail can duplicate a remaining sample.
+        let token = probe.samples[int(rank[index])].token
+        var included = false
+        for other in anchors..<reservedEnd:
+          if requested[other].header+1 == token:
+            included = true
+            break
+        if not included: appendRanked(token)
+        inc index
+    if requested.len < 2: return @[]
     if hasIndirect:
       # Static-only candidates need neither a temporary target map nor a scan of the original table.
-      if not markFlatIndirectEntries(f, requested): return
-    discard offerNativeFusion(f.nativeSession, requested)
+      if not markFlatIndirectEntries(f, requested): return @[]
+    requested
+
+  proc offerFlatFusion(f: FlatFrame, probe: FlatFusionProbe) =
+    ## Publish only the complete checked graph selected from this frame.
+    var requested = selectFlatFusion(f, probe)
+    if requested.len >= 2:
+      discard offerNativeFusion(f.nativeSession, requested)
 
   proc flatFusionEntry(f: var FlatFrame, off: uint32): uint32 =
     ## Validate exact debits and the source path before publishing any result.

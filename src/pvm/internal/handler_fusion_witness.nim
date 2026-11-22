@@ -94,6 +94,78 @@ when declared(FlatFrame):
     for index in 0..<actual.handlers.len: assert actual.handlers[index] != flatFusionEntry,
         "composition handler cleanup " & context
 
+  proc witnessFlatFusionSuccessorReserve*(program: Program, runtime: NativeRuntime) =
+    ## Exercise a full ranking with an unsampled connector through real checked and native dispatch.
+    const connector = NativeFusionBlockLimit
+    var admitted = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+    assert admitted.error == FlatError.None, "successor plan admission"
+    let plan = takeValue(admitted)
+    let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000))
+    var frame = newFlatFrame(plan, [], info)
+    var checked = newFlatFrame(plan, [], info)
+    var headers = default(array[connector+1, uint32])
+    for control in [addr frame, addr checked]:
+      # The interpreter control uses the same materialization order for physical stop coordinates.
+      for index in 0..connector:
+        headers[index] = flatResolve(control[], uint32(6*index))
+        assert headers[index] != flatStop, "successor source header " & $index
+      for header in headers:
+        # Resolve genuine checked edges without using their results to choose the samples.
+        var source = default(FlatSourceInterval)
+        var summary = default(FlatSourceSummary)
+        assert flatSourceIntervalAt(control[], header, NativeReadFactLimit, source), "successor source interval"
+        assert flatWalkCompleteSource(control[], header, source, summary), "successor complete source"
+        assert control[].handlers[int(summary.terminal)] == flatJump[40], "successor unresolved edge"
+        assert flatJump[40](control[], summary.terminal) != flatStop, "successor checked edge"
+    var probe = FlatFusionProbe(taken: 4096)
+    for index in 0..<connector:
+      probe.samples[index] = FlatFusionSample(token: headers[index]+1, count: 4)
+    probe.samples[0].count = 8
+    let original = frame.handlers[int(headers[connector])]
+    frame.handlers[int(headers[connector])] = flatBudget
+    var ranked = selectFlatFusion(frame, probe)
+    assert ranked.len == connector and ranked[^1].header == headers[connector-1],
+        "a refused successor leaves the ranked tail intact"
+    assert ranked[0].targets[0] == headers[connector], "the rank-only image retains the original edge"
+    frame.handlers[int(headers[connector])] = original
+    var linked = selectFlatFusion(frame, probe)
+    assert linked.len == connector and linked[0].header == headers[0], "successor graph keeps its hot root"
+    var connectors = 0
+    for item in linked:
+      assert item.header != headers[connector-1], "the connector replaces only the last ranked block"
+      if item.header == headers[connector]: inc connectors
+    assert connectors == 1, "the graph includes one unsampled connector"
+
+    let session = newNativeSession(runtime)
+    frame.nativeSession = session
+    for blocks in [addr ranked, addr linked]:
+      var image = lowerNativeFusion(blocks[])
+      assert image.ready, "successor graph must lower"
+      for quota in 0'u64..8'u64:
+        # A linked successor keeps its original gas and attempt boundaries at partial quotas.
+        resetFlatFrame(frame, info)
+        resetFlatFrame(checked, info)
+        frame.fusionWitnessImage = addr image
+        frame.fusionWitnessBlocks = blocks
+        beginNativeInvocation(session, quota)
+        let before = nativeOwnerStatistics(session)
+        runFlat(frame, quota)
+        let after = nativeOwnerStatistics(session)
+        finishNativeInvocation(session, 0)
+        frame.fusionWitnessImage = nil
+        frame.fusionWitnessBlocks = nil
+        runFlat(checked, quota)
+        assertFusionFrame(frame, checked, "successor reserve quota=" & $quota)
+        if quota == 8:
+          assert uint64(frame.info.registers[2]) == 3 and frame.exit == oracle.StepExit.Host,
+              "three original adds reach the checked host boundary"
+          if blocks == addr ranked:
+            assert after[1]-before[1] == 2 and after[2]-before[2] == 4,
+                "the ranked graph crosses two native entry boundaries"
+          else:
+            assert after[1]-before[1] == 1 and after[2]-before[2] == 6,
+                "the reserved graph crosses one native entry boundary"
+
   proc witnessFlatFusionComposition*(program: Program, secondPc: uint32, branch: byte,
       runtime: NativeRuntime) =
     ## Admit original source, warm real checked workers, reject altered identities/operands/targets,
