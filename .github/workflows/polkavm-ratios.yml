@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: polkavm-ratios-${{ github.ref }}
+  group: pinky-native-gap-${{ github.ref }}-${{ inputs.architecture }}
   cancel-in-progress: true
 
 defaults:
@@ -39,6 +39,8 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - name: Fetch the pinned application baseline
+        run: git fetch --no-tags --depth=1 origin e0704df6eb893e4e0c4eb06a0e5ac9c874e210c0
       - name: Python 3.12
         uses: actions/setup-python@v7.0.0
         with:

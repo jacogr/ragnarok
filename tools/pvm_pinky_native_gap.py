@@ -10,6 +10,7 @@ import platform
 from statistics import median
 import subprocess
 
+from native_checks import NativeChecks
 from pvm_benchmark import CRATE, TARGET
 from pvm_ci_performance import ROOT, PerformanceRunner, digest, execution_environment
 from pvm_instruction_profile import calibrate_scope, collect, exclusive_costs, profile_counts
@@ -152,8 +153,22 @@ def profile(runner, case, report):
     args, env, _ = runner.invocation(case, 'jit')
     version = runner.command(['valgrind', '--version'], 'version')
     report['valgrind'] = version['output'].strip()
-    calibrate_scope(runner.checks, report)
-    raw, final = collect(runner.checks, args[0], 'pinky-jit', scope, env, 900,
+    checks = NativeChecks(BUILD)
+    command = checks.command
+
+    def fair_command(arguments, name, **options):
+        """Keep the asynchronous compiler runnable while collecting exact guest scopes."""
+        runner.verify()
+        if arguments[:2] == ['valgrind', '--tool=callgrind']:
+            arguments = [arguments[0], '--fair-sched=yes', '--scheduling-quantum=1000',
+                         *arguments[1:]]
+        result = command(arguments, name, **options)
+        runner.verify()
+        return result
+
+    checks.command = fair_command
+    calibrate_scope(checks, report)
+    raw, final = collect(checks, args[0], 'pinky-jit', scope, env, 900,
                          dump_symbols=(scope,), executions=13)
     if raw['exit_code']:
         raise RuntimeError('Callgrind guest failed: '+raw['log'])
