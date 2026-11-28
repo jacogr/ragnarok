@@ -117,7 +117,9 @@ when declared(FlatFrame):
           # Fused scalar and chained memory handlers retain original individual sites.
           let paired = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(fact.opcode)
             else: flatMemoryPairHandler(fact.opcode)
-          if paired == nil or worker != paired:
+          let byteLoad = fact.opcode == 124 and (worker == flatOrByteUpdate or
+            worker == flatMemoryWorker[1, true, false, true, false, true, true])
+          if not byteLoad and (paired == nil or worker != paired):
             var combinedBranch = false
             if index+1 == source.last and node+1 == summary.terminal and fact.opcode == 131:
               # Both workers retain the original terminal record, which is checked below.
