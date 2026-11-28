@@ -936,19 +936,32 @@ proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64): bo
   ## Managed stores preserve the complete extent and failure contract of the borrowed primitive.
   flatWriteSpan[W](bytes, at, value)
 
-func flatStoreMetadataValid[W: static[int]](f: FlatFrame, address: uint64): bool {.inline.} =
-  ## Prove both dirty words and all new index slots before the first byte or bitmap mutation.
+const
+  flatMarkFirst = 1'u8
+  flatMarkLast = 2'u8
+  flatInvalidStore = 4'u8
+
+func flatStoreDirtyMarks[W: static[int]](f: FlatFrame, address: uint64): uint8 {.inline.} =
+  ## Prove both bitmap words and the complete index capacity before any byte or metadata
+  ## mutation. The caller retains the resulting new-page mask over one scalar transfer.
   when W != 1 and W != 2 and W != 4 and W != 8: {.error: "scalar transfers require 1, 2, 4, or 8 bytes".}
   if address > uint64(high(uint32))-uint64(W-1) or
-      f.dirtyIndices.len > f.sourcePages.len: return false
+      f.dirtyIndices.len > f.sourcePages.len: return flatInvalidStore
   let first = int(address shr 12)
-  let last = int((address+uint64(W-1)) shr 12)
   let word = first shr 6
-  let lastWord = last shr 6
-  if word >= f.dirtyPages.len or lastWord >= f.dirtyPages.len: return false
+  if word >= f.dirtyPages.len: return flatInvalidStore
   var needed = int((f.dirtyPages[word] and (1'u64 shl (first and 63))) == 0)
-  if last != first and (f.dirtyPages[lastWord] and (1'u64 shl (last and 63))) == 0: inc needed
-  needed <= f.sourcePages.len-f.dirtyIndices.len
+  var marks = uint8(needed) # The first page contributes the low bit.
+  when W > 1:
+    let last = int((address+uint64(W-1)) shr 12)
+    if last != first:
+      let lastWord = last shr 6
+      if lastWord >= f.dirtyPages.len: return flatInvalidStore
+      if (f.dirtyPages[lastWord] and (1'u64 shl (last and 63))) == 0:
+        inc needed
+        marks = marks or flatMarkLast
+  if needed > f.sourcePages.len-f.dirtyIndices.len: return flatInvalidStore
+  marks
 
 proc flatRememberPage(f: var FlatFrame, page: int): bool {.noinline.} =
   ## Record a newly dirty page only after proving both index capacity and its bitmap word.
@@ -961,29 +974,22 @@ proc flatRememberPage(f: var FlatFrame, page: int): bool {.noinline.} =
   f.dirtyPages[word] = f.dirtyPages[word] or (1'u64 shl (page and 63))
   true
 
-proc flatRememberStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
-    discardable.} =
-  ## Consume this exclusive frame's successful complete metadata preflight without repeating it.
-  ## Callers must not change dirty arrays/source-page counts or invoke callbacks between proof and use.
-  ## A scalar byte transfer has no such authority; it may precede these same ordered dirty marks.
-  ## New indices still pass flatRememberPage's capacity/bitmap checks before their first mutation.
-  let first = int(address shr 12)
-  let word = first shr 6
-  if (f.dirtyPages[word] and (1'u64 shl (first and 63))) == 0:
-    # Repeated stores need no additional index; a new page keeps bookkeeping outside the hot worker.
-    if not flatRememberPage(f, first): return false
+proc flatRememberStore[W: static[int]](f: var FlatFrame, address: uint64,
+    marks: uint8): bool {.inline.} =
+  ## Consume the preflight's page mask. The caller may perform one exclusive byte
+  ## transfer against the same frame between proof and commit.
+  if (marks and flatMarkFirst) != 0:
+    if not flatRememberPage(f, int(address shr 12)): return false
   when W > 1:
-    let last = int((address+uint64(W-1)) shr 12)
-    if last != first and (f.dirtyPages[last shr 6] and (1'u64 shl (last and 63))) == 0:
-      # Both pages and the complete required index count were admitted before the first change.
-      if not flatRememberPage(f, last): return false
+    if (marks and flatMarkLast) != 0:
+      if not flatRememberPage(f, int((address+uint64(W-1)) shr 12)): return false
   true
 
 proc flatMarkStore[W: static[int]](f: var FlatFrame, address: uint64): bool {.alwaysInline,
     discardable.} =
-  ## Cold stores and private witnesses retain whole-store metadata preflight before dirty mutation.
-  if not flatStoreMetadataValid[W](f, address): return false
-  flatRememberStore[W](f, address)
+  ## Cold stores and private witnesses retain complete metadata preflight before dirty mutation.
+  let marks = flatStoreDirtyMarks[W](f, address)
+  marks != flatInvalidStore and flatRememberStore[W](f, address, marks)
 
 func flatDirtyCoordinatesValid(f: FlatFrame): bool =
   ## Preflight the complete retained index list before clearing any word or replacing its baseline.
@@ -1196,8 +1202,9 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
       let at = int(address-f.stackBase)
       if f.stack.len >= W and at <= f.stack.len-W:
         # The byte-only primitive cannot invalidate the preflight or change dirty/source metadata.
-        if not flatStoreMetadataValid[W](f, address) or not flatWrite[W](f.stack, at, value) or
-            not flatRememberStore[W](f, address):
+        let marks = flatStoreDirtyMarks[W](f, address)
+        if marks == flatInvalidStore or not flatWrite[W](f.stack, at, value) or
+            (marks != 0 and not flatRememberStore[W](f, address, marks)):
           f.reason = oracle.StepError.BackendFailure
           return false
         return true
@@ -1205,8 +1212,9 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
       let at = int(address-f.rwBase)
       if f.rw.len >= W and at <= f.rw.len-W:
         # RW scalar transfer neither allocates/resizes nor calls hosts; consume the same proof once.
-        if not flatStoreMetadataValid[W](f, address) or not tryWriteScalar[W](f.rw, at, value) or
-            not flatRememberStore[W](f, address):
+        let marks = flatStoreDirtyMarks[W](f, address)
+        if marks == flatInvalidStore or not tryWriteScalar[W](f.rw, at, value) or
+            (marks != 0 and not flatRememberStore[W](f, address, marks)):
           f.reason = oracle.StepError.BackendFailure
           return false
         return true
@@ -1280,14 +1288,16 @@ proc flatOrByteUpdate(f: var FlatFrame, off: uint32): uint32 =
         address >= f.rwBase and address < f.stackBase:
       # No allocation, control transfer or callback can replace this frame's RW borrow between operations.
       var data: nil ptr byte = nil
-      if tryBorrowedData(f.rw, int(address-f.rwBase), 1, data) and data != nil and
-          flatStoreMetadataValid[1](f, address):
-        let mask = f.arguments[int(off)+1]
-        let value = uint64(data[]) or mask.x
-        data[] = byte(value and 255)
-        if not flatRememberStore[1](f, address): return flatBackendFailure(f, off+2)
-        f.info.registers[load.slots.aIndex] = RegisterValue(value)
-        return off+3
+      if tryBorrowedData(f.rw, int(address-f.rwBase), 1, data) and data != nil:
+        let marks = flatStoreDirtyMarks[1](f, address)
+        if marks != flatInvalidStore:
+          let mask = f.arguments[int(off)+1]
+          let value = uint64(data[]) or mask.x
+          data[] = byte(value and 255)
+          if marks != 0 and not flatRememberStore[1](f, address, marks):
+            return flatBackendFailure(f, off+2)
+          f.info.registers[load.slots.aIndex] = RegisterValue(value)
+          return off+3
   flatMemoryWorker[1, true, false, true, false, true, true](f, off)
 
 func sameByteUpdate(load, mask, store: FlatArgs): bool =
